@@ -227,7 +227,7 @@ describe('admissions', () => {
       (await request(app).post(`/api/admissions/enquiries/${z.body.id}/convert`).set(bearer(apex)).send({}))
         .status,
     ).toBe(404);
-    const list = await request(app).get('/api/admissions/enquiries?limit=100').set(bearer(apex));
+    const list = await request(app).get('/api/admissions/enquiries?pageSize=200').set(bearer(apex));
     expect(list.body.items.some((e: { id: number }) => e.id === z.body.id)).toBe(false);
     // Counsellors must belong to the institute.
     const zAdminId = (await User.findOne({ where: { mobile: USERS.zenithAdmin.mobile } }))!.id;

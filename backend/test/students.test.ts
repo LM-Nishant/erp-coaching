@@ -86,7 +86,7 @@ describe('students', () => {
       ).status,
     ).toBe(404);
     expect((await request(app).delete(`/api/students/${z.body.id}`).set(bearer(apex))).status).toBe(404);
-    const list = await request(app).get('/api/students?limit=100').set(bearer(apex));
+    const list = await request(app).get('/api/students?pageSize=200').set(bearer(apex));
     expect(list.body.items.some((s: { id: number }) => s.id === z.body.id)).toBe(false);
     // Apex cannot place a student in a Zenith branch either.
     const cross = await request(app)
