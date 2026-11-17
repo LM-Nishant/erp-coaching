@@ -9,7 +9,10 @@ export interface OutboundMessage {
 
 export interface SendResult {
   providerMessageId: string;
-  status: 'queued' | 'sent' | 'failed';
+  /** `delivered` when the provider confirms delivery synchronously (rare); otherwise `sent`/`queued`. */
+  status: 'queued' | 'sent' | 'delivered' | 'failed';
+  /** Provider error description when status is `failed`. */
+  error?: string;
 }
 
 export type Channel = 'sms' | 'whatsapp' | 'email' | 'push';
