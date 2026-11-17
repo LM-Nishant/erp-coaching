@@ -9,6 +9,10 @@
 	</dict>
   <key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>The camera is used to stream your live classes.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>The microphone is used in live classes when you teach or are allowed to speak.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>

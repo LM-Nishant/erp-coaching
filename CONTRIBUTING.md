@@ -167,6 +167,8 @@ Current wiring:
 | admissions → academics                            | `admissions.service.ts`     | admitting an application with `batchId` enrols the student via `enrollStudentsInBatch` in the admit transaction; `admissions.confirmed` is sent to student + guardians |
 | academics, grievances, admissions → notifications | `notify()`                  | `classes.cancelled/rescheduled/substituted` (students, their guardians, teachers), `grievances.activity`, `admissions.follow-up-due`                                   |
 | hr → subscriptions                                | `hr.service.ts`             | `assertTeacherSeat()` enforces the plan's `maxTeachers` (non-exited employees with `isTeacher`)                                                                        |
+| live-classes → attendance, LMS (events)           | `live-classes/api.ts`       | `onLiveSessionEnded` (participants + `absentStudentUserIds`, student user ids), `onLiveRecordingReady`, `listBatchRecordings`; see `live-classes/README.md`            |
+| live-classes → notifications                      | `notify()`                  | `live-classes.scheduled/starting/recording-ready` (batch members; guardians on scheduled)                                                                              |
 
 Identity note: academics rosters and grievances key students by **login user id**; students/guardians use `students.id` (`students.user_id` is nullable — siblings sharing a mobile have no login). Use `getStudentUserId`, `getLinkedStudentUsers`, `getGuardianUserIdsForStudentUsers` from `guardians/guardian-access` to convert.
 
