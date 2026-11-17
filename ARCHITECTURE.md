@@ -19,7 +19,7 @@ backend/src/
     module-loader.ts     auto-discovers src/modules/*/index.ts
     storage/             StorageAdapter: local-disk (implemented), s3 (stub), signed URLs
     ai-providers/        OpenAI-compatible chat-completions client
-    messaging/           SMS / WhatsApp / email / push providers (console impl)
+    messaging/           SMS / WhatsApp / email / push providers (console impl + MSG91/Twilio/WhatsApp Cloud/SMTP/FCM stubs)
     payment-gateways/    PaymentGateway interface (mock impl)
     streaming/ biometric/  interfaces + mock impls
     jobs/                DB-backed job queue + in-process worker
@@ -104,7 +104,8 @@ helmet → cors → json → contextMiddleware (request id, ALS) → rate limit
 | Files                            | `saveUploadedFile({...})`, `signedUrlFor(file)`, `deleteFile(id)` from `modules/files/files.service`; storage path `institutes/<id>/<yyyy>/<mm>/<uuid><ext>`                 |
 | AI                               | `aiChat({ feature: 'exams.generate', messages, jsonMode? })` from `modules/ai/ai.service` (quota check, provider call, `ai_usage` metering)                                  |
 | Background jobs                  | `enqueueJob('module.job-name', payload, { runAt? })`; handlers declared in the module's `jobs` map; run with tenant context                                                  |
-| SMS/WhatsApp/email/push          | `getMessagingProvider('sms' \| 'whatsapp' \| 'email' \| 'push').send(...)`                                                                                                   |
+| Notifications (all channels)     | `notify({ event, recipients, data })` from `modules/notifications/api`: rules → templates → preferences → queued delivery with retries (see CONTRIBUTING.md)                 |
+| SMS/WhatsApp/email/push          | Low-level `getMessagingProvider(channel)`; platform/auth code only (OTP). Per-institute providers via `createMessagingProvider()`                                            |
 | Payments / streaming / biometric | `getPaymentGateway(instituteId)`, `infrastructure/streaming`, `infrastructure/biometric` (mock implementations)                                                              |
 
 ## Files
@@ -132,7 +133,7 @@ app/src/
   stores/auth.ts           # session, memberships, permissions: can('module.action'), moduleEnabled()
   router/index.ts          # collects routes from modules; guards: auth, institute selection, meta.permission, meta.superAdmin
   components/              # AppPage, StatCard, ImpersonationBanner, ...
-  modules/<name>/module.ts # defineAppModule({ id, routes, menu }), auto-discovered with import.meta.glob
+  modules/<name>/module.ts # defineAppModule({ id, routes, menu, toolbarItems }), auto-discovered with import.meta.glob
 ```
 
 - **API client** (`core/api.ts`): adds the Bearer token and `X-Branch-Id`. On a 401 it refreshes once (single-flight) and retries. If the refresh fails, the session is cleared.

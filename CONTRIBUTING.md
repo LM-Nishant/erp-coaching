@@ -109,11 +109,46 @@ Register the public router before the authenticated one when they share a prefix
 
 - **Files**: `saveUploadedFile()` and `signedUrlFor()`. Store `file_id` FKs to `files`, never paths or public URLs.
 - **AI**: `aiChat({ feature: '<module>.<feature>', messages })`. Don't read AI settings or keys yourself.
-- **Messaging, payments, streaming, biometric**: use the adapters under `infrastructure/`. Don't import vendor SDKs in modules.
+- **Notifications (SMS/WhatsApp/email/push/in-app)**: call `notify()`; see [Sending notifications](#sending-notifications). Don't call `getMessagingProvider()` from business modules.
+- **Payments, streaming, biometric**: use the adapters under `infrastructure/`. Don't import vendor SDKs in modules.
 - **Long or retryable work**:
   - Queue it with `enqueueJob('<module>.<job>', payload)`.
   - Register the handler in the module's `jobs` map.
   - Handlers run with the job's tenant context.
+
+### Sending notifications
+
+The notifications module is the single path for messaging users. Import only from `modules/notifications/api`:
+
+```ts
+import { notify, guardiansOf, studentUserOf } from '../notifications/api';
+
+// After your transaction commits:
+await notify({
+  event: 'fees.receipt',
+  recipients: [guardiansOf(student.id), studentUserOf(student.id)],
+  data: { student: { name: student.name }, amount: '1,500', receiptNo: receipt.number, paidOn: '12 Jan' },
+  branchId: student.branchId, // optional; defaults to the request's active branch
+});
+```
+
+- **Pipeline.** `notify()` applies the institute's trigger rule for the event (channels and recipient types; catalogue defaults otherwise). It then resolves recipients to users of the current institute, renders the institute's template (or the catalogue default) with `{{ path }}` variables and applies each user's preferences/opt-outs. Finally it writes one `notification_messages` row per user × channel (× device for push) and enqueues delivery jobs. Returns `{ messageIds, queued, skipped }`.
+- **Delivery.** In-app messages land in the user's inbox immediately. External channels are delivered by the `notifications.deliver` job through the institute's configured provider, with exponential backoff (`base × 2^(n-1)`), then `failed`. Every try is recorded in `notification_delivery_attempts`. Opt-outs and missing mobile/email/device are stored as `skipped` with a reason.
+- **Recipients.**
+  - A user id, `{ userIds, type? }` (always delivered), or `{ role: 'teacher', branchId? }`.
+  - `guardiansOf(studentId)` and `studentUserOf(studentId)`: typed `guardian`/`student`, so rules can target them.
+  - The owning module registers the resolvers once in its `onReady`: students registers `guardiansOf` and `studentUser`; batches registers `batchMembers` (used by bulk messages). Unregistered resolvers are skipped with a warning.
+
+  ```ts
+  registerRecipientResolver('guardiansOf', async (studentId, { instituteId }) =>
+    parentUserIdsOf(instituteId, studentId as number),
+  );
+  ```
+
+- **Events.** The catalogue lives in `packages/shared/src/notifications.ts` (`NOTIFICATION_EVENTS`). Add new events there, or at runtime with `registerNotificationEvents([...])`. Each event defines label, category, variables, default channels, recipient types and default title/body. Unknown event keys throw.
+- **Context.** `notify()` needs tenant context: call it from a request handler or a job, not at module load. Inside a job it uses the job's institute.
+- **Receipts.** Provider webhooks should call `recordDeliveryReceipt({ provider, providerMessageId, status })`.
+- **Tests.** Run `processDueJobs()` and assert on `consoleOutbox` (from `infrastructure/messaging`) to check what would have been sent.
 
 ### 7. Tests (required)
 
