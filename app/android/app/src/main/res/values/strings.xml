@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ERP Coaching</string>
+    <string name="title_activity_main">ERP Coaching</string>
+    <string name="package_name">com.erpcoaching.app</string>
+    <string name="custom_url_scheme">com.erpcoaching.app</string>
+</resources>

@@ -25,7 +25,11 @@ const limitsSchema = z.object({
 });
 
 const planSchema = z.object({
-  code: z.string().trim().toLowerCase().regex(/^[a-z0-9-]{2,40}$/),
+  code: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z0-9-]{2,40}$/),
   name: z.string().trim().min(2).max(100),
   description: z.string().max(255).nullable().optional(),
   priceMonthlyPaise: z.number().int().min(0),
@@ -45,7 +49,11 @@ export async function usageFor(instituteId: number) {
     FileObject.sum('sizeBytes', { where: { instituteId } }),
     AiUsage.sum('totalTokens', { where: { instituteId, createdAt: { [Op.gte]: startOfMonth() } } }),
   ]);
-  return { branches, storageMb: Math.round(((storageBytes || 0) / 1048576) * 100) / 100, aiTokensThisMonth: aiTokens || 0 };
+  return {
+    branches,
+    storageMb: Math.round(((storageBytes || 0) / 1048576) * 100) / 100,
+    aiTokensThisMonth: aiTokens || 0,
+  };
 }
 
 export function subscriptionRoutes(api: Router) {
@@ -62,7 +70,15 @@ export function subscriptionRoutes(api: Router) {
       raw: true,
       tenantBypass: true,
     } as object);
-    res.json(plans.map((p) => ({ ...p.toJSON(), activeSubscriptions: Number((counts as unknown as { planId: number; count: number }[]).find((c) => c.planId === p.id)?.count ?? 0) })));
+    res.json(
+      plans.map((p) => ({
+        ...p.toJSON(),
+        activeSubscriptions: Number(
+          (counts as unknown as { planId: number; count: number }[]).find((c) => c.planId === p.id)?.count ??
+            0,
+        ),
+      })),
+    );
   });
 
   admin.post('/plans', async (req, res) => {
@@ -79,7 +95,13 @@ export function subscriptionRoutes(api: Router) {
     if (!plan) throw NotFound('Plan');
     const before = plan.toJSON();
     await plan.update({ ...body, description: body.description ?? null });
-    await audit({ action: 'plan.updated', entityType: 'plan', entityId: id, instituteId: null, metadata: { before: before.limits, after: body.limits } });
+    await audit({
+      action: 'plan.updated',
+      entityType: 'plan',
+      entityId: id,
+      instituteId: null,
+      metadata: { before: before.limits, after: body.limits },
+    });
     res.json(plan);
   });
 
@@ -110,7 +132,13 @@ export function subscriptionRoutes(api: Router) {
       endsAt: body.endsAt ?? null,
       limitOverrides: body.limitOverrides ?? null,
     });
-    await audit({ action: 'subscription.changed', entityType: 'subscription', entityId: sub.id, instituteId: id, metadata: body });
+    await audit({
+      action: 'subscription.changed',
+      entityType: 'subscription',
+      entityId: sub.id,
+      instituteId: id,
+      metadata: body,
+    });
     res.status(201).json(sub);
   });
 

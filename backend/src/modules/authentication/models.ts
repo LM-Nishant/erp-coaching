@@ -1,4 +1,11 @@
-import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes, type Sequelize } from 'sequelize';
+import {
+  DataTypes,
+  Model,
+  type CreationOptional,
+  type InferAttributes,
+  type InferCreationAttributes,
+  type Sequelize,
+} from 'sequelize';
 import { User } from '../users/user.model';
 
 export class Device extends Model<InferAttributes<Device>, InferCreationAttributes<Device>> {
@@ -17,7 +24,10 @@ export class Device extends Model<InferAttributes<Device>, InferCreationAttribut
   declare updatedAt: CreationOptional<Date>;
 }
 
-export class OtpChallenge extends Model<InferAttributes<OtpChallenge>, InferCreationAttributes<OtpChallenge>> {
+export class OtpChallenge extends Model<
+  InferAttributes<OtpChallenge>,
+  InferCreationAttributes<OtpChallenge>
+> {
   declare id: string;
   declare userId: number | null;
   declare mobile: string;
@@ -31,7 +41,10 @@ export class OtpChallenge extends Model<InferAttributes<OtpChallenge>, InferCrea
   declare updatedAt: CreationOptional<Date>;
 }
 
-export class RefreshToken extends Model<InferAttributes<RefreshToken>, InferCreationAttributes<RefreshToken>> {
+export class RefreshToken extends Model<
+  InferAttributes<RefreshToken>,
+  InferCreationAttributes<RefreshToken>
+> {
   declare id: CreationOptional<number>;
   declare userId: number;
   declare deviceId: number;
@@ -43,7 +56,10 @@ export class RefreshToken extends Model<InferAttributes<RefreshToken>, InferCrea
   declare updatedAt: CreationOptional<Date>;
 }
 
-export class ImpersonationSession extends Model<InferAttributes<ImpersonationSession>, InferCreationAttributes<ImpersonationSession>> {
+export class ImpersonationSession extends Model<
+  InferAttributes<ImpersonationSession>,
+  InferCreationAttributes<ImpersonationSession>
+> {
   declare id: CreationOptional<number>;
   declare superAdminId: number;
   declare targetUserId: number;

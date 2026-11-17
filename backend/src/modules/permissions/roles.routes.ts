@@ -46,7 +46,12 @@ export function roleRoutes(api: Router) {
   r.use(authenticate);
 
   r.get('/permissions', requirePermission('roles', 'view'), async (_req, res) => {
-    const perms = await Permission.findAll({ order: [['module', 'ASC'], ['id', 'ASC']] });
+    const perms = await Permission.findAll({
+      order: [
+        ['module', 'ASC'],
+        ['id', 'ASC'],
+      ],
+    });
     const grouped: Record<string, { key: string; action: string; label: string }[]> = {};
     perms.forEach((p) => (grouped[p.module] ??= []).push({ key: p.key, action: p.action, label: p.label }));
     res.json(grouped);
@@ -57,7 +62,10 @@ export function roleRoutes(api: Router) {
     const roles = await Role.findAll({
       where: { instituteId: { [Op.or]: [null, instituteId] }, slug: { [Op.ne]: 'super-admin' } },
       include: [{ model: Permission, as: 'permissions', through: { attributes: [] } }],
-      order: [['isSystem', 'DESC'], ['name', 'ASC']],
+      order: [
+        ['isSystem', 'DESC'],
+        ['name', 'ASC'],
+      ],
     });
     res.json(roles.map(serialize));
   });
@@ -65,15 +73,29 @@ export function roleRoutes(api: Router) {
   r.post('/roles', requirePermission('roles', 'create'), async (req, res) => {
     const body = parse(roleBody, req.body);
     const { instituteId } = requireTenantContext();
-    const slug = `custom-${body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`.slice(0, 60);
+    const slug = `custom-${body.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')}`.slice(0, 60);
     if (await Role.findOne({ where: { instituteId, slug } })) throw Conflict('A role with this name exists');
     const ids = await permissionIds(body.permissions);
     const role = await getSequelize().transaction(async (transaction) => {
-      const role = await Role.create({ instituteId, slug, name: body.name, description: body.description ?? null, isSystem: false }, { transaction });
-      await RolePermission.bulkCreate(ids.map((permissionId) => ({ roleId: role.id, permissionId })), { transaction });
+      const role = await Role.create(
+        { instituteId, slug, name: body.name, description: body.description ?? null, isSystem: false },
+        { transaction },
+      );
+      await RolePermission.bulkCreate(
+        ids.map((permissionId) => ({ roleId: role.id, permissionId })),
+        { transaction },
+      );
       return role;
     });
-    await audit({ action: 'role.created', entityType: 'role', entityId: role.id, metadata: { permissions: body.permissions } });
+    await audit({
+      action: 'role.created',
+      entityType: 'role',
+      entityId: role.id,
+      metadata: { permissions: body.permissions },
+    });
     res.status(201).json({ ...serialize(role), permissions: body.permissions });
   });
 
@@ -86,9 +108,17 @@ export function roleRoutes(api: Router) {
     await getSequelize().transaction(async (transaction) => {
       await role.update({ name: body.name, description: body.description ?? null }, { transaction });
       await RolePermission.destroy({ where: { roleId: role.id }, transaction });
-      await RolePermission.bulkCreate(ids.map((permissionId) => ({ roleId: role.id, permissionId })), { transaction });
+      await RolePermission.bulkCreate(
+        ids.map((permissionId) => ({ roleId: role.id, permissionId })),
+        { transaction },
+      );
     });
-    await audit({ action: 'role.permissions_changed', entityType: 'role', entityId: id, metadata: { before, after: body.permissions } });
+    await audit({
+      action: 'role.permissions_changed',
+      entityType: 'role',
+      entityId: id,
+      metadata: { before, after: body.permissions },
+    });
     res.json({ ...serialize(role), permissions: body.permissions });
   });
 
@@ -96,7 +126,8 @@ export function roleRoutes(api: Router) {
     const { id } = parse(idParam, req.params);
     const role = await ownCustomRole(id);
     const { instituteId } = requireTenantContext();
-    if (await UserRole.count({ where: { instituteId, roleId: id } })) throw Forbidden('Role is assigned to users', 'ROLE_IN_USE');
+    if (await UserRole.count({ where: { instituteId, roleId: id } }))
+      throw Forbidden('Role is assigned to users', 'ROLE_IN_USE');
     await role.destroy();
     await audit({ action: 'role.deleted', entityType: 'role', entityId: id, metadata: { name: role.name } });
     res.status(204).end();

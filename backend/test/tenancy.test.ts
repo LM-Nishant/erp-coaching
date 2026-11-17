@@ -21,7 +21,9 @@ describe('multi-tenant isolation', () => {
   });
 
   it('lists only own branches', async () => {
-    const res = await request(await getApp()).get('/api/branches').set(bearer(apex));
+    const res = await request(await getApp())
+      .get('/api/branches')
+      .set(bearer(apex));
     expect(res.status).toBe(200);
     expect(res.body.map((b: { id: number }) => b.id).sort()).toEqual([...apexBranchIds].sort());
     expect(res.body.every((b: { instituteId: number }) => b.instituteId === 1)).toBe(true);
@@ -30,7 +32,10 @@ describe('multi-tenant isolation', () => {
   it("blocks reading, updating and deleting another institute's branch", async () => {
     const app = await getApp();
     expect((await request(app).get(`/api/branches/${zenithBranchId}`).set(bearer(apex))).status).toBe(404);
-    expect((await request(app).patch(`/api/branches/${zenithBranchId}`).set(bearer(apex)).send({ name: 'Hacked' })).status).toBe(404);
+    expect(
+      (await request(app).patch(`/api/branches/${zenithBranchId}`).set(bearer(apex)).send({ name: 'Hacked' }))
+        .status,
+    ).toBe(404);
     expect((await request(app).delete(`/api/branches/${zenithBranchId}`).set(bearer(apex))).status).toBe(404);
     const still = await Branch.findOne({ where: { instituteId: 2, id: zenithBranchId } });
     expect(still!.name).not.toBe('Hacked');
@@ -47,18 +52,27 @@ describe('multi-tenant isolation', () => {
   });
 
   it('enforces plan limits (Zenith Starter plan allows 2 branches)', async () => {
-    const res = await request(await getApp()).post('/api/branches').set(bearer(zenith)).send({ name: 'Third', code: 'B3' });
+    const res = await request(await getApp())
+      .post('/api/branches')
+      .set(bearer(zenith))
+      .send({ name: 'Third', code: 'B3' });
     expect(res.status).toBe(402);
     expect(res.body.error.code).toBe('PLAN_LIMIT_EXCEEDED');
   });
 
   it('rejects an X-Branch-Id from another institute', async () => {
-    const res = await request(await getApp()).get('/api/branches').set(bearer(apex)).set('X-Branch-Id', String(zenithBranchId));
+    const res = await request(await getApp())
+      .get('/api/branches')
+      .set(bearer(apex))
+      .set('X-Branch-Id', String(zenithBranchId));
     expect(res.status).toBe(403);
   });
 
   it('refuses to switch into an institute the user is not a member of', async () => {
-    const res = await request(await getApp()).post('/api/auth/select-institute').set(bearer(apex)).send({ instituteId: 2 });
+    const res = await request(await getApp())
+      .post('/api/auth/select-institute')
+      .set(bearer(apex))
+      .send({ instituteId: 2 });
     expect(res.status).toBe(403);
   });
 
@@ -69,7 +83,9 @@ describe('multi-tenant isolation', () => {
 
   it('TenantRepository always scopes to the context institute', async () => {
     const repo = new TenantRepository(Branch);
-    const rows = await runWithContext({ userId: 1, instituteId: 1, allowedBranchIds: null }, () => repo.findAll({ where: { instituteId: 2 } }));
+    const rows = await runWithContext({ userId: 1, instituteId: 1, allowedBranchIds: null }, () =>
+      repo.findAll({ where: { instituteId: 2 } }),
+    );
     expect(rows.every((b) => b.instituteId === 1)).toBe(true);
   });
 });

@@ -11,12 +11,18 @@ import { Institute } from './institute.model';
 import { getAllSettings, setSetting } from './settings.service';
 import { FileObject } from '../files/file.model';
 
-const color = z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional();
+const color = z
+  .string()
+  .regex(/^#[0-9a-fA-F]{6}$/)
+  .nullable()
+  .optional();
 
 export function instituteRoutes(api: Router) {
   // ---- Public (pre-login institute selection / branding on the shared mobile app)
   api.get('/public/institutes/:slug', async (req, res) => {
-    const inst = await Institute.findOne({ where: { slug: String(req.params.slug).toLowerCase(), status: 'active' } });
+    const inst = await Institute.findOne({
+      where: { slug: String(req.params.slug).toLowerCase(), status: 'active' },
+    });
     if (!inst) throw NotFound('Institute');
     res.json(inst.toBranding());
   });
@@ -62,12 +68,18 @@ export function instituteRoutes(api: Router) {
     const { instituteId } = requireTenantContext();
     if (body.logoFileId) {
       const file = await FileObject.findOne({ where: { id: body.logoFileId, instituteId } });
-      if (!file || !file.mimeType.startsWith('image/')) throw BadRequest('Logo must be an image uploaded to this institute');
+      if (!file || !file.mimeType.startsWith('image/'))
+        throw BadRequest('Logo must be an image uploaded to this institute');
     }
     const inst = await Institute.findByPk(instituteId);
     if (!inst) throw NotFound('Institute');
     await inst.update(body);
-    await audit({ action: 'institute.profile_updated', entityType: 'institute', entityId: instituteId, metadata: { fields: Object.keys(body) } });
+    await audit({
+      action: 'institute.profile_updated',
+      entityType: 'institute',
+      entityId: instituteId,
+      metadata: { fields: Object.keys(body) },
+    });
     res.json({ ...inst.toJSON(), branding: inst.toBranding() });
   });
 

@@ -24,7 +24,8 @@ export interface DeviceInput {
   platform?: string;
 }
 
-const INVALID_CREDENTIALS = () => new AppError(401, 'INVALID_CREDENTIALS', 'Invalid mobile/email or password');
+const INVALID_CREDENTIALS = () =>
+  new AppError(401, 'INVALID_CREDENTIALS', 'Invalid mobile/email or password');
 
 export function maskMobile(mobile: string) {
   return mobile.length > 4 ? `${'•'.repeat(mobile.length - 4)}${mobile.slice(-4)}` : mobile;
@@ -88,7 +89,13 @@ async function checkDevice(user: User, input: DeviceInput, otpVerified: boolean)
   const device = existing
     ? await existing.update(values)
     : await Device.create({ userId: user.id, deviceUid: input.uid, ...values });
-  await audit({ action: 'device.registered', entityType: 'device', entityId: device.id, instituteId: null, metadata: { userId: user.id, platform: input.platform } });
+  await audit({
+    action: 'device.registered',
+    entityType: 'device',
+    entityId: device.id,
+    instituteId: null,
+    metadata: { userId: user.id, platform: input.platform },
+  });
   return { device };
 }
 
@@ -102,7 +109,12 @@ export async function revokeDevice(deviceId: number, userId: number, revokedBy: 
 
 // ---------------------------------------------------------------- OTP
 
-async function createChallenge(user: User | null, mobile: string, purpose: OtpChallenge['purpose'], deviceUid: string) {
+async function createChallenge(
+  user: User | null,
+  mobile: string,
+  purpose: OtpChallenge['purpose'],
+  deviceUid: string,
+) {
   const recent = await OtpChallenge.count({
     where: { mobile, createdAt: { [Op.gt]: new Date(Date.now() - 10 * 60_000) } },
   });
@@ -131,20 +143,41 @@ async function createChallenge(user: User | null, mobile: string, purpose: OtpCh
 
 // ---------------------------------------------------------------- public API
 
-export async function loginWithPassword(identifier: string, password: string, device: DeviceInput): Promise<LoginResult> {
-  const user = await User.findOne({ where: identifier.includes('@') ? { email: identifier } : { mobile: identifier } });
+export async function loginWithPassword(
+  identifier: string,
+  password: string,
+  device: DeviceInput,
+): Promise<LoginResult> {
+  const user = await User.findOne({
+    where: identifier.includes('@') ? { email: identifier } : { mobile: identifier },
+  });
   // Constant-ish time: always run bcrypt.
-  const ok = await bcrypt.compare(password, user?.passwordHash ?? '$2b$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinv');
+  const ok = await bcrypt.compare(
+    password,
+    user?.passwordHash ?? '$2b$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinv',
+  );
   if (!user || !ok) throw INVALID_CREDENTIALS();
   if (user.status !== 'active') throw Forbidden('Account is not active', 'ACCOUNT_INACTIVE');
 
   const check = await checkDevice(user, device, false);
-  if ('limitReached' in check) return { status: 'device_limit_reached', maxDevices: config.MAX_ACTIVE_DEVICES };
+  if ('limitReached' in check)
+    return { status: 'device_limit_reached', maxDevices: config.MAX_ACTIVE_DEVICES };
   if ('otpRequired' in check) {
     const ch = await createChallenge(user, user.mobile, 'new_device', device.uid);
-    return { status: 'otp_required', challengeId: ch.id, reason: 'new_device', maskedMobile: maskMobile(user.mobile) };
+    return {
+      status: 'otp_required',
+      challengeId: ch.id,
+      reason: 'new_device',
+      maskedMobile: maskMobile(user.mobile),
+    };
   }
-  await audit({ action: 'auth.login', entityType: 'user', entityId: user.id, instituteId: null, metadata: { method: 'password' } });
+  await audit({
+    action: 'auth.login',
+    entityType: 'user',
+    entityId: user.id,
+    instituteId: null,
+    metadata: { method: 'password' },
+  });
   return { status: 'authenticated', ...(await issueTokens(user, check.device)) };
 }
 
@@ -152,15 +185,25 @@ export async function loginWithPassword(identifier: string, password: string, de
 export async function requestLoginOtp(mobile: string, device: DeviceInput): Promise<LoginResult> {
   const user = await User.findOne({ where: { mobile, status: 'active' } });
   const ch = await createChallenge(user, mobile, 'login', device.uid);
-  return { status: 'otp_required', challengeId: ch.id, reason: 'otp_login', maskedMobile: maskMobile(mobile) };
+  return {
+    status: 'otp_required',
+    challengeId: ch.id,
+    reason: 'otp_login',
+    maskedMobile: maskMobile(mobile),
+  };
 }
 
-export async function verifyOtp(challengeId: string, code: string, device: DeviceInput): Promise<LoginResult> {
+export async function verifyOtp(
+  challengeId: string,
+  code: string,
+  device: DeviceInput,
+): Promise<LoginResult> {
   const ch = await OtpChallenge.findByPk(challengeId);
   const invalid = () => new AppError(401, 'OTP_INVALID', 'Invalid or expired code');
   if (!ch || ch.consumedAt || ch.expiresAt < new Date() || !ch.userId) throw invalid();
   if (ch.deviceUid && ch.deviceUid !== device.uid) throw invalid();
-  if (ch.attempts >= config.OTP_MAX_ATTEMPTS) throw new AppError(429, 'OTP_ATTEMPTS_EXCEEDED', 'Too many attempts; request a new code');
+  if (ch.attempts >= config.OTP_MAX_ATTEMPTS)
+    throw new AppError(429, 'OTP_ATTEMPTS_EXCEEDED', 'Too many attempts; request a new code');
   if (!safeEqual(ch.codeHash, sha256(`${code}:${ch.mobile}`))) {
     await ch.increment('attempts');
     throw invalid();
@@ -170,9 +213,16 @@ export async function verifyOtp(challengeId: string, code: string, device: Devic
   if (!user || user.status !== 'active') throw invalid();
 
   const check = await checkDevice(user, device, true);
-  if ('limitReached' in check) return { status: 'device_limit_reached', maxDevices: config.MAX_ACTIVE_DEVICES };
+  if ('limitReached' in check)
+    return { status: 'device_limit_reached', maxDevices: config.MAX_ACTIVE_DEVICES };
   if ('otpRequired' in check) throw invalid();
-  await audit({ action: 'auth.login', entityType: 'user', entityId: user.id, instituteId: null, metadata: { method: 'otp', purpose: ch.purpose } });
+  await audit({
+    action: 'auth.login',
+    entityType: 'user',
+    entityId: user.id,
+    instituteId: null,
+    metadata: { method: 'otp', purpose: ch.purpose },
+  });
   return { status: 'authenticated', ...(await issueTokens(user, check.device)) };
 }
 
@@ -181,7 +231,10 @@ export async function refreshTokens(token: string): Promise<AuthTokens> {
   const row = await RefreshToken.findOne({ where: { tokenHash: sha256(token) } });
   if (!row) throw Unauthorized('Invalid refresh token', 'INVALID_REFRESH_TOKEN');
   if (row.revokedAt) {
-    await RefreshToken.update({ revokedAt: new Date() }, { where: { deviceId: row.deviceId, revokedAt: null } });
+    await RefreshToken.update(
+      { revokedAt: new Date() },
+      { where: { deviceId: row.deviceId, revokedAt: null } },
+    );
     throw Unauthorized('Refresh token reuse detected', 'INVALID_REFRESH_TOKEN');
   }
   if (row.expiresAt < new Date()) throw Unauthorized('Refresh token expired', 'INVALID_REFRESH_TOKEN');
@@ -195,7 +248,10 @@ export async function refreshTokens(token: string): Promise<AuthTokens> {
 }
 
 export async function logout(token: string) {
-  await RefreshToken.update({ revokedAt: new Date() }, { where: { tokenHash: sha256(token), revokedAt: null } });
+  await RefreshToken.update(
+    { revokedAt: new Date() },
+    { where: { tokenHash: sha256(token), revokedAt: null } },
+  );
 }
 
 async function assertInstituteActive(instituteId: number) {
@@ -205,7 +261,11 @@ async function assertInstituteActive(instituteId: number) {
   return inst;
 }
 
-export async function selectInstitute(userId: number, deviceId: number, instituteId: number): Promise<AuthTokens> {
+export async function selectInstitute(
+  userId: number,
+  deviceId: number,
+  instituteId: number,
+): Promise<AuthTokens> {
   const ids = await membershipInstituteIds(userId);
   if (!ids.includes(instituteId)) throw Forbidden('You are not a member of this institute', 'NOT_A_MEMBER');
   await assertInstituteActive(instituteId);
@@ -217,7 +277,12 @@ export async function selectInstitute(userId: number, deviceId: number, institut
 
 // ---------------------------------------------------------------- impersonation
 
-export async function startImpersonation(superAdminId: number, instituteId: number, targetUserId: number | undefined, reason: string | undefined) {
+export async function startImpersonation(
+  superAdminId: number,
+  instituteId: number,
+  targetUserId: number | undefined,
+  reason: string | undefined,
+) {
   const institute = await Institute.findByPk(instituteId);
   if (!institute) throw NotFound('Institute');
   let target: User | null = null;
@@ -233,7 +298,8 @@ export async function startImpersonation(superAdminId: number, instituteId: numb
   }
   if (!target) throw NotFound('Institute admin user');
   if (target.isSuperAdmin) throw BadRequest('Cannot impersonate a super admin');
-  if (!(await membershipInstituteIds(target.id)).includes(instituteId)) throw BadRequest('User is not a member of this institute');
+  if (!(await membershipInstituteIds(target.id)).includes(instituteId))
+    throw BadRequest('User is not a member of this institute');
 
   const ctx = getContext();
   const session = await ImpersonationSession.create({
@@ -267,7 +333,13 @@ export async function stopImpersonation(sessionId: number) {
   const session = await ImpersonationSession.findByPk(sessionId);
   if (!session || session.endedAt) return;
   await session.update({ endedAt: new Date() });
-  await audit({ action: 'impersonation.ended', entityType: 'user', entityId: session.targetUserId, instituteId: session.instituteId, metadata: { sessionId } });
+  await audit({
+    action: 'impersonation.ended',
+    entityType: 'user',
+    entityId: session.targetUserId,
+    instituteId: session.instituteId,
+    metadata: { sessionId },
+  });
 }
 
 // ---------------------------------------------------------------- me
@@ -291,11 +363,16 @@ export async function buildMe(): Promise<MeDto> {
   if (ctx.instituteId) {
     const inst = await Institute.findByPk(ctx.instituteId);
     institute = inst?.toBranding() ?? null;
-    const all = await Branch.findAll({ where: { instituteId: ctx.instituteId, status: 'active' }, order: [['name', 'ASC']] });
+    const all = await Branch.findAll({
+      where: { instituteId: ctx.instituteId, status: 'active' },
+      order: [['name', 'ASC']],
+    });
     branches = all
       .filter((b) => ctx.allowedBranchIds == null || ctx.allowedBranchIds.includes(b.id))
       .map((b) => ({ id: b.id, name: b.name }));
-    enabledModules = await getPlanLimits(ctx.instituteId).then((l) => l.enabledModules).catch(() => []);
+    enabledModules = await getPlanLimits(ctx.instituteId)
+      .then((l) => l.enabledModules)
+      .catch(() => []);
   }
   let impersonatedBy = null;
   if (ctx.impersonatorId) {
@@ -304,7 +381,13 @@ export async function buildMe(): Promise<MeDto> {
   }
   const isPlatformAdmin = user.isSuperAdmin && !ctx.impersonatorId;
   return {
-    user: { id: user.id, name: user.name, mobile: user.mobile, email: user.email, isSuperAdmin: user.isSuperAdmin },
+    user: {
+      id: user.id,
+      name: user.name,
+      mobile: user.mobile,
+      email: user.email,
+      isSuperAdmin: user.isSuperAdmin,
+    },
     institute,
     branches,
     allowedBranchIds: ctx.allowedBranchIds ?? null,

@@ -1,4 +1,12 @@
-import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes, type NonAttribute, type Sequelize } from 'sequelize';
+import {
+  DataTypes,
+  Model,
+  type CreationOptional,
+  type InferAttributes,
+  type InferCreationAttributes,
+  type NonAttribute,
+  type Sequelize,
+} from 'sequelize';
 import { registerTenantModel } from '../../shared/tenancy/tenant-model';
 import { User } from '../users/user.model';
 import { Branch } from '../branches/branch.model';
@@ -25,7 +33,10 @@ export class Role extends Model<InferAttributes<Role>, InferCreationAttributes<R
   declare updatedAt: CreationOptional<Date>;
 }
 
-export class RolePermission extends Model<InferAttributes<RolePermission>, InferCreationAttributes<RolePermission>> {
+export class RolePermission extends Model<
+  InferAttributes<RolePermission>,
+  InferCreationAttributes<RolePermission>
+> {
   declare roleId: number;
   declare permissionId: number;
 }
@@ -115,8 +126,18 @@ export function initPermissionModels(sequelize: Sequelize) {
 }
 
 export function associatePermissionModels() {
-  Role.belongsToMany(Permission, { through: RolePermission, foreignKey: 'roleId', otherKey: 'permissionId', as: 'permissions' });
-  Permission.belongsToMany(Role, { through: RolePermission, foreignKey: 'permissionId', otherKey: 'roleId', as: 'roles' });
+  Role.belongsToMany(Permission, {
+    through: RolePermission,
+    foreignKey: 'roleId',
+    otherKey: 'permissionId',
+    as: 'permissions',
+  });
+  Permission.belongsToMany(Role, {
+    through: RolePermission,
+    foreignKey: 'permissionId',
+    otherKey: 'roleId',
+    as: 'roles',
+  });
   UserRole.belongsTo(Role, { foreignKey: 'roleId', as: 'role' });
   UserRole.belongsTo(User, { foreignKey: 'userId', as: 'user' });
   UserRole.belongsTo(Branch, { foreignKey: 'branchId', as: 'branch' });

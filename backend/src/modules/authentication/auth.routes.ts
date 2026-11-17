@@ -15,13 +15,23 @@ const device = z.object({
   name: z.string().trim().max(120).optional(),
   platform: z.enum(['web', 'android', 'ios']).optional(),
 });
-const mobile = z.string().trim().regex(/^\+?\d{10,15}$/, 'Invalid mobile number');
+const mobile = z
+  .string()
+  .trim()
+  .regex(/^\+?\d{10,15}$/, 'Invalid mobile number');
 
 export function authRoutes(api: Router) {
   const r = Router();
 
   r.post('/login', authRateLimit, async (req, res) => {
-    const body = parse(z.object({ identifier: z.string().trim().min(3).max(150), password: z.string().min(1).max(200), device }), req.body);
+    const body = parse(
+      z.object({
+        identifier: z.string().trim().min(3).max(150),
+        password: z.string().min(1).max(200),
+        device,
+      }),
+      req.body,
+    );
     res.json(await auth.loginWithPassword(body.identifier, body.password, body.device));
   });
 
@@ -31,7 +41,10 @@ export function authRoutes(api: Router) {
   });
 
   r.post('/otp/verify', authRateLimit, async (req, res) => {
-    const body = parse(z.object({ challengeId: z.string().uuid(), code: z.string().regex(/^\d{4,8}$/), device }), req.body);
+    const body = parse(
+      z.object({ challengeId: z.string().uuid(), code: z.string().regex(/^\d{4,8}$/), device }),
+      req.body,
+    );
     res.json(await auth.verifyOtp(body.challengeId, body.code, body.device));
   });
 
@@ -60,7 +73,16 @@ export function authRoutes(api: Router) {
   r.get('/devices', authenticate, async (req, res) => {
     const userId = req.ctx.impersonatorId ?? req.ctx.userId!;
     const rows = await Device.findAll({ where: { userId }, order: [['lastSeenAt', 'DESC']] });
-    res.json(rows.map((d) => ({ id: d.id, name: d.name, platform: d.platform, status: d.status, lastSeenAt: d.lastSeenAt, current: d.id === req.ctx.deviceId })));
+    res.json(
+      rows.map((d) => ({
+        id: d.id,
+        name: d.name,
+        platform: d.platform,
+        status: d.status,
+        lastSeenAt: d.lastSeenAt,
+        current: d.id === req.ctx.deviceId,
+      })),
+    );
   });
 
   r.delete('/devices/:id', authenticate, async (req, res) => {
@@ -73,7 +95,11 @@ export function authRoutes(api: Router) {
   // Impersonation (super admin)
   r.post('/impersonate', authenticate, requireSuperAdmin, async (req, res) => {
     const body = parse(
-      z.object({ instituteId: z.number().int().positive(), userId: z.number().int().positive().optional(), reason: z.string().max(255).optional() }),
+      z.object({
+        instituteId: z.number().int().positive(),
+        userId: z.number().int().positive().optional(),
+        reason: z.string().max(255).optional(),
+      }),
       req.body,
     );
     res.json(await auth.startImpersonation(req.ctx.userId!, body.instituteId, body.userId, body.reason));
@@ -87,14 +113,24 @@ export function authRoutes(api: Router) {
   api.use('/auth', r);
 
   // Admin revocation of a member's device (institute-scoped).
-  api.delete('/users/:userId/devices/:deviceId', authenticate, requirePermission('users', 'edit'), async (req, res) => {
-    const p = parse(z.object({ userId: z.coerce.number().int(), deviceId: z.coerce.number().int() }), req.params);
-    const platformAdmin = req.ctx.isSuperAdmin && !req.ctx.impersonatorId;
-    if (!platformAdmin) {
-      const member = await UserRole.findOne({ where: { instituteId: req.ctx.instituteId!, userId: p.userId } });
-      if (!member) throw NotFound('User');
-    }
-    await auth.revokeDevice(p.deviceId, p.userId, req.ctx.userId!);
-    res.status(204).end();
-  });
+  api.delete(
+    '/users/:userId/devices/:deviceId',
+    authenticate,
+    requirePermission('users', 'edit'),
+    async (req, res) => {
+      const p = parse(
+        z.object({ userId: z.coerce.number().int(), deviceId: z.coerce.number().int() }),
+        req.params,
+      );
+      const platformAdmin = req.ctx.isSuperAdmin && !req.ctx.impersonatorId;
+      if (!platformAdmin) {
+        const member = await UserRole.findOne({
+          where: { instituteId: req.ctx.instituteId!, userId: p.userId },
+        });
+        if (!member) throw NotFound('User');
+      }
+      await auth.revokeDevice(p.deviceId, p.userId, req.ctx.userId!);
+      res.status(204).end();
+    },
+  );
 }

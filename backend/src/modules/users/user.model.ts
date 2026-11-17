@@ -1,4 +1,11 @@
-import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes, type Sequelize } from 'sequelize';
+import {
+  DataTypes,
+  Model,
+  type CreationOptional,
+  type InferAttributes,
+  type InferCreationAttributes,
+  type Sequelize,
+} from 'sequelize';
 
 /**
  * Global identity. A user can belong to several institutes through `user_roles`; tenant-scoped

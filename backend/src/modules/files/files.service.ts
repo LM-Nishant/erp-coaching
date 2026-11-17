@@ -18,7 +18,11 @@ async function sha256File(filePath: string): Promise<string> {
 }
 
 export function buildStorageKey(instituteId: number, originalName: string, now = new Date()) {
-  const ext = path.extname(originalName).toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 10);
+  const ext = path
+    .extname(originalName)
+    .toLowerCase()
+    .replace(/[^.a-z0-9]/g, '')
+    .slice(0, 10);
   const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
   return `institutes/${instituteId}/${now.getUTCFullYear()}/${mm}/${crypto.randomUUID()}${ext}`;
 }

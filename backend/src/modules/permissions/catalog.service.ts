@@ -5,7 +5,10 @@ import { getSequelize } from '../../infrastructure/database/sequelize';
 import { Permission, Role, RolePermission } from './models';
 
 export const SYSTEM_ROLE_DEFS: Record<SystemRoleSlug, { name: string; description: string }> = {
-  [SYSTEM_ROLES.SUPER_ADMIN]: { name: 'Super Admin', description: 'SaaS platform administrator (flag on user)' },
+  [SYSTEM_ROLES.SUPER_ADMIN]: {
+    name: 'Super Admin',
+    description: 'SaaS platform administrator (flag on user)',
+  },
   [SYSTEM_ROLES.INSTITUTE_ADMIN]: { name: 'Institute Admin', description: 'Full control of one institute' },
   [SYSTEM_ROLES.BRANCH_ADMIN]: { name: 'Branch Admin', description: 'Manages assigned branches' },
   [SYSTEM_ROLES.ACCOUNTANT]: { name: 'Accountant', description: 'Fees, receipts, expenses, finance reports' },
@@ -31,7 +34,8 @@ export async function syncPermissionCatalog(modules: ModuleDefinition[]): Promis
       })),
     );
     for (const action of rows.map((r) => r.action)) {
-      if (!(PERMISSION_ACTIONS as readonly string[]).includes(action)) throw new Error(`Unknown permission action ${action}`);
+      if (!(PERMISSION_ACTIONS as readonly string[]).includes(action))
+        throw new Error(`Unknown permission action ${action}`);
     }
     if (rows.length) {
       await Permission.bulkCreate(rows, { updateOnDuplicate: ['label', 'module', 'action'], transaction });
@@ -39,9 +43,13 @@ export async function syncPermissionCatalog(modules: ModuleDefinition[]): Promis
     const perms = await Permission.findAll({ transaction });
     const byKey = new Map(perms.map((p) => [p.key, p.id]));
 
-    for (const [slug, def] of Object.entries(SYSTEM_ROLE_DEFS) as [SystemRoleSlug, { name: string; description: string }][]) {
+    for (const [slug, def] of Object.entries(SYSTEM_ROLE_DEFS) as [
+      SystemRoleSlug,
+      { name: string; description: string },
+    ][]) {
       let role = await Role.findOne({ where: { instituteId: null, slug }, transaction });
-      if (!role) role = await Role.create({ instituteId: null, slug, isSystem: true, ...def }, { transaction });
+      if (!role)
+        role = await Role.create({ instituteId: null, slug, isSystem: true, ...def }, { transaction });
       else await role.update(def, { transaction });
 
       const keys = new Set<string>();
@@ -53,7 +61,10 @@ export async function syncPermissionCatalog(modules: ModuleDefinition[]): Promis
         actions.forEach((a) => keys.add(`${d.module}.${a}`));
       }
       const ids = [...keys].map((k) => byKey.get(k)).filter((x): x is number => !!x);
-      await RolePermission.destroy({ where: { roleId: role.id, ...(ids.length ? { permissionId: { [Op.notIn]: ids } } : {}) }, transaction });
+      await RolePermission.destroy({
+        where: { roleId: role.id, ...(ids.length ? { permissionId: { [Op.notIn]: ids } } : {}) },
+        transaction,
+      });
       if (ids.length) {
         await RolePermission.bulkCreate(
           ids.map((permissionId) => ({ roleId: role!.id, permissionId })),

@@ -1,8 +1,18 @@
-import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes, type Sequelize } from 'sequelize';
+import {
+  DataTypes,
+  Model,
+  type CreationOptional,
+  type InferAttributes,
+  type InferCreationAttributes,
+  type Sequelize,
+} from 'sequelize';
 import { registerTenantModel } from '../../shared/tenancy/tenant-model';
 
 /** Key/value configuration per institute (numbering formats, late fee policy, attendance methods...). */
-export class InstituteSetting extends Model<InferAttributes<InstituteSetting>, InferCreationAttributes<InstituteSetting>> {
+export class InstituteSetting extends Model<
+  InferAttributes<InstituteSetting>,
+  InferCreationAttributes<InstituteSetting>
+> {
   declare id: CreationOptional<number>;
   declare instituteId: number;
   declare key: string;

@@ -39,7 +39,11 @@ export function auditRoutes(api: Router) {
     const q = parse(filters, req.query);
     const where = buildWhere(q);
     if (q.instituteId) where.instituteId = q.instituteId;
-    const { rows, count } = await AuditEvent.findAndCountAll({ where: where as WhereOptions, order: [['id', 'DESC']], ...toLimitOffset(q) });
+    const { rows, count } = await AuditEvent.findAndCountAll({
+      where: where as WhereOptions,
+      order: [['id', 'DESC']],
+      ...toLimitOffset(q),
+    });
     res.json(paginated(rows, count, q));
   });
 }

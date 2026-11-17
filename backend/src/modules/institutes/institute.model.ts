@@ -1,4 +1,11 @@
-import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes, type Sequelize } from 'sequelize';
+import {
+  DataTypes,
+  Model,
+  type CreationOptional,
+  type InferAttributes,
+  type InferCreationAttributes,
+  type Sequelize,
+} from 'sequelize';
 import type { InstituteBranding, InstituteStatus } from '@erp/shared';
 import { config } from '../../infrastructure/config';
 

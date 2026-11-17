@@ -9,7 +9,12 @@ export interface LiveRoom {
 export interface StreamingProvider {
   readonly name: string;
   createRoom(input: { sessionId: string; title: string }): Promise<LiveRoom>;
-  issueJoinToken(input: { roomId: string; userId: number; role: 'host' | 'viewer' | 'speaker'; ttlSeconds: number }): Promise<string>;
+  issueJoinToken(input: {
+    roomId: string;
+    userId: number;
+    role: 'host' | 'viewer' | 'speaker';
+    ttlSeconds: number;
+  }): Promise<string>;
   endRoom(roomId: string): Promise<{ recordingKeys: string[] }>;
 }
 

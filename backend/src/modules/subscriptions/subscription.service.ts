@@ -29,14 +29,20 @@ export async function getActiveSubscription(instituteId: number) {
 /** Effective plan limits (plan + per-institute overrides). Throws if there is no active subscription. */
 export async function getPlanLimits(instituteId: number): Promise<PlanLimits> {
   const sub = await getActiveSubscription(instituteId);
-  if (!sub?.plan) throw new AppError(402, 'SUBSCRIPTION_INACTIVE', 'The institute has no active subscription');
+  if (!sub?.plan)
+    throw new AppError(402, 'SUBSCRIPTION_INACTIVE', 'The institute has no active subscription');
   return { ...UNLIMITED, ...sub.plan.limits, ...(sub.limitOverrides ?? {}) };
 }
 
 type NumericLimit = 'maxStudents' | 'maxBranches' | 'maxTeachers' | 'storageMb' | 'aiTokensMonthly';
 
 /** Throws PLAN_LIMIT_EXCEEDED when `current + adding` would exceed the plan limit. */
-export async function assertWithinLimit(instituteId: number, limit: NumericLimit, current: number, adding = 1) {
+export async function assertWithinLimit(
+  instituteId: number,
+  limit: NumericLimit,
+  current: number,
+  adding = 1,
+) {
   const limits = await getPlanLimits(instituteId);
   const max = limits[limit];
   if (max !== null && max !== undefined && current + adding > max) {

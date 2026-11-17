@@ -30,7 +30,8 @@ function makeMigration(moduleName?: string, name?: string) {
       : path.resolve(__dirname, '../../modules', moduleName, 'migrations');
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${ts}-${name}.ts`);
-  const helpers = moduleName === 'core' ? '../migration-helpers' : '../../../infrastructure/database/migration-helpers';
+  const helpers =
+    moduleName === 'core' ? '../migration-helpers' : '../../../infrastructure/database/migration-helpers';
   fs.writeFileSync(
     file,
     `import { DataTypes } from 'sequelize';
@@ -69,8 +70,14 @@ async function main() {
       await migrator.down(args[0] === '--all' ? { to: 0 } : undefined);
       break;
     case 'migrate:status': {
-      console.log('executed:', (await migrator.executed()).map((m) => m.name));
-      console.log('pending:', (await migrator.pending()).map((m) => m.name));
+      console.log(
+        'executed:',
+        (await migrator.executed()).map((m) => m.name),
+      );
+      console.log(
+        'pending:',
+        (await migrator.pending()).map((m) => m.name),
+      );
       break;
     }
     case 'seed':

@@ -18,19 +18,51 @@ const PLANS: { code: string; name: string; monthly: number; limits: PlanLimits }
     code: 'starter',
     name: 'Starter',
     monthly: 199900,
-    limits: { maxStudents: 200, maxBranches: 2, maxTeachers: 15, storageMb: 5120, aiTokensMonthly: 200000, enabledModules: null },
+    limits: {
+      maxStudents: 200,
+      maxBranches: 2,
+      maxTeachers: 15,
+      storageMb: 5120,
+      aiTokensMonthly: 200000,
+      enabledModules: null,
+    },
   },
   {
     code: 'growth',
     name: 'Growth',
     monthly: 499900,
-    limits: { maxStudents: 2000, maxBranches: 10, maxTeachers: 100, storageMb: 51200, aiTokensMonthly: 2000000, enabledModules: null },
+    limits: {
+      maxStudents: 2000,
+      maxBranches: 10,
+      maxTeachers: 100,
+      storageMb: 51200,
+      aiTokensMonthly: 2000000,
+      enabledModules: null,
+    },
   },
 ];
 
 const INSTITUTES = [
-  { slug: 'apex', name: 'Apex Coaching Classes', city: 'Pune', primaryColor: '#1E5EFF', secondaryColor: '#FFB020', plan: 'growth', prefix: '91', branches: ['Kothrud', 'Baner'] },
-  { slug: 'zenith', name: 'Zenith Academy', city: 'Jaipur', primaryColor: '#0F9D58', secondaryColor: '#7B1FA2', plan: 'starter', prefix: '92', branches: ['Malviya Nagar', 'Vaishali Nagar'] },
+  {
+    slug: 'apex',
+    name: 'Apex Coaching Classes',
+    city: 'Pune',
+    primaryColor: '#1E5EFF',
+    secondaryColor: '#FFB020',
+    plan: 'growth',
+    prefix: '91',
+    branches: ['Kothrud', 'Baner'],
+  },
+  {
+    slug: 'zenith',
+    name: 'Zenith Academy',
+    city: 'Jaipur',
+    primaryColor: '#0F9D58',
+    secondaryColor: '#7B1FA2',
+    plan: 'starter',
+    prefix: '92',
+    branches: ['Malviya Nagar', 'Vaishali Nagar'],
+  },
 ];
 
 const DEMO_ROLES: { role: SystemRoleSlug; label: string; branchIndex: number | null }[] = [
@@ -51,13 +83,25 @@ async function upsertUser(mobile: string, name: string, passwordHash: string, is
 }
 
 export const up: Migration = async () => {
-  await upsertUser(config.SEED_SUPERADMIN_MOBILE, 'Platform Super Admin', await bcrypt.hash(config.SEED_SUPERADMIN_PASSWORD, 10), true);
+  await upsertUser(
+    config.SEED_SUPERADMIN_MOBILE,
+    'Platform Super Admin',
+    await bcrypt.hash(config.SEED_SUPERADMIN_PASSWORD, 10),
+    true,
+  );
 
   const plans: Record<string, Plan> = {};
   for (const p of PLANS) {
     const [plan] = await Plan.findOrCreate({
       where: { code: p.code },
-      defaults: { code: p.code, name: p.name, description: null, priceMonthlyPaise: p.monthly, priceYearlyPaise: p.monthly * 10, limits: p.limits },
+      defaults: {
+        code: p.code,
+        name: p.name,
+        description: null,
+        priceMonthlyPaise: p.monthly,
+        priceYearlyPaise: p.monthly * 10,
+        limits: p.limits,
+      },
     });
     plans[p.code] = plan;
   }
@@ -82,7 +126,15 @@ export const up: Migration = async () => {
     });
     const branches = await Promise.all(
       def.branches.map((name, i) =>
-        Branch.create({ instituteId: inst.id, name, code: `B${i + 1}`, city: def.city, address: null, phone: null, email: null }),
+        Branch.create({
+          instituteId: inst.id,
+          name,
+          code: `B${i + 1}`,
+          city: def.city,
+          address: null,
+          phone: null,
+          email: null,
+        }),
       ),
     );
     await Subscription.create({
@@ -95,7 +147,11 @@ export const up: Migration = async () => {
       limitOverrides: null,
     });
     for (const [i, r] of DEMO_ROLES.entries()) {
-      const user = await upsertUser(`${def.prefix}0000000${i + 1}`, `${def.name.split(' ')[0]} ${r.label}`, demoHash);
+      const user = await upsertUser(
+        `${def.prefix}0000000${i + 1}`,
+        `${def.name.split(' ')[0]} ${r.label}`,
+        demoHash,
+      );
       const role = await getSystemRole(r.role);
       const branchId = r.branchIndex === null ? null : branches[r.branchIndex].id;
       await UserRole.create({ userId: user.id, instituteId: inst.id, roleId: role.id, branchId });

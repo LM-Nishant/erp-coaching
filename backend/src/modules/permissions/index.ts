@@ -7,5 +7,12 @@ export default defineModule({
   models: initPermissionModels,
   associate: associatePermissionModels,
   routes: roleRoutes,
-  permissions: [{ module: 'roles', label: 'Roles & permissions', actions: ['view', 'create', 'edit', 'delete'], grants: { 'branch-admin': ['view'] } }],
+  permissions: [
+    {
+      module: 'roles',
+      label: 'Roles & permissions',
+      actions: ['view', 'create', 'edit', 'delete'],
+      grants: { 'branch-admin': ['view'] },
+    },
+  ],
 });

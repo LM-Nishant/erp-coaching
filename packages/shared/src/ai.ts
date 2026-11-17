@@ -11,7 +11,13 @@ export interface AiProviderPreset {
 
 /** Any OpenAI-compatible chat completions API. */
 export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
-  { id: 'openai', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini', requiresKey: true },
+  {
+    id: 'openai',
+    label: 'OpenAI',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-4o-mini',
+    requiresKey: true,
+  },
   {
     id: 'azure-openai',
     label: 'Azure OpenAI',

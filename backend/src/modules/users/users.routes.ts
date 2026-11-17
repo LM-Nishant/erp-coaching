@@ -16,7 +16,14 @@ import { Device } from '../authentication/models';
 import { User } from './user.model';
 
 const assignmentSchema = z.object({
-  roles: z.array(z.object({ roleId: z.number().int().positive(), branchId: z.number().int().positive().nullable().default(null) })).min(1),
+  roles: z
+    .array(
+      z.object({
+        roleId: z.number().int().positive(),
+        branchId: z.number().int().positive().nullable().default(null),
+      }),
+    )
+    .min(1),
   branchIds: z.array(z.number().int().positive()).default([]),
 });
 
@@ -27,14 +34,21 @@ async function validateAssignment(input: z.infer<typeof assignmentSchema>) {
   const roles = await Role.findAll({ where: { id: roleIds, instituteId: { [Op.or]: [null, instituteId] } } });
   if (roles.length !== roleIds.length) throw BadRequest('Unknown role');
   if (roles.some((r) => r.slug === 'super-admin')) throw Forbidden('Super admin cannot be assigned here');
-  const branchIds = [...new Set([...input.branchIds, ...input.roles.map((r) => r.branchId).filter((b): b is number => b !== null)])];
+  const branchIds = [
+    ...new Set([
+      ...input.branchIds,
+      ...input.roles.map((r) => r.branchId).filter((b): b is number => b !== null),
+    ]),
+  ];
   if (branchIds.length) {
     const count = await Branch.count({ where: { instituteId, id: branchIds } });
     if (count !== branchIds.length) throw BadRequest('Unknown branch');
   }
   if (allowedBranchIds !== null) {
-    if (input.roles.some((r) => r.branchId === null)) throw Forbidden('Branch-restricted users cannot grant institute-wide roles');
-    if (branchIds.some((b) => !allowedBranchIds.includes(b))) throw Forbidden('Branch not accessible', 'BRANCH_FORBIDDEN');
+    if (input.roles.some((r) => r.branchId === null))
+      throw Forbidden('Branch-restricted users cannot grant institute-wide roles');
+    if (branchIds.some((b) => !allowedBranchIds.includes(b)))
+      throw Forbidden('Branch not accessible', 'BRANCH_FORBIDDEN');
   }
 }
 
@@ -44,16 +58,25 @@ async function replaceAssignments(userId: number, input: z.infer<typeof assignme
     await UserRole.destroy({ where: { instituteId, userId }, transaction });
     await UserBranch.destroy({ where: { instituteId, userId }, transaction });
     const unique = new Map(input.roles.map((r) => [`${r.roleId}:${r.branchId}`, r]));
-    await UserRole.bulkCreate([...unique.values()].map((r) => ({ userId, instituteId, roleId: r.roleId, branchId: r.branchId })), { transaction });
+    await UserRole.bulkCreate(
+      [...unique.values()].map((r) => ({ userId, instituteId, roleId: r.roleId, branchId: r.branchId })),
+      { transaction },
+    );
     if (input.branchIds.length) {
-      await UserBranch.bulkCreate([...new Set(input.branchIds)].map((branchId) => ({ userId, instituteId, branchId })), { transaction });
+      await UserBranch.bulkCreate(
+        [...new Set(input.branchIds)].map((branchId) => ({ userId, instituteId, branchId })),
+        { transaction },
+      );
     }
   });
 }
 
 async function memberOrThrow(userId: number) {
   const { instituteId } = requireTenantContext();
-  const roles = await UserRole.findAll({ where: { instituteId, userId }, include: [{ model: Role, as: 'role' }] });
+  const roles = await UserRole.findAll({
+    where: { instituteId, userId },
+    include: [{ model: Role, as: 'role' }],
+  });
   if (!roles.length) throw NotFound('User');
   return roles;
 }
@@ -66,7 +89,13 @@ export function userRoutes(api: Router) {
     const q = parse(paginationSchema.extend({ role: z.string().optional() }), req.query);
     const { instituteId } = requireTenantContext();
     const userWhere = q.search
-      ? { [Op.or]: [{ name: { [Op.like]: `%${q.search}%` } }, { mobile: { [Op.like]: `%${q.search}%` } }, { email: { [Op.like]: `%${q.search}%` } }] }
+      ? {
+          [Op.or]: [
+            { name: { [Op.like]: `%${q.search}%` } },
+            { mobile: { [Op.like]: `%${q.search}%` } },
+            { email: { [Op.like]: `%${q.search}%` } },
+          ],
+        }
       : undefined;
     const { rows, count } = await User.findAndCountAll({
       where: userWhere,
@@ -103,7 +132,10 @@ export function userRoutes(api: Router) {
     const body = parse(
       assignmentSchema.extend({
         name: z.string().trim().min(2).max(150),
-        mobile: z.string().trim().regex(/^\+?\d{10,15}$/),
+        mobile: z
+          .string()
+          .trim()
+          .regex(/^\+?\d{10,15}$/),
         email: z.string().email().optional(),
         password: z.string().min(8).max(200).optional(),
       }),
@@ -125,7 +157,12 @@ export function userRoutes(api: Router) {
       });
     }
     await replaceAssignments(user.id, body);
-    await audit({ action: 'user.added_to_institute', entityType: 'user', entityId: user.id, metadata: { roles: body.roles, branchIds: body.branchIds } });
+    await audit({
+      action: 'user.added_to_institute',
+      entityType: 'user',
+      entityId: user.id,
+      metadata: { roles: body.roles, branchIds: body.branchIds },
+    });
     res.status(201).json(user.toPublic());
   });
 
@@ -133,10 +170,18 @@ export function userRoutes(api: Router) {
     const { id } = parse(idParam, req.params);
     const roles = await memberOrThrow(id);
     const { instituteId } = requireTenantContext();
-    const [user, branches] = await Promise.all([User.findByPk(id), UserBranch.findAll({ where: { instituteId, userId: id } })]);
+    const [user, branches] = await Promise.all([
+      User.findByPk(id),
+      UserBranch.findAll({ where: { instituteId, userId: id } }),
+    ]);
     res.json({
       ...user!.toPublic(),
-      roles: roles.map((a) => ({ roleId: a.roleId, slug: a.role?.slug, name: a.role?.name, branchId: a.branchId })),
+      roles: roles.map((a) => ({
+        roleId: a.roleId,
+        slug: a.role?.slug,
+        name: a.role?.name,
+        branchId: a.branchId,
+      })),
       branchIds: branches.map((b) => b.branchId),
     });
   });
@@ -172,7 +217,15 @@ export function userRoutes(api: Router) {
     const { id } = parse(idParam, req.params);
     await memberOrThrow(id);
     const devices = await Device.findAll({ where: { userId: id }, order: [['lastSeenAt', 'DESC']] });
-    res.json(devices.map((d) => ({ id: d.id, name: d.name, platform: d.platform, status: d.status, lastSeenAt: d.lastSeenAt })));
+    res.json(
+      devices.map((d) => ({
+        id: d.id,
+        name: d.name,
+        platform: d.platform,
+        status: d.status,
+        lastSeenAt: d.lastSeenAt,
+      })),
+    );
   });
 
   api.use('/users', r);

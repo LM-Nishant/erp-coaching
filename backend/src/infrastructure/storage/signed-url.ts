@@ -11,8 +11,16 @@ export interface SignedFileClaims {
 }
 
 /** Short-lived HMAC token embedded in download URLs (usable in <img>/<video> tags). */
-export function signFileToken(fileId: number, instituteId: number | null, ttlSeconds = config.SIGNED_URL_TTL_SECONDS) {
-  const claims: SignedFileClaims = { f: fileId, i: instituteId, e: Math.floor(Date.now() / 1000) + ttlSeconds };
+export function signFileToken(
+  fileId: number,
+  instituteId: number | null,
+  ttlSeconds = config.SIGNED_URL_TTL_SECONDS,
+) {
+  const claims: SignedFileClaims = {
+    f: fileId,
+    i: instituteId,
+    e: Math.floor(Date.now() / 1000) + ttlSeconds,
+  };
   const body = Buffer.from(JSON.stringify(claims)).toString('base64url');
   return { token: `${body}.${hmac(body, config.FILE_URL_SECRET)}`, expiresAt: new Date(claims.e * 1000) };
 }

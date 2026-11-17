@@ -24,7 +24,10 @@ export const USERS = {
 
 /** Same device per user across the run, so only the very first login registers a device. */
 export const stableDevice = (mobile: string) => ({ uid: `test-device-${mobile}`, platform: 'web' as const });
-export const newDevice = (platform: 'web' | 'android' | 'ios' = 'web') => ({ uid: `test-${crypto.randomUUID()}`, platform });
+export const newDevice = (platform: 'web' | 'android' | 'ios' = 'web') => ({
+  uid: `test-${crypto.randomUUID()}`,
+  platform,
+});
 
 export function lastOtpFor(mobile: string): string {
   const msg = [...consoleOutbox].reverse().find((m) => m.to === mobile && m.data?.otp);
@@ -35,14 +38,20 @@ export function lastOtpFor(mobile: string): string {
 /** Logs in with password, completing the new-device OTP step if required. */
 export async function login(user: { mobile: string; password: string }, device = stableDevice(user.mobile)) {
   const a = await getApp();
-  let res = await request(a).post('/api/auth/login').send({ identifier: user.mobile, password: user.password, device });
+  let res = await request(a)
+    .post('/api/auth/login')
+    .send({ identifier: user.mobile, password: user.password, device });
   if (res.body.status === 'otp_required') {
     res = await request(a)
       .post('/api/auth/otp/verify')
       .send({ challengeId: res.body.challengeId, code: lastOtpFor(user.mobile), device });
   }
   if (res.body.status !== 'authenticated') throw new Error(`Login failed: ${JSON.stringify(res.body)}`);
-  return { accessToken: res.body.accessToken as string, refreshToken: res.body.refreshToken as string, device };
+  return {
+    accessToken: res.body.accessToken as string,
+    refreshToken: res.body.refreshToken as string,
+    device,
+  };
 }
 
 export const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });

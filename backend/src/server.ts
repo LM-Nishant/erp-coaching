@@ -7,7 +7,9 @@ import { closeSequelize } from './infrastructure/database/sequelize';
 
 async function main() {
   const modules = await bootstrap();
-  const server = createApp(modules).listen(config.PORT, () => logger.info(`API listening on :${config.PORT}`));
+  const server = createApp(modules).listen(config.PORT, () =>
+    logger.info(`API listening on :${config.PORT}`),
+  );
   if (config.JOBS_WORKER_ENABLED) startJobWorker(config.JOBS_POLL_INTERVAL_MS);
 
   const shutdown = async (signal: string) => {

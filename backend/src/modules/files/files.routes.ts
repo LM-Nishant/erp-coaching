@@ -68,9 +68,16 @@ export function fileRoutes(api: Router) {
   r.use(authenticate, requireTenant);
 
   r.post('/', requirePermission('files', 'create'), uploadMiddleware, async (req, res) => {
-    if (!req.file) throw BadRequest('Attach a file in the `file` field (blocked types are rejected)', 'FILE_REQUIRED');
+    if (!req.file)
+      throw BadRequest('Attach a file in the `file` field (blocked types are rejected)', 'FILE_REQUIRED');
     const body = parse(
-      z.object({ module: z.string().regex(/^[a-z0-9-]{2,60}$/).default('general'), branchId: z.coerce.number().int().positive().optional() }),
+      z.object({
+        module: z
+          .string()
+          .regex(/^[a-z0-9-]{2,60}$/)
+          .default('general'),
+        branchId: z.coerce.number().int().positive().optional(),
+      }),
       req.body,
     );
     const file = await saveUploadedFile({
@@ -81,7 +88,12 @@ export function fileRoutes(api: Router) {
       module: body.module,
       branchId: body.branchId ?? null,
     });
-    await audit({ action: 'file.uploaded', entityType: 'file', entityId: file.id, metadata: { name: file.originalName, size: file.sizeBytes } });
+    await audit({
+      action: 'file.uploaded',
+      entityType: 'file',
+      entityId: file.id,
+      metadata: { name: file.originalName, size: file.sizeBytes },
+    });
     res.status(201).json({ ...file.toDto(), ...signedUrlFor(file) });
   });
 
@@ -92,7 +104,13 @@ export function fileRoutes(api: Router) {
       order: [['id', 'DESC']],
       ...toLimitOffset(q),
     });
-    res.json(paginated(rows.map((f) => f.toDto()), count, q));
+    res.json(
+      paginated(
+        rows.map((f) => f.toDto()),
+        count,
+        q,
+      ),
+    );
   });
 
   r.get('/:id/url', requirePermission('files', 'view'), async (req, res) => {

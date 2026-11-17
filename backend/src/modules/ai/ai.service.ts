@@ -1,5 +1,11 @@
 import { Op } from 'sequelize';
-import { AI_PROVIDER_PRESETS, type AiProviderId, type AiSettingsDto, type AiSettingsUpdate, type AiTestResult } from '@erp/shared';
+import {
+  AI_PROVIDER_PRESETS,
+  type AiProviderId,
+  type AiSettingsDto,
+  type AiSettingsUpdate,
+  type AiTestResult,
+} from '@erp/shared';
 import { config } from '../../infrastructure/config';
 import { decryptSecret, encryptSecret, maskSecret } from '../../infrastructure/crypto';
 import {
@@ -22,7 +28,9 @@ function inferProvider(baseUrl: string): AiProviderId {
 }
 
 /** Effective connection: DB settings first, falling back to env AI_BASE_URL / AI_MODEL / AI_API_KEY. */
-export async function getConnection(): Promise<ProviderConnection & { jsonMode: boolean; keySource: AiSettingsDto['keySource'] }> {
+export async function getConnection(): Promise<
+  ProviderConnection & { jsonMode: boolean; keySource: AiSettingsDto['keySource'] }
+> {
   const row = await AiSetting.findOne({ where: { scope: SCOPE } });
   const baseUrl = row?.baseUrl ?? config.AI_BASE_URL;
   const dbKey = row?.apiKeyEncrypted ? decryptSecret(row.apiKeyEncrypted) : null;
@@ -79,7 +87,10 @@ function startOfMonth(d = new Date()) {
 }
 
 export async function tokensUsedThisMonth(instituteId: number): Promise<number> {
-  return Number((await AiUsage.sum('totalTokens', { where: { instituteId, createdAt: { [Op.gte]: startOfMonth() } } })) || 0);
+  return Number(
+    (await AiUsage.sum('totalTokens', { where: { instituteId, createdAt: { [Op.gte]: startOfMonth() } } })) ||
+      0,
+  );
 }
 
 /** Quota hook: throws 429 AI_QUOTA_EXCEEDED when the institute's monthly AI token allowance is used up. */
@@ -91,7 +102,10 @@ export async function assertAiQuota(instituteId: number) {
   if (limits.aiTokensMonthly === null) return;
   const used = await tokensUsedThisMonth(instituteId);
   if (used >= limits.aiTokensMonthly) {
-    throw new AppError(429, 'AI_QUOTA_EXCEEDED', 'Monthly AI usage limit reached for this institute', { used, limit: limits.aiTokensMonthly });
+    throw new AppError(429, 'AI_QUOTA_EXCEEDED', 'Monthly AI usage limit reached for this institute', {
+      used,
+      limit: limits.aiTokensMonthly,
+    });
   }
 }
 
@@ -117,7 +131,13 @@ export async function aiChat(opts: AiChatOptions): Promise<ChatResponse> {
     throw new AppError(503, 'AI_NOT_CONFIGURED', 'AI provider API key is not configured');
   }
   const jsonMode = opts.jsonMode ?? conn.jsonMode;
-  const base = { instituteId, userId: ctx.userId ?? null, feature: opts.feature, provider: conn.provider, model: conn.model };
+  const base = {
+    instituteId,
+    userId: ctx.userId ?? null,
+    feature: opts.feature,
+    provider: conn.provider,
+    model: conn.model,
+  };
   try {
     const result = await chatCompletion(conn, { ...opts, jsonMode });
     await AiUsage.create({
@@ -131,7 +151,12 @@ export async function aiChat(opts: AiChatOptions): Promise<ChatResponse> {
     });
     return result;
   } catch (err) {
-    await AiUsage.create({ ...base, status: 'error', latencyMs: null, error: (err as Error).message.slice(0, 500) });
+    await AiUsage.create({
+      ...base,
+      status: 'error',
+      latencyMs: null,
+      error: (err as Error).message.slice(0, 500),
+    });
     if (err instanceof AiProviderError) throw new AppError(502, 'AI_PROVIDER_ERROR', err.message);
     throw err;
   }
@@ -152,7 +177,10 @@ export async function testConnection(input: Partial<AiSettingsUpdate>): Promise<
   try {
     const res = await chatCompletion(conn, {
       messages: [
-        { role: 'system', content: jsonMode ? 'Reply with a JSON object {"ok": true}.' : 'Reply with the single word OK.' },
+        {
+          role: 'system',
+          content: jsonMode ? 'Reply with a JSON object {"ok": true}.' : 'Reply with the single word OK.',
+        },
         { role: 'user', content: 'ping' },
       ],
       jsonMode,
@@ -171,7 +199,12 @@ export async function testConnection(input: Partial<AiSettingsUpdate>): Promise<
       latencyMs: res.latencyMs,
       error: null,
     });
-    return { ok: true, model: res.model, latencyMs: res.latencyMs, message: `Connected. Model replied: ${res.content.slice(0, 120)}` };
+    return {
+      ok: true,
+      model: res.model,
+      latencyMs: res.latencyMs,
+      message: `Connected. Model replied: ${res.content.slice(0, 120)}`,
+    };
   } catch (err) {
     return { ok: false, latencyMs: Date.now() - started, message: (err as Error).message.slice(0, 500) };
   }

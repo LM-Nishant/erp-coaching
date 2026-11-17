@@ -18,7 +18,13 @@ export async function loadAssignments(userId: number, instituteId: number) {
   const [roles, branches] = await Promise.all([
     UserRole.findAll({
       where: { userId, instituteId },
-      include: [{ model: Role, as: 'role', include: [{ model: Permission, as: 'permissions', through: { attributes: [] } }] }],
+      include: [
+        {
+          model: Role,
+          as: 'role',
+          include: [{ model: Permission, as: 'permissions', through: { attributes: [] } }],
+        },
+      ],
     }),
     UserBranch.findAll({ where: { userId, instituteId } }),
   ]);

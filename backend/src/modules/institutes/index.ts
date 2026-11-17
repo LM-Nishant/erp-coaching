@@ -19,7 +19,13 @@ export default defineModule({
       module: 'institute',
       label: 'Institute profile & settings',
       actions: ['view', 'configure'],
-      grants: { 'branch-admin': ['view'], accountant: ['view'], teacher: ['view'], student: ['view'], parent: ['view'] },
+      grants: {
+        'branch-admin': ['view'],
+        accountant: ['view'],
+        teacher: ['view'],
+        student: ['view'],
+        parent: ['view'],
+      },
     },
   ],
 });

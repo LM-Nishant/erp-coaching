@@ -1,5 +1,10 @@
 import { DataTypes } from 'sequelize';
-import { id, timestamps, tenantColumns, type Migration } from '../../../infrastructure/database/migration-helpers';
+import {
+  id,
+  timestamps,
+  tenantColumns,
+  type Migration,
+} from '../../../infrastructure/database/migration-helpers';
 
 export const up: Migration = async ({ context: { queryInterface } }) => {
   await queryInterface.createTable('branches', {

@@ -14,8 +14,10 @@ export const BadRequest = (message: string, details?: unknown) =>
   new AppError(400, 'BAD_REQUEST', message, details);
 export const Unauthorized = (message = 'Authentication required', code = 'UNAUTHENTICATED') =>
   new AppError(401, code, message);
-export const Forbidden = (message = 'You do not have permission to perform this action', code = 'FORBIDDEN') =>
-  new AppError(403, code, message);
+export const Forbidden = (
+  message = 'You do not have permission to perform this action',
+  code = 'FORBIDDEN',
+) => new AppError(403, code, message);
 export const NotFound = (entity = 'Resource') => new AppError(404, 'NOT_FOUND', `${entity} not found`);
 export const Conflict = (message: string, code = 'CONFLICT', details?: unknown) =>
   new AppError(409, code, message, details);

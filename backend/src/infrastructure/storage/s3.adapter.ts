@@ -10,9 +10,19 @@ export class S3CompatibleStorage implements StorageAdapter {
   private fail(): never {
     throw new Error(`Storage driver "${this.driver}" is not implemented yet`);
   }
-  putFile(): Promise<StoredObjectInfo> { return this.fail(); }
-  putBuffer(): Promise<StoredObjectInfo> { return this.fail(); }
-  getStream(): Promise<Readable> { return this.fail(); }
-  stat(): Promise<{ size: number } | null> { return this.fail(); }
-  delete(): Promise<void> { return this.fail(); }
+  putFile(): Promise<StoredObjectInfo> {
+    return this.fail();
+  }
+  putBuffer(): Promise<StoredObjectInfo> {
+    return this.fail();
+  }
+  getStream(): Promise<Readable> {
+    return this.fail();
+  }
+  stat(): Promise<{ size: number } | null> {
+    return this.fail();
+  }
+  delete(): Promise<void> {
+    return this.fail();
+  }
 }

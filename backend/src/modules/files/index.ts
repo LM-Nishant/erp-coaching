@@ -11,7 +11,13 @@ export default defineModule({
       module: 'files',
       label: 'Files & uploads',
       actions: ['view', 'create', 'delete'],
-      grants: { 'branch-admin': 'all', accountant: ['view', 'create'], teacher: ['view', 'create'], student: ['view'], parent: ['view'] },
+      grants: {
+        'branch-admin': 'all',
+        accountant: ['view', 'create'],
+        teacher: ['view', 'create'],
+        student: ['view'],
+        parent: ['view'],
+      },
     },
   ],
 });

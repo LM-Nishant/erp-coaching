@@ -39,13 +39,19 @@ async function claimNext(): Promise<Job | null> {
   return getSequelize().transaction(async (transaction) => {
     const job = await Job.findOne({
       where: { status: 'pending', runAt: { [Op.lte]: new Date() } },
-      order: [['runAt', 'ASC'], ['id', 'ASC']],
+      order: [
+        ['runAt', 'ASC'],
+        ['id', 'ASC'],
+      ],
       lock: transaction.LOCK.UPDATE,
       skipLocked: true,
       transaction,
     });
     if (!job) return null;
-    await job.update({ status: 'running', lockedAt: new Date(), attempts: job.attempts + 1 }, { transaction });
+    await job.update(
+      { status: 'running', lockedAt: new Date(), attempts: job.attempts + 1 },
+      { transaction },
+    );
     return job;
   });
 }
@@ -54,8 +60,9 @@ async function execute(job: Job): Promise<void> {
   const handler = handlers.get(job.name);
   try {
     if (!handler) throw new Error(`No handler registered for job ${job.name}`);
-    await runWithContext({ system: true, instituteId: job.instituteId ?? undefined, allowedBranchIds: null }, () =>
-      handler(job.payload, job),
+    await runWithContext(
+      { system: true, instituteId: job.instituteId ?? undefined, allowedBranchIds: null },
+      () => handler(job.payload, job),
     );
     await job.update({ status: 'completed', completedAt: new Date(), lockedAt: null });
   } catch (err) {

@@ -22,7 +22,21 @@ export function createApp(modules: ModuleDefinition[]) {
     }),
   );
   app.use(express.json({ limit: '1mb' }));
-  if (!config.isTest) app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === '/api/health' } }));
+  if (!config.isTest)
+    app.use(
+      pinoHttp({
+        logger,
+        autoLogging: { ignore: (req) => req.url === '/api/health' },
+        serializers: {
+          req: (req: { id: unknown; method: string; url: string }) => ({
+            id: req.id,
+            method: req.method,
+            url: req.url,
+          }),
+          res: (res: { statusCode: number }) => ({ statusCode: res.statusCode }),
+        },
+      }),
+    );
   app.use(contextMiddleware);
 
   const api = Router();

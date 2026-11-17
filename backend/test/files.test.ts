@@ -15,7 +15,11 @@ describe('file storage', () => {
   it('uploads to local disk and serves via short-lived signed URL with Range support', async () => {
     const app = await getApp();
     const content = Buffer.from('hello coaching erp — signed url test');
-    const up = await request(app).post('/api/files').set(bearer(apex)).field('module', 'general').attach('file', content, { filename: 'note.txt', contentType: 'text/plain' });
+    const up = await request(app)
+      .post('/api/files')
+      .set(bearer(apex))
+      .field('module', 'general')
+      .attach('file', content, { filename: 'note.txt', contentType: 'text/plain' });
     expect(up.status).toBe(201);
     expect(up.body.url).toContain('/api/files/signed/');
 
@@ -36,7 +40,10 @@ describe('file storage', () => {
   });
 
   it('rejects requests without a file', async () => {
-    const res = await request(await getApp()).post('/api/files').set(bearer(apex)).field('module', 'general');
+    const res = await request(await getApp())
+      .post('/api/files')
+      .set(bearer(apex))
+      .field('module', 'general');
     expect(res.status).toBe(400);
   });
 });

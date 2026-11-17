@@ -1,5 +1,11 @@
 import { DataTypes } from 'sequelize';
-import { fk, id, tenantColumns, timestamps, type Migration } from '../../../infrastructure/database/migration-helpers';
+import {
+  fk,
+  id,
+  tenantColumns,
+  timestamps,
+  type Migration,
+} from '../../../infrastructure/database/migration-helpers';
 
 export const up: Migration = async ({ context: { queryInterface } }) => {
   await queryInterface.createTable('files', {

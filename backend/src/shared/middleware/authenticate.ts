@@ -28,7 +28,12 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
 
   if (claims.imp) {
     const session = claims.isid ? await ImpersonationSession.findByPk(claims.isid) : null;
-    if (!session || session.endedAt || session.expiresAt < new Date() || session.superAdminId !== claims.imp) {
+    if (
+      !session ||
+      session.endedAt ||
+      session.expiresAt < new Date() ||
+      session.superAdminId !== claims.imp
+    ) {
       throw Unauthorized('Impersonation session ended', 'IMPERSONATION_ENDED');
     }
     ctx.impersonatorId = claims.imp;
@@ -46,7 +51,8 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
       throw Forbidden(`Institute is ${institute.status}`, 'INSTITUTE_NOT_ACTIVE');
     }
     const data = await loadAssignments(user.id, institute.id);
-    if (!data.assignments.length) throw Forbidden('You are no longer a member of this institute', 'NOT_A_MEMBER');
+    if (!data.assignments.length)
+      throw Forbidden('You are no longer a member of this institute', 'NOT_A_MEMBER');
 
     let activeBranchId: number | undefined;
     const branchHeader = req.header('x-branch-id');

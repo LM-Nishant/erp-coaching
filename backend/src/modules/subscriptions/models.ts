@@ -1,4 +1,12 @@
-import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes, type NonAttribute, type Sequelize } from 'sequelize';
+import {
+  DataTypes,
+  Model,
+  type CreationOptional,
+  type InferAttributes,
+  type InferCreationAttributes,
+  type NonAttribute,
+  type Sequelize,
+} from 'sequelize';
 import type { PlanLimits, SubscriptionStatus } from '@erp/shared';
 import { registerTenantModel } from '../../shared/tenancy/tenant-model';
 
@@ -16,7 +24,10 @@ export class Plan extends Model<InferAttributes<Plan>, InferCreationAttributes<P
   declare updatedAt: CreationOptional<Date>;
 }
 
-export class Subscription extends Model<InferAttributes<Subscription>, InferCreationAttributes<Subscription>> {
+export class Subscription extends Model<
+  InferAttributes<Subscription>,
+  InferCreationAttributes<Subscription>
+> {
   declare id: CreationOptional<number>;
   declare instituteId: number;
   declare planId: number;

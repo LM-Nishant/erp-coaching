@@ -1,4 +1,11 @@
-import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes, type Sequelize } from 'sequelize';
+import {
+  DataTypes,
+  Model,
+  type CreationOptional,
+  type InferAttributes,
+  type InferCreationAttributes,
+  type Sequelize,
+} from 'sequelize';
 import { registerTenantModel } from '../../shared/tenancy/tenant-model';
 
 export type FileVisibility = 'private' | 'institute';

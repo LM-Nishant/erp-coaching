@@ -8,7 +8,13 @@ import { requireTenantContext } from '../../shared/context';
 import { audit } from '../../shared/audit/audit.service';
 import { getPlanLimits } from '../subscriptions/subscription.service';
 import { AiUsage } from './models';
-import { getSettingsDto, removeStoredKey, testConnection, tokensUsedThisMonth, updateSettings } from './ai.service';
+import {
+  getSettingsDto,
+  removeStoredKey,
+  testConnection,
+  tokensUsedThisMonth,
+  updateSettings,
+} from './ai.service';
 
 const providerEnum = z.enum(['openai', 'azure-openai', 'gemini', 'groq', 'openrouter', 'ollama', 'custom']);
 const settingsSchema = z.object({
@@ -34,7 +40,13 @@ export function aiRoutes(api: Router) {
       action: 'ai.settings_updated',
       entityType: 'ai_settings',
       instituteId: null,
-      metadata: { provider: body.provider, baseUrl: body.baseUrl, model: body.model, jsonMode: body.jsonMode, keyChanged: !!body.apiKey?.trim() },
+      metadata: {
+        provider: body.provider,
+        baseUrl: body.baseUrl,
+        model: body.model,
+        jsonMode: body.jsonMode,
+        keyChanged: !!body.apiKey?.trim(),
+      },
     });
     res.json(dto);
   });
@@ -72,6 +84,9 @@ export function aiRoutes(api: Router) {
   api.get('/ai/usage', authenticate, requirePermission('ai', 'view'), async (_req, res) => {
     const { instituteId } = requireTenantContext();
     const limits = await getPlanLimits(instituteId);
-    res.json({ tokensThisMonth: await tokensUsedThisMonth(instituteId), monthlyLimit: limits.aiTokensMonthly });
+    res.json({
+      tokensThisMonth: await tokensUsedThisMonth(instituteId),
+      monthlyLimit: limits.aiTokensMonthly,
+    });
   });
 }

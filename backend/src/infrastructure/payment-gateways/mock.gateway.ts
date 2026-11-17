@@ -23,12 +23,18 @@ export class MockPaymentGateway implements PaymentGateway {
     };
   }
 
-  async verifyWebhook(_headers: Record<string, string | string[] | undefined>, rawBody: Buffer): Promise<VerifiedPayment> {
+  async verifyWebhook(
+    _headers: Record<string, string | string[] | undefined>,
+    rawBody: Buffer,
+  ): Promise<VerifiedPayment> {
     const body = JSON.parse(rawBody.toString());
     return this.fetchStatus(body.gatewayOrderId);
   }
 
   async refund(_paymentId: string, _amountPaise: number, idempotencyKey: string) {
-    return { refundId: `rf_${crypto.createHash('sha1').update(idempotencyKey).digest('hex').slice(0, 12)}`, status: 'processed' };
+    return {
+      refundId: `rf_${crypto.createHash('sha1').update(idempotencyKey).digest('hex').slice(0, 12)}`,
+      status: 'processed',
+    };
   }
 }

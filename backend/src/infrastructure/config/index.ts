@@ -18,7 +18,9 @@ const schema = z.object({
   API_PUBLIC_URL: z.string().default('http://localhost:4000'),
   CORS_ORIGINS: z
     .string()
-    .default('http://localhost:5173,http://localhost:8100,capacitor://localhost,http://localhost,https://localhost'),
+    .default(
+      'http://localhost:5173,http://localhost:8100,capacitor://localhost,http://localhost,https://localhost',
+    ),
   LOG_LEVEL: z.string().default(isProd ? 'info' : 'debug'),
 
   DB_HOST: z.string().default('127.0.0.1'),
@@ -70,7 +72,9 @@ const schema = z.object({
 });
 
 // Blank values (`KEY=`) count as unset so defaults apply.
-const env = Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== undefined && v.trim() !== ''));
+const env = Object.fromEntries(
+  Object.entries(process.env).filter(([, v]) => v !== undefined && v.trim() !== ''),
+);
 const parsed = schema.safeParse(env);
 if (!parsed.success) {
   console.error('Invalid environment configuration:', parsed.error.issues);
@@ -82,7 +86,9 @@ export const config = {
   isProd,
   isTest: parsed.data.NODE_ENV === 'test',
   storageLocalRoot: path.resolve(__dirname, '../../..', parsed.data.STORAGE_LOCAL_ROOT),
-  corsOrigins: parsed.data.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean),
+  corsOrigins: parsed.data.CORS_ORIGINS.split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
 };
 
 export type AppConfig = typeof config;

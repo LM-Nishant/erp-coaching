@@ -18,7 +18,9 @@ export class ConsoleMessagingProvider implements MessagingProvider {
   async send(message: OutboundMessage): Promise<SendResult> {
     consoleOutbox.push({ ...message, channel: this.channel, sentAt: new Date() });
     if (consoleOutbox.length > 500) consoleOutbox.shift();
-    logger.info(`[${this.channel.toUpperCase()} → ${message.to}] ${message.subject ? message.subject + ': ' : ''}${message.body}`);
+    logger.info(
+      `[${this.channel.toUpperCase()} → ${message.to}] ${message.subject ? message.subject + ': ' : ''}${message.body}`,
+    );
     return { providerMessageId: crypto.randomUUID(), status: 'sent' };
   }
 }

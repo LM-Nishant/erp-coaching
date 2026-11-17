@@ -29,6 +29,13 @@ export interface PaymentGateway {
   /** Server-side verification of the authoritative status (never trust the client callback alone). */
   fetchStatus(gatewayOrderId: string): Promise<VerifiedPayment>;
   /** Validates webhook signature and parses the event. */
-  verifyWebhook(headers: Record<string, string | string[] | undefined>, rawBody: Buffer): Promise<VerifiedPayment>;
-  refund(gatewayPaymentId: string, amountPaise: number, idempotencyKey: string): Promise<{ refundId: string; status: string }>;
+  verifyWebhook(
+    headers: Record<string, string | string[] | undefined>,
+    rawBody: Buffer,
+  ): Promise<VerifiedPayment>;
+  refund(
+    gatewayPaymentId: string,
+    amountPaise: number,
+    idempotencyKey: string,
+  ): Promise<{ refundId: string; status: string }>;
 }

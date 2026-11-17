@@ -17,7 +17,11 @@ export const branchRepo = new TenantRepository(Branch, { entity: 'Branch' });
 
 const branchBody = z.object({
   name: z.string().trim().min(2).max(150),
-  code: z.string().trim().toUpperCase().regex(/^[A-Z0-9-]{2,30}$/),
+  code: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z0-9-]{2,30}$/),
   address: z.string().max(1000).nullable().optional(),
   city: z.string().max(80).nullable().optional(),
   phone: z.string().max(20).nullable().optional(),
@@ -33,7 +37,8 @@ function allowedBranchWhere() {
 
 function assertBranchVisible(id: number) {
   const { allowedBranchIds } = requireTenantContext();
-  if (allowedBranchIds !== null && !allowedBranchIds.includes(id)) throw Forbidden('You do not have access to this branch', 'BRANCH_FORBIDDEN');
+  if (allowedBranchIds !== null && !allowedBranchIds.includes(id))
+    throw Forbidden('You do not have access to this branch', 'BRANCH_FORBIDDEN');
 }
 
 export function branchRoutes(api: Router) {
@@ -72,7 +77,12 @@ export function branchRoutes(api: Router) {
     assertBranchVisible(id);
     const body = parse(branchBody.partial(), req.body);
     const branch = await branchRepo.update(id, body);
-    await audit({ action: 'branch.updated', entityType: 'branch', entityId: id, metadata: { fields: Object.keys(body) } });
+    await audit({
+      action: 'branch.updated',
+      entityType: 'branch',
+      entityId: id,
+      metadata: { fields: Object.keys(body) },
+    });
     res.json(branch);
   });
 

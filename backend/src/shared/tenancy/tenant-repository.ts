@@ -43,14 +43,15 @@ export class TenantRepository<M extends Model> {
       const allowed = ctx.activeBranchId ? [ctx.activeBranchId] : ctx.allowedBranchIds;
       if (allowed !== null) {
         const requested = (where as Record<string, unknown>).branchId;
-        scoped.branchId = requested !== undefined
-          ? {
-              [Op.and]: [
-                requested !== null && typeof requested === 'object' ? requested : { [Op.eq]: requested },
-                { [Op.in]: allowed },
-              ],
-            }
-          : { [Op.in]: allowed };
+        scoped.branchId =
+          requested !== undefined
+            ? {
+                [Op.and]: [
+                  requested !== null && typeof requested === 'object' ? requested : { [Op.eq]: requested },
+                  { [Op.in]: allowed },
+                ],
+              }
+            : { [Op.in]: allowed };
       }
     }
     return scoped as WhereOptions<Attributes<M>>;
@@ -81,14 +82,18 @@ export class TenantRepository<M extends Model> {
   }
 
   async findById(id: number, options: FindOptions<Attributes<M>> = {}): Promise<M> {
-    const row = await this.findOne({ ...options, where: { ...(options.where as object), id } as unknown as WhereOptions<Attributes<M>> });
+    const row = await this.findOne({
+      ...options,
+      where: { ...(options.where as object), id } as unknown as WhereOptions<Attributes<M>>,
+    });
     if (!row) throw NotFound(this.entity);
     return row;
   }
 
   async create(values: Omit<CreationAttributes<M>, 'instituteId'>, opts: { transaction?: Transaction } = {}) {
     const ctx = requireTenantContext();
-    const data = { ...(values as object), instituteId: ctx.instituteId } as CreationAttributes<M> & TenantAttrs;
+    const data = { ...(values as object), instituteId: ctx.instituteId } as CreationAttributes<M> &
+      TenantAttrs;
     if (this.opts.branchScoped) {
       if (data.branchId == null && ctx.activeBranchId) data.branchId = ctx.activeBranchId;
       this.assertBranchAllowed(data.branchId);

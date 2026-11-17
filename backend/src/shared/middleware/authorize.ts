@@ -14,7 +14,8 @@ export const requireTenant: RequestHandler = (req, _res, next) => {
 /** Platform administrator (not while impersonating). */
 export const requireSuperAdmin: RequestHandler = (req, _res, next) => {
   if (!req.ctx.userId) throw Unauthorized();
-  if (!req.ctx.isSuperAdmin || req.ctx.impersonatorId) throw Forbidden('Super admin only', 'SUPER_ADMIN_ONLY');
+  if (!req.ctx.isSuperAdmin || req.ctx.impersonatorId)
+    throw Forbidden('Super admin only', 'SUPER_ADMIN_ONLY');
   next();
 };
 
@@ -27,7 +28,8 @@ export function requirePermission(module: string, action: PermissionAction): Req
   return (req, _res, next) => {
     if (!req.ctx.userId) throw Unauthorized();
     const platformAdmin = req.ctx.isSuperAdmin && !req.ctx.impersonatorId;
-    if (!platformAdmin && !req.ctx.instituteId) throw Forbidden('Select an institute first', 'INSTITUTE_REQUIRED');
+    if (!platformAdmin && !req.ctx.instituteId)
+      throw Forbidden('Select an institute first', 'INSTITUTE_REQUIRED');
     if (!hasPermission(key)) throw Forbidden(`Missing permission ${key}`, 'PERMISSION_DENIED');
     next();
   };

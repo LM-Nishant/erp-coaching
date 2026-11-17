@@ -20,10 +20,12 @@ export class MockBiometricAdapter implements BiometricAdapter {
   readonly name = 'mock';
   async parsePush(payload: unknown): Promise<BiometricPunch[]> {
     const rows = Array.isArray(payload) ? payload : [];
-    return rows.map((r: { deviceSerial: string; enrolmentId: string; punchedAt: string; direction?: 'in' | 'out' }) => ({
-      ...r,
-      punchedAt: new Date(r.punchedAt),
-    }));
+    return rows.map(
+      (r: { deviceSerial: string; enrolmentId: string; punchedAt: string; direction?: 'in' | 'out' }) => ({
+        ...r,
+        punchedAt: new Date(r.punchedAt),
+      }),
+    );
   }
 }
 

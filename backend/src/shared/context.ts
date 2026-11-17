@@ -48,7 +48,11 @@ export function requireTenantContext(): TenantContext {
     if (!ctx.userId && !ctx.system) throw Unauthorized();
     throw Forbidden('Select an institute first', 'INSTITUTE_REQUIRED');
   }
-  return { ...ctx, instituteId: ctx.instituteId, allowedBranchIds: ctx.allowedBranchIds ?? null } as TenantContext;
+  return {
+    ...ctx,
+    instituteId: ctx.instituteId,
+    allowedBranchIds: ctx.allowedBranchIds ?? null,
+  } as TenantContext;
 }
 
 export function hasPermission(key: string): boolean {

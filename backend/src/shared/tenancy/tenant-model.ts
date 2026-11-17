@@ -9,8 +9,10 @@ const TENANT_MODELS = new WeakSet<object>();
 
 function whereHasInstitute(where: WhereOptions | undefined): boolean {
   if (!where || typeof where !== 'object') return false;
-  return Object.prototype.hasOwnProperty.call(where, 'instituteId') ||
-    Object.prototype.hasOwnProperty.call(where, 'institute_id');
+  return (
+    Object.prototype.hasOwnProperty.call(where, 'instituteId') ||
+    Object.prototype.hasOwnProperty.call(where, 'institute_id')
+  );
 }
 
 /**
