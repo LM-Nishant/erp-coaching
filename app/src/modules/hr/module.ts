@@ -1,0 +1,107 @@
+import {
+  calendarOutline,
+  idCardOutline,
+  laptopOutline,
+  personCircleOutline,
+  settingsOutline,
+  timeOutline,
+} from 'ionicons/icons';
+import { defineAppModule } from '@/core/modules';
+
+export default defineAppModule({
+  id: 'hr',
+  routes: [
+    {
+      path: '/hr/employees',
+      name: 'hr-employees',
+      component: () => import('./EmployeesPage.vue'),
+      meta: { permission: 'hr.view' },
+    },
+    {
+      path: '/hr/employees/:id',
+      name: 'hr-employee',
+      component: () => import('./EmployeeDetailPage.vue'),
+      meta: { permission: 'hr.view' },
+    },
+    {
+      path: '/hr/attendance',
+      name: 'hr-attendance',
+      component: () => import('./StaffAttendancePage.vue'),
+      meta: { permission: 'hr.view' },
+    },
+    {
+      path: '/hr/leaves',
+      name: 'hr-leaves',
+      component: () => import('./LeaveApprovalsPage.vue'),
+      meta: { permission: 'hr.view' },
+    },
+    {
+      path: '/hr/assets',
+      name: 'hr-assets',
+      component: () => import('./AssetsSeparationsPage.vue'),
+      meta: { permission: 'hr.view' },
+    },
+    {
+      path: '/hr/settings',
+      name: 'hr-settings',
+      component: () => import('./HrSettingsPage.vue'),
+      meta: { permission: 'hr.view' },
+    },
+    {
+      path: '/me/hr',
+      name: 'hr-self-service',
+      component: () => import('./MyHrPage.vue'),
+      meta: { permission: 'hr-self-service.view' },
+    },
+  ],
+  menu: [
+    {
+      title: 'Staff',
+      path: '/hr/employees',
+      icon: idCardOutline,
+      permission: 'hr.view',
+      planModule: 'hr',
+      order: 60,
+    },
+    {
+      title: 'Staff attendance',
+      path: '/hr/attendance',
+      icon: timeOutline,
+      permission: 'hr.view',
+      planModule: 'hr',
+      order: 61,
+    },
+    {
+      title: 'Leave requests',
+      path: '/hr/leaves',
+      icon: calendarOutline,
+      permission: 'hr.view',
+      planModule: 'hr',
+      order: 62,
+    },
+    {
+      title: 'Assets & exits',
+      path: '/hr/assets',
+      icon: laptopOutline,
+      permission: 'hr.view',
+      planModule: 'hr',
+      order: 63,
+    },
+    {
+      title: 'HR settings',
+      path: '/hr/settings',
+      icon: settingsOutline,
+      permission: 'hr.configure',
+      planModule: 'hr',
+      order: 64,
+    },
+    {
+      title: 'My leave & attendance',
+      path: '/me/hr',
+      icon: personCircleOutline,
+      permission: 'hr-self-service.view',
+      planModule: 'hr',
+      order: 90,
+    },
+  ],
+});

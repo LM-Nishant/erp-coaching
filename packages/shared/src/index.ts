@@ -5,3 +5,5 @@ export * from './plans';
 export * from './academics';
 export * from './notifications';
 export * from './students';
+export * from './hr';
+export * from './payroll';
