@@ -35,4 +35,3 @@ export function toSpreadsheetXml(sheet: string, headers: string[], rows: Cell[][
     '</Table></Worksheet></Workbook>',
   ].join('\n');
 }
-

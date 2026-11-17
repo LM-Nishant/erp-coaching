@@ -85,7 +85,9 @@ export async function selfAndChildren(): Promise<number[]> {
 }
 
 async function names(ids: number[]) {
-  const users = ids.length ? await User.findAll({ where: { id: [...new Set(ids)] }, attributes: ['id', 'name'] }) : [];
+  const users = ids.length
+    ? await User.findAll({ where: { id: [...new Set(ids)] }, attributes: ['id', 'name'] })
+    : [];
   return new Map(users.map((u) => [u.id, u.name]));
 }
 
@@ -129,10 +131,7 @@ async function applyCorrection(c: AttendanceCorrection, session: AttendanceSessi
       remarks: `Correction #${c.id}`,
       transaction,
     });
-    await c.update(
-      { status: 'approved', decidedByUserId: byUserId, decidedAt: new Date() },
-      { transaction },
-    );
+    await c.update({ status: 'approved', decidedByUserId: byUserId, decidedAt: new Date() }, { transaction });
   });
 }
 
@@ -260,7 +259,11 @@ export async function cancelCorrection(id: number) {
   if (!c) throw NotFound('Correction request');
   if (c.status !== 'pending') throw Conflict(`Request is already ${c.status}`, 'NOT_PENDING');
   await c.update({ status: 'cancelled' });
-  await audit({ action: 'attendance.correction.cancelled', entityType: 'AttendanceCorrection', entityId: id });
+  await audit({
+    action: 'attendance.correction.cancelled',
+    entityType: 'AttendanceCorrection',
+    entityId: id,
+  });
   return toCorrectionDto(c);
 }
 
@@ -342,7 +345,9 @@ export async function listMyLeaves() {
 /** Approving converts the student's absent marks in the range to leave; later rosters close as leave. */
 export async function decideLeave(id: number, approve: boolean, note: string | null) {
   const { userId, instituteId } = requireTenantContext();
-  const l = await leaveRepo.findById(id, { include: [{ model: User, as: 'student', attributes: ['id', 'name'] }] });
+  const l = await leaveRepo.findById(id, {
+    include: [{ model: User, as: 'student', attributes: ['id', 'name'] }],
+  });
   if (l.status !== 'pending') throw Conflict(`Request is already ${l.status}`, 'NOT_PENDING');
   let converted = 0;
   await getSequelize().transaction(async (transaction) => {
@@ -375,7 +380,11 @@ export async function decideLeave(id: number, approve: boolean, note: string | n
     action: approve ? 'attendance.leave.approved' : 'attendance.leave.rejected',
     entityType: 'StudentLeaveRequest',
     entityId: l.id,
-    metadata: { before: { status: 'pending' }, after: { status: l.status, note }, convertedRecords: converted },
+    metadata: {
+      before: { status: 'pending' },
+      after: { status: l.status, note },
+      convertedRecords: converted,
+    },
   });
   await notify({
     event: 'attendance.leave-decided',

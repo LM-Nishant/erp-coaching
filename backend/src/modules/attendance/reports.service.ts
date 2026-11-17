@@ -18,7 +18,10 @@ import { recordRepo } from './sessions.service';
 type Counts = Partial<Record<AttendanceStatus, number>>;
 
 /** Percentage = (present + late + half day × weight) / (sessions − leave when excluded). */
-export function computeTotals(c: Counts, s: Pick<AttendanceSettingsDto, 'excludeLeaveFromTotal' | 'halfDayWeight'>): AttendanceTotals {
+export function computeTotals(
+  c: Counts,
+  s: Pick<AttendanceSettingsDto, 'excludeLeaveFromTotal' | 'halfDayWeight'>,
+): AttendanceTotals {
   const present = c.present ?? 0;
   const absent = c.absent ?? 0;
   const late = c.late ?? 0;
@@ -90,7 +93,10 @@ export async function studentReport(f: ReportFilter): Promise<StudentAttendanceR
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function groupReport(by: 'batch' | 'branch', f: ReportFilter): Promise<GroupAttendanceReportRow[]> {
+export async function groupReport(
+  by: 'batch' | 'branch',
+  f: ReportFilter,
+): Promise<GroupAttendanceReportRow[]> {
   const { instituteId } = requireTenantContext();
   const settings = await getAttendanceSettings();
   const key = by === 'batch' ? 'batchId' : 'branchId';
@@ -120,7 +126,10 @@ export async function groupReport(by: 'batch' | 'branch', f: ReportFilter): Prom
 }
 
 /** Monthly and annual attendance of one student (caller has already checked access). */
-export async function studentSummary(studentUserId: number, year: number): Promise<StudentAttendanceSummaryDto> {
+export async function studentSummary(
+  studentUserId: number,
+  year: number,
+): Promise<StudentAttendanceSummaryDto> {
   const { instituteId } = requireTenantContext();
   const settings = await getAttendanceSettings();
   const records = await AttendanceRecord.findAll({
@@ -153,7 +162,9 @@ export async function studentSummary(studentUserId: number, year: number): Promi
     byMonth.set(m, c);
     overall[r.status] = (overall[r.status] ?? 0) + 1;
   }
-  const months = [...byMonth.keys()].sort().map((month) => ({ month, ...computeTotals(byMonth.get(month)!, settings) }));
+  const months = [...byMonth.keys()]
+    .sort()
+    .map((month) => ({ month, ...computeTotals(byMonth.get(month)!, settings) }));
   return {
     studentUserId,
     name: user?.name ?? '',

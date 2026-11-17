@@ -410,7 +410,11 @@ export async function sendAbsentAlerts(payload: Record<string, unknown>) {
     await notify({
       event: 'attendance.absent',
       recipients: [guardiansOfStudentUsers([r.studentUserId])],
-      data: { student: { name: r.student?.name ?? '' }, date: session.date, batch: session.batch?.name ?? '' },
+      data: {
+        student: { name: r.student?.name ?? '' },
+        date: session.date,
+        batch: session.batch?.name ?? '',
+      },
       branchId: session.branchId,
     });
 }
@@ -474,7 +478,8 @@ export async function checkIn(input: CheckInInput): Promise<CheckInResult> {
       { classSessionId: input.classSessionId, batchId: input.batchId, date: localDate() },
       { settings },
     );
-    if (session.date !== localDate()) throw Conflict('Check-in is only open on the day of class', 'CHECK_IN_CLOSED');
+    if (session.date !== localDate())
+      throw Conflict('Check-in is only open on the day of class', 'CHECK_IN_CLOSED');
     if (session.startTime) {
       const since = minutesSinceStart(session.date, session.startTime);
       if (since < -settings.checkInOpensMinutes || since > settings.checkInClosesMinutes)
@@ -493,7 +498,8 @@ export async function checkIn(input: CheckInInput): Promise<CheckInResult> {
       throw Forbidden('You are outside the check-in area', 'OUT_OF_GEOFENCE');
   }
   const late =
-    session.startTime != null && minutesSinceStart(session.date, session.startTime) > settings.lateAfterMinutes;
+    session.startTime != null &&
+    minutesSinceStart(session.date, session.startTime) > settings.lateAfterMinutes;
   const { record, duplicate } = await applyRecord(session, userId, late ? 'late' : 'present', input.method, {
     overwrite: false,
     markedByUserId: userId,
@@ -519,20 +525,28 @@ export async function checkInOptions() {
   const date = localDate();
   const batchIds = await activeBatchIds(userId!);
   if (!batchIds.length) return { date, mode: settings.mode, methods: settings.methods, items: [] };
-  const batches = await batchAny.findAll({ where: { id: { [Op.in]: batchIds } }, attributes: ['id', 'name'] });
+  const batches = await batchAny.findAll({
+    where: { id: { [Op.in]: batchIds } },
+    attributes: ['id', 'name'],
+  });
   const batchName = new Map(batches.map((b) => [b.id, b.name]));
   const sessions = await AttendanceSession.findAll({
     where: { instituteId, batchId: { [Op.in]: batchIds }, date },
   });
   const mine = sessions.length
     ? await AttendanceRecord.findAll({
-        where: { instituteId, studentUserId: userId, attendanceSessionId: { [Op.in]: sessions.map((s) => s.id) } },
+        where: {
+          instituteId,
+          studentUserId: userId,
+          attendanceSessionId: { [Op.in]: sessions.map((s) => s.id) },
+        },
       })
     : [];
   const myStatus = new Map(mine.map((r) => [r.attendanceSessionId, r.status]));
   const withState = (s: AttendanceSession | undefined, startTime: string | null) => {
     const since = startTime ? minutesSinceStart(date, startTime) : 0;
-    const inWindow = !startTime || (since >= -settings.checkInOpensMinutes && since <= settings.checkInClosesMinutes);
+    const inWindow =
+      !startTime || (since >= -settings.checkInOpensMinutes && since <= settings.checkInClosesMinutes);
     const status = s ? (myStatus.get(s.id) ?? null) : null;
     return {
       attendanceSessionId: s?.id ?? null,
@@ -601,7 +615,8 @@ export async function dayOverview(date: string, batchId?: number) {
   if (settings.mode === 'daily') {
     const where: Record<string | symbol, unknown> = { status: { [Op.in]: ['active', 'planned'] } };
     if (batchId) where.id = batchId;
-    if (myBatchIds) where.id = batchId ? (myBatchIds.includes(batchId) ? batchId : -1) : { [Op.in]: myBatchIds };
+    if (myBatchIds)
+      where.id = batchId ? (myBatchIds.includes(batchId) ? batchId : -1) : { [Op.in]: myBatchIds };
     const batches = await batchScoped.findAll({ where, order: [['name', 'ASC']] });
     const byBatch = new Map(sessions.filter((s) => s.kind === 'daily').map((s) => [s.batchId, s]));
     return {

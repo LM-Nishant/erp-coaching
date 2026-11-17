@@ -193,7 +193,12 @@ const coord = (field: string) => ({
   },
 });
 // Fresh attribute objects per model: Sequelize mutates them (field names) during init.
-const base = () => ({ id: { ...pk }, instituteId: uint(false), createdAt: DataTypes.DATE, updatedAt: DataTypes.DATE });
+const base = () => ({
+  id: { ...pk },
+  instituteId: uint(false),
+  createdAt: DataTypes.DATE,
+  updatedAt: DataTypes.DATE,
+});
 
 function define<M extends Model>(
   model: ModelStatic<M>,

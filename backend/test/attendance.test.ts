@@ -1,15 +1,22 @@
 import request from 'supertest';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { processDueJobs } from '../src/infrastructure/jobs/queue';
 import { runWithContext } from '../src/shared/context';
 import { Branch } from '../src/modules/branches/branch.model';
 import { User } from '../src/modules/users/user.model';
+import {
+  AcademicSession,
+  Batch,
+  BatchStudent,
+  ClassSession,
+  Course,
+  Subject,
+} from '../src/modules/academics/models';
 import { recordAttendance } from '../src/modules/attendance/api';
 import { DEMO_PASSWORD, USERS, bearer, getApp, lastOtpFor, login, newDevice } from './helpers';
 
-const ACCOUNTANT = { mobile: '9100000003', password: DEMO_PASSWORD };
 let seq = 0;
-const mobile = () => `933${String(seq++).padStart(7, '0')}`;
+const mobile = () => `936${String(seq++).padStart(7, '0')}`;
 
 async function otpLogin(m: string) {
   const app = await getApp();
@@ -49,8 +56,23 @@ describe('attendance module', () => {
     admin = (await login(USERS.apexAdmin)).accessToken;
     teacher = (await login(USERS.apexTeacher)).accessToken;
     zenith = (await login(USERS.zenithAdmin)).accessToken;
-    accountant = (await login(ACCOUNTANT)).accessToken;
     branchId = (await Branch.findOne({ where: { instituteId: 1 }, order: [['id', 'ASC']] }))!.id;
+    // A fresh accountant (the seeded one's device history belongs to the auth tests).
+    const roles = await request(app).get('/api/roles').set(bearer(admin));
+    const accountantRole = roles.body.find((r: { slug: string }) => r.slug === 'accountant');
+    const aMobile = mobile();
+    const acc = await request(app)
+      .post('/api/users')
+      .set(bearer(admin))
+      .send({
+        name: 'Attendance Accountant',
+        mobile: aMobile,
+        password: DEMO_PASSWORD,
+        roles: [{ roleId: accountantRole.id, branchId: null }],
+        branchIds: [branchId],
+      });
+    expect(acc.status).toBe(201);
+    accountant = (await login({ mobile: aMobile, password: DEMO_PASSWORD })).accessToken;
     teacherId = (await User.findOne({ where: { mobile: USERS.apexTeacher.mobile } }))!.id;
 
     // Two students with logins; the first has a linked parent.
@@ -60,7 +82,10 @@ describe('attendance module', () => {
       ['s1', m1, 'Asha Attendance'],
       ['s2', m2, 'Bala Attendance'],
     ] as const) {
-      const r = await request(app).post('/api/students').set(bearer(admin)).send({ name, mobile: m, branchId });
+      const r = await request(app)
+        .post('/api/students')
+        .set(bearer(admin))
+        .send({ name, mobile: m, branchId });
       expect(r.status).toBe(201);
       u[key] = r.body.userId;
       ids[`${key}Student`] = r.body.id;
@@ -81,6 +106,7 @@ describe('attendance module', () => {
       .set(bearer(admin))
       .send({ name: 'ATT-2040', startDate: '2020-04-01', endDate: '2040-03-31' });
     expect(sess.status).toBe(201);
+    ids.session = sess.body.id;
     const subject = await request(app)
       .post('/api/academics/subjects')
       .set(bearer(admin))
@@ -92,6 +118,7 @@ describe('attendance module', () => {
       .set(bearer(admin))
       .send({ name: 'Attendance Course', code: 'ATT-C', subjectIds: [ids.subject], branchIds: [branchId] });
     expect(course.status).toBe(201);
+    ids.course = course.body.id;
     const batch = await request(app)
       .post('/api/academics/batches')
       .set(bearer(admin))
@@ -144,6 +171,19 @@ describe('attendance module', () => {
     ids.past = past.body.id;
   });
 
+  // Remove the academics fixtures: the academics tests expect Apex to start without academic sessions.
+  afterAll(async () => {
+    const where = { instituteId: 1 };
+    if (ids.batch) {
+      await ClassSession.destroy({ where: { ...where, batchId: ids.batch } });
+      await BatchStudent.destroy({ where: { ...where, batchId: ids.batch } });
+      await Batch.destroy({ where: { ...where, id: ids.batch } });
+    }
+    if (ids.course) await Course.destroy({ where: { ...where, id: ids.course } });
+    if (ids.subject) await Subject.destroy({ where: { ...where, id: ids.subject } });
+    if (ids.session) await AcademicSession.destroy({ where: { ...where, id: ids.session } });
+  });
+
   it('lists the teacher day and opens a roster for the class', async () => {
     const day = await request(app).get(`/api/attendance/day?date=${today}`).set(bearer(teacher));
     expect(day.status).toBe(200);
@@ -160,7 +200,10 @@ describe('attendance module', () => {
     );
     ids.att = open.body.session.id;
     // Opening again returns the same session.
-    const again = await request(app).post('/api/attendance/sessions').set(bearer(admin)).send({ classSessionId: ids.cls });
+    const again = await request(app)
+      .post('/api/attendance/sessions')
+      .set(bearer(admin))
+      .send({ classSessionId: ids.cls });
     expect(again.body.session.id).toBe(ids.att);
   });
 
@@ -174,8 +217,12 @@ describe('attendance module', () => {
           .send({ records: [{ studentUserId: u.s1, status: 'present' }] })
       ).status,
     ).toBe(403);
-    expect((await request(app).get(`/api/attendance/sessions/${ids.att}`).set(bearer(accountant))).status).toBe(200);
-    expect((await request(app).get(`/api/attendance/sessions/${ids.att}`).set(bearer(zenith))).status).toBe(404);
+    expect(
+      (await request(app).get(`/api/attendance/sessions/${ids.att}`).set(bearer(accountant))).status,
+    ).toBe(200);
+    expect((await request(app).get(`/api/attendance/sessions/${ids.att}`).set(bearer(zenith))).status).toBe(
+      404,
+    );
     expect(
       (
         await request(app)
@@ -185,32 +232,50 @@ describe('attendance module', () => {
       ).status,
     ).toBe(404);
     expect(
-      (await request(app).post('/api/attendance/sessions').set(bearer(zenith)).send({ classSessionId: ids.cls }))
-        .status,
+      (
+        await request(app)
+          .post('/api/attendance/sessions')
+          .set(bearer(zenith))
+          .send({ classSessionId: ids.cls })
+      ).status,
     ).toBe(404);
     const zDay = await request(app).get(`/api/attendance/day?date=${today}`).set(bearer(zenith));
     expect(zDay.body.items).toEqual([]);
   });
 
   it('checks a student in with a rotating QR code and rejects duplicates and forged tokens', async () => {
-    expect((await request(app).get(`/api/attendance/sessions/${ids.att}/qr`).set(bearer(s1))).status).toBe(403);
+    expect((await request(app).get(`/api/attendance/sessions/${ids.att}/qr`).set(bearer(s1))).status).toBe(
+      403,
+    );
     const qr = await request(app).get(`/api/attendance/sessions/${ids.att}/qr`).set(bearer(teacher));
     expect(qr.status).toBe(200);
     expect(qr.body.token).toMatch(/^att1\./);
 
     const forged = qr.body.token.replace(/.$/, (c: string) => (c === 'A' ? 'B' : 'A'));
-    const bad = await request(app).post('/api/attendance/check-in').set(bearer(s1)).send({ method: 'qr', token: forged });
+    const bad = await request(app)
+      .post('/api/attendance/check-in')
+      .set(bearer(s1))
+      .send({ method: 'qr', token: forged });
     expect(bad.status).toBe(400);
     expect(bad.body.error.code).toBe('QR_INVALID');
 
-    const ok = await request(app).post('/api/attendance/check-in').set(bearer(s1)).send({ method: 'qr', token: qr.body.token });
+    const ok = await request(app)
+      .post('/api/attendance/check-in')
+      .set(bearer(s1))
+      .send({ method: 'qr', token: qr.body.token });
     expect(ok.status).toBe(200);
     expect(ok.body).toMatchObject({ status: 'present', duplicate: false, sessionId: ids.att });
-    const dup = await request(app).post('/api/attendance/check-in').set(bearer(s1)).send({ method: 'qr', token: qr.body.token });
+    const dup = await request(app)
+      .post('/api/attendance/check-in')
+      .set(bearer(s1))
+      .send({ method: 'qr', token: qr.body.token });
     expect(dup.body.duplicate).toBe(true);
 
     // An Apex token is meaningless in Zenith.
-    const cross = await request(app).post('/api/attendance/check-in').set(bearer(zenith)).send({ method: 'qr', token: qr.body.token });
+    const cross = await request(app)
+      .post('/api/attendance/check-in')
+      .set(bearer(zenith))
+      .send({ method: 'qr', token: qr.body.token });
     expect(cross.body.error.code).toBe('QR_INVALID');
   });
 
@@ -263,14 +328,19 @@ describe('attendance module', () => {
     expect(notOnRoster.status).toBe(400);
 
     // Past class: nobody marked → closing makes everyone absent and alerts the s1 parent once.
-    const past = await request(app).post('/api/attendance/sessions').set(bearer(teacher)).send({ classSessionId: ids.past });
+    const past = await request(app)
+      .post('/api/attendance/sessions')
+      .set(bearer(teacher))
+      .send({ classSessionId: ids.past });
     ids.attPast = past.body.session.id;
     const inbox = async () =>
       (await request(app).get('/api/notifications/inbox').set(bearer(parent))).body.items.filter(
         (m: { eventKey: string }) => m.eventKey === 'attendance.absent',
       ).length;
     const before = await inbox();
-    const closed = await request(app).post(`/api/attendance/sessions/${ids.attPast}/close`).set(bearer(teacher));
+    const closed = await request(app)
+      .post(`/api/attendance/sessions/${ids.attPast}/close`)
+      .set(bearer(teacher));
     expect(closed.status).toBe(200);
     expect(closed.body.session.status).toBe('closed');
     expect(closed.body.roster).toHaveLength(2);
@@ -296,7 +366,11 @@ describe('attendance module', () => {
       .set(bearer(s1))
       .send({ attendanceSessionId: ids.attPast, requestedStatus: 'present', reason: 'I was in class' });
     expect(req1.status).toBe(201);
-    expect(req1.body).toMatchObject({ status: 'pending', currentStatus: 'absent', requestedStatus: 'present' });
+    expect(req1.body).toMatchObject({
+      status: 'pending',
+      currentStatus: 'absent',
+      requestedStatus: 'present',
+    });
     const dup = await request(app)
       .post('/api/attendance/me/corrections')
       .set(bearer(s1))
@@ -306,14 +380,23 @@ describe('attendance module', () => {
     const other = await request(app)
       .post('/api/attendance/me/corrections')
       .set(bearer(s2))
-      .send({ attendanceSessionId: ids.attPast, studentUserId: u.s1, requestedStatus: 'present', reason: 'x'.repeat(5) });
+      .send({
+        attendanceSessionId: ids.attPast,
+        studentUserId: u.s1,
+        requestedStatus: 'present',
+        reason: 'x'.repeat(5),
+      });
     expect(other.status).toBe(404);
 
     const list = await request(app).get('/api/attendance/corrections?status=pending').set(bearer(teacher));
     expect(list.body.items.some((c: { id: number }) => c.id === req1.body.id)).toBe(true);
     expect(
-      (await request(app).post(`/api/attendance/corrections/${req1.body.id}/decide`).set(bearer(zenith)).send({ approve: true }))
-        .status,
+      (
+        await request(app)
+          .post(`/api/attendance/corrections/${req1.body.id}/decide`)
+          .set(bearer(zenith))
+          .send({ approve: true })
+      ).status,
     ).toBe(404);
     const decided = await request(app)
       .post(`/api/attendance/corrections/${req1.body.id}/decide`)
@@ -322,20 +405,26 @@ describe('attendance module', () => {
     expect(decided.status).toBe(200);
     expect(decided.body.status).toBe('approved');
     const roster = await request(app).get(`/api/attendance/sessions/${ids.attPast}`).set(bearer(admin));
-    expect(roster.body.roster.find((r: { studentUserId: number }) => r.studentUserId === u.s1)).toMatchObject({
-      status: 'present',
-      source: 'correction',
-    });
+    expect(roster.body.roster.find((r: { studentUserId: number }) => r.studentUserId === u.s1)).toMatchObject(
+      {
+        status: 'present',
+        source: 'correction',
+      },
+    );
 
     // Parent raises one for their child.
-    const byParent = await request(app)
-      .post('/api/attendance/me/corrections')
-      .set(bearer(parent))
-      .send({ attendanceSessionId: ids.att, studentUserId: u.s1, requestedStatus: 'late', reason: 'Arrived late' });
+    const byParent = await request(app).post('/api/attendance/me/corrections').set(bearer(parent)).send({
+      attendanceSessionId: ids.att,
+      studentUserId: u.s1,
+      requestedStatus: 'late',
+      reason: 'Arrived late',
+    });
     expect(byParent.status).toBe(201);
     const mine = await request(app).get('/api/attendance/me/corrections').set(bearer(parent));
     expect(mine.body.some((c: { id: number }) => c.id === byParent.body.id)).toBe(true);
-    const cancel = await request(app).post(`/api/attendance/me/corrections/${byParent.body.id}/cancel`).set(bearer(parent));
+    const cancel = await request(app)
+      .post(`/api/attendance/me/corrections/${byParent.body.id}/cancel`)
+      .set(bearer(parent));
     expect(cancel.body.status).toBe('cancelled');
   });
 
@@ -343,7 +432,12 @@ describe('attendance module', () => {
     const leave = await request(app)
       .post('/api/attendance/me/leaves')
       .set(bearer(parent))
-      .send({ studentUserId: u.s1, fromDate: addDays(today, -1), toDate: addDays(today, -1), reason: 'Fever' });
+      .send({
+        studentUserId: u.s1,
+        fromDate: addDays(today, -1),
+        toDate: addDays(today, -1),
+        reason: 'Fever',
+      });
     expect(leave.status).toBe(201);
     const overlap = await request(app)
       .post('/api/attendance/me/leaves')
@@ -358,8 +452,12 @@ describe('attendance module', () => {
       .send({ fromDate: addDays(today, -1), toDate: addDays(today, -1), reason: 'Family function' });
     expect(l2.status).toBe(201);
     expect(
-      (await request(app).post(`/api/attendance/leaves/${l2.body.id}/decide`).set(bearer(teacher)).send({ approve: true }))
-        .status,
+      (
+        await request(app)
+          .post(`/api/attendance/leaves/${l2.body.id}/decide`)
+          .set(bearer(teacher))
+          .send({ approve: true })
+      ).status,
     ).toBe(403);
     const ok = await request(app)
       .post(`/api/attendance/leaves/${l2.body.id}/decide`)
@@ -432,7 +530,9 @@ describe('attendance module', () => {
 
   it('reports percentages for students, batches and branches and exports CSV', async () => {
     const q = `from=${addDays(today, -7)}&to=${today}`;
-    const students = await request(app).get(`/api/attendance/reports/students?${q}&batchId=${ids.batch}`).set(bearer(accountant));
+    const students = await request(app)
+      .get(`/api/attendance/reports/students?${q}&batchId=${ids.batch}`)
+      .set(bearer(accountant));
     expect(students.status).toBe(200);
     const a = students.body.find((r: { studentUserId: number }) => r.studentUserId === u.s1);
     const b = students.body.find((r: { studentUserId: number }) => r.studentUserId === u.s2);
@@ -441,7 +541,10 @@ describe('attendance module', () => {
     expect(b).toMatchObject({ late: 1, leave: 1, total: 1, percentage: 100 });
 
     const batches = await request(app).get(`/api/attendance/reports/batches?${q}`).set(bearer(admin));
-    expect(batches.body.find((r: { id: number }) => r.id === ids.batch)).toMatchObject({ students: 2, total: 3 });
+    expect(batches.body.find((r: { id: number }) => r.id === ids.batch)).toMatchObject({
+      students: 2,
+      total: 3,
+    });
     const branches = await request(app).get(`/api/attendance/reports/branches?${q}`).set(bearer(admin));
     expect(branches.body.find((r: { id: number }) => r.id === branchId).students).toBeGreaterThanOrEqual(2);
 
@@ -449,8 +552,13 @@ describe('attendance module', () => {
     expect(csv.status).toBe(200);
     expect(csv.headers['content-type']).toContain('text/csv');
     expect(csv.text).toContain('Asha Attendance');
-    expect((await request(app).get(`/api/attendance/reports/students?${q}&format=csv`).set(bearer(teacher))).status).toBe(403);
-    expect((await request(app).get(`/api/attendance/reports/students?${q}`).set(bearer(zenith))).body).toEqual([]);
+    expect(
+      (await request(app).get(`/api/attendance/reports/students?${q}&format=csv`).set(bearer(teacher)))
+        .status,
+    ).toBe(403);
+    expect(
+      (await request(app).get(`/api/attendance/reports/students?${q}`).set(bearer(zenith))).body,
+    ).toEqual([]);
   });
 
   it('shows students and parents their monthly and annual attendance', async () => {
@@ -462,10 +570,14 @@ describe('attendance module', () => {
 
     const children = await request(app).get('/api/attendance/me/children').set(bearer(parent));
     expect(children.body).toEqual([{ studentUserId: u.s1, name: 'Asha Attendance' }]);
-    const child = await request(app).get(`/api/attendance/me/children/${u.s1}/summary?year=${year}`).set(bearer(parent));
+    const child = await request(app)
+      .get(`/api/attendance/me/children/${u.s1}/summary?year=${year}`)
+      .set(bearer(parent));
     expect(child.status).toBe(200);
     expect(child.body.studentUserId).toBe(u.s1);
-    expect((await request(app).get(`/api/attendance/me/children/${u.s2}/summary`).set(bearer(parent))).status).toBe(404);
+    expect(
+      (await request(app).get(`/api/attendance/me/children/${u.s2}/summary`).set(bearer(parent))).status,
+    ).toBe(404);
     expect((await request(app).get('/api/attendance/me/summary').set(bearer(teacher))).status).toBe(403);
   });
 

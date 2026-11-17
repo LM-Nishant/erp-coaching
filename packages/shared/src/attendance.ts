@@ -192,3 +192,66 @@ export interface DeviceIngestResult {
   noSession: number;
   ignored: number;
 }
+
+/** One class (class mode) or batch (daily mode) on the staff day view. */
+export interface AttendanceDayItemDto {
+  classSessionId: number | null;
+  batchId: number;
+  batchName: string;
+  subjectName: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  attendance: {
+    id: number;
+    status: AttendanceSessionStatus;
+    counts: Partial<Record<AttendanceStatus, number>>;
+  } | null;
+}
+
+export interface AttendanceDayDto {
+  date: string;
+  mode: AttendanceMode;
+  items: AttendanceDayItemDto[];
+}
+
+export interface CheckInOptionDto {
+  classSessionId: number | null;
+  batchId: number;
+  batchName: string;
+  subjectName: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  attendanceSessionId: number | null;
+  sessionStatus: AttendanceSessionStatus | null;
+  myStatus: AttendanceStatus | null;
+  canCheckIn: boolean;
+}
+
+export interface CheckInOptionsDto {
+  date: string;
+  mode: AttendanceMode;
+  methods: AttendanceMethod[];
+  items: CheckInOptionDto[];
+}
+
+export interface BiometricEnrolmentDto {
+  id: number;
+  studentUserId: number;
+  studentName: string;
+  enrolmentId: string;
+}
+
+export interface DeviceEventDto {
+  id: number;
+  branchId: number | null;
+  deviceId: number | null;
+  deviceSerial: string;
+  enrolmentId: string;
+  punchedAt: string;
+  direction: string | null;
+  status: DeviceEventStatus;
+  studentUserId: number | null;
+  attendanceRecordId: number | null;
+  note: string | null;
+  createdAt: string;
+}

@@ -1,5 +1,10 @@
 import { Op } from 'sequelize';
-import type { AttendanceDeviceDto, AttendanceStatus, DeviceEventStatus, DeviceIngestResult } from '@erp/shared';
+import type {
+  AttendanceDeviceDto,
+  AttendanceStatus,
+  DeviceEventStatus,
+  DeviceIngestResult,
+} from '@erp/shared';
 import { getBiometricAdapter, type BiometricPunch } from '../../infrastructure/biometric';
 import { randomToken, safeEqual, sha256 } from '../../infrastructure/crypto';
 import { requireTenantContext } from '../../shared/context';
@@ -14,7 +19,9 @@ import { activeBatchIds, applyRecord, resolveSession } from './sessions.service'
 import { localDate, localHhmm, minutes, minutesSinceStart } from './time';
 
 export const deviceRepo = new TenantRepository(AttendanceDevice, { entity: 'Device' });
-export const biometricEnrolmentRepo = new TenantRepository(AttendanceEnrolment, { entity: 'Biometric enrolment' });
+export const biometricEnrolmentRepo = new TenantRepository(AttendanceEnrolment, {
+  entity: 'Biometric enrolment',
+});
 export const deviceEventRepo = new TenantRepository(DeviceEvent, { entity: 'Device event' });
 const batchStudentRepo = new TenantRepository(BatchStudent, { entity: 'Enrollment' });
 const classAny = new TenantRepository(ClassSession, { entity: 'Class session' });
@@ -45,16 +52,29 @@ export async function createDevice(input: { name: string; serial: string; branch
     adapter: getBiometricAdapter().name,
     apiKeyHash: sha256(apiKey),
   });
-  await audit({ action: 'attendance.device.created', entityType: 'AttendanceDevice', entityId: d.id, metadata: { after: toDeviceDto(d) } });
+  await audit({
+    action: 'attendance.device.created',
+    entityType: 'AttendanceDevice',
+    entityId: d.id,
+    metadata: { after: toDeviceDto(d) },
+  });
   return toDeviceDto(d, apiKey);
 }
 
-export async function updateDevice(id: number, patch: { name?: string; active?: boolean; branchId?: number | null }) {
+export async function updateDevice(
+  id: number,
+  patch: { name?: string; active?: boolean; branchId?: number | null },
+) {
   const d = await deviceRepo.findById(id);
   if (patch.branchId) deviceRepo.assertBranchAllowed(patch.branchId);
   const before = toDeviceDto(d);
   await d.update(patch);
-  await audit({ action: 'attendance.device.updated', entityType: 'AttendanceDevice', entityId: id, metadata: { before, after: toDeviceDto(d) } });
+  await audit({
+    action: 'attendance.device.updated',
+    entityType: 'AttendanceDevice',
+    entityId: id,
+    metadata: { before, after: toDeviceDto(d) },
+  });
   return toDeviceDto(d);
 }
 
@@ -69,7 +89,12 @@ export async function rotateDeviceKey(id: number) {
 export async function deleteDevice(id: number) {
   const d = await deviceRepo.findById(id);
   await d.destroy();
-  await audit({ action: 'attendance.device.deleted', entityType: 'AttendanceDevice', entityId: id, metadata: { before: toDeviceDto(d) } });
+  await audit({
+    action: 'attendance.device.deleted',
+    entityType: 'AttendanceDevice',
+    entityId: id,
+    metadata: { before: toDeviceDto(d) },
+  });
 }
 
 /**
@@ -90,7 +115,12 @@ export async function listEnrolments() {
     include: [{ model: User, as: 'student', attributes: ['id', 'name'] }],
     order: [['enrolmentId', 'ASC']],
   });
-  return rows.map((r) => ({ id: r.id, studentUserId: r.studentUserId, studentName: r.student?.name ?? '', enrolmentId: r.enrolmentId }));
+  return rows.map((r) => ({
+    id: r.id,
+    studentUserId: r.studentUserId,
+    studentName: r.student?.name ?? '',
+    enrolmentId: r.enrolmentId,
+  }));
 }
 
 /** Maps a student to their device enrolment id (one per student, unique in the institute). */
@@ -121,7 +151,11 @@ export async function deleteEnrolment(id: number) {
 
 /* --------------------------------------------------------------------- ingest */
 
-export async function listDeviceEvents(filter: { status?: DeviceEventStatus; page: number; pageSize: number }) {
+export async function listDeviceEvents(filter: {
+  status?: DeviceEventStatus;
+  page: number;
+  pageSize: number;
+}) {
   return deviceEventRepo.findAndCountAll({
     where: filter.status ? { status: filter.status } : {},
     order: [['punchedAt', 'DESC']],
@@ -140,13 +174,19 @@ async function targetSessions(studentUserId: number, at: Date, branchId: number 
     const sessions = [];
     for (const batchId of batchIds) {
       const s = await resolveSession({ batchId, date }, { settings });
-      if (!branchId || s.branchId === branchId) sessions.push({ session: s, startTime: null as string | null });
+      if (!branchId || s.branchId === branchId)
+        sessions.push({ session: s, startTime: null as string | null });
     }
     return sessions;
   }
   const t = minutes(localHhmm(at));
   const classes = await classAny.findAll({
-    where: { batchId: { [Op.in]: batchIds }, date, status: { [Op.ne]: 'cancelled' }, ...(branchId ? { branchId } : {}) },
+    where: {
+      batchId: { [Op.in]: batchIds },
+      date,
+      status: { [Op.ne]: 'cancelled' },
+      ...(branchId ? { branchId } : {}),
+    },
   });
   const hits = classes.filter((c) => {
     const start = minutes(c.startTime);
@@ -155,7 +195,10 @@ async function targetSessions(studentUserId: number, at: Date, branchId: number 
   });
   const out = [];
   for (const c of hits)
-    out.push({ session: await resolveSession({ classSessionId: c.id }, { settings }), startTime: c.startTime });
+    out.push({
+      session: await resolveSession({ classSessionId: c.id }, { settings }),
+      startTime: c.startTime,
+    });
   return out;
 }
 
@@ -164,10 +207,20 @@ async function targetSessions(studentUserId: number, at: Date, branchId: number 
  * serial + enrolment + time); repeated pushes are reported as duplicates. Automatic marks never
  * overwrite a teacher's mark.
  */
-export async function ingestPunches(device: AttendanceDevice, punches: BiometricPunch[]): Promise<DeviceIngestResult> {
+export async function ingestPunches(
+  device: AttendanceDevice,
+  punches: BiometricPunch[],
+): Promise<DeviceIngestResult> {
   const { instituteId } = requireTenantContext();
   const settings = await getAttendanceSettings();
-  const result: DeviceIngestResult = { received: punches.length, applied: 0, duplicate: 0, unmatched: 0, noSession: 0, ignored: 0 };
+  const result: DeviceIngestResult = {
+    received: punches.length,
+    applied: 0,
+    duplicate: 0,
+    unmatched: 0,
+    noSession: 0,
+    ignored: 0,
+  };
   for (const p of punches) {
     if (!(p.punchedAt instanceof Date) || Number.isNaN(p.punchedAt.getTime()) || !p.enrolmentId)
       throw BadRequest('Invalid punch', { punch: p });
@@ -202,9 +255,14 @@ export async function ingestPunches(device: AttendanceDevice, punches: Biometric
         let anyApplied = false;
         for (const { session, startTime } of targets) {
           if (session.status === 'closed') continue;
-          const late = startTime != null && minutesSinceStart(session.date, startTime, p.punchedAt) > settings.lateAfterMinutes;
+          const late =
+            startTime != null &&
+            minutesSinceStart(session.date, startTime, p.punchedAt) > settings.lateAfterMinutes;
           const st: AttendanceStatus = late ? 'late' : 'present';
-          const r = await applyRecord(session, studentUserId, st, 'biometric', { overwrite: false, markedAt: p.punchedAt });
+          const r = await applyRecord(session, studentUserId, st, 'biometric', {
+            overwrite: false,
+            markedAt: p.punchedAt,
+          });
           if (!r.duplicate) {
             anyApplied = true;
             recordId ??= r.record.id;

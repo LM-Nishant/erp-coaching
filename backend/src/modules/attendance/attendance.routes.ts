@@ -171,7 +171,14 @@ const eventList = paginationSchema.extend({
   status: z.enum(['applied', 'duplicate', 'unmatched', 'no_session', 'ignored']).optional(),
 });
 
-function send(res: Response, fmt: 'json' | 'csv' | 'xls', name: string, headers: string[], rows: Cell[][], json: unknown) {
+function send(
+  res: Response,
+  fmt: 'json' | 'csv' | 'xls',
+  name: string,
+  headers: string[],
+  rows: Cell[][],
+  json: unknown,
+) {
   if (fmt === 'json') return res.json(json);
   const file = name.replace(/[^a-z0-9-]+/gi, '-').toLowerCase();
   if (fmt === 'csv') {
@@ -185,15 +192,15 @@ function send(res: Response, fmt: 'json' | 'csv' | 'xls', name: string, headers:
 }
 
 const TOTAL_HEADERS = ['Present', 'Late', 'Half day', 'Absent', 'Leave', 'Counted sessions', 'Attendance %'];
-const totalCells = (t: { present: number; late: number; half_day: number; absent: number; leave: number; total: number; percentage: number | null }): Cell[] => [
-  t.present,
-  t.late,
-  t.half_day,
-  t.absent,
-  t.leave,
-  t.total,
-  t.percentage,
-];
+const totalCells = (t: {
+  present: number;
+  late: number;
+  half_day: number;
+  absent: number;
+  leave: number;
+  total: number;
+  percentage: number | null;
+}): Cell[] => [t.present, t.late, t.half_day, t.absent, t.leave, t.total, t.percentage];
 
 /* ------------------------------------------------------------------ staff */
 
@@ -204,7 +211,11 @@ function settingsRoutes(r: Router) {
   r.put('/settings', requirePermission('attendance', 'configure'), async (req, res) => {
     const patch = parse(settingsBody, req.body);
     const { before, after } = await updateAttendanceSettings(patch);
-    await audit({ action: 'attendance.settings.updated', entityType: 'AttendanceSettings', metadata: { before, after } });
+    await audit({
+      action: 'attendance.settings.updated',
+      entityType: 'AttendanceSettings',
+      metadata: { before, after },
+    });
     res.json(after);
   });
 }
@@ -249,7 +260,11 @@ function sessionRoutes(r: Router) {
     const wasOpen = session.status === 'open';
     await closeSession(session, requireTenantContext().userId);
     if (wasOpen)
-      await audit({ action: 'attendance.session.closed', entityType: 'AttendanceSession', entityId: session.id });
+      await audit({
+        action: 'attendance.session.closed',
+        entityType: 'AttendanceSession',
+        entityId: session.id,
+      });
     res.json({ session: toSessionDto(session), roster: await getRoster(session) });
   });
 
@@ -257,7 +272,11 @@ function sessionRoutes(r: Router) {
     const session = await getSessionScoped(pid(req));
     if (session.status === 'closed') {
       await session.update({ status: 'open', closedAt: null, closedByUserId: null });
-      await audit({ action: 'attendance.session.reopened', entityType: 'AttendanceSession', entityId: session.id });
+      await audit({
+        action: 'attendance.session.reopened',
+        entityType: 'AttendanceSession',
+        entityId: session.id,
+      });
     }
     res.json({ session: toSessionDto(session) });
   });
@@ -271,7 +290,13 @@ function requestStaffRoutes(r: Router) {
   r.get('/corrections', requirePermission('attendance', 'view'), async (req, res) => {
     const q = parse(requestList, req.query);
     const { rows, count } = await listCorrections({ status: q.status, page: q.page, pageSize: q.pageSize });
-    res.json(paginated(rows.map((c) => toCorrectionDto(c)), count, q));
+    res.json(
+      paginated(
+        rows.map((c) => toCorrectionDto(c)),
+        count,
+        q,
+      ),
+    );
   });
   r.post('/corrections/:id/decide', requirePermission('attendance', 'view'), async (req, res) => {
     const body = parse(decideBody, req.body);
@@ -286,7 +311,13 @@ function requestStaffRoutes(r: Router) {
       order: [['createdAt', 'DESC']],
       ...toLimitOffset(q),
     });
-    res.json(paginated(rows.map((l) => toLeaveDto(l)), count, q));
+    res.json(
+      paginated(
+        rows.map((l) => toLeaveDto(l)),
+        count,
+        q,
+      ),
+    );
   });
   r.post('/leaves/:id/decide', requirePermission('attendance', 'approve'), async (req, res) => {
     const body = parse(decideBody, req.body);
@@ -303,9 +334,12 @@ function reportRoutes(r: Router) {
   });
   const assertExport = async (fmt: string, name: string, q: object) => {
     if (fmt === 'json') return;
-    if (!hasPermission('attendance.export'))
-      throw Forbidden('You cannot export attendance', 'FORBIDDEN');
-    await audit({ action: 'attendance.report.exported', entityType: 'AttendanceReport', metadata: { report: name, ...q } });
+    if (!hasPermission('attendance.export')) throw Forbidden('You cannot export attendance', 'FORBIDDEN');
+    await audit({
+      action: 'attendance.report.exported',
+      entityType: 'AttendanceReport',
+      metadata: { report: name, ...q },
+    });
   };
 
   r.get('/reports/students', requirePermission('attendance', 'view'), async (req, res) => {
@@ -369,7 +403,12 @@ function deviceRoutes(r: Router) {
     const punches = await parseDevicePayload(req.body?.punches ?? req.body);
     if (punches.length > 1000) throw BadRequest('At most 1000 punches per upload');
     const result = await ingestPunches(device, punches);
-    await audit({ action: 'attendance.device.events-imported', entityType: 'AttendanceDevice', entityId: device.id, metadata: { ...result } });
+    await audit({
+      action: 'attendance.device.events-imported',
+      entityType: 'AttendanceDevice',
+      entityId: device.id,
+      metadata: { ...result },
+    });
     res.json(result);
   });
   r.get('/device-events', requirePermission('attendance', 'configure'), async (req, res) => {
@@ -443,7 +482,10 @@ function publicRoutes(pub: Router) {
    * institute comes from the registered device, never from the request body.
    */
   pub.post('/device-events', authRateLimit, async (req, res) => {
-    const device = await authenticateDevice(String(req.get('x-device-serial') ?? ''), String(req.get('x-device-key') ?? ''));
+    const device = await authenticateDevice(
+      String(req.get('x-device-serial') ?? ''),
+      String(req.get('x-device-key') ?? ''),
+    );
     if (!device) throw new AppError(401, 'DEVICE_UNAUTHORIZED', 'Unknown device or invalid key');
     if (!(await isModuleEnabled(device.instituteId, 'attendance')))
       throw Forbidden('Attendance is not enabled for this institute', 'MODULE_DISABLED');
