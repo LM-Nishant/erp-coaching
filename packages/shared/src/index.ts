@@ -7,3 +7,4 @@ export * from './notifications';
 export * from './students';
 export * from './hr';
 export * from './payroll';
+export * from './grievances';
