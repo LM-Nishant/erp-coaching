@@ -1,0 +1,92 @@
+import {
+  globeOutline,
+  megaphoneOutline,
+  peopleCircleOutline,
+  pricetagOutline,
+  settingsOutline,
+} from 'ionicons/icons';
+import { defineAppModule } from '@/core/modules';
+
+export default defineAppModule({
+  id: 'website',
+  routes: [
+    {
+      path: '/website',
+      name: 'website-pages',
+      component: () => import('./WebsitePagesPage.vue'),
+      meta: { permission: 'website.view' },
+    },
+    {
+      path: '/website/pages/:id(\\d+)',
+      name: 'website-page-builder',
+      component: () => import('./PageBuilderPage.vue'),
+      meta: { permission: 'website.view' },
+    },
+    {
+      path: '/website/settings',
+      name: 'website-settings',
+      component: () => import('./WebsiteSettingsPage.vue'),
+      meta: { permission: 'website.configure' },
+    },
+    {
+      path: '/website/announcements',
+      name: 'website-announcements',
+      component: () => import('./AnnouncementsPage.vue'),
+      meta: { permission: 'website.view' },
+    },
+    {
+      path: '/website/coupons',
+      name: 'website-coupons',
+      component: () => import('./CouponsPage.vue'),
+      meta: { permission: 'website.view' },
+    },
+    {
+      path: '/website/referrals',
+      name: 'website-referrals',
+      component: () => import('./ReferralsPage.vue'),
+      meta: { permission: 'website.view' },
+    },
+  ],
+  menu: [
+    {
+      title: 'Website builder',
+      path: '/website',
+      icon: globeOutline,
+      permission: 'website.view',
+      planModule: 'website',
+      order: 80,
+    },
+    {
+      title: 'Website announcements',
+      path: '/website/announcements',
+      icon: megaphoneOutline,
+      permission: 'website.view',
+      planModule: 'website',
+      order: 81,
+    },
+    {
+      title: 'Coupons',
+      path: '/website/coupons',
+      icon: pricetagOutline,
+      permission: 'website.view',
+      planModule: 'website',
+      order: 82,
+    },
+    {
+      title: 'Referrals',
+      path: '/website/referrals',
+      icon: peopleCircleOutline,
+      permission: 'website.view',
+      planModule: 'website',
+      order: 83,
+    },
+    {
+      title: 'Website settings & SEO',
+      path: '/website/settings',
+      icon: settingsOutline,
+      permission: 'website.configure',
+      planModule: 'website',
+      order: 84,
+    },
+  ],
+});
