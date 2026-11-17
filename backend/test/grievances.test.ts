@@ -104,16 +104,13 @@ describe('grievances module', () => {
   });
 
   it('lets a student file a complaint with an institute ticket number, SLA and default assignee', async () => {
-    const res = await request(app)
-      .post('/api/grievances')
-      .set(bearer(student))
-      .send({
-        categoryId,
-        subject: 'Mess food quality',
-        description: 'Food is cold every day',
-        priority: 'high',
-        instituteId: 2,
-      });
+    const res = await request(app).post('/api/grievances').set(bearer(student)).send({
+      categoryId,
+      subject: 'Mess food quality',
+      description: 'Food is cold every day',
+      priority: 'high',
+      instituteId: 2,
+    });
     expect(res.status).toBe(201);
     expect(res.body.ticketNumber).toMatch(new RegExp(`^GRV-${year}-\\d{5}$`));
     expect(res.body).toMatchObject({ status: 'open', priority: 'high', requesterType: 'student' });
