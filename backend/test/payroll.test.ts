@@ -126,19 +126,14 @@ describe('payroll module', () => {
       expect.arrayContaining(['PF', 'ESI', 'PT', 'TDS']),
     );
 
-    const custom = await (
-      await api()
-    )
-      .post('/api/payroll/components')
-      .set(bearer(admin))
-      .send({
-        code: 'lwf',
-        name: 'Welfare fund',
-        kind: 'deduction',
-        calcType: 'fixed',
-        fixedAmount: 0,
-        effectiveFrom: '2020-01-01',
-      });
+    const custom = await (await api()).post('/api/payroll/components').set(bearer(admin)).send({
+      code: 'lwf',
+      name: 'Welfare fund',
+      kind: 'deduction',
+      calcType: 'fixed',
+      fixedAmount: 0,
+      effectiveFrom: '2020-01-01',
+    });
     expect(custom.status).toBe(201);
     expect(custom.body.code).toBe('LWF');
     const badSlab = await (
@@ -167,18 +162,13 @@ describe('payroll module', () => {
         effectiveFrom: '2022-01-01',
       });
     expect(sa.status).toBe(201);
-    const sb = await (
-      await api()
-    )
-      .post('/api/payroll/structures')
-      .set(bearer(admin))
-      .send({
-        employeeId: empB,
-        payType: 'per_lecture',
-        ratePerUnit: 50_000,
-        ptApplicable: false,
-        effectiveFrom: '2022-01-01',
-      });
+    const sb = await (await api()).post('/api/payroll/structures').set(bearer(admin)).send({
+      employeeId: empB,
+      payType: 'per_lecture',
+      ratePerUnit: 50_000,
+      ptApplicable: false,
+      effectiveFrom: '2022-01-01',
+    });
     expect(sb.status).toBe(201);
 
     const entries = [
@@ -354,29 +344,19 @@ describe('payroll module', () => {
       .set(bearer(admin))
       .send({ name: 'Leaving Staff', dateOfJoining: '2022-01-01' });
     const empC = c.body.id;
-    await (
-      await api()
-    )
-      .post('/api/payroll/structures')
-      .set(bearer(admin))
-      .send({
-        employeeId: empC,
-        payType: 'fixed_monthly',
-        monthlyBasic: 3_000_000,
-        effectiveFrom: '2022-01-01',
-      });
-    const asset = await (
-      await api()
-    )
-      .post('/api/hr/assets')
-      .set(bearer(admin))
-      .send({
-        employeeId: empC,
-        name: 'Laptop',
-        assetTag: 'LT-9',
-        issuedOn: '2022-01-05',
-        valuePaise: 500_000,
-      });
+    await (await api()).post('/api/payroll/structures').set(bearer(admin)).send({
+      employeeId: empC,
+      payType: 'fixed_monthly',
+      monthlyBasic: 3_000_000,
+      effectiveFrom: '2022-01-01',
+    });
+    const asset = await (await api()).post('/api/hr/assets').set(bearer(admin)).send({
+      employeeId: empC,
+      name: 'Laptop',
+      assetTag: 'LT-9',
+      issuedOn: '2022-01-05',
+      valuePaise: 500_000,
+    });
     expect(asset.status).toBe(201);
     const sep = await (
       await api()

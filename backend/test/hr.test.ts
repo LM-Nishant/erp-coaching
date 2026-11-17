@@ -25,17 +25,12 @@ describe('hr module', () => {
     expect(cands.status).toBe(200);
     expect(cands.body.some((c: { id: number }) => c.id === teacherUserId)).toBe(true);
 
-    const res = await (
-      await api()
-    )
-      .post('/api/hr/employees')
-      .set(bearer(admin))
-      .send({
-        userId: teacherUserId,
-        dateOfJoining: '2024-06-01',
-        designation: 'Physics faculty',
-        biometricEnrolmentId: 'BIO-1',
-      });
+    const res = await (await api()).post('/api/hr/employees').set(bearer(admin)).send({
+      userId: teacherUserId,
+      dateOfJoining: '2024-06-01',
+      designation: 'Physics faculty',
+      biometricEnrolmentId: 'BIO-1',
+    });
     expect(res.status).toBe(201);
     expect(res.body.isTeacher).toBe(true);
     expect(res.body.instituteId).toBe(1);
@@ -271,18 +266,13 @@ describe('hr module', () => {
   });
 
   it('handles assets and the resignation / notice-period lifecycle', async () => {
-    const asset = await (
-      await api()
-    )
-      .post('/api/hr/assets')
-      .set(bearer(admin))
-      .send({
-        employeeId: staffId,
-        name: 'Laptop',
-        assetTag: 'LT-01',
-        issuedOn: '2024-01-02',
-        valuePaise: 4000000,
-      });
+    const asset = await (await api()).post('/api/hr/assets').set(bearer(admin)).send({
+      employeeId: staffId,
+      name: 'Laptop',
+      assetTag: 'LT-01',
+      issuedOn: '2024-01-02',
+      valuePaise: 4000000,
+    });
     expect(asset.status).toBe(201);
     const ret = await (
       await api()
