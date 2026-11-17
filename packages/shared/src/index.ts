@@ -14,3 +14,5 @@ export * from './exams';
 export * from './fees';
 export * from './lms';
 export * from './live-classes';
+export * from './appointments';
+export * from './parent-portal';

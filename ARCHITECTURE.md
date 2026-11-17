@@ -22,6 +22,7 @@ backend/src/
     messaging/           SMS / WhatsApp / email / push providers (console impl + MSG91/Twilio/WhatsApp Cloud/SMTP/FCM stubs)
     payment-gateways/    PaymentGateway interface: mock (signed webhooks) + Paytm/Razorpay/Cashfree adapters (signature verification; API calls stubbed)
     streaming/ biometric/  interfaces + mock impls
+    calendar/            CalendarProvider (Google Calendar/Meet stub + mock that issues meeting links)
     jobs/                DB-backed job queue + in-process worker
     crypto.ts logger.ts
   shared/                                # cross-cutting building blocks used by every module
@@ -109,6 +110,8 @@ helmet → cors → json → contextMiddleware (request id, ALS) → rate limit
 | Notifications (all channels)     | `notify({ event, recipients, data })` from `modules/notifications/api`: rules → templates → preferences → queued delivery with retries (see CONTRIBUTING.md)                 |
 | SMS/WhatsApp/email/push          | Low-level `getMessagingProvider(channel)`; platform/auth code only (OTP). Per-institute providers via `createMessagingProvider()`                                            |
 | Payments / streaming / biometric | `getPaymentGateway(instituteId)`, `infrastructure/streaming`, `infrastructure/biometric` (mock implementations)                                                              |
+| Calendar / online meetings       | `getCalendarProvider(instituteId)` from `infrastructure/calendar`: create/update/cancel events and get a meeting link (mock implementation)                                  |
+| Parent portal                    | `registerParentPortalProvider()` from `modules/parent-portal/api` (backend sections); app `widgets` with slot `parent-home` (see CONTRIBUTING.md)                            |
 
 ## Files
 
