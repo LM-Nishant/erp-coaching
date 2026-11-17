@@ -17,6 +17,7 @@
     "@capacitor-mlkit/barcode-scanning": "^8.2.2",
     "@capacitor/android": "^8.6.2",
     "@capacitor/app": "^8.1.2",
+    "@capacitor/camera": "^8.2.6",
     "@capacitor/core": "^8.6.2",
     "@capacitor/device": "^8.0.3",
     "@capacitor/geolocation": "^8.2.4",
