@@ -400,7 +400,8 @@ export interface EvaluationDto {
 }
 
 export interface EvaluateAnswerInput {
-  marks: number;
+  /** Required unless `acceptAi` is set. */
+  marks?: number;
   feedback?: string | null;
   /** Accept the AI suggestion as-is (marks must equal AI marks). */
   acceptAi?: boolean;
@@ -459,6 +460,8 @@ export interface PromptVersionInput {
 
 export interface QuestionResultDto {
   examQuestionId: number;
+  /** Null when the candidate never saved an answer row for the question. */
+  answerId: number | null;
   sectionId: number;
   type: QuestionType;
   text: string;

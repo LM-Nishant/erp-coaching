@@ -43,9 +43,11 @@ import {
   correctionRepo,
   effectiveMarks,
   finalizeAttempt,
+  instituteFiles,
   pageDto,
   recomputeAttempt,
 } from './attempts.service';
+import { signedUrlFor } from '../files/files.service';
 import { rankScores, round2 } from './scoring';
 import { SimplePdf } from './pdf';
 
@@ -88,7 +90,13 @@ function topicKey(chapterName: string | null, topicName: string | null) {
   return `${chapterName ?? 'Uncategorised'}|${topicName ?? ''}`;
 }
 
-function addStat(map: Map<string, TopicStat>, chapterName: string | null, topicName: string | null, score: number, max: number) {
+function addStat(
+  map: Map<string, TopicStat>,
+  chapterName: string | null,
+  topicName: string | null,
+  score: number,
+  max: number,
+) {
   const key = topicKey(chapterName, topicName);
   const s = map.get(key) ?? { key, chapterName, topicName, score: 0, maxScore: 0, accuracy: 0 };
   s.score += score;
@@ -109,9 +117,19 @@ function finishStats(map: Map<string, TopicStat>): TopicStat[] {
 
 // ---------------------------------------------------------------- detailed result
 
-async function buildResult(attempt: ExamAttempt, exam: Exam, opts: { revealKey: boolean }): Promise<ResultDto> {
+async function buildResult(
+  attempt: ExamAttempt,
+  exam: Exam,
+  opts: { revealKey: boolean },
+): Promise<ResultDto> {
   const eqs = await examQuestionRepo.findAll({ where: { examId: exam.id } });
-  const sections = await sectionRepo.findAll({ where: { examId: exam.id }, order: [['sortOrder', 'ASC'], ['id', 'ASC']] });
+  const sections = await sectionRepo.findAll({
+    where: { examId: exam.id },
+    order: [
+      ['sortOrder', 'ASC'],
+      ['id', 'ASC'],
+    ],
+  });
   const answers = await answerRepo.findAll({
     where: { attemptId: attempt.id },
     include: [
@@ -129,10 +147,21 @@ async function buildResult(attempt: ExamAttempt, exam: Exam, opts: { revealKey: 
       })
     : [];
   const eqById = new Map(eqs.map((q) => [q.id, q]));
+  const optionFiles = new Map(
+    (
+      await instituteFiles([
+        ...new Set(
+          eqs.flatMap((q) => q.snapshot.options.map((o) => o.imageFileId).filter((x): x is number => !!x)),
+        ),
+      ])
+    ).map((f) => [f.id, signedUrlFor(f).url]),
+  );
   const order = attempt.questionOrder.filter((id) => eqById.has(id));
   for (const q of eqs) if (!order.includes(q.id)) order.push(q.id);
 
-  const sectionScores = new Map(sections.map((s) => [s.id, { id: s.id, title: s.title, score: 0, maxScore: 0 }]));
+  const sectionScores = new Map(
+    sections.map((s) => [s.id, { id: s.id, title: s.title, score: 0, maxScore: 0 }]),
+  );
   const topics = new Map<string, TopicStat>();
   const questions: QuestionResultDto[] = order.map((id) => {
     const eq = eqById.get(id)!;
@@ -149,10 +178,14 @@ async function buildResult(attempt: ExamAttempt, exam: Exam, opts: { revealKey: 
     const feedback = ev ? (ev.finalMarks != null ? (ev.teacherFeedback ?? ev.aiFeedback) : null) : null;
     return {
       examQuestionId: id,
+      answerId: ans?.id ?? null,
       sectionId: eq.sectionId,
       type: snap.type,
       text: snap.text,
-      options: snap.options,
+      options: snap.options.map((o) => ({
+        ...o,
+        imageUrl: o.imageFileId ? (optionFiles.get(o.imageFileId) ?? null) : null,
+      })),
       response: ans?.response ?? null,
       pages: [...(ans?.pages ?? [])].sort((a, b) => a.pageNo - b.pageNo).map(pageDto),
       correct: opts.revealKey ? snap.answerKey : null,
@@ -168,8 +201,15 @@ async function buildResult(attempt: ExamAttempt, exam: Exam, opts: { revealKey: 
   return {
     attempt: summaryDto(attempt),
     exam: examDto(exam),
-    passed: exam.passMarks != null && attempt.pendingEvaluations === 0 ? attempt.totalScore >= exam.passMarks : null,
-    sections: [...sectionScores.values()].map((s) => ({ ...s, score: round2(s.score), maxScore: round2(s.maxScore) })),
+    passed:
+      exam.passMarks != null && attempt.pendingEvaluations === 0
+        ? attempt.totalScore >= exam.passMarks
+        : null,
+    sections: [...sectionScores.values()].map((s) => ({
+      ...s,
+      score: round2(s.score),
+      maxScore: round2(s.maxScore),
+    })),
     chapters: finishStats(topics),
     questions,
     corrections: corrections.map(correctionDto),
@@ -184,7 +224,10 @@ export async function listAttempts(examId: number): Promise<AttemptSummaryDto[]>
   const rows = await attemptRepo.findAll({
     where: { examId },
     include: [studentInclude],
-    order: [['totalScore', 'DESC'], ['id', 'ASC']],
+    order: [
+      ['totalScore', 'DESC'],
+      ['id', 'ASC'],
+    ],
   });
   return rows.map(summaryDto);
 }
@@ -200,19 +243,32 @@ export async function resultsCsv(examId: number): Promise<{ filename: string; cs
   const exam = await examRepo.findById(examId);
   const rows = await listAttempts(examId);
   const csv = toCsv([
-    ['Rank', 'Student', 'Status', 'Objective', 'Descriptive', 'Total', 'Max', 'Percentile', 'Pending evaluations', 'Submitted at'],
-    ...rows.map((r) => [
-      r.rank ?? '',
-      r.studentName ?? `#${r.studentUserId}`,
-      r.status,
-      r.objectiveScore,
-      r.descriptiveScore,
-      r.totalScore,
-      r.maxScore,
-      r.percentile ?? '',
-      r.pendingEvaluations,
-      r.submittedAt ?? '',
-    ].map(String)),
+    [
+      'Rank',
+      'Student',
+      'Status',
+      'Objective',
+      'Descriptive',
+      'Total',
+      'Max',
+      'Percentile',
+      'Pending evaluations',
+      'Submitted at',
+    ],
+    ...rows.map((r) =>
+      [
+        r.rank ?? '',
+        r.studentName ?? `#${r.studentUserId}`,
+        r.status,
+        r.objectiveScore,
+        r.descriptiveScore,
+        r.totalScore,
+        r.maxScore,
+        r.percentile ?? '',
+        r.pendingEvaluations,
+        r.submittedAt ?? '',
+      ].map(String),
+    ),
   ]);
   return { filename: `${exam.title.replace(/[^\w-]+/g, '_').slice(0, 60)}-results.csv`, csv };
 }
@@ -222,8 +278,16 @@ export async function analytics(examId: number): Promise<ExamAnalyticsDto> {
   await closeOverdueAttempts(exam);
   const attempts = await attemptRepo.findAll({ where: { examId } });
   const closed = attempts.filter((a) => a.status !== 'in_progress');
-  const eqs = await examQuestionRepo.findAll({ where: { examId }, order: [['sortOrder', 'ASC'], ['id', 'ASC']] });
-  const answers = closed.length ? await answerRepo.findAll({ where: { attemptId: closed.map((a) => a.id) } }) : [];
+  const eqs = await examQuestionRepo.findAll({
+    where: { examId },
+    order: [
+      ['sortOrder', 'ASC'],
+      ['id', 'ASC'],
+    ],
+  });
+  const answers = closed.length
+    ? await answerRepo.findAll({ where: { attemptId: closed.map((a) => a.id) } })
+    : [];
   const marks = await effectiveMarks(answers.map((a) => a.id));
   const byEq = new Map<number, ExamAnswer[]>();
   for (const a of answers) byEq.set(a.examQuestionId, [...(byEq.get(a.examQuestionId) ?? []), a]);
@@ -251,7 +315,10 @@ export async function analytics(examId: number): Promise<ExamAnalyticsDto> {
       ? scores[(scores.length - 1) / 2]
       : (scores[scores.length / 2 - 1] + scores[scores.length / 2]) / 2
     : 0;
-  const distribution = Array.from({ length: 10 }, (_, i) => ({ range: `${i * 10}-${i === 9 ? 100 : i * 10 + 9}%`, count: 0 }));
+  const distribution = Array.from({ length: 10 }, (_, i) => ({
+    range: `${i * 10}-${i === 9 ? 100 : i * 10 + 9}%`,
+    count: 0,
+  }));
   for (const s of scores) {
     const pct = maxScore > 0 ? Math.max(0, s / maxScore) * 100 : 0;
     distribution[Math.min(9, Math.floor(pct / 10))].count++;
@@ -275,28 +342,40 @@ export async function analytics(examId: number): Promise<ExamAnalyticsDto> {
 // ---------------------------------------------------------------- publishing & ranking
 
 async function rankExam(exam: Exam) {
-  const attempts = await attemptRepo.findAll({ where: { examId: exam.id, status: { [Op.ne]: 'in_progress' } } });
+  const attempts = await attemptRepo.findAll({
+    where: { examId: exam.id, status: { [Op.ne]: 'in_progress' } },
+  });
   const ranks = rankScores(attempts.map((a) => ({ id: a.id, score: a.totalScore })));
   for (const a of attempts) {
     const r = ranks.get(a.id)!;
-    if (a.rank !== r.rank || a.percentile !== r.percentile) await a.update({ rank: r.rank, percentile: r.percentile });
+    if (a.rank !== r.rank || a.percentile !== r.percentile)
+      await a.update({ rank: r.rank, percentile: r.percentile });
   }
   return attempts;
 }
 
 export async function publishResults(examId: number) {
   const exam = await examRepo.findById(examId);
-  if (exam.status !== 'scheduled') throw Conflict('Only scheduled exams can be published', 'EXAM_NOT_SCHEDULED');
+  if (exam.status !== 'scheduled')
+    throw Conflict('Only scheduled exams can be published', 'EXAM_NOT_SCHEDULED');
   if (exam.resultsPublishedAt) throw Conflict('Results are already published', 'RESULTS_PUBLISHED');
-  if (Date.now() < exam.endAt.getTime()) throw Conflict('The exam window has not closed yet', 'EXAM_NOT_CLOSED');
+  if (Date.now() < exam.endAt.getTime())
+    throw Conflict('The exam window has not closed yet', 'EXAM_NOT_CLOSED');
   const open = await attemptRepo.findAll({ where: { examId, status: 'in_progress' } });
   for (const a of open) await finalizeAttempt(a, exam, 'auto_submitted');
   const pending = await attemptRepo.count({ examId, pendingEvaluations: { [Op.gt]: 0 } });
   if (pending)
-    throw Conflict(`${pending} submission(s) still have answers awaiting evaluation`, 'EVALUATION_PENDING', { pending });
+    throw Conflict(`${pending} submission(s) still have answers awaiting evaluation`, 'EVALUATION_PENDING', {
+      pending,
+    });
   const attempts = await rankExam(exam);
   await exam.update({ resultsPublishedAt: new Date(), resultsPublishedBy: me() });
-  await audit({ action: 'exam.results_published', entityType: 'exam', entityId: examId, metadata: { attempts: attempts.length } });
+  await audit({
+    action: 'exam.results_published',
+    entityType: 'exam',
+    entityId: examId,
+    metadata: { attempts: attempts.length },
+  });
 
   const students = await User.findAll({
     where: { id: attempts.map((a) => a.studentUserId) },
@@ -306,7 +385,10 @@ export async function publishResults(examId: number) {
   for (const a of attempts) {
     await notify({
       event: 'results.published',
-      recipients: [{ userIds: [a.studentUserId], type: 'student' }, guardiansOfStudentUsers([a.studentUserId])],
+      recipients: [
+        { userIds: [a.studentUserId], type: 'student' },
+        guardiansOfStudentUsers([a.studentUserId]),
+      ],
       data: {
         student: { name: names.get(a.studentUserId) ?? 'Student' },
         exam: exam.title,
@@ -337,10 +419,12 @@ export async function correctResult(examId: number, input: ResultCorrectionInput
     ],
   });
   if (!answer || answer.attempt!.examId !== examId) throw NotFound('Answer');
-  if (answer.attempt!.status === 'in_progress') throw Conflict('The attempt is still in progress', 'ATTEMPT_OPEN');
+  if (answer.attempt!.status === 'in_progress')
+    throw Conflict('The attempt is still in progress', 'ATTEMPT_OPEN');
   const eq = answer.examQuestion!;
   const min = eq.snapshot.type === 'descriptive' ? 0 : -eq.negativeMarks;
-  if (input.marks < min || input.marks > eq.marks) throw BadRequest(`Marks must be between ${min} and ${eq.marks}`);
+  if (input.marks < min || input.marks > eq.marks)
+    throw BadRequest(`Marks must be between ${min} and ${eq.marks}`);
   const before = (await effectiveMarks([answer.id])).get(answer.id) ?? null;
   const c = await correctionRepo.create({
     attemptId: answer.attemptId,
@@ -356,7 +440,14 @@ export async function correctResult(examId: number, input: ResultCorrectionInput
     action: 'exam.result_corrected',
     entityType: 'exam_answer',
     entityId: answer.id,
-    metadata: { examId, attemptId: answer.attemptId, correctionId: c.id, before, after: input.marks, reason: input.reason },
+    metadata: {
+      examId,
+      attemptId: answer.attemptId,
+      correctionId: c.id,
+      before,
+      after: input.marks,
+      reason: input.reason,
+    },
   });
   const attempt = await attemptRepo.findOne({ where: { id: answer.attemptId }, include: [studentInclude] });
   return buildResult(attempt!, exam, { revealKey: true });
@@ -370,13 +461,21 @@ async function publishedAttemptsOf(studentUserIds: number[]) {
     where: { studentUserId: studentUserIds, status: { [Op.ne]: 'in_progress' } },
     include: [
       studentInclude,
-      { model: Exam, as: 'exam', required: true, where: { resultsPublishedAt: { [Op.ne]: null }, status: 'scheduled' } },
+      {
+        model: Exam,
+        as: 'exam',
+        required: true,
+        where: { resultsPublishedAt: { [Op.ne]: null }, status: 'scheduled' },
+      },
     ],
     order: [['submittedAt', 'DESC']],
   });
 }
 
-async function listItems(studentUserIds: number[], names?: Map<number, string>): Promise<ChildResultListItem[]> {
+async function listItems(
+  studentUserIds: number[],
+  names?: Map<number, string>,
+): Promise<ChildResultListItem[]> {
   const attempts = await publishedAttemptsOf(studentUserIds);
   const items: ChildResultListItem[] = [];
   for (const a of attempts) {
@@ -407,7 +506,10 @@ export async function childrenResults(): Promise<ChildResultListItem[]> {
 }
 
 /** Loads a published attempt the caller may see as the student or as a linked guardian. */
-async function viewerAttempt(attemptId: number, as: 'student' | 'parent'): Promise<{ attempt: ExamAttempt; exam: Exam }> {
+async function viewerAttempt(
+  attemptId: number,
+  as: 'student' | 'parent',
+): Promise<{ attempt: ExamAttempt; exam: Exam }> {
   const allowed = as === 'student' ? [me()] : (await getLinkedStudentUsers(me())).map((k) => k.id);
   const attempt = await attemptRepo.findOne({ where: { id: attemptId }, include: [studentInclude] });
   if (!attempt || !allowed.includes(attempt.studentUserId)) throw NotFound('Result');
@@ -432,7 +534,9 @@ function renderScorecard(r: ResultDto): Buffer {
   pdf.text('SCORECARD', { size: 18, bold: true, gap: 4 });
   pdf.text(r.exam.title, { size: 13, bold: true });
   pdf.text(
-    [r.exam.courseName, r.exam.batchName, new Date(r.exam.startAt).toUTCString().slice(0, 16)].filter(Boolean).join('  |  '),
+    [r.exam.courseName, r.exam.batchName, new Date(r.exam.startAt).toUTCString().slice(0, 16)]
+      .filter(Boolean)
+      .join('  |  '),
     { size: 10, gap: 6 },
   );
   pdf.rule();
@@ -442,7 +546,10 @@ function renderScorecard(r: ResultDto): Buffer {
       (r.passed == null ? '' : `    Result: ${r.passed ? 'PASS' : 'FAIL'}`),
     { size: 11 },
   );
-  pdf.text(`Objective: ${fmt(r.attempt.objectiveScore)}    Descriptive: ${fmt(r.attempt.descriptiveScore)}`, { size: 10, gap: 4 });
+  pdf.text(`Objective: ${fmt(r.attempt.objectiveScore)}    Descriptive: ${fmt(r.attempt.descriptiveScore)}`, {
+    size: 10,
+    gap: 4,
+  });
 
   pdf.heading('Sections');
   pdf.table(
@@ -454,20 +561,34 @@ function renderScorecard(r: ResultDto): Buffer {
     pdf.heading('Chapter / topic performance');
     pdf.table(
       ['Chapter', 'Topic', 'Score', 'Max', 'Accuracy'],
-      r.chapters.map((c) => [c.chapterName ?? 'Uncategorised', c.topicName ?? '', fmt(c.score), fmt(c.maxScore), `${c.accuracy}%`]),
+      r.chapters.map((c) => [
+        c.chapterName ?? 'Uncategorised',
+        c.topicName ?? '',
+        fmt(c.score),
+        fmt(c.maxScore),
+        `${c.accuracy}%`,
+      ]),
       [0.32, 0.32, 0.12, 0.12, 0.12],
     );
   }
   pdf.heading('Questions');
   pdf.table(
     ['#', 'Question', 'Type', 'Marks', 'Max'],
-    r.questions.map((q, i) => [String(i + 1), q.text.replace(/\s+/g, ' '), q.type, fmt(q.marks), fmt(q.maxMarks)]),
+    r.questions.map((q, i) => [
+      String(i + 1),
+      q.text.replace(/\s+/g, ' '),
+      q.type,
+      fmt(q.marks),
+      fmt(q.maxMarks),
+    ]),
     [0.06, 0.6, 0.14, 0.1, 0.1],
   );
   if (r.corrections.length) {
     pdf.heading('Result corrections');
     for (const c of r.corrections)
-      pdf.text(`${c.createdAt.slice(0, 10)}: ${fmt(c.beforeMarks)} -> ${fmt(c.afterMarks)} (${c.reason})`, { size: 9 });
+      pdf.text(`${c.createdAt.slice(0, 10)}: ${fmt(c.beforeMarks)} -> ${fmt(c.afterMarks)} (${c.reason})`, {
+        size: 9,
+      });
   }
   pdf.text(`Generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`, { size: 8, gap: 0 });
   return pdf.toBuffer();

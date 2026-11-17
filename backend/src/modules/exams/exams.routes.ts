@@ -35,7 +35,11 @@ const examBody = z.object({
   subjectId: id.nullable().optional(),
   startAt: iso,
   endAt: iso,
-  durationMinutes: z.number().int().min(1).max(24 * 60),
+  durationMinutes: z
+    .number()
+    .int()
+    .min(1)
+    .max(24 * 60),
   evaluationMode: z.enum(EVALUATION_MODES).optional(),
   promptVersionId: id.nullable().optional(),
   shuffleQuestions: z.boolean().optional(),
@@ -79,7 +83,12 @@ const saveBody = z.object({
   response: responseBody.optional(),
   markedForReview: z.boolean().optional(),
   visited: z.boolean().optional(),
-  timeSpentSeconds: z.number().int().min(0).max(24 * 3600).optional(),
+  timeSpentSeconds: z
+    .number()
+    .int()
+    .min(0)
+    .max(24 * 3600)
+    .optional(),
 });
 
 const evaluateBody = z
@@ -175,7 +184,9 @@ export function examRoutes(api: Router) {
   });
 
   // ------------------------------------------------ AI prompt versions
-  r.get('/prompt-versions', can('configure'), async (_req, res) => res.json(await grading.listPromptVersions()));
+  r.get('/prompt-versions', can('configure'), async (_req, res) =>
+    res.json(await grading.listPromptVersions()),
+  );
   r.post('/prompt-versions', can('configure'), async (req, res) => {
     res.status(201).json(await grading.createPromptVersion(parse(promptBody, req.body)));
   });
@@ -189,7 +200,9 @@ export function examRoutes(api: Router) {
   r.post('/', can('create'), async (req, res) => {
     res.status(201).json(await exams.createExam(parse(examBody, req.body)));
   });
-  r.get('/:id', can('view'), async (req, res) => res.json(await exams.getExamDetail(parse(idParam, req.params).id)));
+  r.get('/:id', can('view'), async (req, res) =>
+    res.json(await exams.getExamDetail(parse(idParam, req.params).id)),
+  );
   r.patch('/:id', can('edit'), async (req, res) => {
     res.json(await exams.updateExam(parse(idParam, req.params).id, parse(examBody.partial(), req.body)));
   });
@@ -197,7 +210,9 @@ export function examRoutes(api: Router) {
     await exams.deleteExam(parse(idParam, req.params).id);
     res.status(204).end();
   });
-  r.post('/:id/schedule', can('edit'), async (req, res) => res.json(await exams.scheduleExam(parse(idParam, req.params).id)));
+  r.post('/:id/schedule', can('edit'), async (req, res) =>
+    res.json(await exams.scheduleExam(parse(idParam, req.params).id)),
+  );
   r.post('/:id/cancel', can('edit'), async (req, res) => {
     const { reason } = parse(z.object({ reason: z.string().trim().max(500).optional() }), req.body ?? {});
     res.json(await exams.cancelExam(parse(idParam, req.params).id, reason));
@@ -220,7 +235,9 @@ export function examRoutes(api: Router) {
     res.status(204).end();
   });
   r.post('/:id/questions', can('edit'), async (req, res) => {
-    res.status(201).json(await exams.addQuestions(parse(idParam, req.params).id, parse(addQuestionsBody, req.body)));
+    res
+      .status(201)
+      .json(await exams.addQuestions(parse(idParam, req.params).id, parse(addQuestionsBody, req.body)));
   });
   r.patch('/:id/questions/:eqId', can('edit'), async (req, res) => {
     const p = parse(eqParams, req.params);
@@ -237,7 +254,9 @@ export function examRoutes(api: Router) {
   });
 
   // attempts, evaluation & AI grading
-  r.get('/:id/attempts', can('view'), async (req, res) => res.json(await results.listAttempts(parse(idParam, req.params).id)));
+  r.get('/:id/attempts', can('view'), async (req, res) =>
+    res.json(await results.listAttempts(parse(idParam, req.params).id)),
+  );
   r.get('/:id/attempts/:attemptId', can('view'), async (req, res) => {
     const p = parse(attemptParams, req.params);
     res.json(await results.staffResult(p.id, p.attemptId));
@@ -256,7 +275,13 @@ export function examRoutes(api: Router) {
   r.put('/:id/evaluations/:answerId', can('approve'), async (req, res) => {
     const p = parse(answerParams, req.params);
     const b = parse(evaluateBody, req.body);
-    res.json(await grading.evaluateAnswer(p.id, p.answerId, { marks: b.marks ?? 0, feedback: b.feedback, acceptAi: b.acceptAi }));
+    res.json(
+      await grading.evaluateAnswer(p.id, p.answerId, {
+        marks: b.marks,
+        feedback: b.feedback,
+        acceptAi: b.acceptAi,
+      }),
+    );
   });
   r.get('/:id/evaluations/:answerId/ai-history', can('approve'), async (req, res) => {
     const p = parse(answerParams, req.params);
@@ -271,19 +296,25 @@ export function examRoutes(api: Router) {
   });
 
   // results
-  r.get('/:id/analytics', can('view'), async (req, res) => res.json(await results.analytics(parse(idParam, req.params).id)));
+  r.get('/:id/analytics', can('view'), async (req, res) =>
+    res.json(await results.analytics(parse(idParam, req.params).id)),
+  );
   r.get('/:id/results.csv', can('export'), async (req, res) => {
     const out = await results.resultsCsv(parse(idParam, req.params).id);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${out.filename}"`);
     res.send(out.csv);
   });
-  r.post('/:id/publish', can('publish'), async (req, res) => res.json(await results.publishResults(parse(idParam, req.params).id)));
+  r.post('/:id/publish', can('publish'), async (req, res) =>
+    res.json(await results.publishResults(parse(idParam, req.params).id)),
+  );
   r.post('/:id/unpublish', can('publish'), async (req, res) => {
     res.json(await results.unpublishResults(parse(idParam, req.params).id));
   });
   r.post('/:id/corrections', can('publish'), async (req, res) => {
-    res.status(201).json(await results.correctResult(parse(idParam, req.params).id, parse(correctionBody, req.body)));
+    res
+      .status(201)
+      .json(await results.correctResult(parse(idParam, req.params).id, parse(correctionBody, req.body)));
   });
 
   api.use('/exams', r);

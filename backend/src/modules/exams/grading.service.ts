@@ -72,16 +72,25 @@ function promptDto(p: PromptVersion): PromptVersionDto {
 }
 
 export async function listPromptVersions(): Promise<{ defaultPrompt: string; versions: PromptVersionDto[] }> {
-  const rows = await promptRepo.findAll({ where: { feature: GRADING_FEATURE }, order: [['version', 'DESC']] });
+  const rows = await promptRepo.findAll({
+    where: { feature: GRADING_FEATURE },
+    order: [['version', 'DESC']],
+  });
   return { defaultPrompt: DEFAULT_GRADING_PROMPT, versions: rows.map(promptDto) };
 }
 
 export async function createPromptVersion(input: PromptVersionInput): Promise<PromptVersionDto> {
   const { instituteId } = requireTenantContext();
   const pv = await getSequelize().transaction(async (transaction) => {
-    const max = (await PromptVersion.max('version', { where: { instituteId, feature: GRADING_FEATURE }, transaction })) as number | null;
+    const max = (await PromptVersion.max('version', {
+      where: { instituteId, feature: GRADING_FEATURE },
+      transaction,
+    })) as number | null;
     if (input.activate)
-      await PromptVersion.update({ isActive: false }, { where: { instituteId, feature: GRADING_FEATURE }, transaction });
+      await PromptVersion.update(
+        { isActive: false },
+        { where: { instituteId, feature: GRADING_FEATURE }, transaction },
+      );
     return promptRepo.create(
       {
         feature: GRADING_FEATURE,
@@ -95,16 +104,27 @@ export async function createPromptVersion(input: PromptVersionInput): Promise<Pr
       { transaction },
     );
   });
-  await audit({ action: 'exam.prompt_version_created', entityType: 'prompt_version', entityId: pv.id, metadata: { version: pv.version, activate: !!input.activate } });
+  await audit({
+    action: 'exam.prompt_version_created',
+    entityType: 'prompt_version',
+    entityId: pv.id,
+    metadata: { version: pv.version, activate: !!input.activate },
+  });
   return promptDto(pv);
 }
 
-export async function activatePromptVersion(id: number | null): Promise<{ defaultPrompt: string; versions: PromptVersionDto[] }> {
+export async function activatePromptVersion(
+  id: number | null,
+): Promise<{ defaultPrompt: string; versions: PromptVersionDto[] }> {
   const { instituteId } = requireTenantContext();
   if (id) await promptRepo.findById(id);
   await PromptVersion.update({ isActive: false }, { where: { instituteId, feature: GRADING_FEATURE } });
   if (id) await PromptVersion.update({ isActive: true }, { where: { instituteId, id } });
-  await audit({ action: 'exam.prompt_version_activated', entityType: 'prompt_version', entityId: id ?? 'default' });
+  await audit({
+    action: 'exam.prompt_version_activated',
+    entityType: 'prompt_version',
+    entityId: id ?? 'default',
+  });
   return listPromptVersions();
 }
 
@@ -121,7 +141,11 @@ async function resolvePrompt(exam: Exam): Promise<{ id: number | null; text: str
 // ---------------------------------------------------------------- evaluation queue
 
 const evalIncludes = () => [
-  { model: ExamAttempt, as: 'attempt', include: [{ model: User, as: 'student', attributes: ['id', 'name'] }] },
+  {
+    model: ExamAttempt,
+    as: 'attempt',
+    include: [{ model: User, as: 'student', attributes: ['id', 'name'] }],
+  },
   { model: ExamQuestion, as: 'examQuestion' },
   { model: ExamAnswerPage, as: 'pages', include: [{ model: FileObject, as: 'file' }] },
   {
@@ -172,13 +196,25 @@ export async function listEvaluations(
 ): Promise<EvaluationDto[]> {
   const exam = await staffExam(examId);
   await closeOverdueAttempts(exam);
-  const attempts = await attemptRepo.findAll({ where: { examId, status: { [Op.ne]: 'in_progress' } }, attributes: ['id'] });
+  const attempts = await attemptRepo.findAll({
+    where: { examId, status: { [Op.ne]: 'in_progress' } },
+    attributes: ['id'],
+  });
   if (!attempts.length) return [];
-  const where: Record<string, unknown> = { attemptId: f.attemptId ? [f.attemptId] : attempts.map((a) => a.id) };
+  const where: Record<string, unknown> = {
+    attemptId: f.attemptId ? [f.attemptId] : attempts.map((a) => a.id),
+  };
   if (f.examQuestionId) where.examQuestionId = f.examQuestionId;
   const include = evalIncludes();
   if (f.status) (include[3] as { where?: unknown }).where = { status: f.status };
-  const rows = await answerRepo.findAll({ where: where as WhereOptions<ExamAnswer>, include, order: [['examQuestionId', 'ASC'], ['attemptId', 'ASC']] });
+  const rows = await answerRepo.findAll({
+    where: where as WhereOptions<ExamAnswer>,
+    include,
+    order: [
+      ['examQuestionId', 'ASC'],
+      ['attemptId', 'ASC'],
+    ],
+  });
   return rows.map(evaluationDto);
 }
 
@@ -190,19 +226,24 @@ async function loadEvaluation(examId: number, answerId: number) {
 }
 
 /** Teacher marks (manual mode, or review/override of an AI suggestion). */
-export async function evaluateAnswer(examId: number, answerId: number, input: EvaluateAnswerInput): Promise<EvaluationDto> {
+export async function evaluateAnswer(
+  examId: number,
+  answerId: number,
+  input: EvaluateAnswerInput,
+): Promise<EvaluationDto> {
   const { exam, answer } = await loadEvaluation(examId, answerId);
   if (exam.resultsPublishedAt)
     throw Conflict('Results are published; use a result correction instead', 'RESULTS_PUBLISHED');
   const ev = answer.evaluation!;
   const max = answer.examQuestion!.marks;
   if (input.acceptAi && ev.aiMarks == null) throw BadRequest('There is no AI suggestion to accept');
-  const marks = input.acceptAi ? ev.aiMarks! : input.marks;
+  const marks = input.acceptAi ? ev.aiMarks! : (input.marks ?? 0);
   if (marks < 0 || marks > max) throw BadRequest(`Marks must be between 0 and ${max}`);
   const before = { teacherMarks: ev.teacherMarks, finalMarks: ev.finalMarks, status: ev.status };
   await ev.update({
     teacherMarks: round2(marks),
-    teacherFeedback: input.feedback !== undefined ? input.feedback : input.acceptAi ? ev.aiFeedback : ev.teacherFeedback,
+    teacherFeedback:
+      input.feedback !== undefined ? input.feedback : input.acceptAi ? ev.aiFeedback : ev.teacherFeedback,
     evaluatedByUserId: me(),
     evaluatedAt: new Date(),
     finalMarks: round2(marks),
@@ -213,7 +254,13 @@ export async function evaluateAnswer(examId: number, answerId: number, input: Ev
     action: ev.aiMarks != null ? 'exam.ai_mark_reviewed' : 'exam.answer_evaluated',
     entityType: 'exam_answer',
     entityId: answerId,
-    metadata: { examId, before, after: { teacherMarks: marks }, aiMarks: ev.aiMarks, acceptedAi: !!input.acceptAi },
+    metadata: {
+      examId,
+      before,
+      after: { teacherMarks: marks },
+      aiMarks: ev.aiMarks,
+      acceptedAi: !!input.acceptAi,
+    },
   });
   const fresh = await loadEvaluation(examId, answerId);
   return evaluationDto(fresh.answer);
@@ -243,7 +290,11 @@ export async function listGradingJobs(examId: number): Promise<GradingJobDto[]> 
   return jobs.map(jobDto);
 }
 
-async function queueGrading(exam: Exam, answerIds: number[], requestedBy: number | null): Promise<GradingJob> {
+async function queueGrading(
+  exam: Exam,
+  answerIds: number[],
+  requestedBy: number | null,
+): Promise<GradingJob> {
   await assertAiQuota(exam.instituteId);
   const prompt = await resolvePrompt(exam);
   const job = await jobRepo.create({
@@ -268,17 +319,36 @@ export async function startGrading(examId: number, opts: { regrade?: boolean } =
   if (exam.resultsPublishedAt) throw Conflict('Results are already published', 'RESULTS_PUBLISHED');
   await closeOverdueAttempts(exam);
   const statuses: EvaluationStatus[] = opts.regrade ? ['pending', 'ai_suggested'] : ['pending'];
-  const attempts = await attemptRepo.findAll({ where: { examId, status: { [Op.ne]: 'in_progress' } }, attributes: ['id'] });
+  const attempts = await attemptRepo.findAll({
+    where: { examId, status: { [Op.ne]: 'in_progress' } },
+    attributes: ['id'],
+  });
   const answers = attempts.length
     ? await answerRepo.findAll({
         where: { attemptId: attempts.map((a) => a.id) },
         attributes: ['id'],
-        include: [{ model: ExamEvaluation, as: 'evaluation', required: true, where: { status: statuses, teacherMarks: null } }],
+        include: [
+          {
+            model: ExamEvaluation,
+            as: 'evaluation',
+            required: true,
+            where: { status: statuses, teacherMarks: null },
+          },
+        ],
       })
     : [];
   if (!answers.length) throw Conflict('There are no answers waiting for AI grading', 'NOTHING_TO_GRADE');
-  const job = await queueGrading(exam, answers.map((a) => a.id), me());
-  await audit({ action: 'exam.ai_grading_requested', entityType: 'exam', entityId: examId, metadata: { gradingJobId: job.id, answers: answers.length } });
+  const job = await queueGrading(
+    exam,
+    answers.map((a) => a.id),
+    me(),
+  );
+  await audit({
+    action: 'exam.ai_grading_requested',
+    entityType: 'exam',
+    entityId: examId,
+    metadata: { gradingJobId: job.id, answers: answers.length },
+  });
   return jobDto(job);
 }
 
@@ -319,7 +389,9 @@ async function buildMessages(answer: ExamAnswer, eq: ExamQuestion, systemPrompt:
   const snap = eq.snapshot;
   const text = [
     `Question (max ${eq.marks} marks):\n${snap.text}`,
-    snap.answerKey.modelAnswer ? `Model answer:\n${snap.answerKey.modelAnswer}` : 'Model answer: (none provided)',
+    snap.answerKey.modelAnswer
+      ? `Model answer:\n${snap.answerKey.modelAnswer}`
+      : 'Model answer: (none provided)',
     snap.answerKey.rubric ? `Rubric:\n${snap.answerKey.rubric}` : '',
     `Student's typed answer:\n<<<\n${answer.response?.text?.trim() || '(no typed answer)'}\n>>>`,
   ]
@@ -333,7 +405,10 @@ async function buildMessages(answer: ExamAnswer, eq: ExamQuestion, systemPrompt:
   }
   const content: ChatMessage['content'] = images.length
     ? [
-        { type: 'text', text: `${text}\n\nThe student's handwritten answer pages follow in order (${images.length}).` },
+        {
+          type: 'text',
+          text: `${text}\n\nThe student's handwritten answer pages follow in order (${images.length}).`,
+        },
         ...images.map((url) => ({ type: 'image_url' as const, image_url: { url } })),
       ]
     : text;
@@ -350,7 +425,8 @@ export async function runGradingJob(payload: { gradingJobId: number; answerIds: 
   if (!job || job.status === 'completed') return;
   const exam = await examTenantRepo.findById(job.examId);
   const prompt = job.promptVersionId
-    ? ((await promptRepo.findOne({ where: { id: job.promptVersionId } }))?.systemPrompt ?? DEFAULT_GRADING_PROMPT)
+    ? ((await promptRepo.findOne({ where: { id: job.promptVersionId } }))?.systemPrompt ??
+      DEFAULT_GRADING_PROMPT)
     : DEFAULT_GRADING_PROMPT;
   await job.update({ status: 'running', startedAt: new Date() });
   const touched = new Set<number>();
@@ -433,9 +509,18 @@ export async function runGradingJob(payload: { gradingJobId: number; answerIds: 
       });
       failed++;
       // Quota/config problems affect every remaining answer: stop and leave them pending.
-      if (e instanceof AppError && ['AI_QUOTA_EXCEEDED', 'AI_NOT_CONFIGURED', 'MODULE_DISABLED'].includes(e.code)) {
+      if (
+        e instanceof AppError &&
+        ['AI_QUOTA_EXCEEDED', 'AI_NOT_CONFIGURED', 'MODULE_DISABLED'].includes(e.code)
+      ) {
         processed++;
-        await job.update({ processed, failed, status: 'failed', error: e.message.slice(0, 1000), finishedAt: new Date() });
+        await job.update({
+          processed,
+          failed,
+          status: 'failed',
+          error: e.message.slice(0, 1000),
+          finishedAt: new Date(),
+        });
         for (const id of touched) await recomputeAttempt(id);
         logger.warn({ gradingJobId: job.id, code: e.code }, 'AI grading stopped');
         return;
@@ -450,7 +535,12 @@ export async function runGradingJob(payload: { gradingJobId: number; answerIds: 
     finishedAt: new Date(),
     error: failed ? `${failed} answer(s) could not be graded; they remain pending` : null,
   });
-  await audit({ action: 'exam.ai_grading_completed', entityType: 'grading_job', entityId: job.id, metadata: { examId: exam.id, processed, failed } });
+  await audit({
+    action: 'exam.ai_grading_completed',
+    entityType: 'grading_job',
+    entityId: job.id,
+    metadata: { examId: exam.id, processed, failed },
+  });
 }
 
 /** Raw AI history of one answer (for audit/review). */

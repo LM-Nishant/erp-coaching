@@ -10,7 +10,10 @@ export interface ScoringRule {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-export function isAnswered(snapshot: Pick<QuestionSnapshot, 'type'>, r: AnswerResponse | null | undefined): boolean {
+export function isAnswered(
+  snapshot: Pick<QuestionSnapshot, 'type'>,
+  r: AnswerResponse | null | undefined,
+): boolean {
   if (!r) return false;
   switch (snapshot.type) {
     case 'single':
@@ -54,7 +57,10 @@ export function scoreObjective(
       const ok =
         typeof key.value === 'number'
           ? Math.abs(v - key.value) <= (key.tolerance ?? 0) + 1e-9
-          : typeof key.min === 'number' && typeof key.max === 'number' && v >= key.min - 1e-9 && v <= key.max + 1e-9;
+          : typeof key.min === 'number' &&
+            typeof key.max === 'number' &&
+            v >= key.min - 1e-9 &&
+            v <= key.max + 1e-9;
       return ok ? right : wrong;
     }
     case 'multiple': {

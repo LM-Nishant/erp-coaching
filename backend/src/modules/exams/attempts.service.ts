@@ -49,8 +49,10 @@ export const pageRepo = new TenantRepository(ExamAnswerPage, { entity: 'Answer p
 export const evaluationRepo = new TenantRepository(ExamEvaluation, { entity: 'Evaluation' });
 export const correctionRepo = new TenantRepository(ExamResultCorrection, { entity: 'Correction' });
 
-const instituteFiles = (ids: number[]) =>
-  ids.length ? FileObject.findAll({ where: { instituteId: requireTenantContext().instituteId, id: ids } }) : Promise.resolve([]);
+export const instituteFiles = (ids: number[]) =>
+  ids.length
+    ? FileObject.findAll({ where: { instituteId: requireTenantContext().instituteId, id: ids } })
+    : Promise.resolve([]);
 
 // ---------------------------------------------------------------- student exam list
 
@@ -78,8 +80,20 @@ export async function listMyExams(): Promise<StudentExamListItem[]> {
 // ---------------------------------------------------------------- start / resume
 
 async function orderedExamQuestions(examId: number) {
-  const sections = await sectionRepo.findAll({ where: { examId }, order: [['sortOrder', 'ASC'], ['id', 'ASC']] });
-  const eqs = await examQuestionRepo.findAll({ where: { examId }, order: [['sortOrder', 'ASC'], ['id', 'ASC']] });
+  const sections = await sectionRepo.findAll({
+    where: { examId },
+    order: [
+      ['sortOrder', 'ASC'],
+      ['id', 'ASC'],
+    ],
+  });
+  const eqs = await examQuestionRepo.findAll({
+    where: { examId },
+    order: [
+      ['sortOrder', 'ASC'],
+      ['id', 'ASC'],
+    ],
+  });
   return { sections, eqs };
 }
 
@@ -135,8 +149,17 @@ export async function startAttempt(examId: number): Promise<AttemptSessionDto> {
     }
     throw err;
   }
-  await enqueueJob(AUTO_SUBMIT_JOB, { attemptId: attempt.id }, { runAt: new Date(deadlineAt.getTime() + GRACE_MS) });
-  await audit({ action: 'exam.attempt_started', entityType: 'exam_attempt', entityId: attempt.id, metadata: { examId } });
+  await enqueueJob(
+    AUTO_SUBMIT_JOB,
+    { attemptId: attempt.id },
+    { runAt: new Date(deadlineAt.getTime() + GRACE_MS) },
+  );
+  await audit({
+    action: 'exam.attempt_started',
+    entityType: 'exam_attempt',
+    entityId: attempt.id,
+    metadata: { examId },
+  });
   return sessionDto(attempt, exam);
 }
 
@@ -181,7 +204,11 @@ async function sessionDto(a: ExamAttempt, exam: Exam): Promise<AttemptSessionDto
         sectionId: q.sectionId,
         type: q.snapshot.type,
         text: q.snapshot.text,
-        options: opts.map((o) => ({ key: o.key, text: o.text, imageUrl: o.imageFileId ? url(o.imageFileId) : null })),
+        options: opts.map((o) => ({
+          key: o.key,
+          text: o.text,
+          imageUrl: o.imageFileId ? url(o.imageFileId) : null,
+        })),
         assets: q.snapshot.assetFileIds.map((id) => ({ id, url: url(id) ?? '' })),
         marks: q.marks,
         negativeMarks: q.negativeMarks,
@@ -226,7 +253,8 @@ function validateResponse(eq: ExamQuestion, r: AnswerResponse | null | undefined
     return { options: chosen };
   }
   if (t === 'numerical') {
-    if (r.value != null && (typeof r.value !== 'number' || !Number.isFinite(r.value))) throw BadRequest('Enter a number');
+    if (r.value != null && (typeof r.value !== 'number' || !Number.isFinite(r.value)))
+      throw BadRequest('Enter a number');
     return { value: r.value ?? null };
   }
   if (t === 'true_false') {
@@ -258,14 +286,26 @@ async function upsertAnswer(attemptId: number, examQuestionId: number) {
   const found = await answerRepo.findOne({ where: { attemptId, examQuestionId } });
   if (found) return found;
   try {
-    return await answerRepo.create({ attemptId, examQuestionId, response: null, autoScore: null, isCorrect: null, savedAt: null });
+    return await answerRepo.create({
+      attemptId,
+      examQuestionId,
+      response: null,
+      autoScore: null,
+      isCorrect: null,
+      savedAt: null,
+    });
   } catch (err) {
-    if (err instanceof UniqueConstraintError) return (await answerRepo.findOne({ where: { attemptId, examQuestionId } }))!;
+    if (err instanceof UniqueConstraintError)
+      return (await answerRepo.findOne({ where: { attemptId, examQuestionId } }))!;
     throw err;
   }
 }
 
-export async function saveAnswer(attemptId: number, examQuestionId: number, input: SaveAnswerInput): Promise<SaveAnswerResult> {
+export async function saveAnswer(
+  attemptId: number,
+  examQuestionId: number,
+  input: SaveAnswerInput,
+): Promise<SaveAnswerResult> {
   const { attempt } = await writableAttempt(attemptId);
   const eq = await examQuestionOf(attempt, examQuestionId);
   const answer = await upsertAnswer(attempt.id, eq.id);
@@ -274,10 +314,15 @@ export async function saveAnswer(attemptId: number, examQuestionId: number, inpu
   if (input.response !== undefined) changes.response = validateResponse(eq, input.response);
   if (input.markedForReview !== undefined) changes.markedForReview = input.markedForReview;
   if (input.visited !== undefined) changes.visited = input.visited;
-  if (input.timeSpentSeconds !== undefined) changes.timeSpentSeconds = Math.max(answer.timeSpentSeconds, input.timeSpentSeconds);
+  if (input.timeSpentSeconds !== undefined)
+    changes.timeSpentSeconds = Math.max(answer.timeSpentSeconds, input.timeSpentSeconds);
   await answer.update(changes);
   await attempt.update({ lastSeenAt: now });
-  return { savedAt: now.toISOString(), deadlineAt: attempt.deadlineAt.toISOString(), serverNow: now.toISOString() };
+  return {
+    savedAt: now.toISOString(),
+    deadlineAt: attempt.deadlineAt.toISOString(),
+    serverNow: now.toISOString(),
+  };
 }
 
 // ---------------------------------------------------------------- handwritten pages
@@ -285,18 +330,31 @@ export async function saveAnswer(attemptId: number, examQuestionId: number, inpu
 async function descriptiveAnswer(attemptId: number, examQuestionId: number) {
   const { attempt } = await writableAttempt(attemptId);
   const eq = await examQuestionOf(attempt, examQuestionId);
-  if (eq.snapshot.type !== 'descriptive') throw BadRequest('Pages can only be attached to descriptive answers');
+  if (eq.snapshot.type !== 'descriptive')
+    throw BadRequest('Pages can only be attached to descriptive answers');
   return { attempt, answer: await upsertAnswer(attempt.id, eq.id) };
 }
 
 async function listPages(answerId: number) {
-  const pages = await pageRepo.findAll({ where: { answerId }, include: [{ model: FileObject, as: 'file' }], order: [['pageNo', 'ASC'], ['id', 'ASC']] });
+  const pages = await pageRepo.findAll({
+    where: { answerId },
+    include: [{ model: FileObject, as: 'file' }],
+    order: [
+      ['pageNo', 'ASC'],
+      ['id', 'ASC'],
+    ],
+  });
   return pages.map(pageDto);
 }
 
-export async function addPage(attemptId: number, examQuestionId: number, file: Express.Multer.File): Promise<AnswerPageDto[]> {
+export async function addPage(
+  attemptId: number,
+  examQuestionId: number,
+  file: Express.Multer.File,
+): Promise<AnswerPageDto[]> {
   const { attempt, answer } = await descriptiveAnswer(attemptId, examQuestionId);
-  if (!/^image\/|^application\/pdf$/.test(file.mimetype)) throw BadRequest('Upload a photo (image) or PDF of the page');
+  if (!/^image\/|^application\/pdf$/.test(file.mimetype))
+    throw BadRequest('Upload a photo (image) or PDF of the page');
   const count = await pageRepo.count({ answerId: answer.id });
   if (count >= MAX_PAGES) throw BadRequest(`At most ${MAX_PAGES} pages per answer`);
   const saved = await saveUploadedFile({
@@ -312,7 +370,11 @@ export async function addPage(attemptId: number, examQuestionId: number, file: E
   return listPages(answer.id);
 }
 
-export async function reorderPages(attemptId: number, examQuestionId: number, pageIds: number[]): Promise<AnswerPageDto[]> {
+export async function reorderPages(
+  attemptId: number,
+  examQuestionId: number,
+  pageIds: number[],
+): Promise<AnswerPageDto[]> {
   const { answer } = await descriptiveAnswer(attemptId, examQuestionId);
   const pages = await pageRepo.findAll({ where: { answerId: answer.id } });
   if (pages.length !== pageIds.length || pages.some((p) => !pageIds.includes(p.id)))
@@ -321,14 +383,23 @@ export async function reorderPages(attemptId: number, examQuestionId: number, pa
   return listPages(answer.id);
 }
 
-export async function deletePage(attemptId: number, examQuestionId: number, pageId: number): Promise<AnswerPageDto[]> {
+export async function deletePage(
+  attemptId: number,
+  examQuestionId: number,
+  pageId: number,
+): Promise<AnswerPageDto[]> {
   const { answer } = await descriptiveAnswer(attemptId, examQuestionId);
-  const page = await pageRepo.findOne({ where: { id: pageId, answerId: answer.id }, include: [{ model: FileObject, as: 'file' }] });
+  const page = await pageRepo.findOne({
+    where: { id: pageId, answerId: answer.id },
+    include: [{ model: FileObject, as: 'file' }],
+  });
   if (!page) throw NotFound('Page');
   await page.destroy();
   if (page.file) {
     await page.file.destroy();
-    await getStorage().delete(page.file.storageKey).catch((err) => logger.warn({ err }, 'page file delete failed'));
+    await getStorage()
+      .delete(page.file.storageKey)
+      .catch((err) => logger.warn({ err }, 'page file delete failed'));
   }
   const rest = await pageRepo.findAll({ where: { answerId: answer.id }, order: [['pageNo', 'ASC']] });
   for (const [i, p] of rest.entries()) if (p.pageNo !== i + 1) await p.update({ pageNo: i + 1 });
@@ -339,7 +410,8 @@ export async function deletePage(attemptId: number, examQuestionId: number, page
 
 export async function submitAttempt(attemptId: number) {
   const attempt = await ownAttempt(attemptId);
-  if (attempt.status !== 'in_progress') throw Conflict('This attempt has already been submitted', 'ATTEMPT_CLOSED');
+  if (attempt.status !== 'in_progress')
+    throw Conflict('This attempt has already been submitted', 'ATTEMPT_CLOSED');
   const exam = await examTenantRepo.findById(attempt.examId);
   const late = Date.now() > attempt.deadlineAt.getTime() + GRACE_MS;
   await finalizeAttempt(attempt, exam, late ? 'auto_submitted' : 'submitted');
@@ -361,7 +433,11 @@ export async function runAutoSubmit(payload: { attemptId: number }) {
   const exam = await examTenantRepo.findById(a.examId);
   if (Date.now() < a.deadlineAt.getTime()) {
     // Deadline was extended (window end moved); re-check later.
-    await enqueueJob(AUTO_SUBMIT_JOB, { attemptId: a.id }, { runAt: new Date(a.deadlineAt.getTime() + GRACE_MS) });
+    await enqueueJob(
+      AUTO_SUBMIT_JOB,
+      { attemptId: a.id },
+      { runAt: new Date(a.deadlineAt.getTime() + GRACE_MS) },
+    );
     return;
   }
   await finalizeAttempt(a, exam, 'auto_submitted');
@@ -385,7 +461,10 @@ export async function finalizeAttempt(a: ExamAttempt, exam: Exam, status: 'submi
   );
   if (!flipped) return;
   const eqs = await examQuestionRepo.findAll({ where: { examId: a.examId } });
-  const answers = await answerRepo.findAll({ where: { attemptId: a.id }, include: [{ model: ExamAnswerPage, as: 'pages' }] });
+  const answers = await answerRepo.findAll({
+    where: { attemptId: a.id },
+    include: [{ model: ExamAnswerPage, as: 'pages' }],
+  });
   const byEq = new Map(answers.map((x) => [x.examQuestionId, x]));
   const toGrade: number[] = [];
   for (const eq of eqs) {
@@ -399,7 +478,18 @@ export async function finalizeAttempt(a: ExamAttempt, exam: Exam, status: 'submi
       }
       const [ev] = await ExamEvaluation.findOrCreate({
         where: { instituteId: a.instituteId, answerId: ans.id },
-        defaults: { instituteId: a.instituteId, answerId: ans.id, aiResultId: null, aiMarks: null, aiFeedback: null, teacherMarks: null, teacherFeedback: null, evaluatedByUserId: null, evaluatedAt: null, finalMarks: null },
+        defaults: {
+          instituteId: a.instituteId,
+          answerId: ans.id,
+          aiResultId: null,
+          aiMarks: null,
+          aiFeedback: null,
+          teacherMarks: null,
+          teacherFeedback: null,
+          evaluatedByUserId: null,
+          evaluatedAt: null,
+          finalMarks: null,
+        },
       });
       toGrade.push(ev.answerId);
       continue;
@@ -408,7 +498,12 @@ export async function finalizeAttempt(a: ExamAttempt, exam: Exam, status: 'submi
     if (ans) await ans.update({ autoScore: result.score, isCorrect: result.isCorrect });
   }
   await recomputeAttempt(a.id);
-  await audit({ action: `exam.attempt_${status}`, entityType: 'exam_attempt', entityId: a.id, metadata: { examId: a.examId } });
+  await audit({
+    action: `exam.attempt_${status}`,
+    entityType: 'exam_attempt',
+    entityId: a.id,
+    metadata: { examId: a.examId },
+  });
   if (toGrade.length && exam.evaluationMode !== 'manual' && onAttemptFinalized) {
     await onAttemptFinalized(exam, toGrade).catch((err) =>
       logger.warn({ err, attemptId: a.id }, 'Could not queue AI grading; answers stay pending'),
@@ -420,8 +515,14 @@ export async function finalizeAttempt(a: ExamAttempt, exam: Exam, status: 'submi
 export async function effectiveMarks(answerIds: number[]): Promise<Map<number, number | null>> {
   const out = new Map<number, number | null>();
   if (!answerIds.length) return out;
-  const answers = await answerRepo.findAll({ where: { id: answerIds }, include: [{ model: ExamEvaluation, as: 'evaluation' }] });
-  const corrections = await correctionRepo.findAll({ where: { answerId: answerIds }, order: [['id', 'ASC']] });
+  const answers = await answerRepo.findAll({
+    where: { id: answerIds },
+    include: [{ model: ExamEvaluation, as: 'evaluation' }],
+  });
+  const corrections = await correctionRepo.findAll({
+    where: { answerId: answerIds },
+    order: [['id', 'ASC']],
+  });
   const latest = new Map(corrections.map((c) => [c.answerId, c.afterMarks]));
   for (const a of answers) {
     if (latest.has(a.id)) out.set(a.id, latest.get(a.id)!);
@@ -462,6 +563,12 @@ export async function recomputeAttempt(attemptId: number) {
 
 /** Auto-submits every overdue attempt of an exam (used before evaluation/publishing). */
 export async function closeOverdueAttempts(exam: Exam) {
-  const open = await attemptRepo.findAll({ where: { examId: exam.id, status: 'in_progress', deadlineAt: { [Op.lt]: new Date(Date.now() - GRACE_MS) } } });
+  const open = await attemptRepo.findAll({
+    where: {
+      examId: exam.id,
+      status: 'in_progress',
+      deadlineAt: { [Op.lt]: new Date(Date.now() - GRACE_MS) },
+    },
+  });
   for (const a of open) await finalizeAttempt(a, exam, 'auto_submitted');
 }

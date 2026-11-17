@@ -18,9 +18,9 @@ const PNG = Buffer.from(
   'base64',
 );
 
-const BYPASS = { tenantBypass: true } as never;
+const BYPASS = { tenantBypass: true } as object;
 let seq = 0;
-const mobile = () => `934${String(seq++).padStart(7, '0')}`;
+const mobile = () => `938${String(seq++).padStart(7, '0')}`;
 
 async function otpLogin(m: string) {
   const app = await getApp();
@@ -45,7 +45,16 @@ function aiReply(content: unknown) {
 }
 
 describe('scoring helpers', () => {
-  const base = { text: 'q', options: [], explanation: null, assetFileIds: [], chapterId: null, chapterName: null, topicId: null, topicName: null };
+  const base = {
+    text: 'q',
+    options: [],
+    explanation: null,
+    assetFileIds: [],
+    chapterId: null,
+    chapterName: null,
+    topicId: null,
+    topicName: null,
+  };
   const rule = { marks: 4, negativeMarks: 1, partialMarking: true };
 
   it('scores objective types with negative and partial marking', () => {
@@ -111,16 +120,25 @@ describe('exams module', () => {
   beforeAll(async () => {
     app = await getApp();
     [admin, branchAdmin, teacher, s1, zenith, zenithStudent, sa] = await Promise.all(
-      [USERS.apexAdmin, USERS.apexBranchAdmin, USERS.apexTeacher, STUDENT, USERS.zenithAdmin, ZENITH_STUDENT, USERS.superAdmin].map(
-        async (u) => (await login(u)).accessToken,
-      ),
+      [
+        USERS.apexAdmin,
+        USERS.apexBranchAdmin,
+        USERS.apexTeacher,
+        STUDENT,
+        USERS.zenithAdmin,
+        ZENITH_STUDENT,
+        USERS.superAdmin,
+      ].map(async (u) => (await login(u)).accessToken),
     );
     s1Id = (await User.findOne({ where: { mobile: STUDENT.mobile } }))!.id;
     const branchId = (await Branch.findOne({ where: { instituteId: 1 }, order: [['id', 'ASC']] }))!.id;
 
     // Second student with a linked parent.
     const sm = mobile();
-    const st = await request(app).post('/api/students').set(bearer(admin)).send({ name: 'Exam Kid Two', mobile: sm });
+    const st = await request(app)
+      .post('/api/students')
+      .set(bearer(admin))
+      .send({ name: 'Exam Kid Two', mobile: sm });
     expect(st.status).toBe(201);
     s2Id = st.body.userId;
     expect(s2Id).toBeTruthy();
@@ -133,9 +151,19 @@ describe('exams module', () => {
     [s2, parent] = [await otpLogin(sm), await otpLogin(pm)];
 
     // Academics: subject → chapter/topic, course, batch with both students.
-    const subj = await request(app).post('/api/academics/subjects').set(bearer(admin)).send({ name: 'Exam Physics', code: 'EXPHY' });
-    chapterId = (await request(app).post('/api/academics/chapters').set(bearer(admin)).send({ subjectId: subj.body.id, name: 'Mechanics' })).body.id;
-    const topicId = (await request(app).post('/api/academics/topics').set(bearer(admin)).send({ chapterId, name: 'Gravity' })).body.id;
+    const subj = await request(app)
+      .post('/api/academics/subjects')
+      .set(bearer(admin))
+      .send({ name: 'Exam Physics', code: 'EXPHY' });
+    chapterId = (
+      await request(app)
+        .post('/api/academics/chapters')
+        .set(bearer(admin))
+        .send({ subjectId: subj.body.id, name: 'Mechanics' })
+    ).body.id;
+    const topicId = (
+      await request(app).post('/api/academics/topics').set(bearer(admin)).send({ chapterId, name: 'Gravity' })
+    ).body.id;
     const session = await request(app)
       .post('/api/academics/sessions')
       .set(bearer(admin))
@@ -157,11 +185,17 @@ describe('exams module', () => {
     });
     expect(batch.status).toBe(201);
     batchId = batch.body.id;
-    const enrol = await request(app).post(`/api/academics/batches/${batchId}/students`).set(bearer(admin)).send({ studentUserIds: [s1Id, s2Id] });
+    const enrol = await request(app)
+      .post(`/api/academics/batches/${batchId}/students`)
+      .set(bearer(admin))
+      .send({ studentUserIds: [s1Id, s2Id] });
     expect(enrol.status).toBe(201);
 
     // Question bank.
-    const bank = await request(app).post('/api/question-bank/banks').set(bearer(teacher)).send({ name: 'Exam bank', visibility: 'shared' });
+    const bank = await request(app)
+      .post('/api/question-bank/banks')
+      .set(bearer(teacher))
+      .send({ name: 'Exam bank', visibility: 'shared' });
     const add = async (body: Record<string, unknown>) => {
       const r = await request(app)
         .post(`/api/question-bank/banks/${bank.body.id}/questions`)
@@ -171,14 +205,31 @@ describe('exams module', () => {
       return r.body.id as number;
     };
     const opts = ['A', 'B', 'C', 'D'].map((k) => ({ key: k, text: `Option ${k}` }));
-    q.single = await add({ type: 'single', text: 'g on Earth?', options: opts, answerKey: { options: ['A'] } });
-    q.multiple = await add({ type: 'multiple', text: 'Vectors?', options: opts, answerKey: { options: ['A', 'B'] } });
-    q.numerical = await add({ type: 'numerical', text: 'g in m/s²', answerKey: { value: 9.8, tolerance: 0.1 } });
+    q.single = await add({
+      type: 'single',
+      text: 'g on Earth?',
+      options: opts,
+      answerKey: { options: ['A'] },
+    });
+    q.multiple = await add({
+      type: 'multiple',
+      text: 'Vectors?',
+      options: opts,
+      answerKey: { options: ['A', 'B'] },
+    });
+    q.numerical = await add({
+      type: 'numerical',
+      text: 'g in m/s²',
+      answerKey: { value: 9.8, tolerance: 0.1 },
+    });
     q.tf = await add({ type: 'true_false', text: 'Mass is a vector', answerKey: { value: false } });
     q.desc = await add({
       type: 'descriptive',
       text: 'Derive v² = u² + 2as',
-      answerKey: { modelAnswer: 'Using v = u + at and s = ut + at²/2 …', rubric: '5 marks derivation, 5 marks final form' },
+      answerKey: {
+        modelAnswer: 'Using v = u + at and s = ut + at²/2 …',
+        rubric: '5 marks derivation, 5 marks final form',
+      },
     });
   });
 
@@ -207,11 +258,19 @@ describe('exams module', () => {
         instituteId: 2,
       });
     expect(created.status).toBe(201);
-    expect(created.body).toMatchObject({ status: 'draft', phase: 'draft', evaluationMode: 'manual', batchId });
+    expect(created.body).toMatchObject({
+      status: 'draft',
+      phase: 'draft',
+      evaluationMode: 'manual',
+      batchId,
+    });
     examId = created.body.id;
     sectionA = created.body.sections[0].id;
 
-    const secB = await request(app).post(`/api/exams/${examId}/sections`).set(bearer(teacher)).send({ title: 'Section B (theory)' });
+    const secB = await request(app)
+      .post(`/api/exams/${examId}/sections`)
+      .set(bearer(teacher))
+      .send({ title: 'Section B (theory)' });
     expect(secB.status).toBe(201);
 
     const scheduleEmpty = await request(app).post(`/api/exams/${examId}/schedule`).set(bearer(teacher));
@@ -228,9 +287,15 @@ describe('exams module', () => {
     expect(detail.status).toBe(201);
     expect(detail.body.totalMarks).toBe(26);
     for (const x of detail.body.questions) eq[x.questionId] = x.id;
-    expect(detail.body.questions.find((x: { questionId: number }) => x.questionId === q.single).question.answerKey.options).toEqual(['A']);
+    expect(
+      detail.body.questions.find((x: { questionId: number }) => x.questionId === q.single).question.answerKey
+        .options,
+    ).toEqual(['A']);
 
-    const ai = await request(app).patch(`/api/exams/${examId}`).set(bearer(teacher)).send({ evaluationMode: 'ai_only' });
+    const ai = await request(app)
+      .patch(`/api/exams/${examId}`)
+      .set(bearer(teacher))
+      .send({ evaluationMode: 'ai_only' });
     expect(ai.status).toBe(403);
 
     const scheduled = await request(app).post(`/api/exams/${examId}/schedule`).set(bearer(teacher));
@@ -253,8 +318,12 @@ describe('exams module', () => {
     expect((await request(app).post(`/api/exams/my/${examId}/start`).set(bearer(parent))).status).toBe(403);
     expect((await request(app).post(`/api/exams/my/${examId}/start`).set(bearer(teacher))).status).toBe(403);
     expect((await request(app).get(`/api/exams/${examId}`).set(bearer(zenith))).status).toBe(404);
-    expect((await request(app).patch(`/api/exams/${examId}`).set(bearer(zenith)).send({ title: 'x' })).status).toBe(404);
-    expect((await request(app).post(`/api/exams/my/${examId}/start`).set(bearer(zenithStudent))).status).toBe(404);
+    expect(
+      (await request(app).patch(`/api/exams/${examId}`).set(bearer(zenith)).send({ title: 'x' })).status,
+    ).toBe(404);
+    expect((await request(app).post(`/api/exams/my/${examId}/start`).set(bearer(zenithStudent))).status).toBe(
+      404,
+    );
     const zl = await request(app).get('/api/exams').set(bearer(zenith));
     expect(zl.body.items.map((e: { id: number }) => e.id)).not.toContain(examId);
   });
@@ -281,16 +350,23 @@ describe('exams module', () => {
       request(app).put(`/api/exams/my/attempts/${att}/answers/${eqId}`).set(bearer(tok)).send(body);
     expect((await save(eq[q.single], { response: { options: ['A'] } })).status).toBe(200);
     expect((await save(eq[q.single], { response: { options: ['Z'] } })).status).toBe(400);
-    expect((await save(eq[q.multiple], { response: { options: ['A'] }, markedForReview: true })).status).toBe(200);
+    expect((await save(eq[q.multiple], { response: { options: ['A'] }, markedForReview: true })).status).toBe(
+      200,
+    );
     expect((await save(eq[q.numerical], { response: { value: 10.5 } })).status).toBe(200);
     expect((await save(eq[q.tf], { visited: true })).status).toBe(200);
-    expect((await save(eq[q.desc], { response: { text: 'v = u + at, so v² = u² + 2as.' }, timeSpentSeconds: 120 })).status).toBe(200);
+    expect(
+      (await save(eq[q.desc], { response: { text: 'v = u + at, so v² = u² + 2as.' }, timeSpentSeconds: 120 }))
+        .status,
+    ).toBe(200);
     // Another student cannot write to this attempt.
     expect((await save(eq[q.single], { response: { options: ['B'] } }, s2)).status).toBe(404);
 
     const resumed = await request(app).get(`/api/exams/my/attempts/${attempt1}`).set(bearer(s1));
     expect(resumed.status).toBe(200);
-    const saved = resumed.body.answers.find((a: { examQuestionId: number }) => a.examQuestionId === eq[q.multiple]);
+    const saved = resumed.body.answers.find(
+      (a: { examQuestionId: number }) => a.examQuestionId === eq[q.multiple],
+    );
     expect(saved).toMatchObject({ response: { options: ['A'] }, markedForReview: true });
 
     const submit = await request(app).post(`/api/exams/my/attempts/${attempt1}/submit`).set(bearer(s1));
@@ -309,7 +385,10 @@ describe('exams module', () => {
     attempt2 = start.body.attemptId;
     const base = `/api/exams/my/attempts/${attempt2}/answers/${eq[q.desc]}/pages`;
     const up = (name: string) =>
-      request(app).post(base).set(bearer(s2)).attach('file', PNG, { filename: name, contentType: 'image/png' });
+      request(app)
+        .post(base)
+        .set(bearer(s2))
+        .attach('file', PNG, { filename: name, contentType: 'image/png' });
     expect((await up('p1.png')).status).toBe(201);
     expect((await up('p2.png')).status).toBe(201);
     const third = await up('p3.png');
@@ -323,7 +402,10 @@ describe('exams module', () => {
       .attach('file', PNG, { filename: 'x.png', contentType: 'image/png' });
     expect(notDesc.status).toBe(400);
 
-    const reordered = await request(app).put(`${base}/order`).set(bearer(s2)).send({ pageIds: [p3, p1, p2] });
+    const reordered = await request(app)
+      .put(`${base}/order`)
+      .set(bearer(s2))
+      .send({ pageIds: [p3, p1, p2] });
     expect(reordered.body.map((p: { id: number }) => p.id)).toEqual([p3, p1, p2]);
     const del = await request(app).delete(`${base}/${p1}`).set(bearer(s2));
     expect(del.body.map((p: { id: number; pageNo: number }) => [p.id, p.pageNo])).toEqual([
@@ -331,16 +413,28 @@ describe('exams module', () => {
       [p2, 2],
     ]);
 
-    await request(app).put(`/api/exams/my/attempts/${attempt2}/answers/${eq[q.single]}`).set(bearer(s2)).send({ response: { options: ['C'] } });
+    await request(app)
+      .put(`/api/exams/my/attempts/${attempt2}/answers/${eq[q.single]}`)
+      .set(bearer(s2))
+      .send({ response: { options: ['C'] } });
 
     // Time runs out: the queued auto-submit job closes the attempt.
-    await ExamAttempt.update({ deadlineAt: new Date(Date.now() - 60_000) }, { where: { id: attempt2 }, ...BYPASS });
-    await Job.update({ runAt: new Date(Date.now() - 1000) }, { where: { name: 'exams.auto-submit', status: 'pending', payload: { attemptId: attempt2 } } as never });
+    await ExamAttempt.update(
+      { deadlineAt: new Date(Date.now() - 60_000) },
+      { where: { id: attempt2 }, ...BYPASS },
+    );
+    await Job.update(
+      { runAt: new Date(Date.now() - 1000) },
+      { where: { name: 'exams.auto-submit', status: 'pending', payload: { attemptId: attempt2 } } as never },
+    );
     await processDueJobs();
     const a = await ExamAttempt.findByPk(attempt2, BYPASS);
     expect(a!.status).toBe('auto_submitted');
     expect(a).toMatchObject({ objectiveScore: -1, pendingEvaluations: 1 });
-    const late = await request(app).put(`/api/exams/my/attempts/${attempt2}/answers/${eq[q.tf]}`).set(bearer(s2)).send({ response: { value: false } });
+    const late = await request(app)
+      .put(`/api/exams/my/attempts/${attempt2}/answers/${eq[q.tf]}`)
+      .set(bearer(s2))
+      .send({ response: { value: false } });
     expect(late.status).toBe(409);
   });
 
@@ -350,19 +444,38 @@ describe('exams module', () => {
     expect(evals.body).toHaveLength(2);
     expect((await request(app).get(`/api/exams/${examId}/evaluations`).set(bearer(s1))).status).toBe(403);
     const typed = evals.body.find((e: { attemptId: number }) => e.attemptId === attempt1);
-    expect(typed).toMatchObject({ status: 'pending', maxMarks: 10, responseText: expect.stringContaining('v²'), rubric: expect.any(String) });
+    expect(typed).toMatchObject({
+      status: 'pending',
+      maxMarks: 10,
+      responseText: expect.stringContaining('v²'),
+      rubric: expect.any(String),
+    });
     const scanned = evals.body.find((e: { attemptId: number }) => e.attemptId === attempt2);
     expect(scanned.pages).toHaveLength(2);
 
-    expect((await request(app).post(`/api/exams/${examId}/publish`).set(bearer(branchAdmin))).body.error.code).toBe('EXAM_NOT_CLOSED');
+    expect(
+      (await request(app).post(`/api/exams/${examId}/publish`).set(bearer(branchAdmin))).body.error.code,
+    ).toBe('EXAM_NOT_CLOSED');
 
-    expect((await request(app).put(`/api/exams/${examId}/evaluations/${typed.answerId}`).set(bearer(teacher)).send({ marks: 11 })).status).toBe(400);
+    expect(
+      (
+        await request(app)
+          .put(`/api/exams/${examId}/evaluations/${typed.answerId}`)
+          .set(bearer(teacher))
+          .send({ marks: 11 })
+      ).status,
+    ).toBe(400);
     const marked = await request(app)
       .put(`/api/exams/${examId}/evaluations/${typed.answerId}`)
       .set(bearer(teacher))
       .send({ marks: 8, feedback: 'Good derivation; units missing.' });
     expect(marked.status).toBe(200);
-    expect(marked.body).toMatchObject({ status: 'finalized', teacherMarks: 8, finalMarks: 8, evaluatedByName: expect.any(String) });
+    expect(marked.body).toMatchObject({
+      status: 'finalized',
+      teacherMarks: 8,
+      finalMarks: 8,
+      evaluatedByName: expect.any(String),
+    });
     expect((await ExamAttempt.findByPk(attempt1, BYPASS))!.totalScore).toBe(13);
 
     await Exam.update({ endAt: new Date(Date.now() - 1000) }, { where: { id: examId }, ...BYPASS });
@@ -372,8 +485,13 @@ describe('exams module', () => {
   });
 
   it('grades handwritten answers with AI (vision) for teacher review, keeping the raw output', async () => {
-    expect((await request(app).post(`/api/exams/${examId}/grading-jobs`).set(bearer(teacher))).status).toBe(400); // manual mode
-    const mode = await request(app).patch(`/api/exams/${examId}`).set(bearer(teacher)).send({ evaluationMode: 'ai_assist' });
+    expect((await request(app).post(`/api/exams/${examId}/grading-jobs`).set(bearer(teacher))).status).toBe(
+      400,
+    ); // manual mode
+    const mode = await request(app)
+      .patch(`/api/exams/${examId}`)
+      .set(bearer(teacher))
+      .send({ evaluationMode: 'ai_assist' });
     expect(mode.status).toBe(200);
 
     await request(app).put('/api/admin/ai/settings').set(bearer(sa)).send({
@@ -385,7 +503,9 @@ describe('exams module', () => {
     });
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(aiReply({ marks: 12, feedback: 'Correct approach, final step unclear.', confidence: 0.82 }));
+      .mockResolvedValue(
+        aiReply({ marks: 12, feedback: 'Correct approach, final step unclear.', confidence: 0.82 }),
+      );
 
     const job = await request(app).post(`/api/exams/${examId}/grading-jobs`).set(bearer(teacher));
     expect(job.status).toBe(202);
@@ -403,19 +523,43 @@ describe('exams module', () => {
     const jobs = await request(app).get(`/api/exams/${examId}/grading-jobs`).set(bearer(teacher));
     expect(jobs.body[0]).toMatchObject({ status: 'completed', processed: 1, failed: 0 });
 
-    const evals = await request(app).get(`/api/exams/${examId}/evaluations?status=ai_suggested`).set(bearer(teacher));
+    const evals = await request(app)
+      .get(`/api/exams/${examId}/evaluations?status=ai_suggested`)
+      .set(bearer(teacher));
     expect(evals.body).toHaveLength(1);
     const ev = evals.body[0];
-    expect(ev).toMatchObject({ attemptId: attempt2, aiMarks: 10, aiConfidence: 0.82, teacherMarks: null, finalMarks: null });
+    expect(ev).toMatchObject({
+      attemptId: attempt2,
+      aiMarks: 10,
+      aiConfidence: 0.82,
+      teacherMarks: null,
+      finalMarks: null,
+    });
     // AI suggestions are not final in ai_assist mode.
     expect((await ExamAttempt.findByPk(attempt2, BYPASS))!.pendingEvaluations).toBe(1);
 
-    const history = await request(app).get(`/api/exams/${examId}/evaluations/${ev.answerId}/ai-history`).set(bearer(teacher));
-    expect(history.body[0]).toMatchObject({ status: 'success', usedVision: true, marks: 10, model: 'mock-vision' });
+    const history = await request(app)
+      .get(`/api/exams/${examId}/evaluations/${ev.answerId}/ai-history`)
+      .set(bearer(teacher));
+    expect(history.body[0]).toMatchObject({
+      status: 'success',
+      usedVision: true,
+      marks: 10,
+      model: 'mock-vision',
+    });
     expect(history.body[0].rawOutput).toContain('"marks":12');
 
-    const accepted = await request(app).put(`/api/exams/${examId}/evaluations/${ev.answerId}`).set(bearer(teacher)).send({ acceptAi: true });
-    expect(accepted.body).toMatchObject({ status: 'finalized', teacherMarks: 10, finalMarks: 10, aiMarks: 10, teacherFeedback: 'Correct approach, final step unclear.' });
+    const accepted = await request(app)
+      .put(`/api/exams/${examId}/evaluations/${ev.answerId}`)
+      .set(bearer(teacher))
+      .send({ acceptAi: true });
+    expect(accepted.body).toMatchObject({
+      status: 'finalized',
+      teacherMarks: 10,
+      finalMarks: 10,
+      aiMarks: 10,
+      teacherFeedback: 'Correct approach, final step unclear.',
+    });
     const stored = await ExamEvaluation.findOne({ where: { answerId: ev.answerId }, ...BYPASS });
     expect(stored!.aiResultId).toBe(history.body[0].id);
     expect(await GradingResult.count({ where: { answerId: ev.answerId }, ...BYPASS })).toBe(1);
@@ -423,7 +567,11 @@ describe('exams module', () => {
 
   it('publishes results with rank/percentile and notifies students and guardians', async () => {
     expect((await request(app).post(`/api/exams/${examId}/publish`).set(bearer(teacher))).status).toBe(403);
-    expect((await request(app).get('/api/exams/my/results').set(bearer(s1))).body.map((r: { attemptId: number }) => r.attemptId)).not.toContain(attempt1);
+    expect(
+      (await request(app).get('/api/exams/my/results').set(bearer(s1))).body.map(
+        (r: { attemptId: number }) => r.attemptId,
+      ),
+    ).not.toContain(attempt1);
 
     const pub = await request(app).post(`/api/exams/${examId}/publish`).set(bearer(branchAdmin));
     expect(pub.status).toBe(200);
@@ -433,36 +581,62 @@ describe('exams module', () => {
     const byId = new Map(attempts.body.map((a: { id: number }) => [a.id, a]));
     // s1: 4 + 2 − 1 + 8 = 13; s2: −1 + 10 = 9
     expect(byId.get(attempt1)).toMatchObject({ totalScore: 13, rank: 1, percentile: 100 });
-    expect(byId.get(attempt2)).toMatchObject({ totalScore: 9, rank: 2, percentile: 50, status: 'auto_submitted' });
+    expect(byId.get(attempt2)).toMatchObject({
+      totalScore: 9,
+      rank: 2,
+      percentile: 50,
+      status: 'auto_submitted',
+    });
 
     const s1Inbox = await request(app).get('/api/notifications/inbox').set(bearer(s1));
     expect(JSON.stringify(s1Inbox.body)).toContain('13/26');
     const parentInbox = await request(app).get('/api/notifications/inbox').set(bearer(parent));
     expect(JSON.stringify(parentInbox.body)).toContain('Exam Kid Two');
 
-    expect((await request(app).put(`/api/exams/${examId}/evaluations/1`).set(bearer(teacher)).send({ marks: 1 })).status).toBeGreaterThanOrEqual(400);
+    expect(
+      (await request(app).put(`/api/exams/${examId}/evaluations/1`).set(bearer(teacher)).send({ marks: 1 }))
+        .status,
+    ).toBeGreaterThanOrEqual(400);
   });
 
   it('shows published results to the student and linked parents only, with PDF scorecards', async () => {
     const mine = await request(app).get('/api/exams/my/results').set(bearer(s1));
-    expect(mine.body.find((r: { attemptId: number }) => r.attemptId === attempt1)).toMatchObject({ totalScore: 13, rank: 1 });
+    expect(mine.body.find((r: { attemptId: number }) => r.attemptId === attempt1)).toMatchObject({
+      totalScore: 13,
+      rank: 1,
+    });
     const detail = await request(app).get(`/api/exams/my/results/${attempt1}`).set(bearer(s1));
     expect(detail.status).toBe(200);
     expect(detail.body.passed).toBe(true);
-    const single = detail.body.questions.find((x: { examQuestionId: number }) => x.examQuestionId === eq[q.single]);
+    const single = detail.body.questions.find(
+      (x: { examQuestionId: number }) => x.examQuestionId === eq[q.single],
+    );
     expect(single).toMatchObject({ isCorrect: true, marks: 4, correct: { options: ['A'] } });
-    const desc = detail.body.questions.find((x: { examQuestionId: number }) => x.examQuestionId === eq[q.desc]);
+    const desc = detail.body.questions.find(
+      (x: { examQuestionId: number }) => x.examQuestionId === eq[q.desc],
+    );
     expect(desc).toMatchObject({ marks: 8, feedback: 'Good derivation; units missing.' });
-    expect(detail.body.chapters[0]).toMatchObject({ chapterName: 'Mechanics', topicName: 'Gravity', score: 13, maxScore: 26 });
+    expect(detail.body.chapters[0]).toMatchObject({
+      chapterName: 'Mechanics',
+      topicName: 'Gravity',
+      score: 13,
+      maxScore: 26,
+    });
     expect(detail.body.sections).toHaveLength(2);
 
     expect((await request(app).get(`/api/exams/my/results/${attempt2}`).set(bearer(s1))).status).toBe(404);
     const kids = await request(app).get('/api/exams/children/results').set(bearer(parent));
     expect(kids.body.map((r: { attemptId: number }) => r.attemptId)).toEqual([attempt2]);
     expect(kids.body[0].studentName).toBe('Exam Kid Two');
-    expect((await request(app).get(`/api/exams/children/results/${attempt2}`).set(bearer(parent))).status).toBe(200);
-    expect((await request(app).get(`/api/exams/children/results/${attempt1}`).set(bearer(parent))).status).toBe(404);
-    expect((await request(app).get(`/api/exams/my/results/${attempt1}`).set(bearer(zenithStudent))).status).toBe(404);
+    expect(
+      (await request(app).get(`/api/exams/children/results/${attempt2}`).set(bearer(parent))).status,
+    ).toBe(200);
+    expect(
+      (await request(app).get(`/api/exams/children/results/${attempt1}`).set(bearer(parent))).status,
+    ).toBe(404);
+    expect(
+      (await request(app).get(`/api/exams/my/results/${attempt1}`).set(bearer(zenithStudent))).status,
+    ).toBe(404);
 
     const pdf = await request(app)
       .get(`/api/exams/my/results/${attempt1}/scorecard.pdf`)
@@ -479,29 +653,56 @@ describe('exams module', () => {
     expect(text.startsWith('%PDF-1.4')).toBe(true);
     expect(text).toContain('Physics Unit Test 1');
     expect(text).toContain('%%EOF');
-    expect((await request(app).get(`/api/exams/children/results/${attempt2}/scorecard.pdf`).set(bearer(parent))).status).toBe(200);
-    expect((await request(app).get(`/api/exams/${examId}/attempts/${attempt2}/scorecard.pdf`).set(bearer(teacher))).status).toBe(200);
+    expect(
+      (await request(app).get(`/api/exams/children/results/${attempt2}/scorecard.pdf`).set(bearer(parent)))
+        .status,
+    ).toBe(200);
+    expect(
+      (await request(app).get(`/api/exams/${examId}/attempts/${attempt2}/scorecard.pdf`).set(bearer(teacher)))
+        .status,
+    ).toBe(200);
   });
 
   it('allows authorised result corrections with audit and re-ranks', async () => {
     const staff = await request(app).get(`/api/exams/${examId}/attempts/${attempt2}`).set(bearer(teacher));
     expect(staff.status).toBe(200);
-    const singleAnswer = await request(app).get(`/api/exams/${examId}/evaluations?attemptId=${attempt2}`).set(bearer(teacher));
+    const singleAnswer = await request(app)
+      .get(`/api/exams/${examId}/evaluations?attemptId=${attempt2}`)
+      .set(bearer(teacher));
     expect(singleAnswer.body).toHaveLength(1);
     const { ExamAnswer } = await import('../src/modules/exams/models');
-    const wrong = await ExamAnswer.findOne({ where: { attemptId: attempt2, examQuestionId: eq[q.single] }, ...BYPASS });
+    const wrong = await ExamAnswer.findOne({
+      where: { attemptId: attempt2, examQuestionId: eq[q.single] },
+      ...BYPASS,
+    });
 
     const body = { answerId: wrong!.id, marks: 4, reason: 'Option C accepted after review (ambiguous key)' };
-    expect((await request(app).post(`/api/exams/${examId}/corrections`).set(bearer(teacher)).send(body)).status).toBe(403);
-    expect((await request(app).post(`/api/exams/${examId}/corrections`).set(bearer(branchAdmin)).send({ ...body, marks: 5 })).status).toBe(400);
-    expect((await request(app).post(`/api/exams/${examId}/corrections`).set(bearer(zenith)).send(body)).status).toBe(404);
-    const fixed = await request(app).post(`/api/exams/${examId}/corrections`).set(bearer(branchAdmin)).send(body);
+    expect(
+      (await request(app).post(`/api/exams/${examId}/corrections`).set(bearer(teacher)).send(body)).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(app)
+          .post(`/api/exams/${examId}/corrections`)
+          .set(bearer(branchAdmin))
+          .send({ ...body, marks: 5 })
+      ).status,
+    ).toBe(400);
+    expect(
+      (await request(app).post(`/api/exams/${examId}/corrections`).set(bearer(zenith)).send(body)).status,
+    ).toBe(404);
+    const fixed = await request(app)
+      .post(`/api/exams/${examId}/corrections`)
+      .set(bearer(branchAdmin))
+      .send(body);
     expect(fixed.status).toBe(201);
     expect(fixed.body.attempt).toMatchObject({ totalScore: 14, rank: 1, percentile: 100 });
     expect(fixed.body.corrections[0]).toMatchObject({ beforeMarks: -1, afterMarks: 4, reason: body.reason });
     expect((await ExamAttempt.findByPk(attempt1, BYPASS))!.rank).toBe(2);
 
-    const audit = await AuditEvent.findOne({ where: { action: 'exam.result_corrected', entityId: String(wrong!.id) } });
+    const audit = await AuditEvent.findOne({
+      where: { action: 'exam.result_corrected', entityId: String(wrong!.id) },
+    });
     expect(audit!.metadata).toMatchObject({ before: -1, after: 4 });
     // The original response and auto score are preserved.
     await wrong!.reload(BYPASS);
@@ -513,7 +714,9 @@ describe('exams module', () => {
     expect(an.status).toBe(200);
     expect(an.body).toMatchObject({ submitted: 2, eligible: 2, highest: 14, lowest: 13, passCount: 2 });
     expect(an.body.topics[0]).toMatchObject({ chapterName: 'Mechanics', maxScore: 52 });
-    const single = an.body.questions.find((x: { examQuestionId: number }) => x.examQuestionId === eq[q.single]);
+    const single = an.body.questions.find(
+      (x: { examQuestionId: number }) => x.examQuestionId === eq[q.single],
+    );
     expect(single).toMatchObject({ attempted: 2, correct: 1, averageMarks: 4 });
 
     const csv = await request(app).get(`/api/exams/${examId}/results.csv`).set(bearer(teacher));
@@ -544,17 +747,28 @@ describe('exams module', () => {
     const descEq = d.body.questions[0].id;
     await request(app).post(`/api/exams/${id}/schedule`).set(bearer(admin));
 
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(aiReply({ marks: 3.5, feedback: 'Partially correct.', confidence: 0.6 }));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      aiReply({ marks: 3.5, feedback: 'Partially correct.', confidence: 0.6 }),
+    );
     const a1 = await request(app).post(`/api/exams/my/${id}/start`).set(bearer(s1));
-    await request(app).put(`/api/exams/my/attempts/${a1.body.attemptId}/answers/${descEq}`).set(bearer(s1)).send({ response: { text: 'Using kinematics…' } });
+    await request(app)
+      .put(`/api/exams/my/attempts/${a1.body.attemptId}/answers/${descEq}`)
+      .set(bearer(s1))
+      .send({ response: { text: 'Using kinematics…' } });
     await request(app).post(`/api/exams/my/attempts/${a1.body.attemptId}/submit`).set(bearer(s1));
     await processDueJobs();
-    expect((await ExamAttempt.findByPk(a1.body.attemptId, BYPASS))).toMatchObject({ totalScore: 3.5, pendingEvaluations: 0 });
+    expect(await ExamAttempt.findByPk(a1.body.attemptId, BYPASS)).toMatchObject({
+      totalScore: 3.5,
+      pendingEvaluations: 0,
+    });
 
     // AI not configured: the job fails gracefully and the answer stays pending for manual marking.
     await request(app).delete('/api/admin/ai/settings/key').set(bearer(sa));
     const a2 = await request(app).post(`/api/exams/my/${id}/start`).set(bearer(s2));
-    await request(app).put(`/api/exams/my/attempts/${a2.body.attemptId}/answers/${descEq}`).set(bearer(s2)).send({ response: { text: 'No idea' } });
+    await request(app)
+      .put(`/api/exams/my/attempts/${a2.body.attemptId}/answers/${descEq}`)
+      .set(bearer(s2))
+      .send({ response: { text: 'No idea' } });
     await request(app).post(`/api/exams/my/attempts/${a2.body.attemptId}/submit`).set(bearer(s2));
     await processDueJobs();
     expect((await ExamAttempt.findByPk(a2.body.attemptId, BYPASS))!.pendingEvaluations).toBe(1);
@@ -562,7 +776,10 @@ describe('exams module', () => {
     expect(jobs.body[0]).toMatchObject({ status: 'failed' });
     expect(jobs.body[0].error).toMatch(/not configured/i);
 
-    const others = await ExamAttempt.count({ where: { examId: id, status: { [Op.ne]: 'in_progress' } }, ...BYPASS });
+    const others = await ExamAttempt.count({
+      where: { examId: id, status: { [Op.ne]: 'in_progress' } },
+      ...BYPASS,
+    });
     expect(others).toBe(2);
   });
 });

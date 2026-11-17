@@ -43,7 +43,10 @@ export interface QuestionSnapshot {
   topicName: string | null;
 }
 
-export class PromptVersion extends Model<InferAttributes<PromptVersion>, InferCreationAttributes<PromptVersion>> {
+export class PromptVersion extends Model<
+  InferAttributes<PromptVersion>,
+  InferCreationAttributes<PromptVersion>
+> {
   declare id: CreationOptional<number>;
   declare instituteId: number;
   declare feature: string;
@@ -101,7 +104,10 @@ export class ExamSection extends Model<InferAttributes<ExamSection>, InferCreati
   declare updatedAt: CreationOptional<Date>;
 }
 
-export class ExamQuestion extends Model<InferAttributes<ExamQuestion>, InferCreationAttributes<ExamQuestion>> {
+export class ExamQuestion extends Model<
+  InferAttributes<ExamQuestion>,
+  InferCreationAttributes<ExamQuestion>
+> {
   declare id: CreationOptional<number>;
   declare instituteId: number;
   declare examId: number;
@@ -163,7 +169,10 @@ export class ExamAnswer extends Model<InferAttributes<ExamAnswer>, InferCreation
   declare examQuestion?: NonAttribute<ExamQuestion>;
 }
 
-export class ExamAnswerPage extends Model<InferAttributes<ExamAnswerPage>, InferCreationAttributes<ExamAnswerPage>> {
+export class ExamAnswerPage extends Model<
+  InferAttributes<ExamAnswerPage>,
+  InferCreationAttributes<ExamAnswerPage>
+> {
   declare id: CreationOptional<number>;
   declare instituteId: number;
   declare answerId: number;
@@ -192,7 +201,10 @@ export class GradingJob extends Model<InferAttributes<GradingJob>, InferCreation
   declare updatedAt: CreationOptional<Date>;
 }
 
-export class GradingResult extends Model<InferAttributes<GradingResult>, InferCreationAttributes<GradingResult>> {
+export class GradingResult extends Model<
+  InferAttributes<GradingResult>,
+  InferCreationAttributes<GradingResult>
+> {
   declare id: CreationOptional<number>;
   declare instituteId: number;
   declare gradingJobId: number;
@@ -211,7 +223,10 @@ export class GradingResult extends Model<InferAttributes<GradingResult>, InferCr
   declare updatedAt: CreationOptional<Date>;
 }
 
-export class ExamEvaluation extends Model<InferAttributes<ExamEvaluation>, InferCreationAttributes<ExamEvaluation>> {
+export class ExamEvaluation extends Model<
+  InferAttributes<ExamEvaluation>,
+  InferCreationAttributes<ExamEvaluation>
+> {
   declare id: CreationOptional<number>;
   declare instituteId: number;
   declare answerId: number;

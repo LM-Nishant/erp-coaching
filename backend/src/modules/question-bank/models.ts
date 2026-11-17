@@ -37,7 +37,10 @@ export function decimal(name: string, allowNull = false, defaultValue?: number) 
   };
 }
 
-export class QuestionBank extends Model<InferAttributes<QuestionBank>, InferCreationAttributes<QuestionBank>> {
+export class QuestionBank extends Model<
+  InferAttributes<QuestionBank>,
+  InferCreationAttributes<QuestionBank>
+> {
   declare id: CreationOptional<number>;
   declare instituteId: number;
   declare branchId: number | null;

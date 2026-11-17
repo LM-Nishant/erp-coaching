@@ -33,7 +33,9 @@ export class SimplePdf {
   }
 
   private textAt(x: number, y: number, s: string, size: number, bold: boolean) {
-    this.ops.push(`BT /${bold ? 'F2' : 'F1'} ${size} Tf ${x.toFixed(1)} ${y.toFixed(1)} Td (${esc(s)}) Tj ET`);
+    this.ops.push(
+      `BT /${bold ? 'F2' : 'F1'} ${size} Tf ${x.toFixed(1)} ${y.toFixed(1)} Td (${esc(s)}) Tj ET`,
+    );
   }
 
   text(s: string, opts: { size?: number; bold?: boolean; gap?: number } = {}) {
@@ -91,7 +93,9 @@ export class SimplePdf {
     this.pages.forEach((ops, i) => {
       const footer = `BT /F1 8 Tf ${MARGIN} 24 Td (${esc(`Page ${i + 1} of ${this.pages.length}`)}) Tj ET`;
       const stream = [...ops, footer].join('\n');
-      const contentId = add(`<< /Length ${Buffer.byteLength(stream, 'latin1')} >>\nstream\n${stream}\nendstream`);
+      const contentId = add(
+        `<< /Length ${Buffer.byteLength(stream, 'latin1')} >>\nstream\n${stream}\nendstream`,
+      );
       kids.push(
         add(
           `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentId} 0 R >>`,

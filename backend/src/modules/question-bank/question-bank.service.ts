@@ -136,7 +136,12 @@ export async function updateBank(id: number, input: Partial<QuestionBankInput>):
   await findEditableBank(id);
   if (input.subjectId) await subjectRepo.findById(input.subjectId);
   await bankRepo.update(id, input);
-  await audit({ action: 'question_bank.updated', entityType: 'question_bank', entityId: id, metadata: input });
+  await audit({
+    action: 'question_bank.updated',
+    entityType: 'question_bank',
+    entityId: id,
+    metadata: input,
+  });
   return getBank(id);
 }
 
@@ -239,7 +244,12 @@ export async function listQuestions(f: QuestionFilter) {
   if (f.chapterId) where.chapterId = f.chapterId;
   if (f.topicId) where.topicId = f.topicId;
   if (f.q) where.text = { [Op.like]: `%${f.q}%` };
-  if (f.tag) where[Op.and as unknown as string] = [Question.sequelize!.literal(`JSON_CONTAINS(tags, ${Question.sequelize!.escape(JSON.stringify(f.tag))})`)];
+  if (f.tag)
+    where[Op.and as unknown as string] = [
+      Question.sequelize!.literal(
+        `JSON_CONTAINS(tags, ${Question.sequelize!.escape(JSON.stringify(f.tag))})`,
+      ),
+    ];
   const { rows, count } = await questionRepo.findAndCountAll({
     where: where as WhereOptions<Question>,
     include: questionIncludes(),
@@ -281,7 +291,8 @@ async function resolveAcademics(input: {
   }
   if (chapterId) {
     const chapter = await chapterRepo.findById(chapterId);
-    if (subjectId && subjectId !== chapter.subjectId) throw BadRequest('Chapter does not belong to the subject');
+    if (subjectId && subjectId !== chapter.subjectId)
+      throw BadRequest('Chapter does not belong to the subject');
     subjectId = chapter.subjectId;
   }
   if (subjectId) await subjectRepo.findById(subjectId);
@@ -368,8 +379,17 @@ export async function createQuestions(bankId: number, inputs: QuestionInput[]): 
     });
     ids.push(q.id);
   }
-  await audit({ action: 'question.bulk_created', entityType: 'question_bank', entityId: bankId, metadata: { count: ids.length } });
-  const rows = await questionRepo.findAll({ where: { id: ids }, include: questionIncludes(), order: [['id', 'ASC']] });
+  await audit({
+    action: 'question.bulk_created',
+    entityType: 'question_bank',
+    entityId: bankId,
+    metadata: { count: ids.length },
+  });
+  const rows = await questionRepo.findAll({
+    where: { id: ids },
+    include: questionIncludes(),
+    order: [['id', 'ASC']],
+  });
   return questionDtos(rows);
 }
 
@@ -400,7 +420,12 @@ export async function updateQuestion(id: number, patch: Partial<QuestionInput>):
   if (!values.subjectId && q.subjectId && patch.subjectId === undefined && !values.chapterId)
     values.subjectId = q.subjectId;
   await q.update(values);
-  await audit({ action: 'question.updated', entityType: 'question', entityId: id, metadata: { fields: Object.keys(patch) } });
+  await audit({
+    action: 'question.updated',
+    entityType: 'question',
+    entityId: id,
+    metadata: { fields: Object.keys(patch) },
+  });
   return getQuestion(id);
 }
 
@@ -437,7 +462,12 @@ export async function addAsset(
   });
   const sortOrder = await assetRepo.count({ questionId });
   await assetRepo.create({ questionId, fileId: saved.id, role, sortOrder });
-  await audit({ action: 'question.asset_added', entityType: 'question', entityId: questionId, metadata: { fileId: saved.id } });
+  await audit({
+    action: 'question.asset_added',
+    entityType: 'question',
+    entityId: questionId,
+    metadata: { fileId: saved.id },
+  });
   return getQuestion(questionId);
 }
 
@@ -462,7 +492,12 @@ export async function removeAsset(questionId: number, assetId: number): Promise<
   const asset = await assetRepo.findOne({ where: { id: assetId, questionId } });
   if (!asset) throw NotFound('Question asset');
   await asset.destroy();
-  await audit({ action: 'question.asset_removed', entityType: 'question', entityId: questionId, metadata: { assetId } });
+  await audit({
+    action: 'question.asset_removed',
+    entityType: 'question',
+    entityId: questionId,
+    metadata: { assetId },
+  });
   return getQuestion(questionId);
 }
 
@@ -471,11 +506,101 @@ export async function removeAsset(questionId: number, assetId: number): Promise<
 export function importTemplateCsv(): string {
   return toCsv([
     [...QUESTION_IMPORT_COLUMNS],
-    ['single', 'What is 2 + 2?', '3', '4', '5', '6', '', '', 'B', '', 'Basic addition', 'easy', 'arithmetic', '4', '1', '', ''],
-    ['multiple', 'Which are prime?', '2', '3', '4', '9', '', '', 'A,B', '', '', 'medium', 'primes', '4', '2', '', ''],
-    ['numerical', 'Value of g (m/s²)?', '', '', '', '', '', '', '9.8', '0.1', '', 'easy', '', '4', '0', '', ''],
-    ['true_false', 'The sun is a star.', '', '', '', '', '', '', 'TRUE', '', '', 'easy', '', '1', '0', '', ''],
-    ['descriptive', "State Newton's first law.", '', '', '', '', '', '', 'An object stays at rest or in uniform motion unless acted on by a net force.', '', '', 'medium', 'laws', '5', '0', '', ''],
+    [
+      'single',
+      'What is 2 + 2?',
+      '3',
+      '4',
+      '5',
+      '6',
+      '',
+      '',
+      'B',
+      '',
+      'Basic addition',
+      'easy',
+      'arithmetic',
+      '4',
+      '1',
+      '',
+      '',
+    ],
+    [
+      'multiple',
+      'Which are prime?',
+      '2',
+      '3',
+      '4',
+      '9',
+      '',
+      '',
+      'A,B',
+      '',
+      '',
+      'medium',
+      'primes',
+      '4',
+      '2',
+      '',
+      '',
+    ],
+    [
+      'numerical',
+      'Value of g (m/s²)?',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '9.8',
+      '0.1',
+      '',
+      'easy',
+      '',
+      '4',
+      '0',
+      '',
+      '',
+    ],
+    [
+      'true_false',
+      'The sun is a star.',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      'TRUE',
+      '',
+      '',
+      'easy',
+      '',
+      '1',
+      '0',
+      '',
+      '',
+    ],
+    [
+      'descriptive',
+      "State Newton's first law.",
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      'An object stays at rest or in uniform motion unless acted on by a net force.',
+      '',
+      '',
+      'medium',
+      'laws',
+      '5',
+      '0',
+      '',
+      '',
+    ],
   ]);
 }
 
@@ -500,7 +625,10 @@ const num = (s: string) => (s.trim() === '' ? undefined : Number(s));
 
 /** Converts one import row (header → value) into a QuestionInput. Throws with a readable message. */
 export function rowToQuestion(row: Record<string, string>): QuestionInput {
-  const rawType = (row.type ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  const rawType = (row.type ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
   const type = TYPE_ALIASES[rawType];
   if (!type) throw new Error(`Unknown type "${row.type ?? ''}"`);
   const answer = (row.answer ?? '').trim();
@@ -509,17 +637,24 @@ export function rowToQuestion(row: Record<string, string>): QuestionInput {
     .filter((o) => o.text);
   let answerKey: AnswerKey = {};
   if (type === 'single' || type === 'multiple')
-    answerKey = { options: answer.split(/[,;|\s]+/).filter(Boolean).map((s) => s.toUpperCase()) };
+    answerKey = {
+      options: answer
+        .split(/[,;|\s]+/)
+        .filter(Boolean)
+        .map((s) => s.toUpperCase()),
+    };
   else if (type === 'true_false') {
     const v = answer.toLowerCase();
-    if (!['true', 'false', 't', 'f', '1', '0', 'yes', 'no'].includes(v)) throw new Error('Answer must be TRUE or FALSE');
+    if (!['true', 'false', 't', 'f', '1', '0', 'yes', 'no'].includes(v))
+      throw new Error('Answer must be TRUE or FALSE');
     answerKey = { value: ['true', 't', '1', 'yes'].includes(v) };
   } else if (type === 'numerical') {
     const range = /^(-?[\d.]+)\s*(?:\.\.|to|:)\s*(-?[\d.]+)$/i.exec(answer);
     if (range) answerKey = { min: Number(range[1]), max: Number(range[2]) };
     else {
       const value = Number(answer);
-      if (answer === '' || Number.isNaN(value)) throw new Error('Numerical answer must be a number or a range like 1.5..2');
+      if (answer === '' || Number.isNaN(value))
+        throw new Error('Numerical answer must be a number or a range like 1.5..2');
       answerKey = { value, tolerance: num(row.tolerance ?? '') ?? 0 };
     }
   } else if (answer) answerKey = { modelAnswer: answer };
@@ -531,7 +666,10 @@ export function rowToQuestion(row: Record<string, string>): QuestionInput {
     answerKey,
     explanation: (row.explanation ?? '').trim() || null,
     difficulty: difficulty || undefined,
-    tags: (row.tags ?? '').split(/[,;|]/).map((t) => t.trim()).filter(Boolean),
+    tags: (row.tags ?? '')
+      .split(/[,;|]/)
+      .map((t) => t.trim())
+      .filter(Boolean),
     defaultMarks: num(row.marks ?? ''),
     defaultNegativeMarks: num(row.negative_marks ?? ''),
     source: 'import' as const,
@@ -552,7 +690,12 @@ export async function importQuestions(
   const rows = parseSpreadsheet(file.buffer, file.originalName, file.mimeType);
   if (rows.length < 2) throw BadRequest('The file has no question rows (first row must be the header)');
   if (rows.length > 1001) throw BadRequest('Import at most 1000 questions per file');
-  const header = rows[0].map((h) => h.trim().toLowerCase().replace(/[\s-]+/g, '_'));
+  const header = rows[0].map((h) =>
+    h
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_'),
+  );
   if (!header.includes('type') || !header.includes('text'))
     throw BadRequest(`Header must include: ${QUESTION_IMPORT_COLUMNS.join(', ')}`);
 
@@ -562,7 +705,10 @@ export async function importQuestions(
     attributes: ['id', 'name', 'subjectId'],
   });
   const topics = chapters.length
-    ? await topicRepo.findAll({ where: { chapterId: chapters.map((c) => c.id) }, attributes: ['id', 'name', 'chapterId'] })
+    ? await topicRepo.findAll({
+        where: { chapterId: chapters.map((c) => c.id) },
+        attributes: ['id', 'name', 'chapterId'],
+      })
     : [];
   const lc = (s: string) => s.trim().toLowerCase();
 
@@ -620,7 +766,9 @@ export async function exportQuestionsCsv(bankId: number): Promise<string> {
       q.type === 'single' || q.type === 'multiple'
         ? (k.options ?? []).join(',')
         : q.type === 'true_false'
-          ? (k.value ? 'TRUE' : 'FALSE')
+          ? k.value
+            ? 'TRUE'
+            : 'FALSE'
           : q.type === 'numerical'
             ? typeof k.value === 'number'
               ? String(k.value)

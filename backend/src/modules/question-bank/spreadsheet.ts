@@ -139,8 +139,11 @@ export function parseXlsx(buf: Buffer): string[][] {
 /** Parses an uploaded CSV or XLSX file into rows of strings. */
 export function parseSpreadsheet(buf: Buffer, fileName: string, mimeType: string): string[][] {
   const isXlsx =
-    /\.xlsx$/i.test(fileName) || mimeType.includes('spreadsheetml') || (buf.length >= 4 && buf.readUInt32LE(0) === 0x04034b50);
+    /\.xlsx$/i.test(fileName) ||
+    mimeType.includes('spreadsheetml') ||
+    (buf.length >= 4 && buf.readUInt32LE(0) === 0x04034b50);
   if (isXlsx) return parseXlsx(buf);
-  if (/\.xls$/i.test(fileName)) throw BadRequest('Legacy .xls files are not supported; save as .xlsx or .csv');
+  if (/\.xls$/i.test(fileName))
+    throw BadRequest('Legacy .xls files are not supported; save as .xlsx or .csv');
   return parseCsv(buf.toString('utf8'));
 }

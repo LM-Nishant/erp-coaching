@@ -73,7 +73,9 @@ export function questionBankRoutes(api: Router) {
     const file = req.file;
     try {
       const buffer = await fs.promises.readFile(file.path);
-      res.json(await svc.importQuestions(id, { buffer, originalName: file.originalname, mimeType: file.mimetype }));
+      res.json(
+        await svc.importQuestions(id, { buffer, originalName: file.originalname, mimeType: file.mimetype }),
+      );
     } finally {
       await fs.promises.rm(file.path, { force: true });
     }
@@ -113,7 +115,10 @@ export function questionBankRoutes(api: Router) {
   r.post('/questions/:id/assets', can('edit'), uploadMiddleware, async (req, res) => {
     const { id } = parse(idParam, req.params);
     if (!req.file) throw BadRequest('Attach an image in the `file` field');
-    const { role } = parse(z.object({ role: z.enum(['question', 'explanation']).default('question') }), req.body ?? {});
+    const { role } = parse(
+      z.object({ role: z.enum(['question', 'explanation']).default('question') }),
+      req.body ?? {},
+    );
     res.status(201).json(await svc.addAsset(id, req.file, role));
   });
   r.delete('/questions/:id/assets/:assetId', can('edit'), async (req, res) => {

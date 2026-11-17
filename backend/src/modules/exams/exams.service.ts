@@ -26,7 +26,11 @@ export const MODULE = 'exams';
 export const REMINDER_JOB = 'exams.reminder';
 
 /** Staff access: branch-scoped (exams without a branch are institute-wide). */
-export const examRepo = new TenantRepository(Exam, { branchScoped: true, instituteWideRows: true, entity: 'Exam' });
+export const examRepo = new TenantRepository(Exam, {
+  branchScoped: true,
+  instituteWideRows: true,
+  entity: 'Exam',
+});
 /** Candidate/guardian access: institute-scoped; eligibility is checked through enrolment instead. */
 export const examTenantRepo = new TenantRepository(Exam, { entity: 'Exam' });
 export const sectionRepo = new TenantRepository(ExamSection, { entity: 'Section' });
@@ -128,7 +132,10 @@ export async function isEligible(exam: Exam, studentUserId: number): Promise<boo
 }
 
 /** Scheduled exams the student is enrolled for (through batch or course). */
-export async function examsForStudent(studentUserId: number, extra: WhereOptions<Exam> = {}): Promise<Exam[]> {
+export async function examsForStudent(
+  studentUserId: number,
+  extra: WhereOptions<Exam> = {},
+): Promise<Exam[]> {
   const enrolments = await batchStudentRepo.findAll({
     where: { studentUserId, status: 'active' },
     include: [{ model: Batch, as: 'batch', attributes: ['id', 'courseId', 'branchId'] }],
@@ -246,7 +253,12 @@ export async function createExam(input: ExamInput): Promise<ExamDetailDto> {
     createdByUserId: me(),
   });
   await sectionRepo.create({ examId: exam.id, title: 'Section A', instructions: null, sortOrder: 0 });
-  await audit({ action: 'exam.created', entityType: 'exam', entityId: exam.id, metadata: { title: exam.title } });
+  await audit({
+    action: 'exam.created',
+    entityType: 'exam',
+    entityId: exam.id,
+    metadata: { title: exam.title },
+  });
   return getExamDetail(exam.id);
 }
 
@@ -266,9 +278,21 @@ export async function updateExam(id: number, input: Partial<ExamInput>): Promise
   examRepo.assertRowWritable(exam);
   if (exam.resultsPublishedAt) throw Conflict('Results are published; the exam can no longer be edited');
   const started = await hasAttempts(id);
-  const structural = ['batchId', 'courseId', 'branchId', 'shuffleQuestions', 'shuffleOptions', 'partialMarking', 'startAt', 'durationMinutes'];
+  const structural = [
+    'batchId',
+    'courseId',
+    'branchId',
+    'shuffleQuestions',
+    'shuffleOptions',
+    'partialMarking',
+    'startAt',
+    'durationMinutes',
+  ];
   if (started && structural.some((k) => (input as Record<string, unknown>)[k] !== undefined))
-    throw Conflict('Candidates have already started; only the end time, texts and evaluation settings can change', 'EXAM_LOCKED');
+    throw Conflict(
+      'Candidates have already started; only the end time, texts and evaluation settings can change',
+      'EXAM_LOCKED',
+    );
   const changes: Record<string, unknown> = { ...input };
   if (input.batchId !== undefined || input.courseId !== undefined || input.branchId !== undefined)
     Object.assign(changes, await resolveTarget(input, exam));
@@ -299,23 +323,48 @@ export async function updateExam(id: number, input: Partial<ExamInput>): Promise
 export async function deleteExam(id: number): Promise<void> {
   const exam = await examRepo.findById(id);
   examRepo.assertRowWritable(exam);
-  if (await hasAttempts(id)) throw Conflict('Exams with attempts cannot be deleted; cancel it instead', 'EXAM_LOCKED');
+  if (await hasAttempts(id))
+    throw Conflict('Exams with attempts cannot be deleted; cancel it instead', 'EXAM_LOCKED');
   await exam.destroy();
   await audit({ action: 'exam.deleted', entityType: 'exam', entityId: id, metadata: { title: exam.title } });
 }
 
 export async function getExamDetail(id: number): Promise<ExamDetailDto> {
   const exam = await loadExamForDto(id);
-  const sections = await sectionRepo.findAll({ where: { examId: id }, order: [['sortOrder', 'ASC'], ['id', 'ASC']] });
+  const sections = await sectionRepo.findAll({
+    where: { examId: id },
+    order: [
+      ['sortOrder', 'ASC'],
+      ['id', 'ASC'],
+    ],
+  });
   const eqs = await examQuestionRepo.findAll({
     where: { examId: id },
-    include: [{ model: Question, as: 'question', include: [{ association: 'chapter' }, { association: 'topic' }, { association: 'assets', include: [{ association: 'file' }] }] }],
-    order: [['sortOrder', 'ASC'], ['id', 'ASC']],
+    include: [
+      {
+        model: Question,
+        as: 'question',
+        include: [
+          { association: 'chapter' },
+          { association: 'topic' },
+          { association: 'assets', include: [{ association: 'file' }] },
+        ],
+      },
+    ],
+    order: [
+      ['sortOrder', 'ASC'],
+      ['id', 'ASC'],
+    ],
   });
   const qDtos = await questionDtos(eqs.map((e) => e.question!).filter(Boolean));
   const byId = new Map(qDtos.map((q) => [q.id, q]));
   const sectionOrder = new Map(sections.map((s, i) => [s.id, i]));
-  eqs.sort((a, b) => (sectionOrder.get(a.sectionId) ?? 0) - (sectionOrder.get(b.sectionId) ?? 0) || a.sortOrder - b.sortOrder || a.id - b.id);
+  eqs.sort(
+    (a, b) =>
+      (sectionOrder.get(a.sectionId) ?? 0) - (sectionOrder.get(b.sectionId) ?? 0) ||
+      a.sortOrder - b.sortOrder ||
+      a.id - b.id,
+  );
   return {
     ...examDto(exam),
     sections: sections.map((s) => sectionDto(s, eqs.filter((q) => q.sectionId === s.id).length)),
@@ -334,7 +383,14 @@ export async function getExamDetail(id: number): Promise<ExamDetailDto> {
 }
 
 function snapshotOverlay(s: QuestionSnapshot) {
-  return { type: s.type, text: s.text, answerKey: s.answerKey, explanation: s.explanation, chapterName: s.chapterName, topicName: s.topicName };
+  return {
+    type: s.type,
+    text: s.text,
+    answerKey: s.answerKey,
+    explanation: s.explanation,
+    chapterName: s.chapterName,
+    topicName: s.topicName,
+  };
 }
 
 export function sectionDto(s: ExamSection, questionCount?: number): ExamSectionDto {
@@ -353,8 +409,18 @@ async function editableExam(id: number) {
 export async function addSection(examId: number, input: ExamSectionInput): Promise<ExamSectionDto> {
   await editableExam(examId);
   const sortOrder = input.sortOrder ?? (await sectionRepo.count({ examId }));
-  const s = await sectionRepo.create({ examId, title: input.title, instructions: input.instructions ?? null, sortOrder });
-  await audit({ action: 'exam.section_added', entityType: 'exam', entityId: examId, metadata: { sectionId: s.id } });
+  const s = await sectionRepo.create({
+    examId,
+    title: input.title,
+    instructions: input.instructions ?? null,
+    sortOrder,
+  });
+  await audit({
+    action: 'exam.section_added',
+    entityType: 'exam',
+    entityId: examId,
+    metadata: { sectionId: s.id },
+  });
   return sectionDto(s, 0);
 }
 
@@ -365,7 +431,12 @@ export async function updateSection(examId: number, sectionId: number, input: Pa
   if (!s) throw NotFound('Section');
   if (input.sortOrder !== undefined) await assertStructureEditable(exam);
   await s.update(input);
-  await audit({ action: 'exam.section_updated', entityType: 'exam', entityId: examId, metadata: { sectionId } });
+  await audit({
+    action: 'exam.section_updated',
+    entityType: 'exam',
+    entityId: examId,
+    metadata: { sectionId },
+  });
   return sectionDto(s);
 }
 
@@ -374,9 +445,15 @@ export async function deleteSection(examId: number, sectionId: number) {
   const s = await sectionRepo.findOne({ where: { id: sectionId, examId } });
   if (!s) throw NotFound('Section');
   if ((await sectionRepo.count({ examId })) <= 1) throw Conflict('An exam needs at least one section');
-  if ((await examQuestionRepo.count({ sectionId })) > 0) throw Conflict('Move or remove the questions of this section first');
+  if ((await examQuestionRepo.count({ sectionId })) > 0)
+    throw Conflict('Move or remove the questions of this section first');
   await s.destroy();
-  await audit({ action: 'exam.section_deleted', entityType: 'exam', entityId: examId, metadata: { sectionId } });
+  await audit({
+    action: 'exam.section_deleted',
+    entityType: 'exam',
+    entityId: examId,
+    metadata: { sectionId },
+  });
 }
 
 export function snapshotOf(q: Question): QuestionSnapshot {
@@ -386,7 +463,10 @@ export function snapshotOf(q: Question): QuestionSnapshot {
     options: (q.options ?? []).map((o) => ({ key: o.key, text: o.text, imageFileId: o.imageFileId ?? null })),
     answerKey: q.answerKey,
     explanation: q.explanation,
-    assetFileIds: [...(q.assets ?? [])].filter((a) => a.role === 'question').sort((a, b) => a.sortOrder - b.sortOrder).map((a) => a.fileId),
+    assetFileIds: [...(q.assets ?? [])]
+      .filter((a) => a.role === 'question')
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((a) => a.fileId),
     chapterId: q.chapterId,
     chapterName: q.chapter?.name ?? null,
     topicId: q.topicId,
@@ -401,7 +481,11 @@ export async function addQuestions(examId: number, input: AddExamQuestionsInput)
   const questions = await loadReusableQuestions([...new Set(input.questionIds)]);
   const archived = questions.find((q) => q.status === 'archived');
   if (archived) throw BadRequest(`Question #${archived.id} is archived`);
-  const existing = new Set((await examQuestionRepo.findAll({ where: { examId }, attributes: ['questionId'] })).map((e) => e.questionId));
+  const existing = new Set(
+    (await examQuestionRepo.findAll({ where: { examId }, attributes: ['questionId'] })).map(
+      (e) => e.questionId,
+    ),
+  );
   let sortOrder = await examQuestionRepo.count({ examId, sectionId: section.id });
   const byId = new Map(questions.map((q) => [q.id, q]));
   for (const qid of input.questionIds) {
@@ -415,7 +499,9 @@ export async function addQuestions(examId: number, input: AddExamQuestionsInput)
         sortOrder: sortOrder++,
         // A question's own marks apply only when customised away from the bank defaults (1 / 0).
         marks: input.marks ?? (Number(q.defaultMarks) !== 1 ? Number(q.defaultMarks) : exam.defaultMarks),
-        negativeMarks: input.negativeMarks ?? (Number(q.defaultNegativeMarks) !== 0 ? Number(q.defaultNegativeMarks) : exam.defaultNegativeMarks),
+        negativeMarks:
+          input.negativeMarks ??
+          (Number(q.defaultNegativeMarks) !== 0 ? Number(q.defaultNegativeMarks) : exam.defaultNegativeMarks),
         partialMarking: exam.partialMarking,
         snapshot: snapshotOf(q),
       });
@@ -424,7 +510,12 @@ export async function addQuestions(examId: number, input: AddExamQuestionsInput)
       if (!(err instanceof UniqueConstraintError)) throw err;
     }
   }
-  await audit({ action: 'exam.questions_added', entityType: 'exam', entityId: examId, metadata: { questionIds: input.questionIds } });
+  await audit({
+    action: 'exam.questions_added',
+    entityType: 'exam',
+    entityId: examId,
+    metadata: { questionIds: input.questionIds },
+  });
   return getExamDetail(examId);
 }
 
@@ -437,7 +528,12 @@ export async function updateExamQuestion(examId: number, eqId: number, input: Up
     if (!s) throw NotFound('Section');
   }
   await eq.update(input);
-  await audit({ action: 'exam.question_updated', entityType: 'exam', entityId: exam.id, metadata: { examQuestionId: eqId, ...input } });
+  await audit({
+    action: 'exam.question_updated',
+    entityType: 'exam',
+    entityId: exam.id,
+    metadata: { examQuestionId: eqId, ...input },
+  });
   return getExamDetail(examId);
 }
 
@@ -456,7 +552,12 @@ export async function removeExamQuestion(examId: number, eqId: number) {
   const eq = await examQuestionRepo.findOne({ where: { id: eqId, examId } });
   if (!eq) throw NotFound('Exam question');
   await eq.destroy();
-  await audit({ action: 'exam.question_removed', entityType: 'exam', entityId: examId, metadata: { examQuestionId: eqId } });
+  await audit({
+    action: 'exam.question_removed',
+    entityType: 'exam',
+    entityId: examId,
+    metadata: { examQuestionId: eqId },
+  });
   return getExamDetail(examId);
 }
 
@@ -483,7 +584,11 @@ async function notifyScheduled(exam: Exam) {
     await notify({
       event: 'exams.scheduled',
       recipients,
-      data: { exam: exam.title, date: exam.startAt.toISOString(), batch: exam.batch?.name ?? exam.course?.name ?? '' },
+      data: {
+        exam: exam.title,
+        date: exam.startAt.toISOString(),
+        batch: exam.batch?.name ?? exam.course?.name ?? '',
+      },
       branchId: exam.branchId,
     });
   } catch (err) {
@@ -495,8 +600,14 @@ async function notifyScheduled(exam: Exam) {
 async function scheduleReminder(exam: Exam) {
   const now = Date.now();
   const start = exam.startAt.getTime();
-  const runAt = start - 24 * 3600_000 > now ? start - 24 * 3600_000 : start - 3600_000 > now ? start - 3600_000 : null;
-  if (runAt) await enqueueJob(REMINDER_JOB, { examId: exam.id, startAt: exam.startAt.toISOString() }, { runAt: new Date(runAt) });
+  const runAt =
+    start - 24 * 3600_000 > now ? start - 24 * 3600_000 : start - 3600_000 > now ? start - 3600_000 : null;
+  if (runAt)
+    await enqueueJob(
+      REMINDER_JOB,
+      { examId: exam.id, startAt: exam.startAt.toISOString() },
+      { runAt: new Date(runAt) },
+    );
 }
 
 export async function runReminder(payload: { examId: number; startAt: string }) {
@@ -505,7 +616,12 @@ export async function runReminder(payload: { examId: number; startAt: string }) 
   const recipients = exam.batchId
     ? [batchMembersOf(exam.batchId)]
     : [{ userIds: await eligibleStudentUserIds(exam), type: 'student' as const }];
-  await notify({ event: 'exams.reminder', recipients, data: { exam: exam.title, date: exam.startAt.toISOString() }, branchId: exam.branchId });
+  await notify({
+    event: 'exams.reminder',
+    recipients,
+    data: { exam: exam.title, date: exam.startAt.toISOString() },
+    branchId: exam.branchId,
+  });
 }
 
 export async function cancelExam(id: number, reason?: string): Promise<ExamDetailDto> {
@@ -514,7 +630,12 @@ export async function cancelExam(id: number, reason?: string): Promise<ExamDetai
   if (exam.status === 'cancelled') throw Conflict('The exam is already cancelled');
   if (exam.resultsPublishedAt) throw Conflict('Published exams cannot be cancelled');
   await exam.update({ status: 'cancelled' });
-  await audit({ action: 'exam.cancelled', entityType: 'exam', entityId: id, metadata: { reason: reason ?? null } });
+  await audit({
+    action: 'exam.cancelled',
+    entityType: 'exam',
+    entityId: id,
+    metadata: { reason: reason ?? null },
+  });
   return getExamDetail(id);
 }
 
@@ -522,14 +643,45 @@ export async function cancelExam(id: number, reason?: string): Promise<ExamDetai
 export async function duplicateExam(id: number): Promise<ExamDetailDto> {
   const src = await examRepo.findById(id);
   const plain = src.get({ plain: true }) as Record<string, unknown>;
-  for (const k of ['id', 'instituteId', 'createdAt', 'updatedAt', 'resultsPublishedAt', 'resultsPublishedBy', 'status', 'createdByUserId']) delete plain[k];
-  const copy = await examRepo.create({ ...(plain as object), title: `${src.title} (copy)`, status: 'draft', resultsPublishedAt: null, resultsPublishedBy: null, createdByUserId: me() } as never);
+  for (const k of [
+    'id',
+    'instituteId',
+    'createdAt',
+    'updatedAt',
+    'resultsPublishedAt',
+    'resultsPublishedBy',
+    'status',
+    'createdByUserId',
+  ])
+    delete plain[k];
+  const copy = await examRepo.create({
+    ...(plain as object),
+    title: `${src.title} (copy)`,
+    status: 'draft',
+    resultsPublishedAt: null,
+    resultsPublishedBy: null,
+    createdByUserId: me(),
+  } as never);
   const sections = await sectionRepo.findAll({ where: { examId: id } });
   for (const s of sections) {
-    const ns = await sectionRepo.create({ examId: copy.id, title: s.title, instructions: s.instructions, sortOrder: s.sortOrder });
+    const ns = await sectionRepo.create({
+      examId: copy.id,
+      title: s.title,
+      instructions: s.instructions,
+      sortOrder: s.sortOrder,
+    });
     const eqs = await examQuestionRepo.findAll({ where: { sectionId: s.id } });
     for (const eq of eqs)
-      await examQuestionRepo.create({ examId: copy.id, sectionId: ns.id, questionId: eq.questionId, sortOrder: eq.sortOrder, marks: eq.marks, negativeMarks: eq.negativeMarks, partialMarking: eq.partialMarking, snapshot: eq.snapshot });
+      await examQuestionRepo.create({
+        examId: copy.id,
+        sectionId: ns.id,
+        questionId: eq.questionId,
+        sortOrder: eq.sortOrder,
+        marks: eq.marks,
+        negativeMarks: eq.negativeMarks,
+        partialMarking: eq.partialMarking,
+        snapshot: eq.snapshot,
+      });
   }
   await audit({ action: 'exam.duplicated', entityType: 'exam', entityId: copy.id, metadata: { from: id } });
   return getExamDetail(copy.id);
