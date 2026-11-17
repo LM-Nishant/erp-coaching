@@ -2,12 +2,14 @@ import { defineModule } from '../../shared/module';
 import { associateStudentModels, initStudentModels } from './models';
 import { studentRoutes } from './students.routes';
 import { studentPortalRoutes } from './student-portal.routes';
+import { selfRegistrationRoutes } from './self-registration.routes';
 
 export default defineModule({
   name: 'students',
   models: initStudentModels,
   associate: associateStudentModels,
   routes: (api) => {
+    selfRegistrationRoutes(api);
     studentRoutes(api);
     studentPortalRoutes(api);
   },

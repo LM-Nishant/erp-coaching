@@ -1,14 +1,17 @@
 import { ACADEMICS_CLASS_CHANGED_JOB, type ClassChangedJobPayload } from '@erp/shared';
 import { defineModule } from '../../shared/module';
+import { registerAcademicsIntegrations } from './integrations';
 import { associateAcademicsModels, initAcademicsModels } from './models';
 import { academicsRoutes } from './academics.routes';
 import { handleClassChanged } from './academics.service';
+import { CLASS_COMPLETED_JOB, handleClassCompleted } from './class-events';
 
 export default defineModule({
   name: 'academics',
   models: initAcademicsModels,
   associate: associateAcademicsModels,
   routes: academicsRoutes,
+  onReady: registerAcademicsIntegrations,
   permissions: [
     {
       module: 'academics',
@@ -32,5 +35,6 @@ export default defineModule({
   jobs: {
     [ACADEMICS_CLASS_CHANGED_JOB]: (payload) =>
       handleClassChanged(payload as unknown as ClassChangedJobPayload),
+    [CLASS_COMPLETED_JOB]: handleClassCompleted,
   },
 });

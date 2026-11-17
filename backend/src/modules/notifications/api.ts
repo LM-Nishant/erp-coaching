@@ -8,6 +8,8 @@ export { notify, recordDeliveryReceipt, type NotifyInput, type NotifyResult } fr
 export {
   guardiansOf,
   studentUserOf,
+  guardiansOfStudentUsers,
+  batchMembersOf,
   registerRecipientResolver,
   type RecipientResolver,
   type RecipientSpec,

@@ -6,6 +6,7 @@ import { getContext, requireTenantContext } from '../../shared/context';
 import { BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { Branch } from '../branches/branch.model';
+import { assertWithinLimit } from '../subscriptions/subscription.service';
 import {
   Employee,
   EmployeeAsset,
@@ -62,6 +63,19 @@ export async function assertBranchInInstitute(branchId: number | null | undefine
   const { instituteId } = requireTenantContext();
   if (!(await Branch.count({ where: { instituteId, id: branchId } }))) throw BadRequest('Unknown branch');
   employeeRepo.assertBranchAllowed(branchId);
+}
+
+/** Teachers counted against the plan's `maxTeachers`: teaching employees that have not exited. */
+export function teacherCount(excludeEmployeeId?: number): Promise<number> {
+  const where: Record<string | symbol, unknown> = { isTeacher: true, status: { [Op.ne]: 'exited' } };
+  if (excludeEmployeeId) where.id = { [Op.ne]: excludeEmployeeId };
+  return employeeSelfRepo.count(where);
+}
+
+/** Throws PLAN_LIMIT_EXCEEDED when adding (or re-activating) one more teacher would exceed the plan. */
+export async function assertTeacherSeat(excludeEmployeeId?: number): Promise<void> {
+  const { instituteId } = requireTenantContext();
+  await assertWithinLimit(instituteId, 'maxTeachers', await teacherCount(excludeEmployeeId));
 }
 
 export async function nextEmployeeCode(): Promise<string> {

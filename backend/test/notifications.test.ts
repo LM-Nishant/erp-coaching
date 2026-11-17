@@ -398,12 +398,12 @@ describe('notifications module', () => {
       .set(bearer(admin));
     expect(cancelled.body.status).toBe('cancelled');
 
-    // Batch audiences need the batches module's resolver.
+    // Batch audiences resolve through the academics module's `batchMembers` resolver.
     const batch = await request(app)
       .post('/api/notifications/campaigns')
       .set(bearer(admin))
-      .send({ title: 'Batch', channels: ['in_app'], body: 'x', audience: { batchIds: [1] } });
-    expect(batch.status).toBe(400);
+      .send({ title: 'Batch', channels: ['in_app'], body: 'x', audience: { batchIds: [999999] } });
+    expect(batch.status).toBe(201);
 
     // Zenith cannot see Apex campaigns.
     expect(

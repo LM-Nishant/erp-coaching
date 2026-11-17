@@ -24,7 +24,13 @@ import {
   EmploymentContract,
   Shift,
 } from './models';
-import { assertBranchInInstitute, employeeRepo, nextEmployeeCode, shiftRepo } from './hr.service';
+import {
+  assertBranchInInstitute,
+  assertTeacherSeat,
+  employeeRepo,
+  nextEmployeeCode,
+  shiftRepo,
+} from './hr.service';
 import { isoDate } from './dates';
 
 const date = z.string().regex(isoDate, 'Use YYYY-MM-DD');
@@ -243,6 +249,7 @@ export function employeeRoutes(r: Router) {
       }
     }
     if (!name) throw BadRequest('name is required');
+    if (isTeacher && (body.status ?? 'active') !== 'exited') await assertTeacherSeat();
     const emp = await employeeRepo.create({
       ...body,
       branchId: body.branchId ?? null,
@@ -282,6 +289,9 @@ export function employeeRoutes(r: Router) {
     const body = parse(employeeBody.partial(), req.body);
     await validateEmployeeRefs(body, id);
     const before = (await employeeRepo.findById(id)).toJSON();
+    const willTeach = (body.isTeacher ?? before.isTeacher) && (body.status ?? before.status) !== 'exited';
+    const taughtBefore = before.isTeacher && before.status !== 'exited';
+    if (willTeach && !taughtBefore) await assertTeacherSeat(id);
     const emp = await employeeRepo.update(id, body);
     await audit({
       action: 'hr.employee.updated',

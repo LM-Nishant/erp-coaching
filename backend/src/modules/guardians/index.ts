@@ -1,4 +1,5 @@
 import { defineModule } from '../../shared/module';
+import { registerGuardianIntegrations } from './integrations';
 import { associateGuardianModels, initGuardianModels } from './models';
 import { guardianRoutes } from './guardians.routes';
 
@@ -7,6 +8,7 @@ export default defineModule({
   models: initGuardianModels,
   associate: associateGuardianModels,
   routes: guardianRoutes,
+  onReady: registerGuardianIntegrations,
   permissions: [
     {
       module: 'guardians',

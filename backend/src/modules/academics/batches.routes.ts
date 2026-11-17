@@ -12,8 +12,8 @@ import { Batch, BatchStudent, BatchTeacher, ClassSession, userRef } from './mode
 import { User } from '../users/user.model';
 import {
   assertBranch,
-  assertStudents,
   assertTeachers,
+  enrollStudentsInBatch,
   listUsersWithRole,
   repos,
   today,
@@ -266,39 +266,16 @@ export function batchRoutes(r: Router) {
   r.post('/batches/:id/students', can('edit'), async (req, res) => {
     const { id } = parse(idParam, req.params);
     const body = parse(enrollBody, req.body);
-    const batch = await repos.batches.findById(id);
-    if (batch.status === 'cancelled' || batch.status === 'completed')
-      throw BadRequest(`Batch is ${batch.status}`);
-    await assertStudents(body.studentUserIds);
-    const already = new Set(
-      (
-        await repos.batchStudents.findAll({
-          where: { batchId: id, status: 'active' },
-          attributes: ['studentUserId'],
-        })
-      ).map((e) => e.studentUserId),
-    );
-    const toAdd = [...new Set(body.studentUserIds)].filter((s) => !already.has(s));
-    if (already.size + toAdd.length > batch.capacity)
-      throw Conflict(`Batch capacity ${batch.capacity} exceeded (${already.size} enrolled)`, 'BATCH_FULL');
-    const created = [];
-    for (const studentUserId of toAdd)
-      created.push(
-        await repos.batchStudents.create({
-          batchId: id,
-          studentUserId,
-          joinedOn: body.joinedOn ?? today(),
-          leftOn: null,
-          promotedFromId: null,
-        }),
-      );
+    const { enrolled } = await enrollStudentsInBatch(id, body.studentUserIds, { joinedOn: body.joinedOn });
     await audit({
       action: 'batch.students_enrolled',
       entityType: 'Batch',
       entityId: id,
-      metadata: { studentUserIds: toAdd },
+      metadata: { studentUserIds: enrolled },
     });
-    res.status(201).json({ enrolled: created.length, skipped: body.studentUserIds.length - created.length });
+    res
+      .status(201)
+      .json({ enrolled: enrolled.length, skipped: body.studentUserIds.length - enrolled.length });
   });
 
   r.delete('/batches/:id/students/:studentUserId', can('edit'), async (req, res) => {

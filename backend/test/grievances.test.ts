@@ -5,6 +5,7 @@ import { DEMO_PASSWORD, USERS, bearer, getApp, login } from './helpers';
 import { User } from '../src/modules/users/user.model';
 import { GrievanceTicket } from '../src/modules/grievances/grievances.models';
 import { setLinkedStudentsResolver } from '../src/modules/grievances/grievances.links';
+import { registerGuardianIntegrations } from '../src/modules/guardians/integrations';
 import { processDueJobs } from '../src/infrastructure/jobs/queue';
 import { Job } from '../src/infrastructure/jobs/job.model';
 import { consoleOutbox } from '../src/infrastructure/messaging/console.provider';
@@ -53,7 +54,7 @@ describe('grievances module', () => {
     };
   });
 
-  afterAll(() => setLinkedStudentsResolver(async () => []));
+  afterAll(() => registerGuardianIntegrations()); // restore the real linked-students resolver
 
   it('seeds default categories and lets admins manage categories and settings', async () => {
     const list = await request(app).get('/api/grievances/categories').set(bearer(admin));
@@ -343,7 +344,7 @@ describe('grievances module', () => {
     expect(overdue.body.items.some((t: { id: number }) => t.id === created.body.id)).toBe(true);
   });
 
-  it('delivers notifications through the messaging adapter', async () => {
+  it('delivers notifications through notify()', async () => {
     const before = consoleOutbox.length;
     await request(app)
       .post(`/api/grievances/${ticketId}/comments`)
@@ -351,7 +352,9 @@ describe('grievances module', () => {
       .send({ body: 'Update: vendor visit tomorrow' });
     await processDueJobs(200);
     const sent = consoleOutbox.slice(before);
-    expect(sent.some((m) => m.to === STUDENT.mobile && m.data?.kind === 'grievance')).toBe(true);
+    expect(sent.some((m) => m.to === STUDENT.mobile && m.data?.eventKey === 'grievances.activity')).toBe(
+      true,
+    );
   });
 
   it('lets parents file only for linked children', async () => {

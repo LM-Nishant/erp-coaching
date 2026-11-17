@@ -97,3 +97,40 @@ export async function getLinkedStudents(
   });
   return links.map((l) => ({ id: l.student!.id, name: l.student!.name }));
 }
+
+/** User ids of the active guardians of students identified by their login user ids. */
+export async function getGuardianUserIdsForStudentUsers(
+  studentUserIds: number[],
+  instituteId = requireTenantContext().instituteId,
+): Promise<number[]> {
+  if (!studentUserIds.length) return [];
+  const students = await Student.findAll({
+    where: { instituteId, userId: studentUserIds },
+    attributes: ['id'],
+  });
+  if (!students.length) return [];
+  const links = await StudentGuardian.findAll({
+    where: { instituteId, studentId: students.map((s) => s.id), status: 'active' },
+    include: [{ model: Guardian, as: 'guardian', attributes: ['userId'] }],
+  });
+  return [...new Set(links.map((l) => l.guardian!.userId))];
+}
+
+/**
+ * Children of a parent as *user* refs (`id` = the student's login user id), for modules that key
+ * students by user id (grievances, academics rosters). Children without a login are omitted.
+ */
+export async function getLinkedStudentUsers(
+  parentUserId: number,
+  instituteId = requireTenantContext().instituteId,
+): Promise<{ id: number; name: string; studentId: number }[]> {
+  const guardian = await Guardian.findOne({ where: { instituteId, userId: parentUserId } });
+  if (!guardian) return [];
+  const links = await StudentGuardian.findAll({
+    where: { instituteId, guardianId: guardian.id, status: 'active' },
+    include: [{ model: Student, as: 'student', attributes: ['id', 'name', 'userId'] }],
+  });
+  return links
+    .filter((l) => l.student?.userId)
+    .map((l) => ({ id: l.student!.userId!, name: l.student!.name, studentId: l.student!.id }));
+}

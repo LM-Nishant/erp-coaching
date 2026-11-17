@@ -49,6 +49,29 @@ export const studentUserOf = (studentId: number): RecipientSpec => ({
   type: 'student',
 });
 
+/**
+ * Guardians of students identified by their login user ids (batch rosters, attendance, exams use
+ * user ids). Resolver registered by the guardians module.
+ */
+export const guardiansOfStudentUsers = (studentUserIds: number[]): RecipientSpec => ({
+  resolver: 'guardiansOfStudentUsers',
+  args: studentUserIds,
+  type: 'guardian',
+});
+
+/**
+ * Active students of an academics batch (pass `{ teachers: true }` to include its teachers).
+ * Resolver registered by academics.
+ */
+export const batchMembersOf = (
+  batchId: number,
+  opts: { students?: boolean; teachers?: boolean } = {},
+): RecipientSpec => ({
+  resolver: 'batchMembers',
+  args: { batchId, students: true, teachers: false, ...opts },
+  type: 'student',
+});
+
 function typeForRole(slug: string): RecipientType {
   if (slug === 'student') return 'student';
   if (slug === 'parent') return 'guardian';

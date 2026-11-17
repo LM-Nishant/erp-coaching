@@ -61,8 +61,10 @@ describe('admissions', () => {
 
     // Reminder is due (follow-up is within the 30-minute lead time) → SMS to the counsellor.
     await processDueJobs();
-    const sms = consoleOutbox.find((msg) => msg.data?.followUpId === fu.body.id);
-    expect(sms?.to).toBe(USERS.apexBranchAdmin.mobile);
+    await processDueJobs(); // notify() queues the SMS as a notifications.deliver job
+    const sms = consoleOutbox.find(
+      (msg) => msg.data?.eventKey === 'admissions.follow-up-due' && msg.to === USERS.apexBranchAdmin.mobile,
+    );
     expect(sms?.body).toContain('Enq Person');
 
     const conv = await request(app)

@@ -11,6 +11,7 @@ import { getSequelize } from '../../infrastructure/database/sequelize';
 import { User } from '../users/user.model';
 import { FileObject } from '../files/file.model';
 import { fileRepo, signedUrlFor } from '../files/files.service';
+import { emitClassSessionCompleted } from './class-events';
 import {
   Batch,
   ClassNote,
@@ -443,6 +444,7 @@ export function timetableRoutes(r: Router) {
       entityId: id,
       metadata: { before, after: session.toJSON() },
     });
+    await emitClassSessionCompleted(session);
     res.json(session);
   });
 

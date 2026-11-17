@@ -2,10 +2,11 @@ import { Op, type Transaction } from 'sequelize';
 import type { ApplicationDto, EnquiryDto, EnquiryFollowUpDto } from '@erp/shared';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { enqueueJob } from '../../infrastructure/jobs/queue';
-import { getMessagingProvider } from '../../infrastructure/messaging';
 import { logger } from '../../infrastructure/logger';
 import { requireTenantContext } from '../../shared/context';
-import { BadRequest } from '../../shared/errors';
+import { BadRequest, NotFound } from '../../shared/errors';
+import { Batch, Course, enrollStudentsInBatch } from '../academics/api';
+import { guardiansOf, notify, studentUserOf } from '../notifications/api';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { UserRole } from '../permissions/models';
 import { User } from '../users/user.model';
@@ -14,6 +15,7 @@ import { getStudentSettings } from '../students/settings';
 import { AdmissionApplication, Enquiry, EnquiryFollowUp } from './models';
 
 export const FOLLOW_UP_REMINDER_JOB = 'admissions.follow-up-reminder';
+export const FOLLOW_UP_DUE_EVENT = 'admissions.follow-up-due';
 
 export const enquiryRepo = new TenantRepository(Enquiry, { entity: 'Enquiry', branchScoped: true });
 export const applicationRepo = new TenantRepository(AdmissionApplication, {
@@ -139,10 +141,16 @@ export async function followUpReminderJob(payload: Record<string, unknown>) {
     return;
   }
   const when = followUp.scheduledAt.toISOString().slice(0, 16).replace('T', ' ');
-  await getMessagingProvider('sms').send({
-    to: recipient.mobile,
-    body: `Reminder: follow up with ${enquiry.name} (${enquiry.mobile}) at ${when} UTC.${followUp.note ? ` ${followUp.note}` : ''}`,
-    data: { type: 'enquiry.follow_up', enquiryId: enquiry.id, followUpId: followUp.id },
+  await notify({
+    event: FOLLOW_UP_DUE_EVENT,
+    recipients: [{ userIds: [recipient.id] }],
+    branchId: enquiry.branchId,
+    data: {
+      enquiry: { id: enquiry.id, name: enquiry.name, mobile: enquiry.mobile },
+      followUpId: followUp.id,
+      when,
+      note: followUp.note ?? '',
+    },
   });
   await followUp.update({ remindedAt: new Date() });
 }
@@ -214,28 +222,57 @@ export async function moveInWaitlist(a: AdmissionApplication, target: number) {
   });
 }
 
-/** Marks the application admitted (and its enquiry converted). */
+/**
+ * Validates an application's batch through academics: it must exist in the institute, belong to the
+ * application's branch and, when a course is given, to that course. Returns the batch's course id.
+ */
+export async function assertAdmissionBatch(
+  batchId: number,
+  branchId: number,
+  courseId?: number | null,
+): Promise<number> {
+  const { instituteId } = requireTenantContext();
+  const batch = await Batch.findOne({ where: { instituteId, id: batchId } });
+  if (!batch) throw NotFound('Batch');
+  if (batch.branchId !== branchId) throw BadRequest('The batch belongs to a different branch');
+  if (courseId && batch.courseId !== courseId)
+    throw BadRequest('The batch is not part of the selected course');
+  return batch.courseId;
+}
+
+/**
+ * Marks the application admitted (and its enquiry converted) and, when it names a batch, enrolls the
+ * new student's login in it through academics (`batch_students`), inside the admit transaction so a
+ * full batch (409 BATCH_FULL) rolls the admission back.
+ */
 export async function completeAdmission(
   a: AdmissionApplication,
-  studentId: number,
+  student: { id: number; userId: number | null },
   branchId: number,
   transaction: Transaction,
 ) {
+  const studentId = student.id;
   const { userId } = requireTenantContext();
   await leaveWaitlist(a, transaction);
   await a.update(
     { status: 'admitted', studentId, decidedByUserId: userId ?? null, decidedAt: new Date() },
     { transaction },
   );
-  // Batch enrolment is owned by the academics module; the course/batch stays on the application
-  // and is recorded in history until enrolment is wired to academics.
+  let batchEnrolment: 'enrolled' | 'no_login' | null = null;
+  if (a.batchId) {
+    // Siblings sharing a mobile get no login of their own and can't be enrolled by user id yet.
+    if (student.userId) {
+      await enrollStudentsInBatch(a.batchId, [student.userId], { branchId, transaction });
+      batchEnrolment = 'enrolled';
+    } else batchEnrolment = 'no_login';
+  }
   if (a.courseId || a.batchId)
     await recordHistory(
       studentId,
       'admitted_for_course',
       {
-        to: a.courseId ? `course:${a.courseId}` : null,
-        details: { courseId: a.courseId, batchId: a.batchId, branchId },
+        to: a.courseId ? `course:${a.courseId}` : a.batchId ? `batch:${a.batchId}` : null,
+        details: { courseId: a.courseId, batchId: a.batchId, branchId, batchEnrolment },
       },
       transaction,
     );
@@ -244,4 +281,34 @@ export async function completeAdmission(
       { status: 'converted', studentId },
       { where: { instituteId: a.instituteId, id: a.enquiryId }, transaction },
     );
+}
+
+/**
+ * Sends `admissions.confirmed` to the new student and their guardians. Called after the admit
+ * transaction commits; a delivery problem never undoes the admission.
+ */
+export async function notifyAdmissionConfirmed(
+  a: AdmissionApplication,
+  student: { id: number; name: string; branchId: number },
+) {
+  try {
+    const { instituteId } = requireTenantContext();
+    const [course, batch] = await Promise.all([
+      a.courseId ? Course.findOne({ where: { instituteId, id: a.courseId }, attributes: ['name'] }) : null,
+      a.batchId ? Batch.findOne({ where: { instituteId, id: a.batchId }, attributes: ['name'] }) : null,
+    ]);
+    await notify({
+      event: 'admissions.confirmed',
+      recipients: [studentUserOf(student.id), guardiansOf(student.id)],
+      branchId: student.branchId,
+      data: {
+        student: { id: student.id, name: student.name },
+        course: course?.name ?? 'the institute',
+        batch: batch?.name ?? 'batch to be assigned',
+        applicationId: a.id,
+      },
+    });
+  } catch (err) {
+    logger.warn({ applicationId: a.id, err }, 'Admission confirmation notification failed');
+  }
 }

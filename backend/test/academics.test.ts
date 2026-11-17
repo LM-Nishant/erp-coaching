@@ -1,13 +1,13 @@
 import request from 'supertest';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { ACADEMICS_CLASS_CHANGED_JOB } from '@erp/shared';
+import { Op } from 'sequelize';
 import { Branch } from '../src/modules/branches/branch.model';
 import { User } from '../src/modules/users/user.model';
 import { ClassSession } from '../src/modules/academics/models';
 import { getBatchMemberUserIds } from '../src/modules/academics/api';
 import { runWithContext } from '../src/shared/context';
 import { processDueJobs } from '../src/infrastructure/jobs/queue';
-import { consoleOutbox } from '../src/infrastructure/messaging/console.provider';
+import { NotificationMessage } from '../src/modules/notifications/models';
 import { DEMO_PASSWORD, USERS, bearer, getApp, login } from './helpers';
 
 const STUDENT = { mobile: '9100000005', password: DEMO_PASSWORD };
@@ -334,7 +334,6 @@ describe('academics module', () => {
   });
 
   it('reschedules, cancels and substitutes classes and notifies participants', async () => {
-    consoleOutbox.length = 0;
     // Moving into the next week's slot of the same batch is a double booking.
     const clash = await request(app)
       .post(`/api/academics/class-sessions/${ids.cs1}/reschedule`)
@@ -364,13 +363,17 @@ describe('academics module', () => {
     expect(sub.body).toMatchObject({ teacherUserId: subTeacherId, originalTeacherUserId: teacherId });
 
     await processDueJobs();
-    const pushes = consoleOutbox.filter((m) => m.data?.type === ACADEMICS_CLASS_CHANGED_JOB);
-    expect(pushes.some((m) => m.to === `user:${studentId}` && m.data?.change === 'cancelled')).toBe(true);
-    expect(pushes.some((m) => m.to === `user:${teacherId}` && m.data?.change === 'substituted')).toBe(true);
-    expect(pushes.some((m) => m.to === `user:${subTeacherId}` && m.data?.change === 'substituted')).toBe(
-      true,
-    );
-    expect(pushes.some((m) => m.data?.change === 'rescheduled')).toBe(true);
+    const inApp = await NotificationMessage.findAll({
+      where: { instituteId: 1, channel: 'in_app', eventKey: { [Op.like]: 'classes.%' } },
+    });
+    const got = (userId: number, event: string) =>
+      inApp.some((m) => m.userId === userId && m.eventKey === event);
+    expect(got(studentId, 'classes.cancelled')).toBe(true);
+    expect(got(studentId, 'classes.rescheduled')).toBe(true);
+    expect(got(teacherId, 'classes.substituted')).toBe(true);
+    expect(got(subTeacherId, 'classes.substituted')).toBe(true);
+    // Push goes through the notifications delivery pipeline (users without a push token are skipped).
+    expect(inApp.find((m) => m.eventKey === 'classes.cancelled')!.body).toContain('cancelled');
 
     // Regeneration does not recreate the rescheduled occurrence.
     const regen = await request(app)
