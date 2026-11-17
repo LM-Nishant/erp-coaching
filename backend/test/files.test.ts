@@ -39,6 +39,41 @@ describe('file storage', () => {
     expect((await request(app).get(`/api/files/${up.body.id}/url`).set(bearer(zenith))).status).toBe(404);
   });
 
+  it('shows institute-wide files to branch-restricted users but keeps other branches hidden', async () => {
+    const app = await getApp();
+    const teacher = (await login(USERS.apexTeacher)).accessToken; // restricted to Apex branch 1
+    const branchAdmin = (await login(USERS.apexBranchAdmin)).accessToken; // restricted, has files.delete
+    const branches = (await request(app).get('/api/branches').set(bearer(apex))).body as { id: number }[];
+    const [own, other] = branches.map((b) => b.id).sort((a, b) => a - b);
+    const upload = (token: string, name: string, branchId?: number) => {
+      const req = request(app).post('/api/files').set(bearer(token)).field('module', 'wide-test');
+      if (branchId) req.field('branchId', String(branchId));
+      return req.attach('file', Buffer.from(name), { filename: `${name}.txt`, contentType: 'text/plain' });
+    };
+
+    const wide = await upload(apex, 'institute-wide');
+    const otherBranch = await upload(apex, 'other-branch', other);
+    expect(wide.body.branchId).toBeNull();
+
+    const list = await request(app).get('/api/files?module=wide-test').set(bearer(teacher));
+    const ids = list.body.items.map((f: { id: number }) => f.id);
+    expect(ids).toContain(wide.body.id);
+    expect(ids).not.toContain(otherBranch.body.id);
+    expect((await request(app).get(`/api/files/${wide.body.id}/url`).set(bearer(teacher))).status).toBe(200);
+    expect(
+      (await request(app).get(`/api/files/${otherBranch.body.id}/url`).set(bearer(teacher))).status,
+    ).toBe(404);
+
+    // Branch-restricted users can read but not delete institute-wide files...
+    expect((await request(app).delete(`/api/files/${wide.body.id}`).set(bearer(branchAdmin))).status).toBe(
+      403,
+    );
+    // ...and their own uploads default to their branch instead of becoming institute-wide.
+    const mine = await upload(teacher, 'teacher-upload');
+    expect(mine.status).toBe(201);
+    expect(mine.body.branchId).toBe(own);
+  });
+
   it('rejects requests without a file', async () => {
     const res = await request(await getApp())
       .post('/api/files')

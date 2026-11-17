@@ -48,6 +48,7 @@ The module loader picks up the folder automatically, and the migrator picks up `
 - **Register the model.** Call `registerTenantModel(Model)` in `initModel`. Any query without `instituteId` then throws, as a safety net.
 - **Use the repository.** Do all tenant data access through `new TenantRepository(Model, { entity: 'Student', branchScoped: true })`.
   - Use `findAll`, `findById`, `findOne`, `findAndCountAll`, `count`, `create`, `update`, `destroy`, `scope(where)` and `assertBranchAllowed(branchId)`.
+- **Institute-wide rows.** For branch data that may also be institute-wide (`branch_id` NULL, e.g. files, notices), pass `instituteWideRows: true`. Every user of the institute can then read NULL-branch rows, but only institute-level users can change them (`repo.assertRowWritable(row)` is applied by `update`/`destroy`). Rows created by branch-restricted users always get a branch: their active or only branch, otherwise 400 `BRANCH_REQUIRED`.
 - **Tenant ids come only from context.** Read the institute and branch from `requireTenantContext()` or `getContext()`. **Never** take `instituteId` from the body, query or params.
   - The `branchId` in a body is allowed, but must be checked with `repo.assertBranchAllowed()`.
 - **Bypasses.** `{ tenantBypass: true }` is only for super-admin platform code or system jobs, and must come with a comment.
@@ -96,7 +97,7 @@ Add `backend/test/<module>.test.ts` using the helpers in `test/helpers.ts`: `get
 2. **403** for a role without the permission.
 3. **Tenant isolation**: Apex cannot read or update Zenith data (404), and a client-supplied `instituteId` is ignored. See `test/tenancy.test.ts`.
 
-Tests run against the real MySQL test database, which is dropped, migrated and seeded once per run. Commands:
+Set a per-checkout `TEST_DB_NAME` in `backend/.env` (e.g. `erp_coaching_test_<module>`) so parallel sessions don't share a database. Tests run against the real MySQL test database, which is dropped, migrated and seeded once per run. Commands:
 
 - `npm test -w backend`
 - `npm run typecheck`
