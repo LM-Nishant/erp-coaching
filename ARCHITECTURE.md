@@ -47,6 +47,8 @@ backend/src/
 5. Then `jobs` handlers are registered.
 6. Finally `onReady()`. Modules use it for cross-module wiring: each provider module's `integrations.ts` registers into consumer extension points (notification recipient resolvers, grievance linked students, academics class-completed listeners). See CONTRIBUTING → "Cross-module wiring".
 
+After `listen()`, `server.ts` calls each module's optional `attachServer(server)`. Use it for protocols that need the raw HTTP server, such as Socket.IO in `live-classes/realtime.ts`. Mount on a module-prefixed path and authenticate every connection.
+
 **Adding a module never requires editing a shared file.**
 
 ### Migrations and seeders

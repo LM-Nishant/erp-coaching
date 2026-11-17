@@ -9,6 +9,10 @@
 	</dict>
   <key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>The camera is used to stream your live classes and to scan attendance QR codes.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>The microphone is used in live classes when you teach or are allowed to speak.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
@@ -71,5 +75,7 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Confirm you are at the institute when checking in for attendance.</string>
 </dict>
 </plist>

@@ -1,3 +1,4 @@
+import type { Server } from 'node:http';
 import type { Router } from 'express';
 import type { Sequelize } from 'sequelize';
 import type { PermissionAction, SystemRoleSlug } from '@erp/shared';
@@ -29,6 +30,11 @@ export interface ModuleDefinition {
   jobs?: Record<string, JobHandler>;
   /** Runs once after DB connection and associations are ready. */
   onReady?: () => Promise<void> | void;
+  /**
+   * API process only: runs once the HTTP server exists, e.g. to attach a Socket.IO/WebSocket server.
+   * Use a module-prefixed path (`/api/<module>/…`) and authenticate every connection.
+   */
+  attachServer?: (server: Server) => void;
 }
 
 export function defineModule(def: ModuleDefinition): ModuleDefinition {

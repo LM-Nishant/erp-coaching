@@ -173,6 +173,8 @@ Current wiring:
 | fees → notifications                              | `notify()`                     | `fees.due`, `fees.overdue`, `fees.receipt`, `fees.payment-failed`, `fees.refund`, `fees.receipt-share` (student + guardians)                                           |
 | guardians, academics → appointments               | `appointments.service.ts`      | parents must pass `assertGuardianOf`; the teacher must teach one of the child's batches (`Batch`/`BatchTeacher`/`BatchStudent`)                                        |
 | appointments → parent-portal                      | `appointments/integrations.ts` | `registerParentPortalProvider('appointments')`: upcoming meetings on the parent home; shared meeting summaries in monthly reports                                      |
+| live-classes → attendance, LMS (events)           | `live-classes/api.ts`          | `onLiveSessionEnded` (participants + `absentStudentUserIds`, student user ids), `onLiveRecordingReady`, `listBatchRecordings`; see `live-classes/README.md`            |
+| live-classes → notifications                      | `notify()`                     | `live-classes.scheduled/starting/recording-ready` (batch members; guardians on scheduled)                                                                              |
 
 Identity note: academics rosters and grievances key students by **login user id**; students/guardians use `students.id` (`students.user_id` is nullable — siblings sharing a mobile have no login). Use `getStudentUserId`, `getLinkedStudentUsers`, `getGuardianUserIdsForStudentUsers` from `guardians/guardian-access` to convert.
 
