@@ -44,10 +44,26 @@ export function createApp(modules: ModuleDefinition[]) {
   api.get('/health', (_req, res) => {
     res.json({ status: 'ok', time: new Date().toISOString() });
   });
-  for (const m of modules) m.routes?.(api);
+  for (const m of modules) {
+    const before = api.stack.length;
+    m.routes?.(api);
+    assertNoRootMiddleware(m.name, api.stack.slice(before));
+  }
   app.use('/api', api);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
   return app;
+}
+
+/**
+ * A module must mount its routers under its own prefix. `api.use(mw)` / `api.use('/', router)` would
+ * run that middleware (e.g. `authenticate`) for every module registered after it.
+ */
+function assertNoRootMiddleware(moduleName: string, layers: { slash?: boolean; route?: unknown }[]) {
+  if (layers.some((l) => !l.route && l.slash)) {
+    throw new Error(
+      `Module "${moduleName}" mounts middleware/router at the API root. Use api.use('/<prefix>', router).`,
+    );
+  }
 }

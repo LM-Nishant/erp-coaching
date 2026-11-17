@@ -9,11 +9,16 @@ import {
   type WhereOptions,
 } from 'sequelize';
 import { requireTenantContext } from '../context';
-import { Forbidden, NotFound } from '../errors';
+import { AppError, Forbidden, NotFound } from '../errors';
 
 interface RepoOptions {
   /** Model has a `branchId` attribute and rows must be limited to the user's allowed branches. */
   branchScoped?: boolean;
+  /**
+   * With `branchScoped`: rows with `branchId = NULL` are institute-wide and readable by every user
+   * of the institute. Branch-restricted users cannot create, update or delete them.
+   */
+  instituteWideRows?: boolean;
   /** Human-readable entity name for errors. */
   entity?: string;
 }
@@ -43,15 +48,16 @@ export class TenantRepository<M extends Model> {
       const allowed = ctx.activeBranchId ? [ctx.activeBranchId] : ctx.allowedBranchIds;
       if (allowed !== null) {
         const requested = (where as Record<string, unknown>).branchId;
-        scoped.branchId =
-          requested !== undefined
-            ? {
-                [Op.and]: [
-                  requested !== null && typeof requested === 'object' ? requested : { [Op.eq]: requested },
-                  { [Op.in]: allowed },
-                ],
-              }
-            : { [Op.in]: allowed };
+        const visible = this.opts.instituteWideRows
+          ? { [Op.or]: [{ [Op.in]: allowed }, { [Op.is]: null }] }
+          : { [Op.in]: allowed };
+        const requestedCond =
+          requested === null
+            ? { [Op.is]: null }
+            : requested !== null && typeof requested === 'object'
+              ? requested
+              : { [Op.eq]: requested };
+        scoped.branchId = requested !== undefined ? { [Op.and]: [requestedCond, visible] } : visible;
       }
     }
     return scoped as WhereOptions<Attributes<M>>;
@@ -63,6 +69,21 @@ export class TenantRepository<M extends Model> {
     if (ctx.allowedBranchIds !== null && !ctx.allowedBranchIds.includes(branchId)) {
       throw Forbidden('You do not have access to this branch', 'BRANCH_FORBIDDEN');
     }
+  }
+
+  /** Throws unless the current user may modify this row (institute-wide rows need institute-wide access). */
+  assertRowWritable(row: M): void {
+    if (!this.opts.branchScoped) return;
+    const branchId = (row as unknown as TenantAttrs).branchId;
+    if (branchId == null) {
+      if (requireTenantContext().allowedBranchIds !== null)
+        throw Forbidden(
+          'Institute-wide records can only be changed by institute-level users',
+          'BRANCH_FORBIDDEN',
+        );
+      return;
+    }
+    this.assertBranchAllowed(branchId);
   }
 
   findAll(options: FindOptions<Attributes<M>> = {}) {
@@ -96,6 +117,12 @@ export class TenantRepository<M extends Model> {
       TenantAttrs;
     if (this.opts.branchScoped) {
       if (data.branchId == null && ctx.activeBranchId) data.branchId = ctx.activeBranchId;
+      if (data.branchId == null && ctx.allowedBranchIds !== null) {
+        // Branch-restricted users always create branch rows; default to their only branch.
+        if (ctx.allowedBranchIds.length !== 1)
+          throw new AppError(400, 'BRANCH_REQUIRED', 'Select a branch (X-Branch-Id or branchId)');
+        data.branchId = ctx.allowedBranchIds[0];
+      }
       this.assertBranchAllowed(data.branchId);
     }
     return this.model.create(data, opts);
@@ -103,6 +130,7 @@ export class TenantRepository<M extends Model> {
 
   async update(id: number, values: Partial<Attributes<M>>, opts: { transaction?: Transaction } = {}) {
     const row = await this.findById(id, { transaction: opts.transaction });
+    this.assertRowWritable(row);
     const data = { ...values } as Partial<TenantAttrs>;
     delete data.instituteId;
     if (this.opts.branchScoped && data.branchId !== undefined) this.assertBranchAllowed(data.branchId);
@@ -111,6 +139,7 @@ export class TenantRepository<M extends Model> {
 
   async destroy(id: number, opts: { transaction?: Transaction } = {}) {
     const row = await this.findById(id, { transaction: opts.transaction });
+    this.assertRowWritable(row);
     await row.destroy(opts);
     return row;
   }

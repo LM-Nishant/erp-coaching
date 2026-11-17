@@ -30,11 +30,11 @@ CREATE DATABASE erp_coaching      CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_
 CREATE DATABASE erp_coaching_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER 'erp_dev'@'localhost' IDENTIFIED BY 'choose-a-password';
 GRANT ALL PRIVILEGES ON erp_coaching.*      TO 'erp_dev'@'localhost';
-GRANT ALL PRIVILEGES ON erp_coaching_test.* TO 'erp_dev'@'localhost';
+GRANT ALL PRIVILEGES ON `erp\_coaching\_test%`.* TO 'erp_dev'@'localhost';  -- any erp_coaching_test* DB
 FLUSH PRIVILEGES;
 ```
 
-The test suite drops and recreates `erp_coaching_test` on every run, so never point `TEST_DB_NAME` at real data.
+The test suite drops and recreates `TEST_DB_NAME` (default `erp_coaching_test`) on every run, so never point it at real data. It is read from the shell or from `backend/.env`. When several checkouts run tests in parallel, give each its own name, for example `TEST_DB_NAME=erp_coaching_test_students`. The name must contain `test`.
 
 ## 2. Configure and install
 

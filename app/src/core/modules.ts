@@ -1,3 +1,4 @@
+import type { Component } from 'vue';
 import type { RouteRecordRaw } from 'vue-router';
 import type { PermissionKey } from '@erp/shared';
 
@@ -24,6 +25,8 @@ export interface AppModule {
   /** Pages available without login (login, OTP…). */
   publicRoutes?: RouteRecordRaw[];
   menu?: MenuItem[];
+  /** Components rendered in every page's toolbar (end slot), e.g. the notifications bell. */
+  toolbarItems?: Component[];
 }
 
 export function defineAppModule(m: AppModule): AppModule {
@@ -37,3 +40,5 @@ export function defineAppModule(m: AppModule): AppModule {
 export const appModules: AppModule[] = Object.values(
   import.meta.glob<{ default: AppModule }>('../modules/*/module.ts', { eager: true }),
 ).map((m) => m.default);
+
+export const toolbarItems: Component[] = appModules.flatMap((m) => m.toolbarItems ?? []);
