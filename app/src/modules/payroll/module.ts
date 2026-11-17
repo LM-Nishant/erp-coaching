@@ -1,0 +1,121 @@
+import {
+  briefcaseOutline,
+  calculatorOutline,
+  cashOutline,
+  documentTextOutline,
+  receiptOutline,
+  walletOutline,
+} from 'ionicons/icons';
+import { defineAppModule } from '@/core/modules';
+
+export default defineAppModule({
+  id: 'payroll',
+  routes: [
+    {
+      path: '/payroll/runs',
+      name: 'payroll-runs',
+      component: () => import('./PayrollRunsPage.vue'),
+      meta: { permission: 'payroll.view' },
+    },
+    {
+      path: '/payroll/runs/:id',
+      name: 'payroll-run',
+      component: () => import('./PayrollRunPage.vue'),
+      meta: { permission: 'payroll.view' },
+    },
+    {
+      path: '/payroll/structures',
+      name: 'payroll-structures',
+      component: () => import('./SalaryStructuresPage.vue'),
+      meta: { permission: 'payroll.view' },
+    },
+    {
+      path: '/payroll/work-units',
+      name: 'payroll-work-units',
+      component: () => import('./WorkUnitsPage.vue'),
+      meta: { permission: 'payroll.view' },
+    },
+    {
+      path: '/payroll/components',
+      name: 'payroll-components',
+      component: () => import('./ComponentsPage.vue'),
+      meta: { permission: 'payroll.view' },
+    },
+    {
+      path: '/payroll/settlements',
+      name: 'payroll-settlements',
+      component: () => import('./SettlementsPage.vue'),
+      meta: { permission: 'payroll.view' },
+    },
+    {
+      path: '/payroll/reports',
+      name: 'payroll-reports',
+      component: () => import('./PayrollReportsPage.vue'),
+      meta: { permission: 'payroll.export' },
+    },
+    {
+      path: '/me/payslips',
+      name: 'my-payslips',
+      component: () => import('./MyPayslipsPage.vue'),
+      meta: { permission: 'hr-self-service.view' },
+    },
+  ],
+  menu: [
+    {
+      title: 'Payroll runs',
+      path: '/payroll/runs',
+      icon: cashOutline,
+      permission: 'payroll.view',
+      planModule: 'payroll',
+      order: 70,
+    },
+    {
+      title: 'Salary structures',
+      path: '/payroll/structures',
+      icon: walletOutline,
+      permission: 'payroll.view',
+      planModule: 'payroll',
+      order: 71,
+    },
+    {
+      title: 'Lectures & incentives',
+      path: '/payroll/work-units',
+      icon: briefcaseOutline,
+      permission: 'payroll.view',
+      planModule: 'payroll',
+      order: 72,
+    },
+    {
+      title: 'Full & final',
+      path: '/payroll/settlements',
+      icon: receiptOutline,
+      permission: 'payroll.view',
+      planModule: 'payroll',
+      order: 73,
+    },
+    {
+      title: 'Payroll reports',
+      path: '/payroll/reports',
+      icon: documentTextOutline,
+      permission: 'payroll.export',
+      planModule: 'payroll',
+      order: 74,
+    },
+    {
+      title: 'Statutory components',
+      path: '/payroll/components',
+      icon: calculatorOutline,
+      permission: 'payroll.configure',
+      planModule: 'payroll',
+      order: 75,
+    },
+    {
+      title: 'My payslips',
+      path: '/me/payslips',
+      icon: receiptOutline,
+      permission: 'hr-self-service.view',
+      planModule: 'payroll',
+      order: 91,
+    },
+  ],
+});
