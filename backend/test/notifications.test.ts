@@ -61,15 +61,12 @@ describe('notifications module', () => {
 
   it('manages templates (CRUD + preview) and isolates them per institute', async () => {
     const app = await getApp();
-    const created = await request(app)
-      .post('/api/notifications/templates')
-      .set(bearer(admin))
-      .send({
-        eventKey: 'fees.receipt',
-        channel: 'sms',
-        body: 'Paid {{amount}} for {{student.name}}',
-        instituteId: 2,
-      });
+    const created = await request(app).post('/api/notifications/templates').set(bearer(admin)).send({
+      eventKey: 'fees.receipt',
+      channel: 'sms',
+      body: 'Paid {{amount}} for {{student.name}}',
+      instituteId: 2,
+    });
     expect(created.status).toBe(201);
     const id = created.body.id as number;
 
