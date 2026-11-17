@@ -8,5 +8,5 @@ export * from './students';
 export * from './hr';
 export * from './payroll';
 export * from './grievances';
-export * from './fees';
 export * from './exams';
+export * from './fees';
