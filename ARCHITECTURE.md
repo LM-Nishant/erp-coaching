@@ -20,7 +20,7 @@ backend/src/
     storage/             StorageAdapter: local-disk (implemented), s3 (stub), signed URLs
     ai-providers/        OpenAI-compatible chat-completions client
     messaging/           SMS / WhatsApp / email / push providers (console impl + MSG91/Twilio/WhatsApp Cloud/SMTP/FCM stubs)
-    payment-gateways/    PaymentGateway interface (mock impl)
+    payment-gateways/    PaymentGateway interface: mock (signed webhooks) + Paytm/Razorpay/Cashfree adapters (signature verification; API calls stubbed)
     streaming/ biometric/  interfaces + mock impls
     calendar/            CalendarProvider (Google Calendar/Meet stub + mock that issues meeting links)
     jobs/                DB-backed job queue + in-process worker

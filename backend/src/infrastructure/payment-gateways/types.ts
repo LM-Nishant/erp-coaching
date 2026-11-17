@@ -1,3 +1,20 @@
+export const PAYMENT_GATEWAY_NAMES = ['mock', 'paytm', 'razorpay', 'cashfree'] as const;
+export type PaymentGatewayName = (typeof PAYMENT_GATEWAY_NAMES)[number];
+
+/** Institute-owned merchant credentials (stored encrypted by the owning module). */
+export interface GatewayCredentials {
+  /** Paytm MID / Razorpay key id / Cashfree app id. */
+  merchantId?: string;
+  /** Paytm merchant key / Razorpay key secret / Cashfree secret key. */
+  secretKey?: string;
+  /** Secret used to sign webhooks (Razorpay webhook secret; defaults to `secretKey`). */
+  webhookSecret?: string;
+  /** Paytm website / industry etc. */
+  extra?: Record<string, string>;
+  /** Use the vendor's sandbox environment. */
+  sandbox?: boolean;
+}
+
 export interface CreateOrderInput {
   /** Idempotency key / our payment order id. */
   orderId: string;
@@ -19,16 +36,20 @@ export interface VerifiedPayment {
   gatewayPaymentId: string;
   status: 'success' | 'failed' | 'pending';
   amountPaise: number;
+  /** Gateway charges (MDR + GST) deducted by the gateway, when reported. */
+  feePaise?: number;
+  /** Vendor event id, when present (extra idempotency key). */
+  eventId?: string;
   raw: unknown;
 }
 
 /** Payment gateway adapter (Paytm, Razorpay, Cashfree...). Credentials are institute-owned. */
 export interface PaymentGateway {
-  readonly name: string;
+  readonly name: PaymentGatewayName;
   createOrder(input: CreateOrderInput): Promise<GatewayOrder>;
   /** Server-side verification of the authoritative status (never trust the client callback alone). */
   fetchStatus(gatewayOrderId: string): Promise<VerifiedPayment>;
-  /** Validates webhook signature and parses the event. */
+  /** Validates the webhook signature (throws `WebhookSignatureError`) and parses the event. */
   verifyWebhook(
     headers: Record<string, string | string[] | undefined>,
     rawBody: Buffer,
@@ -37,5 +58,13 @@ export interface PaymentGateway {
     gatewayPaymentId: string,
     amountPaise: number,
     idempotencyKey: string,
-  ): Promise<{ refundId: string; status: string }>;
+  ): Promise<{ refundId: string; status: 'processed' | 'pending' | 'failed' }>;
 }
+
+export class WebhookSignatureError extends Error {
+  constructor(message = 'Invalid webhook signature') {
+    super(message);
+  }
+}
+
+export class GatewayNotAvailableError extends Error {}

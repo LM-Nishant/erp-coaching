@@ -11,7 +11,7 @@ import { Appointment } from '../src/modules/appointments/appointments.models';
 import { USERS, bearer, getApp, lastOtpFor, login, newDevice } from './helpers';
 
 let seq = 0;
-const mobile = () => `938${String(seq++).padStart(7, '0')}`;
+const mobile = () => `939${String(seq++).padStart(7, '0')}`;
 const OTHER_TEACHER = { mobile: '9100000941', password: 'Password@123' };
 
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
