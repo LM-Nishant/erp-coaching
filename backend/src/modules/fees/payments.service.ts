@@ -19,6 +19,8 @@ import {
   FeeRefund,
   FeeWebhookEvent,
   PaymentGatewayConfig,
+  type FeeAccount,
+  type FeeInstalment,
 } from './models';
 import {
   accountRepo,
@@ -39,6 +41,7 @@ import { getFeeSettings } from './settings.service';
 import { adapterFor, resolveGateway } from './gateways.service';
 import { money, notifyStudent } from './notifications';
 import { today, withLockRetry, auditFee } from './util';
+import { recordReferralConversion, redeemCoupon, releaseCoupon, validateCoupon } from '../website/api';
 
 export const paymentRepo = new TenantRepository(FeePayment, { branchScoped: true, entity: 'Payment' });
 
@@ -67,8 +70,100 @@ export function paymentDto(p: FeePayment): FeePaymentDto {
     receiptNumber: p.receipt?.number ?? null,
     bankAccountId: p.bankAccountId,
     notes: p.notes,
+    couponCode: p.couponCode ?? null,
+    couponDiscount: p.couponDiscount ?? 0,
+    referralCode: p.referralCode ?? null,
     createdAt: p.createdAt.toISOString(),
   };
+}
+
+/** Per-customer key used for website coupon limits (validate and redeem must agree). */
+export const couponCustomerKey = (studentId: number) => `student:${studentId}`;
+const couponOrderRef = (paymentId: number) => `fee-payment:${paymentId}`;
+
+/**
+ * Applies a coupon discount to the oldest unpaid instalments (so the discounted payment still
+ * clears the instalments it was priced for) and books it as a fee discount.
+ */
+async function applyCouponDiscount(
+  payment: FeePayment,
+  account: FeeAccount,
+  instalments: FeeInstalment[],
+  transaction: Transaction,
+) {
+  let left = Math.min(payment.couponDiscount, Math.max(0, account.balance));
+  const applied = left;
+  if (applied <= 0) return;
+  for (const i of instalments) {
+    if (left <= 0) break;
+    const take = Math.min(Math.max(0, i.amount - Math.max(0, i.paid - i.lateFee)), left);
+    if (!take) continue;
+    i.amount -= take;
+    i.status = instalmentStatus(i);
+    await i.save({ transaction });
+    left -= take;
+  }
+  account.discount += applied - left;
+  await postJournal(
+    {
+      key: `payment-coupon:${payment.id}`,
+      branchId: payment.branchId,
+      feeAccountId: account.id,
+      refType: 'payment',
+      refId: payment.id,
+      date: payment.paidOn ?? today(),
+      narration: `Coupon ${payment.couponCode ?? ''} discount`.trim(),
+      lines: [
+        { account: L.FEE_INCOME, debit: applied - left },
+        { account: L.RECEIVABLE, credit: applied - left },
+      ],
+    },
+    transaction,
+  );
+}
+
+/** Website side effects of a captured online payment (coupon use, referral purchase). */
+async function recordPurchaseAttribution(payment: FeePayment, account: FeeAccount, transaction: Transaction) {
+  if (payment.couponCode)
+    try {
+      await redeemCoupon(
+        {
+          code: payment.couponCode,
+          amountPaise: payment.amount + payment.couponDiscount,
+          courseId: account.courseId,
+          customerKey: couponCustomerKey(payment.studentId),
+          orderRef: couponOrderRef(payment.id),
+        },
+        { transaction },
+      );
+    } catch (err) {
+      // The price was quoted and paid; honour it and flag the over-use for the institute.
+      logger.warn({ err, paymentId: payment.id }, 'Coupon could not be redeemed for a captured payment');
+    }
+  if (payment.referralCode)
+    await recordReferralConversion(
+      {
+        code: payment.referralCode,
+        kind: 'purchase',
+        refType: 'fee_payment',
+        refId: payment.id,
+        amountPaise: payment.amount,
+      },
+      { transaction },
+    );
+}
+
+/** Gives the coupon use back when an order is refunded in full or cancelled. Idempotent. */
+async function releasePaymentCoupon(payment: FeePayment, transaction?: Transaction) {
+  if (!payment.couponCode) return;
+  try {
+    await releaseCoupon(
+      { code: payment.couponCode, orderRef: couponOrderRef(payment.id) },
+      transaction ? { transaction } : {},
+    );
+  } catch (err) {
+    logger.warn({ err, paymentId: payment.id }, 'Coupon could not be released');
+  }
 }
 
 /** Ledger account the money lands in. */
@@ -122,6 +217,8 @@ async function postLocked(
   if (payment.postedAt) return null;
   const settings = await getFeeSettings();
   const { account, instalments } = await lockAccount(payment.accountId, transaction);
+  if (payment.couponDiscount > 0 && account.status === 'active')
+    await applyCouponDiscount(payment, account, instalments, transaction);
   const allocs =
     account.status === 'active' ? await allocateToInstalments(instalments, payment.amount, transaction) : [];
   const allocated = allocs.reduce((s, a) => s + a.amount, 0);
@@ -230,6 +327,7 @@ async function postLocked(
     { transaction },
   );
   await evaluateEntitlement(account, instalments, transaction);
+  if (payment.mode === 'online') await recordPurchaseAttribution(payment, account, transaction);
   return receipt;
 }
 
@@ -385,6 +483,10 @@ export async function createCheckout(input: {
   amount?: number;
   gateway?: PaymentGatewayKey;
   idempotencyKey?: string | null;
+  /** Website coupon: validated now (discount lowers the amount), redeemed once captured. */
+  couponCode?: string | null;
+  /** Website referral code credited with a purchase once captured. */
+  referralCode?: string | null;
 }): Promise<CheckoutOrderDto> {
   const { instituteId, userId } = requireTenantContext();
   const account = await accountRepo.findById(input.accountId, { include: ['student'] });
@@ -402,15 +504,34 @@ export async function createCheckout(input: {
         gateway: existing.gateway!,
         gatewayOrderId: existing.gatewayOrderId,
         amount: existing.amount,
+        discount: existing.couponDiscount,
+        couponCode: existing.couponCode,
         checkout: (existing.gatewayPayload as Record<string, unknown>) ?? {},
       };
   }
+  let couponCode: string | null = null;
+  let discount = 0;
+  if (input.couponCode?.trim()) {
+    const v = await validateCoupon({
+      code: input.couponCode,
+      amountPaise: Math.min(amount, Math.max(0, account.balance)),
+      courseId: account.courseId,
+      customerKey: couponCustomerKey(account.studentId),
+    });
+    if (!v.valid) throw Conflict(v.message, `COUPON_${v.reason}`);
+    if (v.discountPaise >= amount)
+      throw Conflict('This coupon covers the whole amount; ask the institute to apply it', 'COUPON_FULL');
+    couponCode = v.code;
+    discount = v.discountPaise;
+  }
+  const referralCode = input.referralCode?.trim().toUpperCase().slice(0, 40) || null;
+  const payable = amount - discount;
   const payment = await FeePayment.create({
     instituteId,
     branchId: account.branchId,
     accountId: account.id,
     studentId: account.studentId,
-    amount,
+    amount: payable,
     mode: 'online',
     gateway: cfg.gateway,
     referenceNo: null,
@@ -423,10 +544,13 @@ export async function createCheckout(input: {
     bankAccountId: null,
     recordedByUserId: userId ?? null,
     notes: null,
+    couponCode,
+    couponDiscount: discount,
+    referralCode,
   });
   const order = await gateway.createOrder({
     orderId: `${instituteId}-${payment.id}`,
-    amountPaise: amount,
+    amountPaise: payable,
     currency: 'INR',
     customer: { name: account.student?.name ?? 'Student', mobile: account.student?.mobile ?? '' },
     callbackUrl: `/fees/me/payments/${payment.id}`,
@@ -437,13 +561,15 @@ export async function createCheckout(input: {
     action: 'fees.payment.checkout',
     entityType: 'fee_payment',
     entityId: payment.id,
-    after: { amount, gateway: cfg.gateway },
+    after: { amount: payable, gateway: cfg.gateway, couponCode, discount, referralCode },
   });
   return {
     paymentId: payment.id,
     gateway: cfg.gateway,
     gatewayOrderId: order.gatewayOrderId,
-    amount,
+    amount: payable,
+    discount,
+    couponCode,
     checkout: order.checkout,
   };
 }
@@ -753,6 +879,7 @@ export async function refundPayment(
         { refunded, status: refunded >= p.amount ? 'refunded' : 'partially_refunded' },
         { transaction },
       );
+      if (refunded >= p.amount) await releasePaymentCoupon(p, transaction);
       await refund.update({ status: 'processed', processedAt: new Date() }, { transaction });
     }),
   );
@@ -793,6 +920,7 @@ export async function cancelPayment(id: number, reason: string | null) {
           },
           { transaction },
         );
+        await releasePaymentCoupon(p, transaction);
       }),
     );
   } else if (payment.status === 'successful' && payment.mode !== 'online' && payment.refunded === 0) {

@@ -61,6 +61,7 @@ import {
   syncPaymentStatus,
 } from './payments.service';
 import { findReceipt, receiptDto, receiptPdfUrl } from './receipts';
+import { quoteCourse, startCoursePurchase } from './course-sales';
 import { enabledGateways, gatewayDto, gatewayRepo, upsertGatewayConfig } from './gateways.service';
 import {
   bankAccountDto,
@@ -182,10 +183,20 @@ const offlineBody = z.object({
   paidOn: date.optional(),
   notes: optStr(500),
 });
+const promoCode = z.string().trim().max(40).nullable().optional();
 const checkoutBody = z.object({
   accountId: z.number().int().positive(),
   amount: positivePaise.optional(),
   gateway: z.enum(PAYMENT_GATEWAYS).optional(),
+  couponCode: promoCode,
+  referralCode: promoCode,
+});
+const coursePurchaseBody = z.object({
+  studentId: optId,
+  batchId: optId,
+  gateway: z.enum(PAYMENT_GATEWAYS).optional(),
+  couponCode: promoCode,
+  referralCode: promoCode,
 });
 const adjustmentBody = z.object({
   type: z.enum(FEE_ADJUSTMENT_TYPES).default('discount'),
@@ -852,6 +863,40 @@ function selfRoutes(r: Router) {
     const body = parse(checkoutBody, req.body);
     await assertMyAccount(body.accountId);
     res.status(201).json(await createCheckout({ ...body, idempotencyKey: idemKey(req) }));
+  });
+  // Buying a course online (website "Buy" button → app → here).
+  const myStudent = async (requested?: number | null) => {
+    const ids = await myStudentIds();
+    const selected = requested ?? ids[0];
+    if (!selected || !ids.includes(selected)) throw NotFound('Student');
+    return selected;
+  };
+  r.get('/me/courses/:id/quote', mine, async (req, res) => {
+    const { id } = parse(idParam, req.params);
+    const q = parse(
+      z.object({ studentId: qId, batchId: qId, coupon: z.string().trim().max(40).optional() }),
+      req.query,
+    );
+    res.json(
+      await quoteCourse({
+        studentId: await myStudent(q.studentId),
+        courseId: id,
+        batchId: q.batchId ?? null,
+        couponCode: q.coupon || null,
+      }),
+    );
+  });
+  r.post('/me/courses/:id/checkout', pay, async (req, res) => {
+    const { id } = parse(idParam, req.params);
+    const body = parse(coursePurchaseBody, req.body ?? {});
+    res.status(201).json(
+      await startCoursePurchase({
+        ...body,
+        studentId: await myStudent(body.studentId),
+        courseId: id,
+        idempotencyKey: idemKey(req),
+      }),
+    );
   });
   r.get('/me/payments/:id', mine, async (req, res) => {
     const { id } = parse(idParam, req.params);

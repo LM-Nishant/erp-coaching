@@ -57,6 +57,17 @@
               label-placement="stacked"
           /></ion-item>
           <ion-item><ion-input v-model="form.gstin" label="GSTIN" label-placement="stacked" /></ion-item>
+          <ion-item>
+            <ion-select
+              v-model="form.timezone"
+              label="Timezone"
+              label-placement="stacked"
+              interface="popover"
+              helper-text="Class times, appointment slots and 'today' use this timezone"
+            >
+              <ion-select-option v-for="tz in timezones" :key="tz" :value="tz">{{ tz }}</ion-select-option>
+            </ion-select>
+          </ion-item>
           <ion-item
             ><ion-textarea v-model="form.address" label="Address" label-placement="stacked" auto-grow
           /></ion-item>
@@ -78,8 +89,11 @@ import {
   IonInput,
   IonItem,
   IonList,
+  IonSelect,
+  IonSelectOption,
   IonTextarea,
 } from '@ionic/vue';
+import { DEFAULT_INSTITUTE_TIMEZONE } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import { api } from '@/core/api';
 import { applyBranding } from '@/core/branding';
@@ -97,6 +111,7 @@ interface InstituteProfile {
   gstin: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
+  timezone: string;
   branding: { logoUrl: string | null };
 }
 type Form = Omit<InstituteProfile, 'branding'>;
@@ -107,6 +122,8 @@ const logoUrl = ref<string | null>(null);
 const saving = ref(false);
 const uploading = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
+const supported = (Intl as { supportedValuesOf?: (key: 'timeZone') => string[] }).supportedValuesOf;
+const timezones = ref<string[]>(supported?.('timeZone') ?? [DEFAULT_INSTITUTE_TIMEZONE, 'UTC']);
 
 async function load() {
   const p = await api.get<InstituteProfile>('/institute');
@@ -116,7 +133,9 @@ async function load() {
     ...rest,
     primaryColor: rest.primaryColor ?? '#3880ff',
     secondaryColor: rest.secondaryColor ?? '#5260ff',
+    timezone: rest.timezone ?? DEFAULT_INSTITUTE_TIMEZONE,
   };
+  if (!timezones.value.includes(form.value.timezone)) timezones.value.unshift(form.value.timezone);
 }
 
 function preview() {

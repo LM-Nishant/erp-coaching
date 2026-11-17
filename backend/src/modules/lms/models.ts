@@ -49,6 +49,8 @@ export class LmsResource extends Model<InferAttributes<LmsResource>, InferCreati
   declare transcodeStatus: CreationOptional<LmsTranscodeStatus>;
   declare transcodeError: CreationOptional<string | null>;
   declare hlsPrefix: CreationOptional<string | null>;
+  /** Origin of system-created content (e.g. `live-recording:<id>`); unique per institute. */
+  declare sourceRef: CreationOptional<string | null>;
   declare createdByUserId: number | null;
   declare publishedAt: CreationOptional<Date | null>;
   declare createdAt: CreationOptional<Date>;
@@ -283,6 +285,7 @@ export function initLmsModels(sequelize: Sequelize) {
     transcodeStatus: { ...str(20), defaultValue: 'none' },
     transcodeError: str(500, true),
     hlsPrefix: str(300, true),
+    sourceRef: str(100, true),
     createdByUserId: uint(),
     publishedAt: date(),
   });

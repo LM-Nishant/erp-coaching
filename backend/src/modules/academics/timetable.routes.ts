@@ -11,7 +11,7 @@ import { getSequelize } from '../../infrastructure/database/sequelize';
 import { User } from '../users/user.model';
 import { FileObject } from '../files/file.model';
 import { fileRepo, signedUrlFor } from '../files/files.service';
-import { emitClassSessionCompleted } from './class-events';
+import { applyClassCompletion } from './class-completion';
 import {
   Batch,
   ClassNote,
@@ -429,23 +429,7 @@ export function timetableRoutes(r: Router) {
     const body = parse(completeBody, req.body);
     const session = await repos.classSessions.findById(id);
     assertTeacherOrStaff(session);
-    if (session.status === 'cancelled') throw Conflict('Cannot complete a cancelled class', 'INVALID_STATE');
-    if (session.date > today()) throw BadRequest('Cannot complete a future class');
-    const before = session.toJSON();
-    await session.update({
-      status: 'completed',
-      actualDurationMinutes: body.actualDurationMinutes,
-      completionNotes: body.completionNotes ?? null,
-      completedAt: new Date(),
-    });
-    await audit({
-      action: 'class_session.completed',
-      entityType: 'ClassSession',
-      entityId: id,
-      metadata: { before, after: session.toJSON() },
-    });
-    await emitClassSessionCompleted(session);
-    res.json(session);
+    res.json(await applyClassCompletion(session, body));
   });
 
   r.delete('/class-sessions/:id', can('delete'), async (req, res) => {

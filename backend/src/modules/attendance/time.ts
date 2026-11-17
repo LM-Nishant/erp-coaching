@@ -1,23 +1,22 @@
-/** Date/time helpers. Class dates and times are institute-local wall-clock values (server time). */
+import { nowInZone, zonedDateTimeToUtc } from '../../shared/timezone';
+
+/** Date/time helpers. Class dates and times are institute-local wall-clock values in `tz`. */
 
 export const isoDate = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Today's date in server-local time. */
-export function localDate(now = new Date()): string {
-  const off = now.getTimezoneOffset() * 60000;
-  return new Date(now.getTime() - off).toISOString().slice(0, 10);
+/** Today's date in the institute timezone. */
+export function localDate(tz: string, now = new Date()): string {
+  return nowInZone(tz, now).date;
 }
 
-export const localHhmm = (d: Date) =>
-  `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+/** Wall-clock `HH:MM` of `d` in the institute timezone. */
+export const localHhmm = (d: Date, tz: string) => nowInZone(tz, d).time;
 
 export const minutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
 
-/** Minutes between the class start (`date` + `hhmm`, local) and `now`; negative before start. */
-export function minutesSinceStart(date: string, hhmm: string, now = new Date()): number {
-  const [y, m, d] = date.split('-').map(Number);
-  const start = new Date(y, m - 1, d, Number(hhmm.slice(0, 2)), Number(hhmm.slice(3, 5)));
-  return (now.getTime() - start.getTime()) / 60000;
+/** Minutes between the class start (`date` + `hhmm`, institute-local) and `now`; negative before start. */
+export function minutesSinceStart(date: string, hhmm: string, tz: string, now = new Date()): number {
+  return (now.getTime() - zonedDateTimeToUtc(date, hhmm.slice(0, 5), tz).getTime()) / 60000;
 }
 
 export function addDays(date: string, n: number): string {

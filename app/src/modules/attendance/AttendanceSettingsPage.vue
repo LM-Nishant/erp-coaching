@@ -39,6 +39,13 @@
           <ion-input v-model.number="s.lateAfterMinutes" type="number" label="Late after (min)" />
         </ion-item>
         <ion-item>
+          <ion-input
+            v-model.number="s.liveMinPercent"
+            type="number"
+            label="Live class: present after watching (%)"
+          />
+        </ion-item>
+        <ion-item>
           <ion-input v-model.number="s.qrRotateSeconds" type="number" label="QR rotates every (s)" />
         </ion-item>
 

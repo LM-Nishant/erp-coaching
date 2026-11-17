@@ -288,6 +288,48 @@ describe('appointments + parent portal', () => {
     ).toBe(400);
   });
 
+  it('decides whether a slot is past in the institute timezone', async () => {
+    // A wall-clock time just ahead of UTC now: already past in UTC+14, still ahead in UTC-11.
+    const w = new Date(Math.ceil(Date.now() / 3_600_000) * 3_600_000 + 5 * 60_000).toISOString();
+    const date = w.slice(0, 10);
+    const startTime = w.slice(11, 16);
+    const setTz = (tz: string) =>
+      request(app).put('/api/institute/settings/timezone').set(bearer(admin)).send({ value: tz });
+    const chunks = async () =>
+      (
+        await request(app)
+          .get(`/api/appointments/teachers/${teacherId}/availability`)
+          .query({ from: date, to: date })
+          .set(bearer(admin))
+      ).body.map((c: { startTime: string }) => c.startTime);
+    const slot = await request(app)
+      .post('/api/appointments/slots')
+      .set(bearer(teacher))
+      .send({
+        branchId,
+        kind: 'one_off',
+        date,
+        startTime,
+        endTime: `${startTime.slice(0, 3)}35`,
+        slotMinutes: 30,
+        mode: 'online',
+      });
+    expect(slot.status, JSON.stringify(slot.body)).toBe(201);
+    try {
+      expect((await setTz('Not/AZone')).status).toBe(422);
+      expect((await setTz('Pacific/Kiritimati')).status).toBe(200);
+      expect((await request(app).get('/api/institute/settings').set(bearer(admin))).body.timezone).toBe(
+        'Pacific/Kiritimati',
+      );
+      expect(await chunks()).not.toContain(startTime);
+      expect((await setTz('Pacific/Pago_Pago')).status).toBe(200);
+      expect(await chunks()).toContain(startTime);
+    } finally {
+      await setTz('Asia/Kolkata');
+      await request(app).delete(`/api/appointments/slots/${slot.body.id}`).set(bearer(teacher));
+    }
+  });
+
   // ------------------------------------------------------------ lifecycle
 
   it('validates and creates a meeting request', async () => {
@@ -639,6 +681,227 @@ describe('appointments + parent portal', () => {
     expect(summary.status).toBe(200);
     expect(summary.body.find((s: { key: string }) => s.key === 'appointments')).toBeTruthy();
     expect((await request(app).get('/api/parent-portal/children').set(bearer(teacher))).status).toBe(403);
+  });
+
+  it('shows fees, attendance, published results and pending homework of a linked child only', async () => {
+    const { FeeAccount, FeeInstalment, FeePayment } = await import('../src/modules/fees/models');
+    const { AttendanceSession, AttendanceRecord } = await import('../src/modules/attendance/models');
+    const { Exam, ExamAttempt } = await import('../src/modules/exams/models');
+    const { LmsAssignment } = await import('../src/modules/lms/models');
+    const today = new Date();
+    const thisMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    const ids: Record<string, number[]> = {};
+    const track = <T extends { id: number }>(k: string, row: T) => ((ids[k] ??= []).push(row.id), row);
+    try {
+      await asApex(async () => {
+        const account = track(
+          'fee_accounts',
+          await FeeAccount.create({
+            instituteId: 1,
+            branchId,
+            studentId: child.id,
+            studentUserId: child.userId,
+            structureId: null,
+            courseId: null,
+            batchId: null,
+            subjectId: null,
+            academicSessionId: null,
+            title: 'PP Tuition',
+            gross: 1000,
+            sourceRef: null,
+          }),
+        );
+        for (const [seq, dueDate, amount] of [
+          [1, daysAhead(-10), 600],
+          [2, daysAhead(20), 400],
+        ] as const)
+          track(
+            'fee_instalments',
+            await FeeInstalment.create({
+              instituteId: 1,
+              accountId: account.id,
+              seq,
+              label: `PP Inst ${seq}`,
+              dueDate,
+              amount,
+            }),
+          );
+        track(
+          'fee_payments',
+          await FeePayment.create({
+            instituteId: 1,
+            branchId,
+            accountId: account.id,
+            studentId: child.id,
+            amount: 250,
+            mode: 'cash',
+            gateway: null,
+            status: 'successful',
+            referenceNo: null,
+            chequeNumber: null,
+            chequeDate: null,
+            bankName: null,
+            paidOn: daysAhead(-1),
+            gatewayOrderId: null,
+            idempotencyKey: null,
+            bankAccountId: null,
+            recordedByUserId: null,
+            notes: null,
+          }),
+        );
+        const session = track(
+          'attendance_sessions',
+          await AttendanceSession.create({
+            instituteId: 1,
+            branchId,
+            batchId,
+            classSessionId: null,
+            sessionKey: `pp-test-${Date.now()}`,
+            kind: 'daily',
+            date: `${thisMonth}-01`,
+            startTime: null,
+            endTime: null,
+            teacherUserId: null,
+            qrSecret: 'x',
+          }),
+        );
+        track(
+          'attendance_records',
+          await AttendanceRecord.create({
+            instituteId: 1,
+            branchId,
+            attendanceSessionId: session.id,
+            batchId,
+            date: `${thisMonth}-01`,
+            studentUserId: child.userId,
+            status: 'present',
+            source: 'manual',
+            markedAt: new Date(),
+            markedByUserId: null,
+          }),
+        );
+        for (const [title, published] of [
+          ['PP Published Exam', true],
+          ['PP Hidden Exam', false],
+        ] as const) {
+          const exam = track(
+            'exams',
+            await Exam.create({
+              instituteId: 1,
+              branchId,
+              title,
+              description: null,
+              instructions: null,
+              batchId,
+              courseId: null,
+              subjectId: null,
+              startAt: new Date(Date.now() - 86_400_000),
+              endAt: new Date(Date.now() - 82_800_000),
+              durationMinutes: 60,
+              status: 'scheduled',
+              promptVersionId: null,
+              passMarks: 40,
+              resultsPublishedAt: published ? new Date() : null,
+              resultsPublishedBy: null,
+              createdByUserId: null,
+            }),
+          );
+          track(
+            'exam_attempts',
+            await ExamAttempt.create({
+              instituteId: 1,
+              branchId,
+              examId: exam.id,
+              studentUserId: child.userId,
+              status: 'submitted',
+              startedAt: new Date(Date.now() - 86_400_000),
+              deadlineAt: new Date(Date.now() - 82_800_000),
+              submittedAt: new Date(Date.now() - 83_000_000),
+              lastSeenAt: null,
+              questionOrder: [],
+              optionOrders: null,
+              totalScore: 72,
+              maxScore: 100,
+              rank: 1,
+              percentile: null,
+            }),
+          );
+        }
+        track(
+          'lms_assignments',
+          await LmsAssignment.create({
+            instituteId: 1,
+            branchId,
+            batchId,
+            subjectId: null,
+            chapterId: null,
+            topicId: null,
+            title: 'PP Homework',
+            instructions: null,
+            dueAt: new Date(Date.now() + 86_400_000),
+            maxMarks: null,
+            status: 'published',
+            publishedAt: new Date(),
+            createdByUserId: null,
+          }),
+        );
+      });
+
+      const summary = await request(app)
+        .get(`/api/parent-portal/children/${child.id}/summary`)
+        .set(bearer(parent));
+      expect(summary.status).toBe(200);
+      type Section = {
+        key: string;
+        metrics: { label: string; value: unknown }[];
+        items: { title: string }[];
+      };
+      const byKey = new Map((summary.body as Section[]).map((s) => [s.key, s]));
+      const fees = byKey.get('fees')!;
+      expect(fees.metrics).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ label: 'Outstanding', value: '₹1,000' }),
+          expect.objectContaining({ label: 'Overdue', value: '₹600' }),
+          expect.objectContaining({ label: 'Next due', value: '₹400' }),
+        ]),
+      );
+      expect(fees.items.some((i) => i.title === 'Paid ₹250')).toBe(true);
+      expect(byKey.get('attendance')!.metrics[0]).toMatchObject({ label: 'This month', value: '100%' });
+      const results = byKey.get('exams')!;
+      expect(results.items.map((i) => i.title)).toContain('PP Published Exam');
+      expect(results.items.map((i) => i.title)).not.toContain('PP Hidden Exam');
+      expect(byKey.get('lms')!.items.map((i) => i.title)).toContain('PP Homework');
+
+      // The other parent's child has none of this data; and nobody sees a child they aren't linked to.
+      const other = await request(app)
+        .get(`/api/parent-portal/children/${unlinked.id}/summary`)
+        .set(bearer(strangerParent));
+      expect(other.status).toBe(200);
+      const otherKeys = (other.body as Section[]).map((s) => s.key);
+      for (const k of ['fees', 'attendance', 'exams']) expect(otherKeys).not.toContain(k);
+      expect(
+        (other.body as Section[]).find((s) => s.key === 'lms')?.items.map((i) => i.title) ?? [],
+      ).toContain('PP Homework'); // same batch → same homework, but its own submission state
+      expect(
+        (await request(app).get(`/api/parent-portal/children/${unlinked.id}/summary`).set(bearer(parent)))
+          .status,
+      ).toBe(404);
+    } finally {
+      for (const table of [
+        'lms_assignments',
+        'exam_attempts',
+        'exams',
+        'attendance_records',
+        'attendance_sessions',
+        'fee_payments',
+        'fee_instalments',
+        'fee_accounts',
+      ])
+        if (ids[table]?.length)
+          await Appointment.sequelize!.query(`DELETE FROM ${table} WHERE id IN (?)`, {
+            replacements: [ids[table]],
+          });
+    }
   });
 
   it('generates monthly parent reports from registered providers', async () => {

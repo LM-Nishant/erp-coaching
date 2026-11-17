@@ -24,6 +24,9 @@ Socket.IO is attached through the generic `attachServer(server)` module hook (`s
 - Moderator: users with `live-classes.configure` (branch admins) in an allowed branch. They can end the class, mark Q&A
   answered, run polls and grant mics. They can watch, but they can't start the class.
 - Student: active enrolment in the batch (academics roster, **student user id**).
+- Paid courses: `setLiveEntitlementProvider(fn)` (from `api.ts`) adds a check before a student gets a join token
+  (`403 LIVE_NOT_ENTITLED`). The default allows. Fees registers it so a course with an active fee structure needs the
+  fee entitlement or an LMS manual grant.
 - Everyone else gets 404. Join tokens (`POST /:id/join`) are issued only to these roles while the session is `live`.
 - The socket handshake reuses the HTTP `authenticate` middleware (access token + `branchId`), so tenant, branch,
   device-session and module checks are identical to REST. Every room action re-checks the role.

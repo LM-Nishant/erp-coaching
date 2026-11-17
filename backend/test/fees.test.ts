@@ -6,6 +6,7 @@ import { runWithContext } from '../src/shared/context';
 import { hasCourseEntitlement } from '../src/modules/fees/api';
 import { FeeLedgerEntry, FeePayment } from '../src/modules/fees/models';
 import { processDueJobs } from '../src/infrastructure/jobs/queue';
+import { resolveCoursePrices } from '../src/modules/website/hooks';
 
 let seq = 0;
 const run = Date.now().toString(36).slice(-5).toUpperCase();
@@ -563,5 +564,187 @@ describe('fees, payments & accounting', () => {
     expect(zDues.body.items.some((x: { accountId: number }) => x.accountId === accountId)).toBe(false);
 
     expect((await trialBalance()).balanced).toBe(true);
+  });
+});
+
+describe('fees ↔ LMS / website: paid course purchase with coupon and referral', () => {
+  let app: Awaited<ReturnType<typeof getApp>>;
+  let admin: string;
+  let courseId: number;
+  let resourceId: number;
+  let couponId: number;
+  let webhookPath: string;
+  const couponCode = `PAID${run}`;
+  const refCode = `PREF${run}`;
+
+  beforeAll(async () => {
+    app = await getApp();
+    admin = (await login(USERS.apexAdmin)).accessToken;
+    const gw = await request(app)
+      .put('/api/fees/gateways/mock')
+      .set(bearer(admin))
+      .send({ enabled: true, isDefault: true, webhookSecret: WEBHOOK_SECRET });
+    webhookPath = new URL(gw.body.webhookUrl).pathname;
+    const course = await request(app)
+      .post('/api/academics/courses')
+      .set(bearer(admin))
+      .send({ name: `Paid Course ${run}`, code: `PC-${run}` });
+    courseId = course.body.id;
+    const res = await request(app).post('/api/lms/resources').set(bearer(admin)).send({
+      courseId,
+      title: 'Paid lesson',
+      type: 'link',
+      externalUrl: 'https://example.com/paid',
+      access: 'paid',
+    });
+    expect(res.status).toBe(201);
+    resourceId = res.body.id;
+    await request(app).post(`/api/lms/resources/${resourceId}/publish`).set(bearer(admin));
+    // A free taster puts the course in every learner's library, with the paid lesson locked.
+    const taster = await request(app).post('/api/lms/resources').set(bearer(admin)).send({
+      courseId,
+      title: 'Free taster',
+      type: 'link',
+      externalUrl: 'https://example.com/free',
+      access: 'free',
+    });
+    await request(app).post(`/api/lms/resources/${taster.body.id}/publish`).set(bearer(admin));
+    const coupon = await request(app)
+      .post('/api/website/coupons')
+      .set(bearer(admin))
+      .send({ code: couponCode, discountType: 'fixed', discountValue: 1_000, usageLimit: 5 });
+    expect(coupon.status).toBe(201);
+    couponId = coupon.body.id;
+    expect(
+      (
+        await request(app)
+          .post('/api/website/referrals')
+          .set(bearer(admin))
+          .send({ code: refCode, name: 'Partner' })
+      ).status,
+    ).toBe(201);
+  });
+
+  it('prices and hands off checkout only once the course has an active fee structure', async () => {
+    const sys = { system: true, instituteId: 1, allowedBranchIds: null };
+    expect((await runWithContext(sys, () => resolveCoursePrices([courseId]))).get(courseId)).toBeUndefined();
+    const free = await request(app).get(`/api/public/sites/apex/checkout/${courseId}?format=json`);
+    expect(free.body.handler).toBe('admission');
+
+    const st = await request(app)
+      .post('/api/fees/structures')
+      .set(bearer(admin))
+      .send({
+        name: `Paid ${run}`,
+        courseId,
+        components: [{ name: 'Course fee', amount: 1_000_000 }],
+        instalmentPlan: { type: 'one_time', count: 1, firstDueDate: '2030-01-10' },
+      });
+    expect(st.status).toBe(201);
+    expect((await runWithContext(sys, () => resolveCoursePrices([courseId]))).get(courseId)).toBe('₹10,000');
+    const paid = await request(app).get(
+      `/api/public/sites/apex/checkout/${courseId}?format=json&coupon=${couponCode.toLowerCase()}&ref=${refCode}`,
+    );
+    expect(paid.body.handler).toBe('fees');
+    const url = new URL(paid.body.url);
+    expect(url.pathname).toBe(`/my-fees/buy/${courseId}`);
+    expect(url.searchParams.get('coupon')).toBe(couponCode);
+    expect(url.searchParams.get('ref')).toBe(refCode);
+  });
+
+  it('locks LMS content until the payment is captured, redeems the coupon once and releases it on refund', async () => {
+    const m = mobile();
+    const created = await request(app)
+      .post('/api/students')
+      .set(bearer(admin))
+      .send({ name: 'Buyer', mobile: m });
+    expect(created.status).toBe(201);
+    const token = await otpLogin(m);
+    const lessonLocked = async () => {
+      const c = await request(app).get(`/api/lms/courses/${courseId}/contents`).set(bearer(token));
+      expect(c.status).toBe(200);
+      return c.body.resources.find((r: { id: number }) => r.id === resourceId).locked as boolean;
+    };
+    expect(await lessonLocked()).toBe(true);
+    expect((await request(app).post(`/api/lms/resources/${resourceId}/play`).set(bearer(token))).status).toBe(
+      403,
+    );
+
+    const quote = await request(app)
+      .get(`/api/fees/me/courses/${courseId}/quote`)
+      .query({ coupon: couponCode })
+      .set(bearer(token));
+    expect(quote.status).toBe(200);
+    expect(quote.body).toMatchObject({
+      amount: 1_000_000,
+      discount: 100_000,
+      payable: 900_000,
+      alreadyPaid: false,
+    });
+    expect(quote.body.coupon).toMatchObject({ code: couponCode, valid: true });
+
+    const checkout = await request(app)
+      .post(`/api/fees/me/courses/${courseId}/checkout`)
+      .set(bearer(token))
+      .set('Idempotency-Key', `buy-${run}`)
+      .send({ couponCode, referralCode: refCode });
+    expect(checkout.status).toBe(201);
+    expect(checkout.body).toMatchObject({ amount: 900_000, discount: 100_000, couponCode, gateway: 'mock' });
+    const { paymentId, gatewayOrderId } = checkout.body;
+    expect(await lessonLocked()).toBe(true);
+
+    const body = JSON.stringify({
+      event: 'payment.captured',
+      eventId: `evt_${gatewayOrderId}`,
+      gatewayOrderId,
+      gatewayPaymentId: `pay_${gatewayOrderId}`,
+      amountPaise: 900_000,
+      status: 'success',
+    });
+    const deliver = (b = body) =>
+      request(app)
+        .post(webhookPath)
+        .set('Content-Type', 'application/json')
+        .set(MOCK_SIGNATURE_HEADER, signMockWebhook(WEBHOOK_SECRET, b))
+        .send(b);
+    expect((await deliver()).body.outcome).toBe('posted');
+    expect((await deliver()).body.outcome).toBe('duplicate');
+    const resent = body.replace(`evt_${gatewayOrderId}`, `evt_${gatewayOrderId}_retry`);
+    expect((await deliver(resent)).body.outcome).toBe('already_processed');
+
+    expect(await lessonLocked()).toBe(false);
+    expect((await request(app).post(`/api/lms/resources/${resourceId}/play`).set(bearer(token))).status).toBe(
+      200,
+    );
+    const lines = await FeeLedgerEntry.findAll({
+      where: { instituteId: 1, journalKey: `payment:${paymentId}` },
+    });
+    expect(lines.reduce((s, l) => s + l.debit, 0)).toBe(900_000);
+    const couponLines = await FeeLedgerEntry.findAll({
+      where: { instituteId: 1, journalKey: `payment-coupon:${paymentId}` },
+    });
+    expect(couponLines.reduce((s, l) => s + l.debit, 0)).toBe(100_000);
+    const coupon = async () =>
+      (await request(app).get(`/api/website/coupons/${couponId}`).set(bearer(admin))).body;
+    expect((await coupon()).usedCount).toBe(1);
+    const refs = await request(app)
+      .get('/api/website/referrals')
+      .set(bearer(admin))
+      .query({ search: refCode });
+    expect(refs.body.items[0].purchases).toBe(1);
+    const again = await request(app).get(`/api/fees/me/courses/${courseId}/quote`).set(bearer(token));
+    expect(again.body.alreadyPaid).toBe(true);
+    const tb = await request(app).get('/api/fees/ledger/trial-balance').set(bearer(admin));
+    expect(tb.body.balanced).toBe(true);
+
+    const refund = await request(app)
+      .post(`/api/fees/payments/${paymentId}/refund`)
+      .set(bearer(admin))
+      .send({ amount: 900_000, reason: 'Changed mind' });
+    expect(refund.status).toBe(201);
+    expect((await coupon()).usedCount).toBe(0);
+    const reds = await request(app).get(`/api/website/coupons/${couponId}/redemptions`).set(bearer(admin));
+    expect(reds.body.items.map((x: { status: string }) => x.status)).toEqual(['released']);
+    expect(await lessonLocked()).toBe(true);
   });
 });

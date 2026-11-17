@@ -9,8 +9,7 @@ import { requireTenantContext } from '../../shared/context';
 import { BadRequest, Forbidden } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
 import { isModuleEnabled } from '../subscriptions/subscription.service';
-import { enquiryRepo } from '../admissions/admissions.service';
-import { activeForm, validateCustomFields } from '../admissions/forms.service';
+import { activeForm, createEnquiry, validateCustomFields } from '../admissions/api';
 import { mobileSchema, resolveBranch } from '../students/students.service';
 import { recordReferralConversion } from './referrals.service';
 import { findPublicCourse } from './content.service';
@@ -81,7 +80,7 @@ export async function submitLead(
     `Submitted on the website (page "${pageSlug}")${input.ref ? `, referral code ${input.ref.toUpperCase()}` : ''}.`,
   );
 
-  const enquiry = await enquiryRepo.create({
+  const enquiry = await createEnquiry({
     branchId: branch.id,
     name: input.name,
     mobile: input.mobile,

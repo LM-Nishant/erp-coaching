@@ -74,6 +74,24 @@ describe('file storage', () => {
     expect(mine.body.branchId).toBe(own);
   });
 
+  it('signs module-owned files (LMS, exams…) only for their uploader', async () => {
+    const app = await getApp();
+    const teacher = (await login(USERS.apexTeacher)).accessToken;
+    const upload = (module: string) =>
+      request(app)
+        .post('/api/files')
+        .set(bearer(apex))
+        .field('module', module)
+        .attach('file', Buffer.from(module), { filename: `${module}.txt`, contentType: 'text/plain' });
+    const owned = await upload('lms');
+    const generic = await upload('academics');
+    expect((await request(app).get(`/api/files/${owned.body.id}/url`).set(bearer(teacher))).status).toBe(404);
+    expect((await request(app).get(`/api/files/${owned.body.id}/url`).set(bearer(apex))).status).toBe(200);
+    expect((await request(app).get(`/api/files/${generic.body.id}/url`).set(bearer(teacher))).status).toBe(
+      200,
+    );
+  });
+
   it('rejects requests without a file', async () => {
     const res = await request(await getApp())
       .post('/api/files')

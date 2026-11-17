@@ -10,7 +10,7 @@ import type {
 } from '@erp/shared';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { requireTenantContext } from '../../shared/context';
-import { BadRequest, Conflict, NotFound } from '../../shared/errors';
+import { BadRequest, Conflict, Forbidden, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
 import { enqueueJob } from '../../infrastructure/jobs/queue';
 import { getStorage } from '../../infrastructure/storage';
@@ -38,6 +38,7 @@ import {
   sectionRepo,
 } from './exams.service';
 import { isAnswered, round2, scoreObjective, shuffle } from './scoring';
+import { canStartExam } from './entitlements';
 
 export const AUTO_SUBMIT_JOB = 'exams.auto-submit';
 /** Network slack for saves that were sent just before the deadline. */
@@ -111,6 +112,8 @@ export async function startAttempt(examId: number): Promise<AttemptSessionDto> {
   if (exam.status !== 'scheduled') throw Conflict('This exam is not open', 'EXAM_NOT_OPEN');
   if (now < exam.startAt) throw Conflict('The exam has not started yet', 'EXAM_NOT_OPEN');
   if (now >= exam.endAt) throw Conflict('The exam window has closed', 'EXAM_CLOSED');
+  if (!(await canStartExam(exam, userId)))
+    throw Forbidden('Pay the course fee to take this exam', 'EXAM_NOT_ENTITLED');
 
   const { sections, eqs } = await orderedExamQuestions(examId);
   const order: number[] = [];

@@ -9,6 +9,8 @@ import { audit } from '../../shared/audit/audit.service';
 import { getStorage } from '../../infrastructure/storage';
 import { Institute } from './institute.model';
 import { getAllSettings, setSetting } from './settings.service';
+import { clearInstituteTimezoneCache, getInstituteTimezone, isValidTimeZone } from '../../shared/timezone';
+import { INSTITUTE_TIMEZONE_SETTING, type InstituteSettingsDto } from '@erp/shared';
 import { FileObject } from '../files/file.model';
 
 const color = z
@@ -16,6 +18,13 @@ const color = z
   .regex(/^#[0-9a-fA-F]{6}$/)
   .nullable()
   .optional();
+
+const timezone = z.string().max(64).refine(isValidTimeZone, 'Unknown IANA timezone');
+
+async function saveTimezone(tz: string) {
+  await setSetting(INSTITUTE_TIMEZONE_SETTING, tz);
+  clearInstituteTimezoneCache(requireTenantContext().instituteId);
+}
 
 export function instituteRoutes(api: Router) {
   // ---- Public (pre-login institute selection / branding on the shared mobile app)
@@ -44,7 +53,11 @@ export function instituteRoutes(api: Router) {
   r.get('/', requirePermission('institute', 'view'), async (_req, res) => {
     const inst = await Institute.findByPk(requireTenantContext().instituteId);
     if (!inst) throw NotFound('Institute');
-    res.json({ ...inst.toJSON(), branding: inst.toBranding() });
+    res.json({
+      ...inst.toJSON(),
+      timezone: await getInstituteTimezone(inst.id),
+      branding: inst.toBranding(),
+    });
   });
 
   r.patch('/', requirePermission('institute', 'configure'), async (req, res) => {
@@ -62,10 +75,12 @@ export function instituteRoutes(api: Router) {
         contactPhone: z.string().max(20).nullable().optional(),
         bankDetails: z.record(z.string(), z.string()).nullable().optional(),
         logoFileId: z.number().int().positive().nullable().optional(),
+        timezone: timezone.optional(),
       }),
       req.body,
     );
     const { instituteId } = requireTenantContext();
+    const { timezone: tz, ...profile } = body;
     if (body.logoFileId) {
       const file = await FileObject.findOne({ where: { id: body.logoFileId, instituteId } });
       if (!file || !file.mimeType.startsWith('image/'))
@@ -73,24 +88,31 @@ export function instituteRoutes(api: Router) {
     }
     const inst = await Institute.findByPk(instituteId);
     if (!inst) throw NotFound('Institute');
-    await inst.update(body);
+    await inst.update(profile);
+    if (tz) await saveTimezone(tz);
     await audit({
       action: 'institute.profile_updated',
       entityType: 'institute',
       entityId: instituteId,
       metadata: { fields: Object.keys(body) },
     });
-    res.json({ ...inst.toJSON(), branding: inst.toBranding() });
+    res.json({
+      ...inst.toJSON(),
+      timezone: await getInstituteTimezone(inst.id),
+      branding: inst.toBranding(),
+    });
   });
 
   r.get('/settings', requirePermission('institute', 'view'), async (_req, res) => {
-    res.json(await getAllSettings());
+    const dto: InstituteSettingsDto = { ...(await getAllSettings()), timezone: await getInstituteTimezone() };
+    res.json(dto);
   });
 
   r.put('/settings/:key', requirePermission('institute', 'configure'), async (req, res) => {
     const key = parse(z.string().regex(/^[a-z0-9_.-]{2,120}$/), req.params.key);
     const { value } = parse(z.object({ value: z.unknown() }), req.body);
-    await setSetting(key, value);
+    if (key === INSTITUTE_TIMEZONE_SETTING) await saveTimezone(parse(timezone, value));
+    else await setSetting(key, value);
     await audit({ action: 'institute.setting_changed', entityType: 'institute_setting', entityId: key });
     res.json({ key, value });
   });

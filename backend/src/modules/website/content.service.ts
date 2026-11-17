@@ -8,7 +8,7 @@ import { requireTenantContext } from '../../shared/context';
 import { isModuleEnabled } from '../subscriptions/subscription.service';
 import { Batch, BatchStudent, Course } from '../academics/api';
 import { Branch } from '../branches/branch.model';
-import { activeForm } from '../admissions/forms.service';
+import { activeForm } from '../admissions/api';
 import { resolveCoursePrices } from './hooks';
 import { WebsiteAnnouncement } from './models';
 

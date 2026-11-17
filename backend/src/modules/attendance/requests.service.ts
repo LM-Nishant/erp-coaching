@@ -24,6 +24,7 @@ import {
   rosterStudentIds,
 } from './sessions.service';
 import { addDays, localDate } from './time';
+import { getInstituteTimezone } from '../../shared/timezone';
 
 export const ATTENDANCE_EVENTS: NotificationEventDef[] = [
   {
@@ -152,7 +153,7 @@ export async function createCorrection(input: {
   });
   if (!record && !(await rosterStudentIds(session.batchId, session.date)).includes(subject.studentUserId))
     throw NotFound('Attendance session');
-  if (session.date < addDays(localDate(), -settings.correctionWindowDays))
+  if (session.date < addDays(localDate(await getInstituteTimezone()), -settings.correctionWindowDays))
     throw Conflict(
       `Corrections can be requested up to ${settings.correctionWindowDays} days after the class`,
       'CORRECTION_WINDOW_CLOSED',

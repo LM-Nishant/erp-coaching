@@ -4,6 +4,7 @@ import type { Express } from 'express';
 import { bootstrap } from '../src/bootstrap';
 import { createApp } from '../src/app';
 import { consoleOutbox } from '../src/infrastructure/messaging/console.provider';
+import { getSequelize } from '../src/infrastructure/database/sequelize';
 
 let app: Express | null = null;
 
@@ -55,3 +56,83 @@ export async function login(user: { mobile: string; password: string }, device =
 }
 
 export const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
+
+type FkRef = { table: string; column: string; nullable: boolean; hasId: boolean };
+let fkCache: Map<string, FkRef[]> | null = null;
+
+/** Foreign keys pointing at each table's `id` (read once from information_schema). */
+async function referencesTo(table: string): Promise<FkRef[]> {
+  if (!fkCache) {
+    const sequelize = getSequelize();
+    const [rows] = await sequelize.query(
+      `SELECT k.REFERENCED_TABLE_NAME AS target, k.TABLE_NAME AS tbl, k.COLUMN_NAME AS col,
+              c.IS_NULLABLE AS nullable,
+              EXISTS (SELECT 1 FROM information_schema.COLUMNS i
+                      WHERE i.TABLE_SCHEMA = k.TABLE_SCHEMA AND i.TABLE_NAME = k.TABLE_NAME
+                        AND i.COLUMN_NAME = 'id') AS hasId
+         FROM information_schema.KEY_COLUMN_USAGE k
+         JOIN information_schema.COLUMNS c
+           ON c.TABLE_SCHEMA = k.TABLE_SCHEMA AND c.TABLE_NAME = k.TABLE_NAME AND c.COLUMN_NAME = k.COLUMN_NAME
+        WHERE k.TABLE_SCHEMA = DATABASE() AND k.REFERENCED_COLUMN_NAME = 'id'`,
+    );
+    fkCache = new Map();
+    for (const r of rows as { target: string; tbl: string; col: string; nullable: string; hasId: number }[]) {
+      const list = fkCache.get(r.target) ?? [];
+      list.push({ table: r.tbl, column: r.col, nullable: r.nullable === 'YES', hasId: Boolean(r.hasId) });
+      fkCache.set(r.target, list);
+    }
+  }
+  return fkCache.get(table) ?? [];
+}
+
+/**
+ * Deletes test fixture rows and everything that depends on them: nullable references are cleared,
+ * non-nullable ones are deleted recursively. Use in `afterAll` so suites leave no shared state behind
+ * (e.g. other suites assume institute 1 has no academic sessions of theirs).
+ */
+export async function purgeRows(table: string, ids: (number | null | undefined)[], depth = 0): Promise<void> {
+  const list = [...new Set(ids.filter((id): id is number => typeof id === 'number'))];
+  if (!list.length) return;
+  if (depth > 12) throw new Error(`purgeRows: reference chain too deep at ${table}`);
+  const sequelize = getSequelize();
+  for (const ref of await referencesTo(table)) {
+    if (ref.table === table && ref.nullable) {
+      await sequelize.query(
+        `UPDATE \`${table}\` SET \`${ref.column}\` = NULL WHERE \`${ref.column}\` IN (?)`,
+        {
+          replacements: [list],
+        },
+      );
+    } else if (ref.nullable) {
+      await sequelize.query(
+        `UPDATE \`${ref.table}\` SET \`${ref.column}\` = NULL WHERE \`${ref.column}\` IN (?)`,
+        { replacements: [list] },
+      );
+    } else if (ref.hasId) {
+      const [rows] = await sequelize.query(`SELECT id FROM \`${ref.table}\` WHERE \`${ref.column}\` IN (?)`, {
+        replacements: [list],
+      });
+      await purgeRows(
+        ref.table,
+        (rows as { id: number }[]).map((r) => r.id),
+        depth + 1,
+      );
+    } else {
+      await sequelize.query(`DELETE FROM \`${ref.table}\` WHERE \`${ref.column}\` IN (?)`, {
+        replacements: [list],
+      });
+    }
+  }
+  await sequelize.query(`DELETE FROM \`${table}\` WHERE id IN (?)`, { replacements: [list] });
+}
+
+/** Removes academic fixtures (batches → courses → sessions) and their dependants. */
+export async function purgeAcademicFixtures(f: {
+  batchIds?: (number | undefined)[];
+  courseIds?: (number | undefined)[];
+  sessionIds?: (number | undefined)[];
+}) {
+  await purgeRows('batches', f.batchIds ?? []);
+  await purgeRows('courses', f.courseIds ?? []);
+  await purgeRows('academic_sessions', f.sessionIds ?? []);
+}

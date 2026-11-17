@@ -1,13 +1,31 @@
 import request from 'supertest';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Branch } from '../src/modules/branches/branch.model';
-import { BatchStudent } from '../src/modules/academics/models';
 import { NotificationMessage } from '../src/modules/notifications/models';
 import { WorkUnit } from '../src/modules/payroll/models';
 import { Subscription } from '../src/modules/subscriptions/models';
 import { Employee } from '../src/modules/hr/models';
 import { processDueJobs } from '../src/infrastructure/jobs/queue';
-import { USERS, bearer, getApp, lastOtpFor, login, newDevice } from './helpers';
+import { runWithContext } from '../src/shared/context';
+import {
+  AcademicSession,
+  Batch,
+  BatchStudent,
+  BatchTeacher,
+  ClassSession,
+  Course,
+} from '../src/modules/academics/models';
+import { AttendanceRecord, AttendanceSession } from '../src/modules/attendance/models';
+import { LiveParticipant, LiveRecording, LiveSession } from '../src/modules/live-classes/models';
+import {
+  dispatchLiveEvent,
+  onLiveRecordingReady,
+  onLiveSessionEnded,
+  type LiveRecordingReadyEvent,
+  type LiveSessionEndedEvent,
+} from '../src/modules/live-classes/live-events';
+import { LmsResource, LmsResourceBatch } from '../src/modules/lms/models';
+import { USERS, bearer, getApp, lastOtpFor, login, newDevice, purgeAcademicFixtures } from './helpers';
 
 /** Cross-module wiring (see CONTRIBUTING "Cross-module wiring"). */
 let seq = 0;
@@ -34,6 +52,7 @@ describe('cross-module integration', () => {
   let teacherUserId: number;
   let batchId: number;
   let courseId: number;
+  let academicSessionId: number;
   let student: { id: number; userId: number; name: string };
   let parentMobile: string;
   let parent: string;
@@ -65,6 +84,7 @@ describe('cross-module integration', () => {
       .set(bearer(admin))
       .send({ name: 'INT 2020-50', startDate: '2020-01-01', endDate: '2050-12-31' });
     expect(session.status).toBe(201);
+    academicSessionId = session.body.id;
     const course = await request(app)
       .post('/api/academics/courses')
       .set(bearer(admin))
@@ -88,6 +108,11 @@ describe('cross-module integration', () => {
     expect(batch.status).toBe(201);
     batchId = batch.body.id;
   });
+
+  // academics.test assumes institute 1 has no academic sessions of other suites.
+  afterAll(() =>
+    purgeAcademicFixtures({ batchIds: [batchId], courseIds: [courseId], sessionIds: [academicSessionId] }),
+  );
 
   it('admission with a batch enrols the student through academics and confirms to them', async () => {
     const appl = await request(app)
@@ -237,5 +262,297 @@ describe('cross-module integration', () => {
     } finally {
       await sub.update({ limitOverrides: null });
     }
+  });
+});
+
+describe('live classes → attendance, LMS and academics', () => {
+  const instituteId = 1;
+  const system = <T>(fn: () => Promise<T>) =>
+    runWithContext({ system: true, instituteId, allowedBranchIds: null }, fn);
+  let app: Awaited<ReturnType<typeof getApp>>;
+  let admin: string;
+  let teacher: string;
+  let branchId: number;
+  let teacherUserId: number;
+  let academicSessionId: number;
+  let courseId: number;
+  let batchId: number;
+  const students: number[] = []; // [A joins fully, B barely, C never]
+  const ended: LiveSessionEndedEvent[] = [];
+  const recordings: LiveRecordingReadyEvent[] = [];
+  const today = isoDate(new Date());
+
+  beforeAll(async () => {
+    app = await getApp();
+    admin = (await login(USERS.apexAdmin)).accessToken;
+    branchId = (await Branch.findOne({ where: { instituteId }, order: [['id', 'ASC']] }))!.id;
+    const roles = (await request(app).get('/api/roles').set(bearer(admin))).body as {
+      id: number;
+      slug: string;
+    }[];
+    const mkUser = async (name: string, slug: string) => {
+      const res = await request(app)
+        .post('/api/users')
+        .set(bearer(admin))
+        .send({
+          name,
+          mobile: mobile(),
+          password: 'Live@12345',
+          roles: [{ roleId: roles.find((r) => r.slug === slug)!.id, branchId: null }],
+          branchIds: [branchId],
+        });
+      expect(res.status).toBe(201);
+      return res.body as { id: number; mobile: string };
+    };
+    const t = await mkUser('Live Wiring Teacher', 'teacher');
+    teacherUserId = t.id;
+    teacher = (await login({ mobile: t.mobile, password: 'Live@12345' })).accessToken;
+    for (const n of ['A', 'B', 'C']) students.push((await mkUser(`Live Student ${n}`, 'student')).id);
+
+    await system(async () => {
+      academicSessionId = (
+        await AcademicSession.create({
+          instituteId,
+          name: 'Live wiring',
+          startDate: '2020-01-01',
+          endDate: '2050-12-31',
+        })
+      ).id;
+      courseId = (
+        await Course.create({
+          instituteId,
+          categoryId: null,
+          templateId: null,
+          name: 'Live Wiring Course',
+          code: 'LW-C1',
+          description: null,
+          durationValue: null,
+          durationUnit: null,
+        })
+      ).id;
+      batchId = (
+        await Batch.create({
+          instituteId,
+          branchId,
+          courseId,
+          academicSessionId,
+          name: 'Live wiring batch',
+          code: 'LW-B1',
+          capacity: 10,
+          startDate: '2020-01-01',
+          endDate: null,
+        })
+      ).id;
+      await BatchTeacher.create({ instituteId, batchId, subjectId: null, teacherUserId });
+      for (const studentUserId of students)
+        await BatchStudent.create({
+          instituteId,
+          batchId,
+          studentUserId,
+          joinedOn: '2020-01-01',
+          leftOn: null,
+          promotedFromId: null,
+        });
+    });
+    onLiveSessionEnded('test.capture', async (e) => {
+      ended.push(e);
+    });
+    onLiveRecordingReady('test.capture', async (e) => {
+      recordings.push(e);
+    });
+  });
+
+  afterAll(async () => {
+    await system(async () => {
+      const where = { instituteId, batchId };
+      const liveIds = (await LiveSession.findAll({ where, attributes: ['id'] })).map((l) => l.id);
+      const resources = await LmsResource.findAll({ where: { instituteId, courseId }, attributes: ['id'] });
+      const resourceIds = resources.map((r) => r.id);
+      if (resourceIds.length) {
+        await LmsResourceBatch.destroy({ where: { instituteId, resourceId: resourceIds } });
+        await LmsResource.destroy({ where: { instituteId, id: resourceIds } });
+      }
+      await AttendanceRecord.destroy({ where });
+      await AttendanceSession.destroy({ where });
+      if (liveIds.length) {
+        await LiveParticipant.destroy({ where: { instituteId, liveSessionId: liveIds } });
+        await LiveRecording.destroy({ where: { instituteId, liveSessionId: liveIds } });
+      }
+      await LiveSession.destroy({ where });
+      await ClassSession.destroy({ where });
+      await BatchStudent.destroy({ where });
+      await BatchTeacher.destroy({ where });
+      await Batch.destroy({ where: { instituteId, id: batchId } });
+      await Course.destroy({ where: { instituteId, id: courseId } });
+      await AcademicSession.destroy({ where: { instituteId, id: academicSessionId } });
+    });
+  });
+
+  const newClass = (startTime: string) =>
+    system(() =>
+      ClassSession.create({
+        instituteId,
+        branchId,
+        batchId,
+        subjectId: null,
+        scheduleId: null,
+        teacherUserId,
+        classroomId: null,
+        date: today,
+        startTime,
+        endTime: `${startTime.slice(0, 2)}:45`,
+      }),
+    );
+
+  const classById = async (id: number) =>
+    (await system(() => ClassSession.findOne({ where: { instituteId, id } })))!;
+
+  /** Schedules + starts a live class, backdates it 60 min and records A (full) and B (5 min) joins. */
+  async function runLive(body: Record<string, unknown>) {
+    const live = await request(app).post('/api/live-classes').set(bearer(admin)).send(body);
+    expect(live.status).toBe(201);
+    const id = live.body.id as number;
+    expect((await request(app).post(`/api/live-classes/${id}/start`).set(bearer(teacher))).status).toBe(200);
+    const startedAt = new Date(Date.now() - 60 * 60000);
+    await system(async () => {
+      await LiveSession.update({ startedAt }, { where: { instituteId, id } });
+      const join = (userId: number, minutesIn: number, seconds: number) =>
+        LiveParticipant.create({
+          instituteId,
+          liveSessionId: id,
+          userId,
+          role: 'student',
+          firstJoinedAt: new Date(startedAt.getTime() + minutesIn * 60000),
+          lastJoinedAt: new Date(startedAt.getTime() + minutesIn * 60000),
+          lastLeftAt: new Date(startedAt.getTime() + minutesIn * 60000 + seconds * 1000),
+          totalSeconds: seconds,
+          joinCount: 1,
+          isOnline: false,
+        });
+      await join(students[0], 2, 3000);
+      await join(students[1], 30, 300);
+    });
+    return id;
+  }
+
+  const endLive = async (id: number) => {
+    expect((await request(app).post(`/api/live-classes/${id}/end`).set(bearer(teacher))).status).toBe(200);
+    await processDueJobs();
+  };
+
+  const marks = (sessionKey: string) =>
+    system(async () => {
+      const session = await AttendanceSession.findOne({ where: { instituteId, sessionKey } });
+      const rows = await AttendanceRecord.findAll({
+        where: { instituteId, attendanceSessionId: session!.id },
+      });
+      const by = Object.fromEntries(
+        rows.map((r) => [r.studentUserId, { status: r.status, source: r.source }]),
+      );
+      return { session: session!, count: rows.length, by };
+    });
+
+  it('marks live attendance into the class register without overwriting manual marks, and completes the class', async () => {
+    const cs = await newClass('06:00');
+    // The teacher had already marked C present in class.
+    const reg = await request(app)
+      .post('/api/attendance/sessions')
+      .set(bearer(teacher))
+      .send({ classSessionId: cs.id });
+    expect(reg.status).toBe(201);
+    expect(
+      (
+        await request(app)
+          .put(`/api/attendance/sessions/${reg.body.session.id}/records`)
+          .set(bearer(teacher))
+          .send({ records: [{ studentUserId: students[2], status: 'present' }] })
+      ).status,
+    ).toBe(200);
+
+    const liveId = await runLive({ classSessionId: cs.id });
+    await endLive(liveId);
+
+    const completed = await classById(cs.id);
+    expect(completed.status).toBe('completed');
+    expect(completed.actualDurationMinutes).toBeGreaterThanOrEqual(59);
+    const after = await marks(`class:${cs.id}`);
+    expect(after.session.status).toBe('closed');
+    expect(after.by[students[0]]).toEqual({ status: 'present', source: 'live' });
+    expect(after.by[students[1]]).toEqual({ status: 'absent', source: 'live' });
+    expect(after.by[students[2]]).toEqual({ status: 'present', source: 'manual' });
+
+    // A retried dispatch changes nothing.
+    const event = ended.find((e) => e.liveSessionId === liveId)!;
+    await system(() => dispatchLiveEvent({ event: 'live.session.ended', payload: event }));
+    await processDueJobs();
+    const again = await marks(`class:${cs.id}`);
+    expect(again.count).toBe(after.count);
+    expect(again.by).toEqual(after.by);
+  });
+
+  it('replaces auto-absent marks when the class was completed before the live attendance ran', async () => {
+    const cs = await newClass('07:00');
+    const reg = await request(app)
+      .post('/api/attendance/sessions')
+      .set(bearer(teacher))
+      .send({ classSessionId: cs.id });
+    expect(reg.status).toBe(201);
+    const liveId = await runLive({ classSessionId: cs.id });
+    const done = await request(app)
+      .post(`/api/academics/class-sessions/${cs.id}/complete`)
+      .set(bearer(teacher))
+      .send({ actualDurationMinutes: 45 });
+    expect(done.status).toBe(200);
+    await processDueJobs();
+    expect((await marks(`class:${cs.id}`)).by[students[0]]).toEqual({ status: 'absent', source: 'system' });
+
+    await endLive(liveId);
+    const after = await marks(`class:${cs.id}`);
+    expect(after.by[students[0]]).toEqual({ status: 'present', source: 'live' });
+    expect(after.by[students[1]].status).toBe('absent');
+    expect((await classById(cs.id)).actualDurationMinutes).toBe(45); // already completed: left as is
+  });
+
+  it('keeps a separate register for unlinked live classes and publishes recordings to the LMS', async () => {
+    const liveId = await runLive({
+      batchId,
+      teacherUserId,
+      title: 'Live wiring revision',
+      scheduledStartAt: new Date(Date.now() - 60 * 60000).toISOString(),
+      durationMinutes: 60,
+    });
+    const rec = await request(app)
+      .post(`/api/live-classes/${liveId}/recordings`)
+      .set(bearer(teacher))
+      .field('durationSeconds', '3600')
+      .attach('file', Buffer.from('fake-webm'), { filename: 'r.webm', contentType: 'video/webm' });
+    expect(rec.status).toBe(201);
+    await endLive(liveId);
+
+    const reg = await marks(`live:${liveId}`);
+    expect(reg.session).toMatchObject({ kind: 'live', status: 'closed', classSessionId: null });
+    expect(reg.by[students[0]]).toEqual({ status: 'present', source: 'live' });
+    expect(reg.by[students[2]]).toEqual({ status: 'absent', source: 'live' });
+
+    const find = () =>
+      system(() =>
+        LmsResource.findAll({
+          where: { instituteId, sourceRef: `live-recording:${rec.body.id}` },
+          include: [{ model: LmsResourceBatch, as: 'batchLinks' }],
+        }),
+      );
+    const [resource] = await find();
+    expect(resource).toMatchObject({
+      courseId,
+      type: 'video',
+      status: 'published',
+      fileId: rec.body.fileId,
+      durationSeconds: 3600,
+    });
+    expect(resource.batchLinks!.map((l) => l.batchId)).toEqual([batchId]);
+
+    const event = recordings.find((e) => e.recordingId === rec.body.id)!;
+    await system(() => dispatchLiveEvent({ event: 'live.recording.ready', payload: event }));
+    expect(await find()).toHaveLength(1);
   });
 });

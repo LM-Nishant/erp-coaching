@@ -13,6 +13,8 @@ export interface CheckoutHandoffInput {
   referralCode: string | null;
   /** Absolute URL the payment flow should return the visitor to. */
   returnUrl: string;
+  /** Base URL of the institute's app (login, purchase and registration pages). */
+  appUrl?: string;
 }
 
 /** Returns the URL of the fees/payments checkout for a course, or null to fall back to admission. */

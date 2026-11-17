@@ -1,10 +1,12 @@
 import bcrypt from 'bcryptjs';
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { z } from 'zod';
 import type { SelfRegistrationInfo, SelfRegistrationResult } from '@erp/shared';
 import { parse } from '../../shared/utilities/validation';
 import { authRateLimit } from '../../shared/middleware/security';
 import { getContext, runWithContext } from '../../shared/context';
+import { logger } from '../../infrastructure/logger';
+import { audit } from '../../shared/audit/audit.service';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../shared/errors';
 import { Institute } from '../institutes/institute.model';
 import { isModuleEnabled } from '../subscriptions/subscription.service';
@@ -12,9 +14,12 @@ import { Branch } from '../branches/branch.model';
 import { User } from '../users/user.model';
 import { activeForm, validateCustomFields } from '../admissions/forms.service';
 import { guardianInputSchema, linkGuardian } from '../guardians/guardians.service';
+import { recordReferralConversion } from '../website/api';
 import { Student } from './models';
 import { getStudentSettings } from './settings';
 import { createStudent, resolveBranch, studentFieldsSchema } from './students.service';
+
+const emptyToNull = (v: unknown) => (v === '' ? null : v);
 
 const registerBody = studentFieldsSchema
   .pick({
@@ -33,7 +38,49 @@ const registerBody = studentFieldsSchema
       .nullable()
       .optional(),
     customFields: z.record(z.string(), z.unknown()).optional(),
+    ref: z.preprocess(emptyToNull, z.string().trim().max(40).nullable().optional()),
+    courseId: z.preprocess(emptyToNull, z.coerce.number().int().positive().nullable().optional()),
   });
+
+const firstQuery = (req: Request, key: string) => {
+  const v = req.query[key];
+  return typeof v === 'string' ? v : undefined;
+};
+
+/**
+ * Website attribution after a successful registration: counts a referral `signup` and records the
+ * course the student came for. Best-effort — it never fails the registration.
+ */
+async function recordAttribution(
+  instituteId: number,
+  studentId: number,
+  ref: string | null | undefined,
+  courseId: number | null | undefined,
+) {
+  if (!ref && !courseId) return;
+  try {
+    let referral = false;
+    if (ref && (await isModuleEnabled(instituteId, 'website')))
+      referral = await recordReferralConversion({
+        code: ref,
+        kind: 'signup',
+        refType: 'student',
+        refId: studentId,
+      });
+    await audit({
+      action: 'student.self_registration_attribution',
+      entityType: 'student',
+      entityId: studentId,
+      metadata: {
+        referralCode: ref ? ref.toUpperCase() : null,
+        referralCounted: referral,
+        courseId: courseId ?? null,
+      },
+    });
+  } catch (err) {
+    logger.warn({ err, studentId }, 'Recording self-registration attribution failed');
+  }
+}
 
 async function activeInstitute(slug: string) {
   const inst = await Institute.findOne({ where: { slug: slug.toLowerCase(), status: 'active' } });
@@ -73,11 +120,17 @@ export function selfRegistrationRoutes(api: Router) {
 
   api.post('/public/institutes/:slug/register', authRateLimit, async (req, res) => {
     const inst = await activeInstitute(String(req.params.slug));
-    const body = parse(registerBody, req.body);
+    // `ref`/`courseId` may also arrive on the query string (links shared as `?ref=…&courseId=…`).
+    const body = parse(registerBody, {
+      ...req.body,
+      ref: req.body?.ref ?? firstQuery(req, 'ref'),
+      courseId: req.body?.courseId ?? firstQuery(req, 'courseId'),
+    });
     const result = await asInstitute(inst.id, async (): Promise<SelfRegistrationResult> => {
       const settings = await getStudentSettings();
       if (!settings.selfRegistrationEnabled)
         throw Forbidden('Online registration is closed for this institute', 'SELF_REGISTRATION_DISABLED');
+      const { ref: _ref, courseId: _courseId, ...studentInput } = body;
       const branch = await resolveBranch(body.branchId);
       const form = await activeForm('self_registration', branch.id);
       const customFields = form ? validateCustomFields(form.fields, body.customFields) : null;
@@ -107,7 +160,7 @@ export function selfRegistrationRoutes(api: Router) {
       }
 
       const student = await createStudent(
-        { ...body, branchId: branch.id, customFields },
+        { ...studentInput, branchId: branch.id, customFields },
         {
           source: 'self_registration',
           password: body.password,
@@ -121,6 +174,7 @@ export function selfRegistrationRoutes(api: Router) {
           },
         },
       );
+      await recordAttribution(inst.id, student.id, body.ref, body.courseId);
       const user = student.userId ? await User.findByPk(student.userId) : null;
       return {
         studentId: student.id,
