@@ -1,3 +1,4 @@
+import { emitAdmissionCompleted } from './admission-events';
 import { Router } from 'express';
 import { Op, type WhereOptions } from 'sequelize';
 import { z } from 'zod';
@@ -592,6 +593,14 @@ export function admissionRoutes(api: Router) {
       metadata: { studentId: student.id },
     });
     await notifyAdmissionConfirmed(a, student);
+    await emitAdmissionCompleted({
+      applicationId: a.id,
+      studentId: student.id,
+      studentUserId: student.userId ?? null,
+      branchId: student.branchId,
+      courseId: a.courseId ?? null,
+      batchId: a.batchId ?? null,
+    });
     res.status(201).json({ application: toApplicationDto(a), student: toStudentDto(student) });
   });
 

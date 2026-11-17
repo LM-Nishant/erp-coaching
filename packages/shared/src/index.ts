@@ -9,3 +9,4 @@ export * from './hr';
 export * from './payroll';
 export * from './grievances';
 export * from './exams';
+export * from './fees';
