@@ -21,6 +21,8 @@ export interface RequestOptions {
   /** Skip auth header + refresh (login/OTP endpoints). */
   anonymous?: boolean;
   signal?: AbortSignal;
+  /** Extra request headers (e.g. `Idempotency-Key`). */
+  headers?: Record<string, string>;
 }
 
 /** Called when the session can no longer be refreshed (router redirects to login). */
@@ -59,7 +61,7 @@ function buildUrl(path: string, query?: Query) {
 }
 
 async function send(method: string, path: string, opts: RequestOptions, retried = false): Promise<Response> {
-  const headers: Record<string, string> = { Accept: 'application/json' };
+  const headers: Record<string, string> = { Accept: 'application/json', ...opts.headers };
   const isForm = opts.body instanceof FormData;
   if (opts.body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
   if (!opts.anonymous) {
