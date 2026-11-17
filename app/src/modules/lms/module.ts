@@ -1,0 +1,128 @@
+import {
+  cloudDownloadOutline,
+  documentTextOutline,
+  keyOutline,
+  libraryOutline,
+  playCircleOutline,
+} from 'ionicons/icons';
+import { defineAppModule } from '@/core/modules';
+
+export default defineAppModule({
+  id: 'lms',
+  routes: [
+    {
+      path: '/lms/content',
+      name: 'lms-content',
+      component: () => import('./ContentManagerPage.vue'),
+      meta: { permission: 'lms.edit' },
+    },
+    {
+      path: '/lms/content/new',
+      name: 'lms-content-new',
+      component: () => import('./ResourceEditorPage.vue'),
+      meta: { permission: 'lms.create' },
+    },
+    {
+      path: '/lms/content/:id(\\d+)',
+      name: 'lms-content-edit',
+      component: () => import('./ResourceEditorPage.vue'),
+      meta: { permission: 'lms.edit' },
+    },
+    {
+      path: '/lms/grants',
+      name: 'lms-grants',
+      component: () => import('./GrantsPage.vue'),
+      meta: { permission: 'lms.configure' },
+    },
+    {
+      path: '/lms',
+      name: 'lms-library',
+      component: () => import('./LibraryPage.vue'),
+      meta: { permission: 'lms.view' },
+    },
+    {
+      path: '/lms/courses/:id(\\d+)',
+      name: 'lms-course',
+      component: () => import('./CourseContentsPage.vue'),
+      meta: { permission: 'lms.view' },
+    },
+    {
+      path: '/lms/resources/:id(\\d+)',
+      name: 'lms-resource',
+      component: () => import('./ResourcePlayerPage.vue'),
+      meta: { permission: 'lms.view' },
+    },
+    {
+      path: '/lms/offline',
+      name: 'lms-offline',
+      component: () => import('./OfflinePage.vue'),
+      meta: { permission: 'lms.view' },
+    },
+    {
+      path: '/lms/homework',
+      name: 'lms-homework',
+      component: () => import('./HomeworkPage.vue'),
+      meta: { permission: 'lms-assignments.view' },
+    },
+    {
+      path: '/lms/homework/new',
+      name: 'lms-homework-new',
+      component: () => import('./AssignmentEditorPage.vue'),
+      meta: { permission: 'lms-assignments.edit' },
+    },
+    {
+      path: '/lms/homework/:id(\\d+)/edit',
+      name: 'lms-homework-edit',
+      component: () => import('./AssignmentEditorPage.vue'),
+      meta: { permission: 'lms-assignments.edit' },
+    },
+    {
+      path: '/lms/homework/:id(\\d+)',
+      name: 'lms-homework-detail',
+      component: () => import('./HomeworkDetailPage.vue'),
+      meta: { permission: 'lms-assignments.view' },
+    },
+  ],
+  menu: [
+    {
+      title: 'Learning content',
+      path: '/lms/content',
+      icon: libraryOutline,
+      permission: 'lms.edit',
+      planModule: 'lms',
+      order: 40,
+    },
+    {
+      title: 'My courses',
+      path: '/lms',
+      icon: playCircleOutline,
+      permission: 'lms.view',
+      planModule: 'lms',
+      order: 41,
+    },
+    {
+      title: 'Homework',
+      path: '/lms/homework',
+      icon: documentTextOutline,
+      permission: 'lms-assignments.view',
+      planModule: 'lms',
+      order: 42,
+    },
+    {
+      title: 'Offline lectures',
+      path: '/lms/offline',
+      icon: cloudDownloadOutline,
+      permission: 'lms-assignments.create',
+      planModule: 'lms',
+      order: 43,
+    },
+    {
+      title: 'Course access grants',
+      path: '/lms/grants',
+      icon: keyOutline,
+      permission: 'lms.configure',
+      planModule: 'lms',
+      order: 44,
+    },
+  ],
+});

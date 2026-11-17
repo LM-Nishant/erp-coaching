@@ -15,6 +15,8 @@ const config: CapacitorConfig = {
   },
   plugins: {
     SplashScreen: { launchShowDuration: 800 },
+    // Turned on only while protected LMS content is on screen (see modules/lms/privacy.ts).
+    PrivacyScreen: { enable: false },
   },
 };
 
