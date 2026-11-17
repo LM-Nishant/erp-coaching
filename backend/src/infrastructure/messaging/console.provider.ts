@@ -13,9 +13,16 @@ export const consoleOutbox: SentRecord[] = [];
 /** Development provider: logs messages instead of sending them. */
 export class ConsoleMessagingProvider implements MessagingProvider {
   readonly name = 'console';
-  constructor(readonly channel: Channel) {}
+  constructor(
+    readonly channel: Channel,
+    /** Mock failures: recipients containing this text fail (used to exercise retries). */
+    private readonly opts: { failPattern?: string } = {},
+  ) {}
 
   async send(message: OutboundMessage): Promise<SendResult> {
+    if (this.opts.failPattern && message.to.includes(this.opts.failPattern)) {
+      throw new Error(`Mock ${this.channel} delivery failure for ${message.to}`);
+    }
     consoleOutbox.push({ ...message, channel: this.channel, sentAt: new Date() });
     if (consoleOutbox.length > 500) consoleOutbox.shift();
     logger.info(

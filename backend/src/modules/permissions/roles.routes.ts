@@ -42,10 +42,12 @@ async function ownCustomRole(id: number) {
 }
 
 export function roleRoutes(api: Router) {
+  const permissionsRouter = Router();
+  permissionsRouter.use(authenticate);
   const r = Router();
   r.use(authenticate);
 
-  r.get('/permissions', requirePermission('roles', 'view'), async (_req, res) => {
+  permissionsRouter.get('/', requirePermission('roles', 'view'), async (_req, res) => {
     const perms = await Permission.findAll({
       order: [
         ['module', 'ASC'],
@@ -57,7 +59,7 @@ export function roleRoutes(api: Router) {
     res.json(grouped);
   });
 
-  r.get('/roles', requirePermission('roles', 'view'), async (_req, res) => {
+  r.get('/', requirePermission('roles', 'view'), async (_req, res) => {
     const { instituteId } = requireTenantContext();
     const roles = await Role.findAll({
       where: { instituteId: { [Op.or]: [null, instituteId] }, slug: { [Op.ne]: 'super-admin' } },
@@ -70,7 +72,7 @@ export function roleRoutes(api: Router) {
     res.json(roles.map(serialize));
   });
 
-  r.post('/roles', requirePermission('roles', 'create'), async (req, res) => {
+  r.post('/', requirePermission('roles', 'create'), async (req, res) => {
     const body = parse(roleBody, req.body);
     const { instituteId } = requireTenantContext();
     const slug = `custom-${body.name
@@ -99,7 +101,7 @@ export function roleRoutes(api: Router) {
     res.status(201).json({ ...serialize(role), permissions: body.permissions });
   });
 
-  r.put('/roles/:id', requirePermission('roles', 'edit'), async (req, res) => {
+  r.put('/:id', requirePermission('roles', 'edit'), async (req, res) => {
     const { id } = parse(idParam, req.params);
     const body = parse(roleBody, req.body);
     const role = await ownCustomRole(id);
@@ -122,7 +124,7 @@ export function roleRoutes(api: Router) {
     res.json({ ...serialize(role), permissions: body.permissions });
   });
 
-  r.delete('/roles/:id', requirePermission('roles', 'delete'), async (req, res) => {
+  r.delete('/:id', requirePermission('roles', 'delete'), async (req, res) => {
     const { id } = parse(idParam, req.params);
     const role = await ownCustomRole(id);
     const { instituteId } = requireTenantContext();
@@ -133,5 +135,6 @@ export function roleRoutes(api: Router) {
     res.status(204).end();
   });
 
-  api.use('/', r);
+  api.use('/permissions', permissionsRouter);
+  api.use('/roles', r);
 }
