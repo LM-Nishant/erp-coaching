@@ -1,0 +1,41 @@
+{
+  "name": "erp-coaching",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Multi-institute coaching ERP, LMS, examination & SaaS platform",
+  "workspaces": [
+    "packages/*",
+    "backend",
+    "app"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "postinstall": "npm run build -w @erp/shared",
+    "build": "npm run build -w @erp/shared && npm run build -w backend && npm run build -w app",
+    "dev:api": "npm run dev -w backend",
+    "dev:app": "npm run dev -w app",
+    "db:migrate": "npm run db:migrate -w backend",
+    "db:migrate:undo": "npm run db:migrate:undo -w backend",
+    "db:seed": "npm run db:seed -w backend",
+    "db:reset": "npm run db:reset -w backend",
+    "test": "npm run test -w @erp/shared --if-present && npm run test -w backend && npm run test -w app --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-vue": "^10.12.1",
+    "globals": "^16.5.0",
+    "prettier": "^3.10.1",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.73.0",
+    "vue-eslint-parser": "^10.2.0"
+  }
+}

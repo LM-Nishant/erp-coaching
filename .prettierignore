@@ -1,0 +1,8 @@
+dist
+coverage
+node_modules
+app/android
+app/ios
+package-lock.json
+backend/storage
+backend/tmp
