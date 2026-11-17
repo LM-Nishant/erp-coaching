@@ -4,7 +4,9 @@ import { DEMO_PASSWORD, USERS, bearer, getApp, lastOtpFor, login, newDevice } fr
 import { signMockWebhook, MOCK_SIGNATURE_HEADER } from '../src/infrastructure/payment-gateways/mock.gateway';
 import { runWithContext } from '../src/shared/context';
 import { hasCourseEntitlement } from '../src/modules/fees/api';
+import { Op } from 'sequelize';
 import { FeeLedgerEntry, FeePayment } from '../src/modules/fees/models';
+import { releaseStaleCouponReservations } from '../src/modules/fees/payments.service';
 import { processDueJobs } from '../src/infrastructure/jobs/queue';
 import { resolveCoursePrices } from '../src/modules/website/hooks';
 
@@ -721,7 +723,7 @@ describe('fees ↔ LMS / website: paid course purchase with coupon and referral'
     });
     expect(lines.reduce((s, l) => s + l.debit, 0)).toBe(900_000);
     const couponLines = await FeeLedgerEntry.findAll({
-      where: { instituteId: 1, journalKey: `payment-coupon:${paymentId}` },
+      where: { instituteId: 1, journalKey: { [Op.like]: `payment-coupon:${paymentId}:%` } },
     });
     expect(couponLines.reduce((s, l) => s + l.debit, 0)).toBe(100_000);
     const coupon = async () =>
@@ -734,6 +736,9 @@ describe('fees ↔ LMS / website: paid course purchase with coupon and referral'
     expect(refs.body.items[0].purchases).toBe(1);
     const again = await request(app).get(`/api/fees/me/courses/${courseId}/quote`).set(bearer(token));
     expect(again.body.alreadyPaid).toBe(true);
+    const feeAccount = async () =>
+      (await request(app).get(`/api/fees/accounts/${again.body.accountId}`).set(bearer(admin))).body;
+    expect(await feeAccount()).toMatchObject({ discount: 100_000, paid: 900_000 });
     const tb = await request(app).get('/api/fees/ledger/trial-balance').set(bearer(admin));
     expect(tb.body.balanced).toBe(true);
 
@@ -746,5 +751,82 @@ describe('fees ↔ LMS / website: paid course purchase with coupon and referral'
     const reds = await request(app).get(`/api/website/coupons/${couponId}/redemptions`).set(bearer(admin));
     expect(reds.body.items.map((x: { status: string }) => x.status)).toEqual(['released']);
     expect(await lessonLocked()).toBe(true);
+    // The coupon discount is undone too: full price is due again and the ledger stays balanced.
+    const restored = await feeAccount();
+    expect(restored).toMatchObject({ discount: 0, paid: 0 });
+    expect(restored.instalments[0]).toMatchObject({ amount: 1_000_000, paid: 0 });
+    expect((await request(app).get('/api/fees/ledger/trial-balance').set(bearer(admin))).body.balanced).toBe(
+      true,
+    );
+  });
+
+  it('gives a per-customer coupon discount once across concurrent checkouts and expires reservations', async () => {
+    const code = `ONCE${run}`;
+    const c = await request(app)
+      .post('/api/website/coupons')
+      .set(bearer(admin))
+      .send({ code, discountType: 'fixed', discountValue: 1_000, perCustomerLimit: 1 });
+    expect(c.status).toBe(201);
+    const usedCount = async () =>
+      (await request(app).get(`/api/website/coupons/${c.body.id}`).set(bearer(admin))).body.usedCount;
+    const buyer = async (name: string) => {
+      const m = mobile();
+      expect(
+        (await request(app).post('/api/students').set(bearer(admin)).send({ name, mobile: m })).status,
+      ).toBe(201);
+      return otpLogin(m);
+    };
+    const pay = (token: string, id: number) =>
+      request(app)
+        .post(`/api/fees/me/payments/${id}/mock-complete`)
+        .set(bearer(token))
+        .send({ outcome: 'success' });
+
+    const token = await buyer('Coupon Stacker');
+    const first = await request(app)
+      .post(`/api/fees/me/courses/${courseId}/checkout`)
+      .set(bearer(token))
+      .send({ couponCode: code });
+    expect(first.body).toMatchObject({ amount: 900_000, discount: 100_000 });
+    expect(await usedCount()).toBe(1); // reserved while the order is open
+    const accountId = (await request(app).get(`/api/fees/me/courses/${courseId}/quote`).set(bearer(token)))
+      .body.accountId as number;
+    const second = await request(app)
+      .post('/api/fees/me/checkout')
+      .set(bearer(token))
+      .send({ accountId, amount: 300_000, couponCode: code });
+    expect(second.status).toBe(201);
+    expect(second.body).toMatchObject({ amount: 200_000, discount: 100_000 });
+    expect(await usedCount()).toBe(1); // the second checkout took over the reservation
+
+    expect((await pay(token, first.body.paymentId)).body.payment).toMatchObject({
+      status: 'successful',
+      couponDiscount: 0, // its reservation was superseded and the customer limit is used up
+    });
+    expect((await pay(token, second.body.paymentId)).body.payment).toMatchObject({
+      status: 'successful',
+      couponDiscount: 100_000,
+    });
+    const acc = (await request(app).get(`/api/fees/accounts/${accountId}`).set(bearer(admin))).body;
+    expect(acc).toMatchObject({ discount: 100_000, paid: 900_000, advance: 200_000 });
+    expect(await usedCount()).toBe(1);
+    const tb = await request(app).get('/api/fees/ledger/trial-balance').set(bearer(admin));
+    expect(tb.body.balanced).toBe(true);
+
+    // An abandoned checkout gives its reservation back; a late capture re-redeems if still allowed.
+    const late = await buyer('Late Payer');
+    const open = await request(app)
+      .post(`/api/fees/me/courses/${courseId}/checkout`)
+      .set(bearer(late))
+      .send({ couponCode: code });
+    expect(open.status).toBe(201);
+    expect(await usedCount()).toBe(2);
+    const released = await runWithContext({ system: true, instituteId: 1, allowedBranchIds: null }, () =>
+      releaseStaleCouponReservations(new Date(Date.now() + 25 * 3_600_000)),
+    );
+    expect(released).toBeGreaterThanOrEqual(1);
+    expect(await usedCount()).toBe(1);
+    expect((await pay(late, open.body.paymentId)).body.payment.couponDiscount).toBe(100_000);
+    expect(await usedCount()).toBe(2);
   });
 });

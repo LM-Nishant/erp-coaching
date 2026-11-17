@@ -1,9 +1,9 @@
 import { Op } from 'sequelize';
 import type { ParentChildDto, ParentPortalSectionDto } from '@erp/shared';
 import { requireTenantContext } from '../../shared/context';
+import { getInstituteTimezone, nowInZone, todayIn } from '../../shared/timezone';
 import { registerParentPortalProvider } from '../parent-portal/api';
 import { FeeAccount, FeeInstalment, FeePayment } from './models';
-import { today } from './util';
 
 const KEY = 'fees';
 const LABEL = 'Fees';
@@ -35,11 +35,11 @@ async function openInstalments(child: ParentChildDto) {
   return { accounts, instalments };
 }
 
-function paymentItem(p: FeePayment) {
+function paymentItem(p: FeePayment, tz: string) {
   return {
     title: `Paid ${money(p.amount)}`,
     subtitle: p.status === 'successful' ? p.mode : p.status.replace('_', ' '),
-    date: p.paidOn ?? p.createdAt.toISOString().slice(0, 10),
+    date: p.paidOn ?? nowInZone(tz, p.createdAt).date,
     link: '/my-fees',
   };
 }
@@ -54,7 +54,8 @@ async function summary(child: ParentChildDto): Promise<ParentPortalSectionDto | 
     limit: 3,
   });
   if (!accounts.length && !payments.length) return null;
-  const now = today();
+  const tz = await getInstituteTimezone(instituteId);
+  const now = todayIn(tz);
   const overdue = instalments.filter((i) => i.dueDate < now);
   const outstanding = instalments.reduce((s, i) => s + i.balance, 0);
   const overdueAmount = overdue.reduce((s, i) => s + i.balance, 0);
@@ -80,7 +81,7 @@ async function summary(child: ParentChildDto): Promise<ParentPortalSectionDto | 
         date: i.dueDate,
         link: '/my-fees',
       })),
-      ...payments.map(paymentItem),
+      ...payments.map((p) => paymentItem(p, tz)),
     ],
   };
 }
@@ -103,6 +104,7 @@ async function monthlyReport(
   });
   const overdue = instalments.filter((i) => i.dueDate <= to);
   if (!payments.length && !overdue.length) return null;
+  const tz = await getInstituteTimezone(instituteId);
   return {
     key: KEY,
     label: LABEL,
@@ -114,7 +116,7 @@ async function monthlyReport(
         tone: overdue.length ? 'warning' : 'default',
       },
     ],
-    items: payments.map(paymentItem),
+    items: payments.map((p) => paymentItem(p, tz)),
   };
 }
 

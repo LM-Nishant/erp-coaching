@@ -1,6 +1,7 @@
 import { audit } from '../../shared/audit/audit.service';
 import { BadRequest, Conflict } from '../../shared/errors';
-import { repos, today } from './academics.service';
+import { instituteToday } from '../../shared/timezone';
+import { repos } from './academics.service';
 import { emitClassSessionCompleted } from './class-events';
 import type { ClassSession } from './models';
 
@@ -16,7 +17,7 @@ export interface CompleteClassOptions {
  */
 export async function applyClassCompletion(session: ClassSession, opts: CompleteClassOptions) {
   if (session.status === 'cancelled') throw Conflict('Cannot complete a cancelled class', 'INVALID_STATE');
-  if (session.date > today()) throw BadRequest('Cannot complete a future class');
+  if (session.date > (await instituteToday())) throw BadRequest('Cannot complete a future class');
   const before = session.toJSON();
   await session.update({
     status: 'completed',
@@ -44,7 +45,8 @@ export async function completeClassSession(
   opts: CompleteClassOptions,
 ): Promise<{ session: ClassSession; completed: boolean }> {
   const session = await repos.classSessions.findById(classSessionId);
-  if (session.status !== 'scheduled' || session.date > today()) return { session, completed: false };
+  if (session.status !== 'scheduled' || session.date > (await instituteToday()))
+    return { session, completed: false };
   await applyClassCompletion(session, opts);
   return { session, completed: true };
 }

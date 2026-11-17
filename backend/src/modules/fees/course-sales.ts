@@ -12,7 +12,7 @@ import { Course } from '../academics/api';
 import { Student } from '../students/models';
 import { isModuleEnabled } from '../subscriptions/subscription.service';
 import { validateCoupon } from '../website/api';
-import { FeeAccount, FeeStructure } from './models';
+import { FeeAccount, FeePayment, FeeStructure } from './models';
 import { findStructureFor } from './structures.service';
 import { generateAccount } from './accounts.service';
 import { couponCustomerKey, createCheckout } from './payments.service';
@@ -126,6 +126,23 @@ export async function quoteCourse(input: {
     });
     coupon = { code: v.code, valid: v.valid, message: v.message };
     discount = v.valid ? v.discountPaise : 0;
+    // The student's own open checkout holds a reservation; a new checkout supersedes it.
+    if (!v.valid && v.reason === 'CUSTOMER_LIMIT' && account) {
+      const open = await FeePayment.findOne({
+        where: {
+          instituteId: student.instituteId,
+          accountId: account.id,
+          mode: 'online',
+          status: 'pending',
+          couponCode: v.code,
+        },
+        order: [['id', 'DESC']],
+      });
+      if (open?.couponDiscount) {
+        discount = Math.min(open.couponDiscount, amount - 1);
+        coupon = { code: v.code, valid: true, message: 'Coupon applied' };
+      }
+    }
   }
   return {
     courseId: course.id,

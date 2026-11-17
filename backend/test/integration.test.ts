@@ -1,5 +1,7 @@
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { completeClassSession } from '../src/modules/academics/api';
+import { getInstituteTimezone, todayIn } from '../src/shared/timezone';
 import { Branch } from '../src/modules/branches/branch.model';
 import { NotificationMessage } from '../src/modules/notifications/models';
 import { WorkUnit } from '../src/modules/payroll/models';
@@ -488,6 +490,40 @@ describe('live classes → attendance, LMS and academics', () => {
     const again = await marks(`class:${cs.id}`);
     expect(again.count).toBe(after.count);
     expect(again.by).toEqual(after.by);
+  });
+
+  it("completes a class dated the institute's today even when the UTC date is still yesterday", async () => {
+    const tz = await getInstituteTimezone(instituteId);
+    const now = new Date('2026-11-18T22:00:00Z'); // 03:30 on the 19th in IST
+    const localToday = todayIn(tz, now);
+    expect(localToday).not.toBe(isoDate(now));
+    const mk = (date: string) =>
+      system(() =>
+        ClassSession.create({
+          instituteId,
+          branchId,
+          batchId,
+          subjectId: null,
+          scheduleId: null,
+          teacherUserId,
+          classroomId: null,
+          date,
+          startTime: '01:00',
+          endTime: '02:00',
+        }),
+      );
+    const current = await mk(localToday);
+    const future = await mk(isoDate(new Date(now.getTime() + 2 * 86400000)));
+    vi.useFakeTimers({ toFake: ['Date'], now });
+    try {
+      const opts = { actualDurationMinutes: 60, completionNotes: null };
+      expect((await system(() => completeClassSession(current.id, opts))).completed).toBe(true);
+      expect((await system(() => completeClassSession(future.id, opts))).completed).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect((await classById(current.id)).status).toBe('completed');
+    expect((await classById(future.id)).status).toBe('scheduled');
   });
 
   it('replaces auto-absent marks when the class was completed before the live attendance ran', async () => {

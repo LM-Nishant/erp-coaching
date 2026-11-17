@@ -688,8 +688,8 @@ describe('appointments + parent portal', () => {
     const { AttendanceSession, AttendanceRecord } = await import('../src/modules/attendance/models');
     const { Exam, ExamAttempt } = await import('../src/modules/exams/models');
     const { LmsAssignment } = await import('../src/modules/lms/models');
-    const today = new Date();
-    const thisMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    const { instituteToday } = await import('../src/shared/timezone');
+    const thisMonth = (await instituteToday(1)).slice(0, 7);
     const ids: Record<string, number[]> = {};
     const track = <T extends { id: number }>(k: string, row: T) => ((ids[k] ??= []).push(row.id), row);
     try {

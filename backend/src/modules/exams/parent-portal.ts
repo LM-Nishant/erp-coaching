@@ -1,6 +1,7 @@
 import { Op } from 'sequelize';
 import type { ParentChildDto, ParentPortalSectionDto } from '@erp/shared';
 import { requireTenantContext } from '../../shared/context';
+import { getInstituteTimezone, nowInZone, zonedDateTimeToUtc } from '../../shared/timezone';
 import { registerParentPortalProvider } from '../parent-portal/api';
 import { Exam, ExamAttempt } from './models';
 import { MODULE } from './exams.service';
@@ -26,9 +27,22 @@ async function publishedAttempts(studentUserId: number, examWhere: Record<string
   });
 }
 
+/** Half-open UTC range `[from 00:00, to+1 00:00)` of institute-local dates. */
+async function localDayRange(from: string, to: string) {
+  const tz = await getInstituteTimezone(requireTenantContext().instituteId);
+  const next = new Date(Date.parse(`${to}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+  return {
+    tz,
+    range: {
+      [Op.gte]: zonedDateTimeToUtc(from, '00:00', tz),
+      [Op.lt]: zonedDateTimeToUtc(next, '00:00', tz),
+    },
+  };
+}
+
 const pct = (a: ExamAttempt) => (a.maxScore > 0 ? Math.round((a.totalScore / a.maxScore) * 1000) / 10 : null);
 
-function section(attempts: ExamAttempt[], countLabel: string): ParentPortalSectionDto | null {
+function section(attempts: ExamAttempt[], countLabel: string, tz: string): ParentPortalSectionDto | null {
   if (!attempts.length) return null;
   const scores = attempts.map(pct).filter((x): x is number => x !== null);
   const avg = scores.length
@@ -49,7 +63,7 @@ function section(attempts: ExamAttempt[], countLabel: string): ParentPortalSecti
       return {
         title: a.exam?.title ?? 'Exam',
         subtitle: parts.join(' · '),
-        date: a.exam?.startAt.toISOString().slice(0, 10),
+        date: a.exam ? nowInZone(tz, a.exam.startAt).date : undefined,
         link: `/exam-results/${a.id}`,
       };
     }),
@@ -64,14 +78,13 @@ export function registerExamsParentPortal(): void {
     order: 40,
     async summary(child: ParentChildDto) {
       if (!child.studentUserId) return null;
-      return section(await publishedAttempts(child.studentUserId, {}, 3), 'Latest results');
+      const tz = await getInstituteTimezone(requireTenantContext().instituteId);
+      return section(await publishedAttempts(child.studentUserId, {}, 3), 'Latest results', tz);
     },
     async monthlyReport(child, { from, to }) {
       if (!child.studentUserId) return null;
-      const range = {
-        startAt: { [Op.between]: [new Date(`${from}T00:00:00`), new Date(`${to}T23:59:59.999`)] },
-      };
-      return section(await publishedAttempts(child.studentUserId, range), 'Exams taken');
+      const { tz, range } = await localDayRange(from, to);
+      return section(await publishedAttempts(child.studentUserId, { startAt: range }), 'Exams taken', tz);
     },
   });
 }

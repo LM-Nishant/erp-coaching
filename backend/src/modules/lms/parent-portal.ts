@@ -1,6 +1,7 @@
 import { Op } from 'sequelize';
 import type { ParentChildDto, ParentPortalSectionDto } from '@erp/shared';
 import { requireTenantContext } from '../../shared/context';
+import { getInstituteTimezone, nowInZone, zonedDateTimeToUtc } from '../../shared/timezone';
 import { registerParentPortalProvider } from '../parent-portal/api';
 import { activeBatchIds } from './entitlements';
 import { LmsAssignment, LmsSubmission } from './models';
@@ -35,11 +36,24 @@ async function homework(studentUserId: number, dueAt: Record<symbol, unknown>) {
   return rows.map((a) => ({ a, submission: sub.get(a.id) ?? null }));
 }
 
+/** Half-open UTC range `[from 00:00, to+1 00:00)` of institute-local dates. */
+async function localDayRange(from: string, to: string) {
+  const tz = await getInstituteTimezone(requireTenantContext().instituteId);
+  const next = new Date(Date.parse(`${to}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+  return {
+    tz,
+    range: {
+      [Op.gte]: zonedDateTimeToUtc(from, '00:00', tz),
+      [Op.lt]: zonedDateTimeToUtc(next, '00:00', tz),
+    },
+  };
+}
+
 const isPending = (s: string | null) => s === null || s === 'returned';
-const item = (a: LmsAssignment, subtitle: string) => ({
+const item = (a: LmsAssignment, subtitle: string, tz: string) => ({
   title: a.title,
   subtitle,
-  date: a.dueAt.toISOString().slice(0, 16).replace('T', ' '),
+  date: ((d) => `${d.date} ${d.time}`)(nowInZone(tz, a.dueAt)),
   link: `/lms/homework/${a.id}`,
 });
 
@@ -52,6 +66,7 @@ export function registerLmsParentPortal(): void {
     async summary(child: ParentChildDto): Promise<ParentPortalSectionDto | null> {
       if (!child.studentUserId) return null;
       const now = Date.now();
+      const tz = await getInstituteTimezone(requireTenantContext().instituteId);
       // Open homework: not yet due, or overdue in the last two weeks (older is history).
       const rows = (
         await homework(child.studentUserId, { [Op.gte]: new Date(now - 14 * 24 * 3600_000) })
@@ -73,13 +88,14 @@ export function registerLmsParentPortal(): void {
             item(
               r.a,
               r.a.dueAt.getTime() < now ? 'Overdue' : r.submission ? 'Returned for changes' : 'Not submitted',
+              tz,
             ),
           ),
       };
     },
     async monthlyReport(child, { from, to }) {
       if (!child.studentUserId) return null;
-      const range = { [Op.between]: [new Date(`${from}T00:00:00`), new Date(`${to}T23:59:59.999`)] };
+      const { tz, range } = await localDayRange(from, to);
       const rows = await homework(child.studentUserId, range);
       if (!rows.length) return null;
       const missed = rows.filter((r) => isPending(r.submission));
@@ -91,7 +107,7 @@ export function registerLmsParentPortal(): void {
           { label: 'Submitted', value: rows.length - missed.length, tone: 'success' },
           { label: 'Not submitted', value: missed.length, tone: missed.length ? 'warning' : 'default' },
         ],
-        items: missed.map((r) => item(r.a, 'Not submitted')),
+        items: missed.map((r) => item(r.a, 'Not submitted', tz)),
       };
     },
   });
