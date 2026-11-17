@@ -48,6 +48,7 @@ The module loader picks up the folder automatically, and the migrator picks up `
 - **Register the model.** Call `registerTenantModel(Model)` in `initModel`. Any query without `instituteId` then throws, as a safety net.
 - **Use the repository.** Do all tenant data access through `new TenantRepository(Model, { entity: 'Student', branchScoped: true })`.
   - Use `findAll`, `findById`, `findOne`, `findAndCountAll`, `count`, `create`, `update`, `destroy`, `scope(where)` and `assertBranchAllowed(branchId)`.
+- **Institute-wide rows.** For branch data that may also be institute-wide (`branch_id` NULL, e.g. files, notices), pass `instituteWideRows: true`. Every user of the institute can then read NULL-branch rows, but only institute-level users can change them (`repo.assertRowWritable(row)` is applied by `update`/`destroy`). Rows created by branch-restricted users always get a branch: their active or only branch, otherwise 400 `BRANCH_REQUIRED`.
 - **Tenant ids come only from context.** Read the institute and branch from `requireTenantContext()` or `getContext()`. **Never** take `instituteId` from the body, query or params.
   - The `branchId` in a body is allowed, but must be checked with `repo.assertBranchAllowed()`.
 - **Bypasses.** `{ tenantBypass: true }` is only for super-admin platform code or system jobs, and must come with a comment.
@@ -69,6 +70,32 @@ permissions: [{
 - If the module is a sellable plan feature, also add `requireModule('students')`, and put the key in plan `enabledModules`.
 - Actions are limited to `view | create | edit | delete | approve | export | publish | configure`.
 - Self-service data, such as a student viewing their own results, still needs a permission check plus an ownership check in the service. Ownership comes from `getContext().userId`.
+
+### 4b. Mounting routes and public routes
+
+- Mount every router under your module's prefix: `api.use('/students', r)`. Apply `authenticate` **per router** (`r.use(authenticate)`) or per route.
+- **Never** call `api.use(middleware)` or `api.use('/', router)`. Router-level middleware at the root runs for every module registered after yours (modules load alphabetically), so `authenticate` there would return 401 for their public routes. `createApp` refuses to boot if a module does this (`test/routing.test.ts`).
+- `/admin/*` is reserved for super-admin platform routes. Those routers use `authenticate, requireSuperAdmin`, so don't put tenant or public routes there.
+- **Public (unauthenticated) routes** go on a separate router or an individual route without `authenticate`, under your prefix. Give them their own rate limit if they are abuse-prone, and validate input as usual:
+
+```ts
+export function admissionRoutes(api: Router) {
+  const pub = Router(); // public: e.g. online enquiry form
+  pub.post('/enquiries', authRateLimit, async (req, res) => {
+    /* ... */
+  });
+  api.use('/admissions/public', pub);
+
+  const r = Router();
+  r.use(authenticate);
+  r.get('/', requirePermission('admissions', 'view'), async (_req, res) => {
+    /* ... */
+  });
+  api.use('/admissions', r);
+}
+```
+
+Register the public router before the authenticated one when they share a prefix, as above. Public handlers have no tenant context, so resolve the institute explicitly (e.g. from a signed token or a public institute code) and pass `{ tenantBypass: true }` only with a comment explaining why.
 
 ### 5. Request handling
 
@@ -131,7 +158,7 @@ Add `backend/test/<module>.test.ts` using the helpers in `test/helpers.ts`: `get
 2. **403** for a role without the permission.
 3. **Tenant isolation**: Apex cannot read or update Zenith data (404), and a client-supplied `instituteId` is ignored. See `test/tenancy.test.ts`.
 
-Tests run against the real MySQL test database, which is dropped, migrated and seeded once per run. Commands:
+Set a per-checkout `TEST_DB_NAME` in `backend/.env` (e.g. `erp_coaching_test_<module>`) so parallel sessions don't share a database. Tests run against the real MySQL test database, which is dropped, migrated and seeded once per run. Commands:
 
 - `npm test -w backend`
 - `npm run typecheck`

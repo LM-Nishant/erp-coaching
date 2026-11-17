@@ -9,7 +9,11 @@ import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { assertWithinLimit } from '../subscriptions/subscription.service';
 import { FileObject } from './file.model';
 
-export const fileRepo = new TenantRepository(FileObject, { entity: 'File', branchScoped: true });
+export const fileRepo = new TenantRepository(FileObject, {
+  entity: 'File',
+  branchScoped: true,
+  instituteWideRows: true,
+});
 
 async function sha256File(filePath: string): Promise<string> {
   const hash = crypto.createHash('sha256');
@@ -73,6 +77,7 @@ export function signedUrlFor(file: FileObject, ttlSeconds = config.SIGNED_URL_TT
 
 export async function deleteFile(id: number) {
   const file = await fileRepo.findById(id);
+  fileRepo.assertRowWritable(file);
   await getStorage().delete(file.storageKey);
   await file.destroy();
 }
