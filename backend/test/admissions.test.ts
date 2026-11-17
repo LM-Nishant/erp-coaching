@@ -23,16 +23,13 @@ describe('admissions', () => {
   it('runs the enquiry pipeline: duplicates warning, follow-up reminder, conversion', async () => {
     const app = await getApp();
     const m = mobile();
-    const e = await request(app)
-      .post('/api/admissions/enquiries')
-      .set(bearer(apex))
-      .send({
-        name: 'Enq Person',
-        mobile: m,
-        source: 'website',
-        counsellorUserId: branchAdminId,
-        courseInterest: 'JEE',
-      });
+    const e = await request(app).post('/api/admissions/enquiries').set(bearer(apex)).send({
+      name: 'Enq Person',
+      mobile: m,
+      source: 'website',
+      counsellorUserId: branchAdminId,
+      courseInterest: 'JEE',
+    });
     expect(e.status).toBe(201);
     expect(e.body.status).toBe('new');
     expect(e.body.duplicates).toEqual([]);
