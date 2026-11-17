@@ -3,6 +3,7 @@ import type { Channel, MessagingProvider } from './types';
 
 export * from './types';
 export { consoleOutbox } from './console.provider';
+export * from './providers';
 
 const providers = new Map<Channel, MessagingProvider>();
 

@@ -7,7 +7,9 @@
           <ion-menu-button v-else />
         </ion-buttons>
         <ion-title>{{ title }}</ion-title>
-        <ion-buttons slot="end"><slot name="actions" /></ion-buttons>
+        <ion-buttons slot="end"
+          ><slot name="actions" /><component :is="item" v-for="(item, i) in toolbarItems" :key="i"
+        /></ion-buttons>
       </ion-toolbar>
     </ion-header>
     <ion-content :class="{ 'ion-padding': padded }">
@@ -33,6 +35,7 @@ import {
   IonToolbar,
   type RefresherCustomEvent,
 } from '@ionic/vue';
+import { toolbarItems } from '@/core/modules';
 
 const props = withDefaults(
   defineProps<{ title: string; backHref?: string; padded?: boolean; onRefresh?: () => Promise<unknown> }>(),
