@@ -191,6 +191,13 @@ import { humanize, registrationApi } from './api';
 
 const route = useRoute();
 const slug = String(route.params.slug);
+const queryValue = (key: string) => {
+  const v = route.query[key];
+  return typeof v === 'string' && v.trim() ? v.trim() : null;
+};
+// Website links carry `?ref=<referral code>&courseId=<id>` for attribution.
+const referralCode = queryValue('ref');
+const courseId = Number(queryValue('courseId')) || null;
 const info = ref<SelfRegistrationInfo | null>(null);
 const loading = ref(true);
 const loadError = ref('');
@@ -250,6 +257,8 @@ async function submit() {
         ? { name: f.parentName.trim(), mobile: f.parentMobile.trim(), relation: f.parentRelation }
         : null,
       customFields: custom.value,
+      ref: referralCode,
+      courseId,
     });
   } catch (e) {
     error.value = e instanceof ApiError && MESSAGES[e.code] ? MESSAGES[e.code]! : errorMessage(e);

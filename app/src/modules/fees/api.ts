@@ -2,6 +2,7 @@ import type {
   BankAccountDto,
   BankStatementLineDto,
   CheckoutOrderDto,
+  CourseQuoteDto,
   FeeAccountDto,
   FeeAdjustmentDto,
   FeeHeadDto,
@@ -145,6 +146,12 @@ export const feesApi = {
     api.post<CheckoutOrderDto>('/fees/me/checkout', b, { headers: idem() }),
   myMockComplete: (id: number, outcome: 'success' | 'failed') =>
     api.post<WebhookResult>(`/fees/me/payments/${id}/mock-complete`, { outcome }),
+  courseQuote: (courseId: number, q: { batchId?: number; coupon?: string }) =>
+    api.get<CourseQuoteDto>(`/fees/me/courses/${courseId}/quote`, q),
+  courseCheckout: (
+    courseId: number,
+    b: { batchId?: number; couponCode?: string; referralCode?: string; gateway?: PaymentGatewayKey },
+  ) => api.post<CheckoutOrderDto>(`/fees/me/courses/${courseId}/checkout`, b, { headers: idem() }),
   mySync: (id: number) => api.post<WebhookResult>(`/fees/me/payments/${id}/sync`),
   myReceiptPdf: (id: number) => api.get<SignedUrl>(`/fees/me/receipts/${id}/pdf`),
   myShareReceipt: (id: number) => api.post<{ shared: boolean }>(`/fees/me/receipts/${id}/share`),

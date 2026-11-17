@@ -78,7 +78,7 @@ export function registerAppointmentIntegrations(): void {
           instituteId,
           studentId: child.studentId,
           status: { [Op.in]: ['requested', 'confirmed'] },
-          date: { [Op.gte]: localToday() },
+          date: { [Op.gte]: await localToday() },
         },
         include: [{ model: User, as: 'teacher', attributes: ['id', 'name'] }],
         order: [

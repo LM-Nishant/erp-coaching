@@ -191,6 +191,10 @@ export interface FeePaymentDto {
   receiptNumber: string | null;
   bankAccountId: number | null;
   notes: string | null;
+  /** Website coupon applied to an online order and its discount (paise). */
+  couponCode?: string | null;
+  couponDiscount?: number;
+  referralCode?: string | null;
   createdAt: string;
 }
 
@@ -214,8 +218,23 @@ export interface CheckoutOrderDto {
   paymentId: number;
   gateway: PaymentGatewayKey;
   gatewayOrderId: string;
+  /** Amount charged (after any coupon discount), in paise. */
   amount: number;
+  discount?: number;
+  couponCode?: string | null;
   checkout: Record<string, unknown>;
+}
+
+/** Price of a course for the "buy course" checkout (paise). */
+export interface CourseQuoteDto {
+  courseId: number;
+  courseName: string;
+  accountId: number | null;
+  amount: number;
+  discount: number;
+  payable: number;
+  coupon: { code: string; valid: boolean; message: string } | null;
+  alreadyPaid: boolean;
 }
 
 export interface GatewayConfigDto {

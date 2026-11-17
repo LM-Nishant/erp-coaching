@@ -3,10 +3,24 @@ import dotenv from 'dotenv';
 import { defineConfig } from 'vitest/config';
 import { BaseSequencer, type TestSpecification } from 'vitest/node';
 
-// Files share one database, and some (academics) assume they run before others create rows, so keep a stable order.
-class AlphabeticalSequencer extends BaseSequencer {
+// Files share one database and must pass in any order. Default to a stable alphabetical order; set
+// TEST_FILE_ORDER=reverse or TEST_FILE_ORDER=shuffle (optionally TEST_FILE_SEED=<n>) to check isolation.
+class FileOrderSequencer extends BaseSequencer {
   async sort(files: TestSpecification[]) {
-    return [...files].sort((a, b) => a.moduleId.localeCompare(b.moduleId));
+    const sorted = [...files].sort((a, b) => a.moduleId.localeCompare(b.moduleId));
+    const order = process.env.TEST_FILE_ORDER;
+    if (order === 'reverse') sorted.reverse();
+    if (order === 'shuffle') {
+      let seed = Number(process.env.TEST_FILE_SEED ?? Date.now()) >>> 0;
+      console.log(`Shuffling test files with TEST_FILE_SEED=${seed}`);
+      const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+      for (let i = sorted.length - 1; i > 0; i--) {
+        const j = Math.floor(rand() * (i + 1));
+        [sorted[i], sorted[j]] = [sorted[j], sorted[i]];
+      }
+    }
+    if (order) console.log(`File order: ${sorted.map((f) => path.basename(f.moduleId)).join(', ')}`);
+    return sorted;
   }
 }
 
@@ -32,7 +46,7 @@ export default defineConfig({
     globalSetup: ['./test/global-setup.ts'],
     setupFiles: ['./test/setup.ts'],
     fileParallelism: false,
-    sequence: { sequencer: AlphabeticalSequencer },
+    sequence: { sequencer: FileOrderSequencer },
     testTimeout: 20000,
     hookTimeout: 60000,
     include: ['test/**/*.test.ts', 'src/**/*.test.ts'],

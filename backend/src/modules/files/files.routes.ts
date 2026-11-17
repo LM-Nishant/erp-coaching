@@ -11,10 +11,11 @@ import { idParam, paginated, paginationSchema, toLimitOffset } from '../../share
 import { authenticate } from '../../shared/middleware/authenticate';
 import { requirePermission, requireTenant } from '../../shared/middleware/authorize';
 import { withContext } from '../../shared/middleware/context';
+import { getContext } from '../../shared/context';
 import { BadRequest, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
 import { FileObject } from './file.model';
-import { deleteFile, fileRepo, saveUploadedFile, signedUrlFor } from './files.service';
+import { deleteFile, fileRepo, isModuleOwnedPurpose, saveUploadedFile, signedUrlFor } from './files.service';
 
 const TMP_DIR = path.resolve(__dirname, '../../../tmp/uploads');
 
@@ -115,7 +116,10 @@ export function fileRoutes(api: Router) {
 
   r.get('/:id/url', requirePermission('files', 'view'), async (req, res) => {
     const { id } = parse(idParam, req.params);
-    res.json(signedUrlFor(await fileRepo.findById(id)));
+    const file = await fileRepo.findById(id);
+    // Module-owned files are signed by their module's permission-checked routes, not here.
+    if (isModuleOwnedPurpose(file.module) && file.ownerUserId !== getContext().userId) throw NotFound('File');
+    res.json(signedUrlFor(file));
   });
 
   r.delete('/:id', requirePermission('files', 'delete'), async (req, res) => {

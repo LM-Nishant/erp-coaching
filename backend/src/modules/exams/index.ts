@@ -5,6 +5,7 @@ import { MODULE, REMINDER_JOB, runReminder } from './exams.service';
 import { AUTO_SUBMIT_JOB, runAutoSubmit } from './attempts.service';
 // Importing grading.service also registers the on-submit AI grading hook.
 import { GRADE_JOB, runGradingJob } from './grading.service';
+import { registerExamIntegrations } from './integrations';
 
 export default defineModule({
   name: MODULE,
@@ -36,4 +37,5 @@ export default defineModule({
     [REMINDER_JOB]: (payload) => runReminder(payload as { examId: number; startAt: string }),
     [GRADE_JOB]: (payload) => runGradingJob(payload as { gradingJobId: number; answerIds: number[] }),
   },
+  onReady: registerExamIntegrations,
 });

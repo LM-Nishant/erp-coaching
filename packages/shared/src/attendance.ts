@@ -10,7 +10,7 @@ export type AttendanceRecordSource = AttendanceMethod | 'live' | 'leave' | 'corr
 
 /** `class`: one attendance session per academics class session; `daily`: one per batch per day. */
 export type AttendanceMode = 'class' | 'daily';
-export type AttendanceSessionKind = 'class' | 'daily';
+export type AttendanceSessionKind = 'class' | 'daily' | 'live';
 export type AttendanceSessionStatus = 'open' | 'closed';
 /** Who approves correction requests: applied immediately, the class teacher, or attendance admins. */
 export type CorrectionApproval = 'auto' | 'teacher' | 'admin';
@@ -48,6 +48,8 @@ export interface AttendanceSettingsDto {
   halfDayWeight: number;
   /** Shortage threshold (percentage) highlighted in reports. */
   minPercentage: number;
+  /** A live-class student counts as present after watching at least this share (%) of the class. */
+  liveMinPercent: number;
 }
 
 export interface AttendanceSessionDto {

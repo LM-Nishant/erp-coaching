@@ -282,6 +282,11 @@ export class FeePayment extends Model<InferAttributes<FeePayment>, InferCreation
   declare approvedByUserId: CreationOptional<number | null>;
   declare notes: string | null;
   declare postedAt: CreationOptional<Date | null>;
+  /** Website coupon applied to this online order (redeemed on capture, released on refund). */
+  declare couponCode: CreationOptional<string | null>;
+  /** Discount granted by the coupon, in paise (applied to the account when the payment posts). */
+  declare couponDiscount: CreationOptional<number>;
+  declare referralCode: CreationOptional<string | null>;
   declare createdAt: Stamps['createdAt'];
   declare updatedAt: Stamps['updatedAt'];
   declare student?: NonAttribute<Student>;
@@ -575,6 +580,9 @@ export function initFeeModels(sequelize: Sequelize) {
     approvedByUserId: OPT_FK(),
     notes: S(500),
     postedAt: DT(),
+    couponCode: S(40),
+    couponDiscount: money('couponDiscount'),
+    referralCode: S(40),
   });
   init(FeePaymentAllocation, sequelize, 'fee_payment_allocations', {
     paymentId: FK(),

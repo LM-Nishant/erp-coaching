@@ -17,6 +17,7 @@ import { AttendanceDevice, AttendanceEnrolment, DeviceEvent } from './models';
 import { getAttendanceSettings } from './settings';
 import { activeBatchIds, applyRecord, resolveSession } from './sessions.service';
 import { localDate, localHhmm, minutes, minutesSinceStart } from './time';
+import { getInstituteTimezone } from '../../shared/timezone';
 
 export const deviceRepo = new TenantRepository(AttendanceDevice, { entity: 'Device' });
 export const biometricEnrolmentRepo = new TenantRepository(AttendanceEnrolment, {
@@ -167,7 +168,8 @@ export async function listDeviceEvents(filter: {
 /** Classes (class mode) whose check-in window contains the punch; daily mode → batch-days. */
 async function targetSessions(studentUserId: number, at: Date, branchId: number | null) {
   const settings = await getAttendanceSettings();
-  const date = localDate(at);
+  const tz = await getInstituteTimezone();
+  const date = localDate(tz, at);
   const batchIds = await activeBatchIds(studentUserId);
   if (!batchIds.length) return [];
   if (settings.mode === 'daily') {
@@ -179,7 +181,7 @@ async function targetSessions(studentUserId: number, at: Date, branchId: number 
     }
     return sessions;
   }
-  const t = minutes(localHhmm(at));
+  const t = minutes(localHhmm(at, tz));
   const classes = await classAny.findAll({
     where: {
       batchId: { [Op.in]: batchIds },
@@ -213,6 +215,7 @@ export async function ingestPunches(
 ): Promise<DeviceIngestResult> {
   const { instituteId } = requireTenantContext();
   const settings = await getAttendanceSettings();
+  const tz = await getInstituteTimezone();
   const result: DeviceIngestResult = {
     received: punches.length,
     applied: 0,
@@ -257,7 +260,7 @@ export async function ingestPunches(
           if (session.status === 'closed') continue;
           const late =
             startTime != null &&
-            minutesSinceStart(session.date, startTime, p.punchedAt) > settings.lateAfterMinutes;
+            minutesSinceStart(session.date, startTime, tz, p.punchedAt) > settings.lateAfterMinutes;
           const st: AttendanceStatus = late ? 'late' : 'present';
           const r = await applyRecord(session, studentUserId, st, 'biometric', {
             overwrite: false,

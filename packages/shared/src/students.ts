@@ -222,6 +222,10 @@ export interface SelfRegistrationInput {
   academicInfo?: AcademicInfo | null;
   parent?: { name: string; mobile: string; email?: string | null; relation?: GuardianRelation } | null;
   customFields?: Record<string, unknown>;
+  /** Website referral code (`?ref=`); unknown codes are ignored. */
+  ref?: string | null;
+  /** Course the student came for (`?courseId=`), kept for attribution. */
+  courseId?: number | null;
 }
 
 export interface SelfRegistrationResult {

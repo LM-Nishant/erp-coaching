@@ -12,7 +12,7 @@ import { cached } from './cache';
 import { resolveBlocks, type ResolvedBlock } from './content.service';
 import { WebsitePage, WebsitePageVersion, type WebsiteSite } from './models';
 import { renderPage, type RenderOptions } from './render';
-import { admissionUrl, currentInstitute, getSite, siteBaseUrl } from './site.service';
+import { admissionUrl, appBaseUrl, currentInstitute, getSite, siteBaseUrl } from './site.service';
 
 export interface LivePage {
   pageId: number;
@@ -46,6 +46,8 @@ export interface LiveSite {
     customDomain: string | null;
     baseUrl: string;
     admissionUrl: string;
+    /** Base URL of the institute app (purchase/registration pages live there). */
+    appUrl: string;
     ogImageFileId: number | null;
   };
   pages: LivePage[];
@@ -90,6 +92,7 @@ export function loadLiveSite(): Promise<LiveSite> {
         customDomain: site.customDomain,
         baseUrl: base,
         admissionUrl: admissionUrl(site, inst),
+        appUrl: appBaseUrl(site),
         ogImageFileId: site.seo?.ogImageFileId ?? null,
       },
       pages: pages.map((p) => {

@@ -249,6 +249,7 @@ export function websitePublicRoutes(api: Router) {
         couponCode: q.coupon ? q.coupon.toUpperCase() : null,
         referralCode: ref,
         returnUrl: `${live.site.baseUrl}/`,
+        appUrl: live.site.appUrl,
       });
       if (handoff?.url && /^https?:\/\//i.test(handoff.url)) return { url: handoff.url, handler: 'fees' };
       const url = new URL(live.site.admissionUrl);

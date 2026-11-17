@@ -138,6 +138,8 @@ export interface ResourceWriteInput {
   offlineAllowed?: boolean;
   offlineExpiryHours?: number;
   sortOrder?: number;
+  /** Set by system-created content (see `LmsResource.sourceRef`); not accepted from requests. */
+  sourceRef?: string | null;
 }
 
 /** Validates that the taxonomy chain belongs to this institute and is internally consistent. */
@@ -249,7 +251,8 @@ export async function createResource(v: ResourceWriteInput) {
         offlineAllowed: v.type === 'video' ? (v.offlineAllowed ?? false) : false,
         offlineExpiryHours: v.offlineExpiryHours ?? 72,
         sortOrder: v.sortOrder ?? 0,
-        createdByUserId: userId,
+        sourceRef: v.sourceRef ?? null,
+        createdByUserId: userId ?? null,
       },
       { transaction },
     );

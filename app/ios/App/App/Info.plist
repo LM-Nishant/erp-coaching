@@ -75,6 +75,10 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose photos and documents to upload, such as profile pictures and assignment submissions.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save photos and downloaded documents to your photo library.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Confirm you are at the institute when checking in for attendance.</string>
 </dict>

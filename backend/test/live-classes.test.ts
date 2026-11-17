@@ -30,7 +30,7 @@ import {
 import { LiveParticipant } from '../src/modules/live-classes/models';
 import { attachLiveSockets, closeLiveSockets } from '../src/modules/live-classes/realtime';
 import { DevWebRtcStreamingProvider } from '../src/infrastructure/streaming/dev-webrtc.provider';
-import { DEMO_PASSWORD, USERS, bearer, getApp, login } from './helpers';
+import { DEMO_PASSWORD, USERS, bearer, getApp, login, purgeAcademicFixtures } from './helpers';
 
 const STUDENT = { mobile: '9100000005', password: DEMO_PASSWORD };
 const PARENT = { mobile: '9100000006', password: DEMO_PASSWORD };
@@ -82,6 +82,8 @@ describe('live-classes module', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const next = <T = any>(s: Socket, event: string) => new Promise<T>((resolve) => s.once(event, resolve));
 
+  const academicFixture: { sessionIds?: number[]; courseIds?: number[] } = {};
+
   beforeAll(async () => {
     app = await getApp();
     [admin, teacher, student, parent, zenith] = (
@@ -128,6 +130,7 @@ describe('live-classes module', () => {
           endDate: null,
         });
       const [b1, b2] = [await mk('LIVE-B1'), await mk('LIVE-B2')];
+      Object.assign(academicFixture, { sessionIds: [ses.id], courseIds: [course.id] });
       batchId = b1.id;
       otherBatchId = b2.id;
       for (const b of [b1, b2])
@@ -172,6 +175,7 @@ describe('live-classes module', () => {
     for (const s of sockets) s.disconnect();
     await closeLiveSockets();
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    await purgeAcademicFixtures({ batchIds: [batchId, otherBatchId], ...academicFixture });
   });
 
   it('schedules live classes from a class session or a batch', async () => {

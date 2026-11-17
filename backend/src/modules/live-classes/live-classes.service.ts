@@ -39,6 +39,7 @@ import {
 } from './models';
 import { emitLiveEvent, LIVE_EVENTS } from './live-events';
 import { realtime } from './realtime-bridge';
+import { canJoinLive } from './entitlements';
 
 export const MODULE = 'live-classes';
 export const IMPORT_RECORDING_JOB = 'live-classes.import-recording';
@@ -453,6 +454,8 @@ export async function endSession(id: number) {
 export async function joinInfo(id: number): Promise<LiveJoinInfo> {
   const { session, role } = await loadSession(id);
   if (session.status !== 'live') throw Conflict('The class is not live', 'NOT_LIVE');
+  if (role === 'student' && !(await canJoinLive(session, me())))
+    throw Forbidden('Pay the course fee to join this live class', 'LIVE_NOT_ENTITLED');
   const provider = getStreamingProvider();
   const user = await User.findByPk(me(), { attributes: ['id', 'name'] });
   const streamingRole: StreamingRole =

@@ -4,6 +4,7 @@ import { LMS, LMS_ASSIGNMENTS, lmsRoutes } from './lms.routes';
 import { DUE_REMINDER_JOB, runDueReminder } from './assignments.service';
 import { TRANSCODE_JOB, runTranscode } from './transcode.job';
 import { registerLmsNotificationEvents } from './notifications';
+import { registerLmsIntegrations } from './integrations';
 
 // Catalogue entries must exist before any request or job calls notify().
 registerLmsNotificationEvents();
@@ -42,4 +43,5 @@ export default defineModule({
     [TRANSCODE_JOB]: (payload) => runTranscode(payload as { resourceId: number }),
     [DUE_REMINDER_JOB]: (payload) => runDueReminder(payload as { assignmentId: number; dueAt: string }),
   },
+  onReady: registerLmsIntegrations,
 });

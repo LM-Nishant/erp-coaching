@@ -51,20 +51,28 @@ async function studentIdsForUser(instituteId: number, studentUserId: number) {
   return rows.map((r) => r.id);
 }
 
-/** True when the student (login user id, as used by rosters) has paid for the course. */
-export async function hasCourseEntitlement(studentUserId: number, courseId: number): Promise<boolean> {
-  const { instituteId } = requireTenantContext();
+/** The student's active (not revoked) paid entitlement for a course, if any. */
+export async function activeCourseEntitlement(
+  instituteId: number,
+  studentUserId: number,
+  courseId: number,
+): Promise<FeeEntitlement | null> {
   const studentIds = await studentIdsForUser(instituteId, studentUserId);
-  const row = await FeeEntitlement.findOne({
+  return FeeEntitlement.findOne({
     where: {
       instituteId,
       courseId,
       revokedAt: null,
       [Op.or]: [{ studentUserId }, ...(studentIds.length ? [{ studentId: { [Op.in]: studentIds } }] : [])],
     },
-    attributes: ['id'],
+    order: [['grantedAt', 'ASC']],
   });
-  return !!row;
+}
+
+/** True when the student (login user id, as used by rosters) has paid for the course. */
+export async function hasCourseEntitlement(studentUserId: number, courseId: number): Promise<boolean> {
+  const { instituteId } = requireTenantContext();
+  return !!(await activeCourseEntitlement(instituteId, studentUserId, courseId));
 }
 
 /** True when the student has paid for a separately purchasable subject. */
@@ -84,8 +92,10 @@ export async function hasSubjectEntitlement(studentUserId: number, subjectId: nu
 }
 
 /** Course ids the student is entitled to (for LMS catalogue filtering). */
-export async function entitledCourseIds(studentUserId: number): Promise<number[]> {
-  const { instituteId } = requireTenantContext();
+export async function entitledCourseIds(
+  studentUserId: number,
+  instituteId = requireTenantContext().instituteId,
+): Promise<number[]> {
   const studentIds = await studentIdsForUser(instituteId, studentUserId);
   const rows = await FeeEntitlement.findAll({
     where: {

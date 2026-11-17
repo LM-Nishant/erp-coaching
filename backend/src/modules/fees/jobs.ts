@@ -8,6 +8,7 @@ import { Student } from '../students/models';
 import { FeeAccount, FeeInstalment } from './models';
 import { applyLateFee } from './accounts.service';
 import { getFeeSettings } from './settings.service';
+import { releaseStaleCouponReservations } from './payments.service';
 import { money, notifyStudent } from './notifications';
 import { addDays, today } from './util';
 
@@ -68,6 +69,11 @@ export async function runInstituteSweep(asOf = today()) {
     } catch (err) {
       logger.warn({ instituteId, instalmentId: inst.id, err }, 'Fee sweep item failed');
     }
+  }
+  try {
+    await releaseStaleCouponReservations();
+  } catch (err) {
+    logger.warn({ instituteId, err }, 'Releasing stale coupon reservations failed');
   }
   return { reminders, overdue, lateFees };
 }

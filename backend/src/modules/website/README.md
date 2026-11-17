@@ -43,8 +43,11 @@ Import from `modules/website/api.ts` only, and register hooks from your own `int
 
 - `setCheckoutHandoff(fn)`: fees/payments returns `{ url }` to its checkout for
   `{ courseId, batchId, couponCode, referralCode, returnUrl }`. If it returns `null`, the visitor is sent
-  to online admission.
-- `setCoursePriceResolver(fn)`: display prices for the public course catalogue.
+  to online admission. The input also carries `appUrl` (the staff/student app). Fees uses it to return
+  `<appUrl>/my-fees/buy/:courseId?batchId&coupon&ref` when the course has an active fee structure and a
+  payment gateway is enabled.
+- `setCoursePriceResolver(fn)`: display prices for the public course catalogue. Fees returns the lowest
+  active course-level fee structure total.
 - `validateCoupon({ code, amountPaise, courseId?, customerKey? })`: returns the discount or a reason
   why the coupon cannot be applied. It checks validity dates, global and per-customer usage limits,
   minimum order and course scope.

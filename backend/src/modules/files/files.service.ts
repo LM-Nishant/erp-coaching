@@ -69,6 +69,30 @@ export async function saveUploadedFile(input: SaveUploadInput): Promise<FileObje
   }
 }
 
+/**
+ * File purposes (`files.module`) whose files carry module-level access rules (paid LMS content,
+ * exam answer scans, live recordings, receipts, payslips, HR/student documents, tickets…). Their
+ * owning module signs them through its own permission-checked routes; the generic
+ * `GET /files/:id/url` only signs them for the uploader. Add a purpose here when a module stores
+ * access-controlled files.
+ */
+export const MODULE_OWNED_FILE_PURPOSES: ReadonlySet<string> = new Set([
+  'lms',
+  'exams',
+  'question-bank',
+  'live-classes',
+  'fees',
+  'payroll',
+  'hr',
+  'students',
+  'grievances',
+  'admissions',
+  'appointments',
+  'parent-portal',
+]);
+
+export const isModuleOwnedPurpose = (purpose: string) => MODULE_OWNED_FILE_PURPOSES.has(purpose);
+
 /** Short-lived URL usable directly in <img>/<video>/download links. */
 export function signedUrlFor(file: FileObject, ttlSeconds = config.SIGNED_URL_TTL_SECONDS) {
   const { token, expiresAt } = signFileToken(file.id, file.instituteId, ttlSeconds);

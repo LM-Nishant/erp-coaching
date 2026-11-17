@@ -14,6 +14,7 @@ import {
 } from '../src/modules/academics/models';
 import { recordAttendance } from '../src/modules/attendance/api';
 import { DEMO_PASSWORD, USERS, bearer, getApp, lastOtpFor, login, newDevice } from './helpers';
+import { DEFAULT_INSTITUTE_TIMEZONE, nowInZone, todayIn } from '../src/shared/timezone';
 
 let seq = 0;
 const mobile = () => `936${String(seq++).padStart(7, '0')}`;
@@ -30,7 +31,8 @@ async function otpLogin(m: string) {
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
-const localDate = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+// Class dates/times are wall-clock values in the institute timezone (seeded institutes use the default).
+const localDate = (d = new Date()) => todayIn(DEFAULT_INSTITUTE_TIMEZONE, d);
 const hhmm = (mins: number) => `${pad(Math.floor(mins / 60))}:${pad(mins % 60)}`;
 const addDays = (date: string, n: number) =>
   new Date(Date.parse(`${date}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
@@ -141,8 +143,7 @@ describe('attendance module', () => {
     expect(enroll.status).toBe(201);
 
     // A class happening right now, and one from yesterday.
-    const now = new Date();
-    const start = Math.min(Math.max(now.getHours() * 60 + now.getMinutes() - 2, 0), 22 * 60);
+    const start = Math.min(Math.max(nowInZone(DEFAULT_INSTITUTE_TIMEZONE).minutes - 2, 0), 22 * 60);
     const cls = await request(app)
       .post('/api/academics/class-sessions')
       .set(bearer(admin))

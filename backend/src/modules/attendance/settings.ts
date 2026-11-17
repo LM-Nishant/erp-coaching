@@ -18,6 +18,7 @@ export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettingsDto = {
   excludeLeaveFromTotal: true,
   halfDayWeight: 0.5,
   minPercentage: 75,
+  liveMinPercent: 50,
 };
 
 const settingsRepo = new TenantRepository(AttendanceSettings, { entity: 'Attendance settings' });

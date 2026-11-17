@@ -20,6 +20,7 @@ import { getCalendarProvider, type CalendarEventInput } from '../../infrastructu
 import { getContext, hasPermission, requireTenantContext } from '../../shared/context';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { audit } from '../../shared/audit/audit.service';
+import { getInstituteTimezone, instituteToday, zonedDateTimeToUtc } from '../../shared/timezone';
 import { AppError, BadRequest, Conflict, Forbidden, NotFound } from '../../shared/errors';
 import { User } from '../users/user.model';
 import { Role, UserRole } from '../permissions/models';
@@ -59,14 +60,11 @@ const addDays = (date: string, n: number) => {
 const daysBetween = (a: string, b: string) =>
   Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
 /**
- * Appointment dates/times are institute wall-clock values. Institutes have no timezone setting yet,
- * so absolute instants (reminder run times, "is it in the past") use the server's local timezone.
+ * Appointment dates/times are institute wall-clock values; absolute instants (reminder run times,
+ * "is it in the past") are computed in the institute's timezone.
  */
-export const localInstant = (date: string, time: string) => new Date(`${date}T${time}:00`);
-export const localToday = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+export const localInstant = (date: string, time: string, tz: string) => zonedDateTimeToUtc(date, time, tz);
+export const localToday = (instituteId?: number) => instituteToday(instituteId);
 const overlaps = (aStart: number, aEnd: number, bStart: number, bEnd: number) =>
   aStart < bEnd && bStart < aEnd;
 
@@ -440,6 +438,7 @@ export async function computeAvailability(
   });
   const booked = await bookedRanges(teacherUserId, from, to, opts.excludeAppointmentId, opts.transaction);
   const now = Date.now();
+  const tz = await getInstituteTimezone();
   const out: AvailableSlotDto[] = [];
   for (let date = from; date <= to; date = addDays(date, 1)) {
     const dow = dayOfWeek(date);
@@ -454,7 +453,7 @@ export async function computeAvailability(
       const end = toMinutes(s.endTime);
       for (let start = toMinutes(s.startTime); start + s.slotMinutes <= end; start += s.slotMinutes) {
         const chunkEnd = start + s.slotMinutes;
-        if (localInstant(date, fromMinutes(start)).getTime() <= now) continue;
+        if (localInstant(date, fromMinutes(start), tz).getTime() <= now) continue;
         if ((booked.get(date) ?? []).some(([a, b]) => overlaps(start, chunkEnd, a, b))) continue;
         out.push({
           slotId: s.id,
@@ -603,7 +602,7 @@ const reminderBase = (a: Appointment) => `${a.date}T${a.startTime}`;
 
 /** Queues reminder jobs; stale ones (after a reschedule/cancel) are ignored by the handler. */
 async function scheduleReminders(a: Appointment) {
-  const start = localInstant(a.date, a.startTime).getTime();
+  const start = localInstant(a.date, a.startTime, await getInstituteTimezone(a.instituteId)).getTime();
   for (const lead of REMINDER_LEADS_MINUTES) {
     const runAt = new Date(start - lead * 60_000);
     if (runAt.getTime() <= Date.now()) continue;
@@ -674,12 +673,12 @@ export interface ListQuery {
   upcoming?: boolean;
 }
 
-function filters(q: ListQuery) {
+async function filters(q: ListQuery) {
   const where: Record<string | symbol, unknown> = {};
   if (q.status?.length) where.status = { [Op.in]: q.status };
   if (q.from || q.to)
     where.date = { ...(q.from ? { [Op.gte]: q.from } : {}), ...(q.to ? { [Op.lte]: q.to } : {}) };
-  if (q.upcoming) where.date = { ...(where.date as object), [Op.gte]: localToday() };
+  if (q.upcoming) where.date = { ...(where.date as object), [Op.gte]: await localToday() };
   if (q.studentId) where.studentId = q.studentId;
   if (q.teacherUserId) where.teacherUserId = q.teacherUserId;
   return where;
@@ -693,7 +692,7 @@ export async function listMine(q: ListQuery) {
   const or: WhereOptions[] = [{ teacherUserId: uid }, { requestedByUserId: uid }];
   if (children.length) or.push({ studentId: { [Op.in]: children } });
   const { rows, count } = await Appointment.findAndCountAll({
-    where: { ...filters(q), instituteId, [Op.or]: or } as WhereOptions<Appointment>,
+    where: { ...(await filters(q)), instituteId, [Op.or]: or } as WhereOptions<Appointment>,
     include: apptIncludes,
     order: q.upcoming
       ? [
@@ -714,7 +713,7 @@ export async function listMine(q: ListQuery) {
 /** Branch-wide list for managers/report viewers. */
 export async function listAll(q: ListQuery) {
   if (!canSeeAll()) return listMine(q);
-  const where = filters(q);
+  const where = await filters(q);
   if (q.branchId) {
     apptRepo.assertBranchAllowed(q.branchId);
     where.branchId = q.branchId;
@@ -925,7 +924,7 @@ export async function reschedule(id: number, input: RescheduleInput) {
       const endTime = input.endTime ?? fromMinutes(toMinutes(input.startTime) + len);
       if (toMinutes(endTime) <= toMinutes(input.startTime) || toMinutes(endTime) > 24 * 60)
         throw BadRequest('endTime must be after startTime on the same day');
-      if (localInstant(input.date, input.startTime).getTime() <= Date.now())
+      if (localInstant(input.date, input.startTime, await getInstituteTimezone()).getTime() <= Date.now())
         throw BadRequest('The new time is in the past');
       const booked = await bookedRanges(a.teacherUserId, input.date, input.date, a.id, transaction);
       if (
@@ -994,7 +993,7 @@ export async function complete(
 ) {
   const { a } = await loadAs(id, ['teacher', 'manager']);
   assertStatus(a, ['confirmed']);
-  if (a.date > localToday()) throw BadRequest('The meeting has not happened yet');
+  if (a.date > (await localToday())) throw BadRequest('The meeting has not happened yet');
   const from = a.status;
   await a.update({
     status: input.outcome,
@@ -1050,7 +1049,13 @@ export interface ReportQuery {
 }
 
 async function reportRows(q: ReportQuery) {
-  const where = filters({ page: 1, pageSize: 1, from: q.from, to: q.to, teacherUserId: q.teacherUserId });
+  const where = await filters({
+    page: 1,
+    pageSize: 1,
+    from: q.from,
+    to: q.to,
+    teacherUserId: q.teacherUserId,
+  });
   if (q.branchId) {
     apptRepo.assertBranchAllowed(q.branchId);
     where.branchId = q.branchId;

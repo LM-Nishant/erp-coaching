@@ -1,7 +1,17 @@
 import request from 'supertest';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Op } from 'sequelize';
-import { DEMO_PASSWORD, USERS, bearer, getApp, lastOtpFor, login, newDevice } from './helpers';
+import {
+  DEMO_PASSWORD,
+  USERS,
+  bearer,
+  getApp,
+  lastOtpFor,
+  login,
+  newDevice,
+  purgeAcademicFixtures,
+  purgeRows,
+} from './helpers';
 import { User } from '../src/modules/users/user.model';
 import { Branch } from '../src/modules/branches/branch.model';
 import { Exam, ExamAttempt, ExamEvaluation, GradingResult } from '../src/modules/exams/models';
@@ -117,8 +127,12 @@ describe('exams module', () => {
   let attempt1: number;
   let attempt2: number;
 
+  const fixture: { sessionIds?: number[]; courseIds?: number[] } = {};
+  let examWatermark = 0;
+
   beforeAll(async () => {
     app = await getApp();
+    examWatermark = (await Exam.max<number, Exam>('id', BYPASS)) ?? 0;
     [admin, branchAdmin, teacher, s1, zenith, zenithStudent, sa] = await Promise.all(
       [
         USERS.apexAdmin,
@@ -169,11 +183,13 @@ describe('exams module', () => {
       .set(bearer(admin))
       .send({ name: 'EX-2045', startDate: '2045-04-01', endDate: '2046-03-31' });
     expect(session.status).toBe(201);
+    fixture.sessionIds = [session.body.id];
     const course = await request(app)
       .post('/api/academics/courses')
       .set(bearer(admin))
       .send({ name: 'Exam Course', code: 'EXC-1', subjectIds: [subj.body.id], branchIds: [branchId] });
     expect(course.status).toBe(201);
+    fixture.courseIds = [course.body.id];
     const batch = await request(app).post('/api/academics/batches').set(bearer(admin)).send({
       branchId,
       courseId: course.body.id,
@@ -236,6 +252,17 @@ describe('exams module', () => {
   afterEach(() => vi.restoreAllMocks());
   afterAll(async () => {
     await request(app).delete('/api/admin/ai/settings/key').set(bearer(sa));
+    // Exams (and their attempts) and the academic fixtures are visible to seeded users in other suites.
+    const exams = await Exam.findAll({
+      where: { id: { [Op.gt]: examWatermark } },
+      attributes: ['id'],
+      ...BYPASS,
+    });
+    await purgeRows(
+      'exams',
+      exams.map((e) => e.id),
+    );
+    await purgeAcademicFixtures({ batchIds: [batchId], ...fixture });
   });
 
   it('lets teachers build and schedule an exam with sections and a marking scheme', async () => {

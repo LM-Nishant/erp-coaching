@@ -60,6 +60,7 @@ import {
   upsertEnrolment,
 } from './devices.service';
 import { isoDate, localDate } from './time';
+import { getInstituteTimezone } from '../../shared/timezone';
 import { User } from '../users/user.model';
 
 const pid = (req: { params: unknown }) => parse(idParam, req.params).id;
@@ -93,6 +94,7 @@ const settingsBody = z
     excludeLeaveFromTotal: z.boolean(),
     halfDayWeight: z.number().min(0).max(1),
     minPercentage: z.number().min(0).max(100),
+    liveMinPercent: z.number().int().min(0).max(100),
   })
   .partial();
 
@@ -223,7 +225,7 @@ function settingsRoutes(r: Router) {
 function sessionRoutes(r: Router) {
   r.get('/day', requirePermission('attendance', 'view'), async (req, res) => {
     const q = parse(z.object({ date: date.optional(), batchId: id.optional() }), req.query);
-    res.json(await dayOverview(q.date ?? localDate(), q.batchId));
+    res.json(await dayOverview(q.date ?? localDate(await getInstituteTimezone()), q.batchId));
   });
 
   /** Opens (or returns) the attendance session for a class or batch-day and its roster. */

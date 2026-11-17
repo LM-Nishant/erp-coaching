@@ -20,6 +20,7 @@ import { guardiansOfStudentUsers, notify } from '../notifications/api';
 import { AttendanceRecord, AttendanceSession, StudentLeaveRequest } from './models';
 import { getAttendanceSettings } from './settings';
 import { distanceMetres, localDate, minutesSinceStart } from './time';
+import { getInstituteTimezone } from '../../shared/timezone';
 
 export const ABSENT_ALERTS_JOB = 'attendance.absent-alerts';
 
@@ -108,6 +109,18 @@ export interface SessionRef {
   classSessionId?: number;
   batchId?: number;
   date?: string;
+  /** A live class not linked to a class session (class mode: `live:<id>`; daily mode: its batch-day). */
+  live?: LiveSessionRef;
+}
+
+export interface LiveSessionRef {
+  liveSessionId: number;
+  branchId: number;
+  batchId: number;
+  date: string;
+  startTime: string | null;
+  endTime: string | null;
+  teacherUserId: number | null;
 }
 
 /**
@@ -136,10 +149,27 @@ export async function resolveSession(
       teacherUserId: cs.teacherUserId,
     });
   }
+  if (ref.live) {
+    const live = ref.live;
+    if (settings.mode === 'daily') return dailySession(await batches.findById(live.batchId), live.date);
+    return getOrCreateSession(`live:${live.liveSessionId}`, {
+      branchId: live.branchId,
+      batchId: live.batchId,
+      classSessionId: null,
+      kind: 'live',
+      date: live.date,
+      startTime: live.startTime,
+      endTime: live.endTime,
+      teacherUserId: live.teacherUserId,
+    });
+  }
   if (!ref.batchId) throw BadRequest('classSessionId or batchId is required');
   if (settings.mode === 'class')
     throw new AppError(400, 'MODE_CLASS', 'Attendance is taken per class session; pass classSessionId');
-  return dailySession(await batches.findById(ref.batchId), ref.date ?? localDate());
+  return dailySession(
+    await batches.findById(ref.batchId),
+    ref.date ?? localDate(await getInstituteTimezone()),
+  );
 }
 
 function dailySession(batch: Batch, date: string) {
@@ -469,19 +499,21 @@ export async function checkIn(input: CheckInInput): Promise<CheckInResult> {
   const { userId } = requireTenantContext();
   const settings = await getAttendanceSettings();
   assertMethodEnabled(settings, input.method);
+  const tz = await getInstituteTimezone();
+  const today = localDate(tz);
   let session: AttendanceSession;
   if (input.method === 'qr') {
     if (!input.token) throw BadRequest('token is required');
     session = await sessionFromQr(input.token, settings);
   } else {
     session = await resolveSession(
-      { classSessionId: input.classSessionId, batchId: input.batchId, date: localDate() },
+      { classSessionId: input.classSessionId, batchId: input.batchId, date: today },
       { settings },
     );
-    if (session.date !== localDate())
+    if (session.date !== today)
       throw Conflict('Check-in is only open on the day of class', 'CHECK_IN_CLOSED');
     if (session.startTime) {
-      const since = minutesSinceStart(session.date, session.startTime);
+      const since = minutesSinceStart(session.date, session.startTime, tz);
       if (since < -settings.checkInOpensMinutes || since > settings.checkInClosesMinutes)
         throw Conflict('Check-in is not open for this class right now', 'CHECK_IN_CLOSED');
     }
@@ -499,7 +531,7 @@ export async function checkIn(input: CheckInInput): Promise<CheckInResult> {
   }
   const late =
     session.startTime != null &&
-    minutesSinceStart(session.date, session.startTime) > settings.lateAfterMinutes;
+    minutesSinceStart(session.date, session.startTime, tz) > settings.lateAfterMinutes;
   const { record, duplicate } = await applyRecord(session, userId, late ? 'late' : 'present', input.method, {
     overwrite: false,
     markedByUserId: userId,
@@ -522,7 +554,8 @@ export async function activeBatchIds(studentUserId: number): Promise<number[]> {
 export async function checkInOptions() {
   const { userId, instituteId } = requireTenantContext();
   const settings = await getAttendanceSettings();
-  const date = localDate();
+  const tz = await getInstituteTimezone();
+  const date = localDate(tz);
   const batchIds = await activeBatchIds(userId!);
   if (!batchIds.length) return { date, mode: settings.mode, methods: settings.methods, items: [] };
   const batches = await batchAny.findAll({
@@ -544,7 +577,7 @@ export async function checkInOptions() {
     : [];
   const myStatus = new Map(mine.map((r) => [r.attendanceSessionId, r.status]));
   const withState = (s: AttendanceSession | undefined, startTime: string | null) => {
-    const since = startTime ? minutesSinceStart(date, startTime) : 0;
+    const since = startTime ? minutesSinceStart(date, startTime, tz) : 0;
     const inWindow =
       !startTime || (since >= -settings.checkInOpensMinutes && since <= settings.checkInClosesMinutes);
     const status = s ? (myStatus.get(s.id) ?? null) : null;
@@ -674,6 +707,8 @@ export interface RecordAttendanceInput extends SessionRef {
   markedAt?: Date;
   /** Replace an existing mark (default false: the first mark wins). */
   overwrite?: boolean;
+  /** Replace an absent mark auto-applied when the session closed (source `system`), e.g. live joins. */
+  replaceSystemMark?: boolean;
   remarks?: string | null;
 }
 
@@ -685,13 +720,22 @@ export async function recordAttendance(input: RecordAttendanceInput) {
   const session = await resolveSession(input);
   if (!(await rosterStudentIds(session.batchId, session.date)).includes(input.studentUserId))
     throw BadRequest('Student is not enrolled in this batch', { studentUserId: input.studentUserId });
+  let overwrite = input.overwrite ?? false;
+  if (!overwrite && input.replaceSystemMark) {
+    const { instituteId } = requireTenantContext();
+    const existing = await AttendanceRecord.findOne({
+      where: { instituteId, attendanceSessionId: session.id, studentUserId: input.studentUserId },
+      attributes: ['source'],
+    });
+    overwrite = existing?.source === 'system';
+  }
   const { record, duplicate } = await applyRecord(
     session,
     input.studentUserId,
     input.status ?? 'present',
     input.source ?? 'live',
     {
-      overwrite: input.overwrite ?? false,
+      overwrite,
       markedAt: input.markedAt,
       markedByUserId: getContext().userId ?? null,
       remarks: input.remarks,

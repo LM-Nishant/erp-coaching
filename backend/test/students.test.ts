@@ -303,6 +303,35 @@ describe('student self-registration', () => {
     expect(profile.body.guardians[0]).toMatchObject({ mobile: pm, relation: 'mother', status: 'active' });
   });
 
+  it('counts a website referral signup and never fails on a bad referral', async () => {
+    const app = await getApp();
+    const apex = (await login(USERS.apexAdmin)).accessToken;
+    const code = `SR${Date.now().toString(36)}`.toUpperCase().slice(0, 12);
+    const created = await request(app)
+      .post('/api/website/referrals')
+      .set(bearer(apex))
+      .send({ code, name: 'Self-registration referral' });
+    expect(created.status).toBe(201);
+
+    // `ref`/`courseId` from the query string (links shared as /register/apex?ref=…&courseId=…).
+    const reg = await request(app)
+      .post('/api/public/institutes/apex/register')
+      .query({ ref: code.toLowerCase(), courseId: '5' })
+      .send({ name: 'Referred Kid', mobile: mobile() });
+    expect(reg.status).toBe(201);
+    const unknown = await request(app)
+      .post('/api/public/institutes/apex/register')
+      .send({ name: 'Unknown Ref Kid', mobile: mobile(), ref: 'NO-SUCH-CODE' });
+    expect(unknown.status).toBe(201);
+
+    const events = await request(app)
+      .get(`/api/website/referrals/${created.body.id}/events`)
+      .set(bearer(apex));
+    expect(events.body.items).toEqual([expect.objectContaining({ kind: 'signup' })]);
+    const list = await request(app).get('/api/website/referrals').set(bearer(apex)).query({ search: code });
+    expect(list.body.items[0]).toMatchObject({ code, signups: 1 });
+  });
+
   it('requires the password to attach an existing account', async () => {
     const res = await request(await getApp())
       .post('/api/public/institutes/apex/register')

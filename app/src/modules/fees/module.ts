@@ -73,6 +73,12 @@ export default defineAppModule({
       component: () => import('./MyFeesPage.vue'),
       meta: { permission: 'my-fees.view' },
     },
+    {
+      path: '/my-fees/buy/:courseId',
+      name: 'my-fees-buy',
+      component: () => import('./BuyCoursePage.vue'),
+      meta: { permission: 'my-fees.create' },
+    },
   ],
   menu: [
     {
