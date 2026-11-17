@@ -44,7 +44,7 @@ backend/src/
 3. Then `routes(apiRouter)`.
 4. Then `permissions` are upserted into the `permissions` table. Default `grants` are applied to system roles on every boot.
 5. Then `jobs` handlers are registered.
-6. Finally `onReady()`.
+6. Finally `onReady()`. Modules use it for cross-module wiring: each provider module's `integrations.ts` registers into consumer extension points (notification recipient resolvers, grievance linked students, academics class-completed listeners). See CONTRIBUTING → "Cross-module wiring".
 
 **Adding a module never requires editing a shared file.**
 

@@ -23,6 +23,8 @@ import { AdmissionApplication, AdmissionForm, Enquiry, EnquiryFollowUp } from '.
 import {
   addToWaitlist,
   applicationRepo,
+  assertAdmissionBatch,
+  notifyAdmissionConfirmed,
   assertInstituteMember,
   assertValidSource,
   completeAdmission,
@@ -464,10 +466,13 @@ export function admissionRoutes(api: Router) {
     }
     const branch = await resolveBranch(branchId);
     const { formId, formData } = await resolveFormData(body.formId, branch.id, body.formData);
+    const courseId = body.batchId
+      ? await assertAdmissionBatch(body.batchId, branch.id, body.courseId)
+      : (body.courseId ?? null);
     const duplicates = await findDuplicates({ mobile: body.mobile, email: body.email });
     const { instituteId } = requireTenantContext();
     const app = await getSequelize().transaction(async (transaction) => {
-      const base = { instituteId, branchId: branch.id, courseId: body.courseId ?? null };
+      const base = { instituteId, branchId: branch.id, courseId };
       return AdmissionApplication.create(
         {
           ...base,
@@ -577,7 +582,7 @@ export function admissionRoutes(api: Router) {
       {
         source: 'application',
         allowDuplicate,
-        afterCreate: (s, transaction) => completeAdmission(a, s.id, s.branchId, transaction),
+        afterCreate: (s, transaction) => completeAdmission(a, s, s.branchId, transaction),
       },
     );
     await audit({
@@ -586,6 +591,7 @@ export function admissionRoutes(api: Router) {
       entityId: id,
       metadata: { studentId: student.id },
     });
+    await notifyAdmissionConfirmed(a, student);
     res.status(201).json({ application: toApplicationDto(a), student: toStudentDto(student) });
   });
 

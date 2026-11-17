@@ -3,7 +3,7 @@ import type { ClassChangedJobPayload } from '@erp/shared';
 import { ACADEMICS_CLASS_CHANGED_JOB } from '@erp/shared';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { enqueueJob } from '../../infrastructure/jobs/queue';
-import { getMessagingProvider } from '../../infrastructure/messaging';
+import { guardiansOfStudentUsers, notify } from '../notifications/api';
 import { getContext, hasPermission, requireTenantContext } from '../../shared/context';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../shared/errors';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
@@ -90,13 +90,18 @@ export async function assertBranch(branchId: number) {
 }
 
 /** Returns the subset of `userIds` holding the given system role in the current institute. */
-export async function usersWithRole(userIds: number[], roleSlug: string): Promise<Set<number>> {
+export async function usersWithRole(
+  userIds: number[],
+  roleSlug: string,
+  transaction?: Transaction,
+): Promise<Set<number>> {
   if (!userIds.length) return new Set();
   const { instituteId } = requireTenantContext();
   const rows = await UserRole.findAll({
     where: { instituteId, userId: { [Op.in]: userIds } },
     include: [{ model: Role, as: 'role', where: { slug: roleSlug }, attributes: [] }],
     attributes: ['userId'],
+    transaction,
   });
   return new Set(rows.map((r) => r.userId));
 }
@@ -108,9 +113,9 @@ export async function assertTeachers(userIds: number[]) {
   if (bad.length) throw BadRequest('Teachers must be users with the Teacher role', { userIds: bad });
 }
 
-export async function assertStudents(userIds: number[]) {
+export async function assertStudents(userIds: number[], transaction?: Transaction) {
   const unique = [...new Set(userIds)];
-  const ok = await usersWithRole(unique, 'student');
+  const ok = await usersWithRole(unique, 'student', transaction);
   const bad = unique.filter((id) => !ok.has(id));
   if (bad.length) throw BadRequest('Students must be users with the Student role', { userIds: bad });
 }
@@ -394,19 +399,54 @@ export async function getBatchMemberUserIds(
   return [...ids];
 }
 
+/**
+ * Enrolls student users in a batch (the single place that writes `batch_students`). Skips students
+ * already actively enrolled, enforces capacity under a row lock on the batch, and joins the caller's
+ * transaction when given (e.g. admissions enrolling inside the admit transaction). Callers audit.
+ */
+export async function enrollStudentsInBatch(
+  batchId: number,
+  studentUserIds: number[],
+  opts: { joinedOn?: string; branchId?: number; transaction?: Transaction } = {},
+): Promise<{ enrolled: number[]; skipped: number[] }> {
+  const run = async (transaction: Transaction) => {
+    const batch = await repos.batches.findById(batchId, { transaction, lock: transaction.LOCK.UPDATE });
+    if (batch.status === 'cancelled' || batch.status === 'completed')
+      throw BadRequest(`Batch is ${batch.status}`);
+    if (opts.branchId !== undefined && batch.branchId !== opts.branchId)
+      throw BadRequest('The batch belongs to a different branch', { batchId, branchId: batch.branchId });
+    const unique = [...new Set(studentUserIds)];
+    await assertStudents(unique, transaction);
+    const already = new Set(
+      (
+        await repos.batchStudents.findAll({
+          where: { batchId, status: 'active' },
+          attributes: ['studentUserId'],
+          transaction,
+        })
+      ).map((e) => e.studentUserId),
+    );
+    const toAdd = unique.filter((s) => !already.has(s));
+    if (already.size + toAdd.length > batch.capacity)
+      throw Conflict(`Batch capacity ${batch.capacity} exceeded (${already.size} enrolled)`, 'BATCH_FULL');
+    for (const studentUserId of toAdd)
+      await repos.batchStudents.create(
+        { batchId, studentUserId, joinedOn: opts.joinedOn ?? today(), leftOn: null, promotedFromId: null },
+        { transaction },
+      );
+    return { enrolled: toAdd, skipped: unique.filter((s) => already.has(s)) };
+  };
+  return opts.transaction ? run(opts.transaction) : getSequelize().transaction(run);
+}
+
 export async function notifyClassChanged(payload: ClassChangedJobPayload) {
   await enqueueJob(ACADEMICS_CLASS_CHANGED_JOB, { ...payload });
 }
 
-const CHANGE_TEXT: Record<ClassChangedJobPayload['change'], string> = {
-  rescheduled: 'has been rescheduled',
-  cancelled: 'has been cancelled',
-  substituted: 'will be taken by a substitute teacher',
-};
-
 /**
- * Job handler: notifies the teacher(s) and active students of the batch through the messaging
- * adapter (push). The notifications module can later fan this out to SMS/WhatsApp preferences.
+ * Job handler: notifies the class's teacher(s) (plain users, always), its active students and their
+ * guardians through the platform `notify()` API, so institute rules, templates, channels and
+ * preferences apply.
  */
 export async function handleClassChanged(payload: ClassChangedJobPayload) {
   const session = await repos.classSessions.findOne({
@@ -418,21 +458,36 @@ export async function handleClassChanged(payload: ClassChangedJobPayload) {
   });
   if (!session) return;
   const students = await getBatchMemberUserIds(session.batchId, { teachers: false });
-  const recipients = new Set<number>([session.teacherUserId, ...students]);
-  if (session.originalTeacherUserId) recipients.add(session.originalTeacherUserId);
-  const what = [session.batch?.name, session.subject?.name].filter(Boolean).join(' – ');
-  const when =
-    payload.change === 'rescheduled'
-      ? ` to ${session.date} ${session.startTime}-${session.endTime}`
-      : ` (${session.date} ${session.startTime})`;
-  const body = `Class ${what} ${CHANGE_TEXT[payload.change]}${when}.${session.cancelReason ? ` Reason: ${session.cancelReason}` : ''}`;
-  const push = getMessagingProvider('push');
-  for (const userId of recipients) {
-    await push.send({
-      to: `user:${userId}`,
-      subject: 'Timetable update',
-      body,
-      data: { type: ACADEMICS_CLASS_CHANGED_JOB, classSessionId: session.id, change: payload.change },
-    });
+  const teachers = [session.teacherUserId, session.originalTeacherUserId].filter((id): id is number => !!id);
+  const common = {
+    subject: session.subject?.name ?? 'Class',
+    batch: session.batch?.name ?? '',
+    classSessionId: session.id,
+    change: payload.change,
+    reason: session.cancelReason ?? undefined,
+  };
+  const slot = `${session.date} ${session.startTime}-${session.endTime}`;
+  let event: string;
+  let data: Record<string, unknown>;
+  if (payload.change === 'rescheduled') {
+    event = 'classes.rescheduled';
+    data = { ...common, from: session.rescheduledFrom ?? '', to: slot };
+  } else if (payload.change === 'cancelled') {
+    event = 'classes.cancelled';
+    data = { ...common, date: slot };
+  } else {
+    const teacher = await User.findByPk(session.teacherUserId, { attributes: ['name'] });
+    event = 'classes.substituted';
+    data = { ...common, date: slot, teacher: teacher?.name ?? 'a substitute teacher' };
   }
+  await notify({
+    event,
+    branchId: session.branchId,
+    data,
+    recipients: [
+      { userIds: students, type: 'student' },
+      guardiansOfStudentUsers(students),
+      { userIds: teachers },
+    ],
+  });
 }

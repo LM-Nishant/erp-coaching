@@ -136,19 +136,39 @@ await notify({
 - **Delivery.** In-app messages land in the user's inbox immediately. External channels are delivered by the `notifications.deliver` job through the institute's configured provider, with exponential backoff (`base × 2^(n-1)`), then `failed`. Every try is recorded in `notification_delivery_attempts`. Opt-outs and missing mobile/email/device are stored as `skipped` with a reason.
 - **Recipients.**
   - A user id, `{ userIds, type? }` (always delivered), or `{ role: 'teacher', branchId? }`.
-  - `guardiansOf(studentId)` and `studentUserOf(studentId)`: typed `guardian`/`student`, so rules can target them.
-  - The owning module registers the resolvers once in its `onReady`: students registers `guardiansOf` and `studentUser`; batches registers `batchMembers` (used by bulk messages). Unregistered resolvers are skipped with a warning.
-
-  ```ts
-  registerRecipientResolver('guardiansOf', async (studentId, { instituteId }) =>
-    parentUserIdsOf(instituteId, studentId as number),
-  );
-  ```
+  - `guardiansOf(studentId)` and `studentUserOf(studentId)` (student record ids): typed `guardian`/`student`, so rules can target them.
+  - `guardiansOfStudentUsers(studentUserIds)`: guardians of students identified by **login user id** (academics batch rosters, grievances and anything keyed by user id).
+  - `batchMembersOf(batchId, { teachers? })`: active students of a batch (optionally its teachers).
+  - The owning module registers the resolvers once in its `onReady` (see [Cross-module wiring](#cross-module-wiring)): guardians registers `guardiansOf`, `studentUser` and `guardiansOfStudentUsers`; academics registers `batchMembers` (also used by bulk-message batch audiences). Unregistered resolvers are skipped with a warning.
 
 - **Events.** The catalogue lives in `packages/shared/src/notifications.ts` (`NOTIFICATION_EVENTS`). Add new events there, or at runtime with `registerNotificationEvents([...])`. Each event defines label, category, variables, default channels, recipient types and default title/body. Unknown event keys throw.
 - **Context.** `notify()` needs tenant context: call it from a request handler or a job, not at module load. Inside a job it uses the job's institute.
 - **Receipts.** Provider webhooks should call `recordDeliveryReceipt({ provider, providerMessageId, status })`.
 - **Tests.** Run `processDueJobs()` and assert on `consoleOutbox` (from `infrastructure/messaging`) to check what would have been sent.
+
+### Cross-module wiring
+
+Modules talk to each other only through the other module's `api.ts` (or `notifications/api`), never its internal files. When module A needs data or behaviour from module B, **A exposes an extension point and B plugs into it**:
+
+- The consumer (A) exposes a `register…`/`set…`/`on…` function with a safe default (e.g. no recipients, no linked students), so A works and is testable when B is disabled or absent.
+- The provider (B) registers in `backend/src/modules/<b>/integrations.ts`, exporting `register<B>Integrations()`, called from B's `onReady` hook. All of B's outgoing wiring lives in that one file.
+- `onReady` runs on API boot and in tests (`getApp()` → `bootstrap()`), after every module's models, associations and routes are loaded.
+- Listeners that do work for another module run in a job (system context bound to the institute), must be idempotent and must check `isModuleEnabled()` if the plan can switch them off.
+- Direct calls are fine for synchronous, transactional needs (admissions calls `enrollStudentsInBatch(…, { transaction })` from `academics/api` so a full batch rolls the admission back).
+
+Current wiring:
+
+| Provider → consumer                               | Where                       | What                                                                                                                                                                   |
+| ------------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| guardians → notifications                         | `guardians/integrations.ts` | resolvers `guardiansOf`, `studentUser`, `guardiansOfStudentUsers`                                                                                                      |
+| guardians → grievances                            | `guardians/integrations.ts` | `setLinkedStudentsResolver`: a parent's children with a login (`{ id: studentUserId, name }`)                                                                          |
+| academics → notifications                         | `academics/integrations.ts` | resolver `batchMembers` (batch campaign audiences, `batchMembersOf()`)                                                                                                 |
+| academics → payroll                               | `payroll/integrations.ts`   | `onClassSessionCompleted` → one `lecture` work unit per completed class (`externalRef academics:class-session:<id>`) for the teacher's HR employee                     |
+| admissions → academics                            | `admissions.service.ts`     | admitting an application with `batchId` enrols the student via `enrollStudentsInBatch` in the admit transaction; `admissions.confirmed` is sent to student + guardians |
+| academics, grievances, admissions → notifications | `notify()`                  | `classes.cancelled/rescheduled/substituted` (students, their guardians, teachers), `grievances.activity`, `admissions.follow-up-due`                                   |
+| hr → subscriptions                                | `hr.service.ts`             | `assertTeacherSeat()` enforces the plan's `maxTeachers` (non-exited employees with `isTeacher`)                                                                        |
+
+Identity note: academics rosters and grievances key students by **login user id**; students/guardians use `students.id` (`students.user_id` is nullable — siblings sharing a mobile have no login). Use `getStudentUserId`, `getLinkedStudentUsers`, `getGuardianUserIdsForStudentUsers` from `guardians/guardian-access` to convert.
 
 ### 7. Tests (required)
 

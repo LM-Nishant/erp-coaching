@@ -42,9 +42,12 @@ function build(sequelize: Sequelize, kind: 'migrations' | 'seeders') {
         down: async (params) => (await import(f.path)).down?.(params),
       })),
     context: { queryInterface: sequelize.getQueryInterface() },
+    // Distinct model names: SequelizeStorage reuses an already-defined model of the same name, so
+    // without them the seeder would silently record into the migrations table.
     storage: new SequelizeStorage({
       sequelize,
       tableName: kind === 'migrations' ? 'SequelizeMeta' : 'SequelizeData',
+      modelName: kind === 'migrations' ? 'SequelizeMeta' : 'SequelizeData',
     }),
     logger: {
       info: (m) => logger.info(m),

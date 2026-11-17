@@ -1,8 +1,6 @@
-import { Op } from 'sequelize';
-import { enqueueJob, type JobHandler } from '../../infrastructure/jobs/queue';
-import { getMessagingProvider } from '../../infrastructure/messaging';
+import type { JobHandler } from '../../infrastructure/jobs/queue';
 import { getContext } from '../../shared/context';
-import { User } from '../users/user.model';
+import { notify } from '../notifications/api';
 
 export interface GrievanceNotice {
   title: string;
@@ -10,10 +8,11 @@ export interface GrievanceNotice {
   ticketId: number;
 }
 
+export const GRIEVANCE_ACTIVITY_EVENT = 'grievances.activity';
+
 /**
- * Local notification hook. Until the notifications module ships `notify()`, messages are queued
- * as a `grievances.notify` job and delivered through the messaging adapter. Swap the body of
- * this function for `notify()` later; callers stay unchanged.
+ * Notifies the given users (minus the actor) about ticket activity through the platform `notify()`
+ * API (`grievances.activity` event), so institute rules, templates, channels and preferences apply.
  */
 export async function notifyGrievanceUsers(
   userIds: (number | null | undefined)[],
@@ -22,15 +21,19 @@ export async function notifyGrievanceUsers(
   const actor = getContext().userId;
   const ids = [...new Set(userIds.filter((id): id is number => !!id && id !== actor))];
   if (!ids.length) return;
-  await enqueueJob('grievances.notify', { userIds: ids, ...notice });
+  await notify({
+    event: GRIEVANCE_ACTIVITY_EVENT,
+    recipients: [{ userIds: ids }],
+    data: { title: notice.title, message: notice.body, ticketId: notice.ticketId },
+  });
 }
 
+/** Drains `grievances.notify` jobs queued before notifications were wired; runs in the job's tenant. */
 export const deliverGrievanceNotice: JobHandler = async (payload) => {
-  const { userIds, title, body, ticketId } = payload as unknown as GrievanceNotice & { userIds: number[] };
-  // users is a global (non-tenant) table; ids were resolved inside the tenant when queued.
-  const users = await User.findAll({ where: { id: { [Op.in]: userIds } }, attributes: ['id', 'mobile'] });
-  const sms = getMessagingProvider('sms');
-  for (const u of users) {
-    await sms.send({ to: u.mobile, subject: title, body, data: { kind: 'grievance', ticketId } });
-  }
+  const { userIds, ...notice } = payload as unknown as GrievanceNotice & { userIds: number[] };
+  await notify({
+    event: GRIEVANCE_ACTIVITY_EVENT,
+    recipients: [{ userIds }],
+    data: { title: notice.title, message: notice.body, ticketId: notice.ticketId },
+  });
 };

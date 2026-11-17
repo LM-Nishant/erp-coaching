@@ -79,6 +79,19 @@
                 }}</ion-select-option>
               </ion-select>
             </ion-item>
+            <ion-item v-if="batchOptions.length">
+              <ion-select
+                v-model="form.batchId"
+                label="Batch (enrolled on admission)"
+                label-placement="stacked"
+                interface="popover"
+              >
+                <ion-select-option :value="null">No batch</ion-select-option>
+                <ion-select-option v-for="b in batchOptions" :key="b.id" :value="b.id"
+                  >{{ b.name }} ({{ b.code }})</ion-select-option
+                >
+              </ion-select>
+            </ion-item>
             <CustomFieldsInput v-if="customForm" v-model="form.formData" :fields="customForm.fields" />
             <ion-item><ion-checkbox v-model="form.waitlist">Add to waiting list</ion-checkbox></ion-item>
           </ion-list>
@@ -90,7 +103,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   IonBadge,
@@ -132,6 +145,8 @@ import { useAuthStore } from '@/stores/auth';
 import { branchesApi, type Branch } from '@/modules/branches/api';
 import CustomFieldsInput from '@/modules/students/CustomFieldsInput.vue';
 import { fmtDate, humanize } from '@/modules/students/api';
+import type { BatchDto } from '@erp/shared';
+import { academicsApi } from '@/modules/academics/api';
 import { APPLICATION_COLORS, admissionsApi } from './api';
 
 const auth = useAuthStore();
@@ -288,13 +303,36 @@ interface CreateForm {
   mobile: string;
   email: string;
   branchId: number | undefined;
+  batchId: number | null;
   waitlist: boolean;
   formData: Record<string, unknown>;
 }
 const form = ref<CreateForm | null>(null);
+const batches = ref<BatchDto[]>([]);
+// Admission enrols the student in the chosen batch through academics, so offer only open batches
+// of the selected (or only) branch.
+const batchOptions = computed(() => {
+  const branchId = form.value?.branchId ?? (branches.value.length === 1 ? branches.value[0].id : undefined);
+  return batches.value.filter(
+    (b) => (b.status === 'planned' || b.status === 'active') && (!branchId || b.branchId === branchId),
+  );
+});
 async function openCreate() {
-  form.value = { name: '', mobile: '', email: '', branchId: undefined, waitlist: false, formData: {} };
+  form.value = {
+    name: '',
+    mobile: '',
+    email: '',
+    branchId: undefined,
+    batchId: null,
+    waitlist: false,
+    formData: {},
+  };
   customForm.value = await admissionsApi.activeForm('admission').catch(() => null);
+  if (auth.can('academics.view'))
+    batches.value = await academicsApi
+      .batches()
+      .then((p) => p.items)
+      .catch(() => []);
 }
 async function create() {
   const f = form.value!;
@@ -305,6 +343,7 @@ async function create() {
       mobile: f.mobile.trim(),
       email: f.email.trim() || null,
       branchId: f.branchId,
+      batchId: f.batchId,
       formId: customForm.value?.id ?? null,
       formData: customForm.value ? f.formData : null,
       waitlist: f.waitlist,
