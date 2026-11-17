@@ -68,6 +68,8 @@ async function main() {
       break;
     case 'migrate:undo':
       await migrator.down(args[0] === '--all' ? { to: 0 } : undefined);
+      // Undoing every migration drops the seeded tables, so forget the seed runs too.
+      if (args[0] === '--all') await sequelize.getQueryInterface().dropTable('SequelizeData');
       break;
     case 'migrate:status': {
       console.log(
