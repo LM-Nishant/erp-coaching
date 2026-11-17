@@ -10,6 +10,7 @@ async function main() {
   const server = createApp(modules).listen(config.PORT, () =>
     logger.info(`API listening on :${config.PORT}`),
   );
+  for (const m of modules) m.attachServer?.(server);
   if (config.JOBS_WORKER_ENABLED) startJobWorker(config.JOBS_POLL_INTERVAL_MS);
 
   const shutdown = async (signal: string) => {
