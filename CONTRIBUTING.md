@@ -110,6 +110,7 @@ Register the public router before the authenticated one when they share a prefix
 - **Files**: `saveUploadedFile()` and `signedUrlFor()`. Store `file_id` FKs to `files`, never paths or public URLs.
 - **AI**: `aiChat({ feature: '<module>.<feature>', messages })`. Don't read AI settings or keys yourself.
 - **Notifications (SMS/WhatsApp/email/push/in-app)**: call `notify()`; see [Sending notifications](#sending-notifications). Don't call `getMessagingProvider()` from business modules.
+- **Calendar / online meetings**: `getCalendarProvider(instituteId)` from `infrastructure/calendar` (Google Calendar/Meet interface; the mock generates `https://meet.mock.invalid/...` links).
 - **Payments, streaming, biometric**: use the adapters under `infrastructure/`. Don't import vendor SDKs in modules.
 - **Long or retryable work**:
   - Queue it with `enqueueJob('<module>.<job>', payload)`.
@@ -158,17 +159,44 @@ Modules talk to each other only through the other module's `api.ts` (or `notific
 
 Current wiring:
 
-| Provider → consumer                               | Where                       | What                                                                                                                                                                   |
-| ------------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| guardians → notifications                         | `guardians/integrations.ts` | resolvers `guardiansOf`, `studentUser`, `guardiansOfStudentUsers`                                                                                                      |
-| guardians → grievances                            | `guardians/integrations.ts` | `setLinkedStudentsResolver`: a parent's children with a login (`{ id: studentUserId, name }`)                                                                          |
-| academics → notifications                         | `academics/integrations.ts` | resolver `batchMembers` (batch campaign audiences, `batchMembersOf()`)                                                                                                 |
-| academics → payroll                               | `payroll/integrations.ts`   | `onClassSessionCompleted` → one `lecture` work unit per completed class (`externalRef academics:class-session:<id>`) for the teacher's HR employee                     |
-| admissions → academics                            | `admissions.service.ts`     | admitting an application with `batchId` enrols the student via `enrollStudentsInBatch` in the admit transaction; `admissions.confirmed` is sent to student + guardians |
-| academics, grievances, admissions → notifications | `notify()`                  | `classes.cancelled/rescheduled/substituted` (students, their guardians, teachers), `grievances.activity`, `admissions.follow-up-due`                                   |
-| hr → subscriptions                                | `hr.service.ts`             | `assertTeacherSeat()` enforces the plan's `maxTeachers` (non-exited employees with `isTeacher`)                                                                        |
+| Provider → consumer                               | Where                          | What                                                                                                                                                                   |
+| ------------------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| guardians → notifications                         | `guardians/integrations.ts`    | resolvers `guardiansOf`, `studentUser`, `guardiansOfStudentUsers`                                                                                                      |
+| guardians → grievances                            | `guardians/integrations.ts`    | `setLinkedStudentsResolver`: a parent's children with a login (`{ id: studentUserId, name }`)                                                                          |
+| academics → notifications                         | `academics/integrations.ts`    | resolver `batchMembers` (batch campaign audiences, `batchMembersOf()`)                                                                                                 |
+| academics → payroll                               | `payroll/integrations.ts`      | `onClassSessionCompleted` → one `lecture` work unit per completed class (`externalRef academics:class-session:<id>`) for the teacher's HR employee                     |
+| admissions → academics                            | `admissions.service.ts`        | admitting an application with `batchId` enrols the student via `enrollStudentsInBatch` in the admit transaction; `admissions.confirmed` is sent to student + guardians |
+| academics, grievances, admissions → notifications | `notify()`                     | `classes.cancelled/rescheduled/substituted` (students, their guardians, teachers), `grievances.activity`, `admissions.follow-up-due`                                   |
+| hr → subscriptions                                | `hr.service.ts`                | `assertTeacherSeat()` enforces the plan's `maxTeachers` (non-exited employees with `isTeacher`)                                                                        |
+| guardians, academics → appointments               | `appointments.service.ts`      | parents must pass `assertGuardianOf`; the teacher must teach one of the child's batches (`Batch`/`BatchTeacher`/`BatchStudent`)                                        |
+| appointments → parent-portal                      | `appointments/integrations.ts` | `registerParentPortalProvider('appointments')`: upcoming meetings on the parent home; shared meeting summaries in monthly reports                                      |
 
 Identity note: academics rosters and grievances key students by **login user id**; students/guardians use `students.id` (`students.user_id` is nullable — siblings sharing a mobile have no login). Use `getStudentUserId`, `getLinkedStudentUsers`, `getGuardianUserIdsForStudentUsers` from `guardians/guardian-access` to convert.
+
+### Parent portal providers (backend)
+
+The parent home summary card and the monthly parent report (`parent-portal.monthly-report` job, swept daily for the previous month and notified to guardians) are assembled from providers. Register one from your module's `integrations.ts`:
+
+```ts
+import { registerParentPortalProvider } from '../parent-portal/api';
+
+registerParentPortalProvider({
+  key: 'fees', // unique; also the plan module checked unless `module` is set (null = always on)
+  label: 'Fees',
+  order: 30,
+  // Parent home "At a glance": keep it cheap (a few queries); runs in the parent's request context.
+  summary: async (child) => ({
+    key: 'fees',
+    label: 'Fees',
+    metrics: [{ label: 'Due', value: '₹4,500', tone: 'warning' }],
+    items: [],
+  }),
+  // Monthly report: runs in a job (system context, tenant set). Return null to omit the section.
+  monthlyReport: async (child, { period, from, to }) => null,
+});
+```
+
+`child` is a `ParentChildDto` (`{ studentId, studentUserId, name, admissionNumber, branchId, branchName, batches }`) (`studentId` = `students.id`; `studentUserId` = login user id for rosters/attendance/grievances, may be null). Return `ParentPortalSectionDto` (`packages/shared/src/parent-portal.ts`). Providers whose module is disabled for the institute are skipped, and a throwing provider is logged and skipped, so one module can't break the page. **Never expose staff-only data** (e.g. private notes): the output goes straight to parents.
 
 ### 7. Tests (required)
 
@@ -231,7 +259,37 @@ export default defineAppModule({
   - Show errors with `errorMessage(e)` and `toast`.
 - **Branding.** Use Ionic colour variables (`var(--ion-color-primary)`) and never hard-code brand colours.
 - **Native APIs.** Use Capacitor plugins and guard them with `Capacitor.isNativePlatform()` when behaviour differs.
+- **Dashboard widgets.** Contribute cards to shared dashboards with `widgets` instead of editing the host page (see below).
 - **Shared types.** Request and response DTOs used by both sides go in `packages/shared/src/<module>.ts`, exported from its `index.ts`. That one-line export is the only shared edit expected.
+
+### Dashboard widgets
+
+Shared dashboards render cards from every module's `widgets` (`DashboardWidget` in `app/src/core/modules.ts`). Today there is one slot, `parent-home` (`/parent-home`, owned by `parent-portal`): the parent picks a linked child and every widget is rendered with the prop `child: ParentChildDto`.
+
+```ts
+// app/src/modules/fees/module.ts
+widgets: [
+  {
+    id: 'fees.dues', // `<module>.<widget>`
+    slot: 'parent-home',
+    title: 'Fee dues',
+    component: defineAsyncComponent(() => import('./widgets/ParentDuesWidget.vue')), // lazy-load
+    permission: 'fees.view', // hidden unless auth.can(); usually your parent-facing view permission
+    planModule: 'fees', // hidden when the plan doesn't include the module
+    order: 30, // lower first; built-ins: schedule 10, summary 20, notifications 30, appointments 40, grievances 50
+    size: 'half', // or 'full' (spans the row on wide screens)
+  },
+],
+```
+
+Widget component contract:
+
+- `defineProps<{ child: ParentChildDto }>()`. Use `child.studentId` for students/guardians/fees data and `child.studentUserId` (nullable) for rosters, attendance and grievances.
+- The host supplies the card and title; render only the body. Load your own data through your `api.ts`, show an empty state, and swallow or toast errors. Don't throw.
+- The host remounts widgets when the child changes or on pull-to-refresh. You can still `watch(() => props.child.studentId, …, { immediate: true })`.
+- Backend: authorise per child with `assertGuardianOf(studentId)`. For a simple number-and-list card, register a parent-portal provider instead (see the backend section). It then appears in "At a glance" and in monthly reports without any app code.
+
+To add a new slot, extend `WidgetSlotProps` in `core/modules.ts` with the slot's props and render `widgetsFor('<slot>')` in the host page.
 
 ## Git and PRs
 

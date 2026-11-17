@@ -8,3 +8,5 @@ export * from './students';
 export * from './hr';
 export * from './payroll';
 export * from './grievances';
+export * from './appointments';
+export * from './parent-portal';
