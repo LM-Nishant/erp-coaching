@@ -21,7 +21,15 @@ export function createApp(modules: ModuleDefinition[]) {
       exposedHeaders: ['X-Request-Id', 'Content-Range', 'Accept-Ranges'],
     }),
   );
-  app.use(express.json({ limit: '1mb' }));
+  app.use(
+    express.json({
+      limit: '1mb',
+      // Keep the exact bytes so payment webhooks can verify vendor signatures.
+      verify: (req, _res, buf) => {
+        (req as express.Request).rawBody = buf;
+      },
+    }),
+  );
   if (!config.isTest)
     app.use(
       pinoHttp({
