@@ -7,6 +7,8 @@ declare global {
   namespace Express {
     interface Request {
       ctx: RequestContext;
+      /** Exact request bytes of JSON bodies (webhook signature verification). */
+      rawBody?: Buffer;
     }
   }
 }

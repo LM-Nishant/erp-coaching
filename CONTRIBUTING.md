@@ -167,6 +167,9 @@ Current wiring:
 | admissions → academics                            | `admissions.service.ts`     | admitting an application with `batchId` enrols the student via `enrollStudentsInBatch` in the admit transaction; `admissions.confirmed` is sent to student + guardians |
 | academics, grievances, admissions → notifications | `notify()`                  | `classes.cancelled/rescheduled/substituted` (students, their guardians, teachers), `grievances.activity`, `admissions.follow-up-due`                                   |
 | hr → subscriptions                                | `hr.service.ts`             | `assertTeacherSeat()` enforces the plan's `maxTeachers` (non-exited employees with `isTeacher`)                                                                        |
+| admissions → fees                                 | `fees/integrations.ts`      | `onAdmissionCompleted` (from `admissions/api`, emitted in a job after admit) → fee account generated from the matching structure; idempotent per admission             |
+| fees → LMS / exams                                | `fees/api.ts`               | `hasCourseEntitlement(studentUserId, courseId)`, `hasSubjectEntitlement`, `entitledCourseIds`: access granted once the configured instalment is paid                   |
+| fees → notifications                              | `notify()`                  | `fees.due`, `fees.overdue`, `fees.receipt`, `fees.payment-failed`, `fees.refund`, `fees.receipt-share` (student + guardians)                                           |
 
 Identity note: academics rosters and grievances key students by **login user id**; students/guardians use `students.id` (`students.user_id` is nullable — siblings sharing a mobile have no login). Use `getStudentUserId`, `getLinkedStudentUsers`, `getGuardianUserIdsForStudentUsers` from `guardians/guardian-access` to convert.
 
