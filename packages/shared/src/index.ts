@@ -11,3 +11,4 @@ export * from './grievances';
 export * from './attendance';
 export * from './exams';
 export * from './fees';
+export * from './lms';

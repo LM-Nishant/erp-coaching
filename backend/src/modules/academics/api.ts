@@ -9,6 +9,7 @@ export {
   Chapter,
   ClassSession,
   Course,
+  CourseSubject,
   Subject,
   Topic,
 } from './models';
