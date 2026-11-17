@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+backend/storage/
+backend/tmp/
+app/android/app/build/
+app/ios/App/build/
+.vite/
