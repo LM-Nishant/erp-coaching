@@ -1,0 +1,16 @@
+# Compression and security headers of the single-page app (rendered to /etc/nginx/erp/snippets/spa.conf).
+# Not used for /api/: the API sends its own headers (helmet). An add_header in a location replaces all
+# inherited ones, so every SPA location includes this file and then adds its Cache-Control.
+gzip on;
+gzip_vary on;
+gzip_min_length 1024;
+gzip_types text/css text/plain text/javascript application/javascript application/json application/manifest+json image/svg+xml;
+
+add_header Strict-Transport-Security "${HSTS_HEADER}" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header X-Frame-Options "SAMEORIGIN" always;
+# Live classes need camera, microphone and screen capture; attendance check-in uses geolocation.
+add_header Permissions-Policy "accelerometer=(), camera=(self), display-capture=(self), fullscreen=(self), geolocation=(self), gyroscope=(), magnetometer=(), microphone=(self), payment=(self), usb=()" always;
+# Content-Security-Policy-Report-Only unless SPA_CSP_MODE=enforce (see docs/deployment.md).
+add_header ${SPA_CSP_HEADER} "${SPA_CSP}" always;

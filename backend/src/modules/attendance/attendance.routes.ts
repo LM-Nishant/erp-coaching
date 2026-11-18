@@ -5,7 +5,7 @@ import { parse } from '../../shared/utilities/validation';
 import { idParam, paginated, paginationSchema, toLimitOffset } from '../../shared/utilities/pagination';
 import { authenticate } from '../../shared/middleware/authenticate';
 import { requireModule, requirePermission } from '../../shared/middleware/authorize';
-import { authRateLimit } from '../../shared/middleware/security';
+import { deviceRateLimit } from '../../shared/middleware/security';
 import { getContext, hasPermission, requireTenantContext, runWithContext } from '../../shared/context';
 import { AppError, BadRequest, Forbidden, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
@@ -402,6 +402,7 @@ function deviceRoutes(r: Router) {
   /** Manual upload of a device export (same payload as the device push). */
   r.post('/devices/:id/events', requirePermission('attendance', 'edit'), async (req, res) => {
     const device = await deviceRepo.findById(pid(req));
+    deviceRepo.assertRowWritable(device);
     const punches = await parseDevicePayload(req.body?.punches ?? req.body);
     if (punches.length > 1000) throw BadRequest('At most 1000 punches per upload');
     const result = await ingestPunches(device, punches);
@@ -483,7 +484,7 @@ function publicRoutes(pub: Router) {
    * Biometric device push. The device authenticates with its serial and API key (headers); the
    * institute comes from the registered device, never from the request body.
    */
-  pub.post('/device-events', authRateLimit, async (req, res) => {
+  pub.post('/device-events', deviceRateLimit, async (req, res) => {
     const device = await authenticateDevice(
       String(req.get('x-device-serial') ?? ''),
       String(req.get('x-device-key') ?? ''),

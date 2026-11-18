@@ -1,0 +1,119 @@
+#!/bin/sh
+# Derives and validates the values substituted into /etc/nginx/templates/*.template. Sourced by the nginx
+# image entrypoint (under `set -eu`) after 15-local-resolvers.envsh and before
+# 20-envsubst-on-templates.sh; a failed check stops the container.
+#
+#   SERVER_NAME         required  platform host name serving the app and /api/, e.g. app.example.com
+#   PUBLIC_URL          optional  public origin, default https://SERVER_NAME; a non-443 port is kept in
+#                                 the http->https redirect
+#   SITES_DOMAIN        optional  parent domain of institute website subdomains (<slug>.SITES_DOMAIN)
+#   API_UPSTREAM        optional  API address, default api:4000
+#   MAX_UPLOAD_MB       optional  the API's upload limit (default 100); the proxy accepts 10 MB more
+#   SPA_CSP_MODE        optional  report-only (default) or enforce
+#   SPA_CSP             optional  replaces the default Content-Security-Policy of the app
+#   SPA_CSP_REPORT_URI  optional  report-uri appended to the default policy
+#   HSTS_HEADER         optional  Strict-Transport-Security value for the app
+
+erp_config_fail() {
+  echo "18-erp-config.envsh: ERROR: $*" >&2
+  exit 1
+}
+
+erp_config_hostname() {
+  case "$2" in
+    '' | *[!A-Za-z0-9.-]* | .* | *. | *..* | -* | *-)
+      erp_config_fail "$1 '$2' is not a valid host name"
+      ;;
+  esac
+}
+
+# Values end up inside double-quoted nginx strings, where " \ and $ (variables) are special.
+erp_config_header_value() {
+  erp_config_nl='
+'
+  case "$2" in
+    *'"'* | *\\* | *'$'* | *"$erp_config_nl"*)
+      erp_config_fail "$1 must not contain double quotes, backslashes, dollar signs or newlines"
+      ;;
+  esac
+}
+
+erp_config_lower() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+if [ -z "${SERVER_NAME:-}" ]; then
+  erp_config_fail "SERVER_NAME is required (the platform host name, e.g. app.example.com)"
+fi
+SERVER_NAME=$(erp_config_lower "$SERVER_NAME")
+erp_config_hostname SERVER_NAME "$SERVER_NAME"
+
+SITES_DOMAIN=$(erp_config_lower "${SITES_DOMAIN:-}")
+if [ -n "$SITES_DOMAIN" ]; then
+  erp_config_hostname SITES_DOMAIN "$SITES_DOMAIN"
+  SITES_SERVER_NAME="*.$SITES_DOMAIN"
+else
+  SITES_SERVER_NAME="_"
+fi
+
+API_UPSTREAM="${API_UPSTREAM:-api:4000}"
+case "$API_UPSTREAM" in
+  *[!A-Za-z0-9.:_-]* | :* | *:) erp_config_fail "API_UPSTREAM '$API_UPSTREAM' must be host:port" ;;
+esac
+
+MAX_UPLOAD_MB="${MAX_UPLOAD_MB:-100}"
+case "$MAX_UPLOAD_MB" in
+  '' | *[!0-9]* | 0*) erp_config_fail "MAX_UPLOAD_MB '$MAX_UPLOAD_MB' must be a positive whole number" ;;
+esac
+CLIENT_MAX_BODY_SIZE="$((MAX_UPLOAD_MB + 10))m"
+
+PUBLIC_URL="${PUBLIC_URL:-https://$SERVER_NAME}"
+erp_config_origin="${PUBLIC_URL#https://}"
+erp_config_origin="${erp_config_origin%/}"
+if [ "$erp_config_origin" = "$PUBLIC_URL" ]; then
+  erp_config_fail "PUBLIC_URL '$PUBLIC_URL' must start with https://"
+fi
+case "$erp_config_origin" in
+  */* | *[?#@]*) erp_config_fail "PUBLIC_URL '$PUBLIC_URL' must be an origin (no path), e.g. https://$SERVER_NAME" ;;
+esac
+erp_config_host=$(erp_config_lower "${erp_config_origin%%:*}")
+if [ "$erp_config_host" != "$SERVER_NAME" ]; then
+  erp_config_fail "the host of PUBLIC_URL '$PUBLIC_URL' must be SERVER_NAME ($SERVER_NAME)"
+fi
+HTTPS_PORT_SUFFIX=""
+if [ "$erp_config_origin" != "${erp_config_origin%%:*}" ]; then
+  erp_config_port="${erp_config_origin#*:}"
+  case "$erp_config_port" in
+    '' | *[!0-9]*) erp_config_fail "PUBLIC_URL '$PUBLIC_URL' has an invalid port" ;;
+  esac
+  if [ "$erp_config_port" != 443 ]; then
+    HTTPS_PORT_SUFFIX=":$erp_config_port"
+  fi
+fi
+
+HSTS_HEADER="${HSTS_HEADER:-max-age=31536000; includeSubDomains}"
+erp_config_header_value HSTS_HEADER "$HSTS_HEADER"
+
+case "${SPA_CSP_MODE:-report-only}" in
+  report-only) SPA_CSP_HEADER=Content-Security-Policy-Report-Only ;;
+  enforce) SPA_CSP_HEADER=Content-Security-Policy ;;
+  *) erp_config_fail "SPA_CSP_MODE must be report-only or enforce" ;;
+esac
+if [ -z "${SPA_CSP:-}" ]; then
+  # 'unsafe-inline' styles: Ionic's web components set inline styles. ws/wss to the own origin are
+  # listed explicitly for browsers where 'self' does not cover WebSockets.
+  # shellcheck disable=SC2089 # the single quotes are CSP keywords in the header value, not shell quoting
+  SPA_CSP="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' blob: data: wss://$SERVER_NAME$HTTPS_PORT_SUFFIX; frame-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+  if [ -n "${SPA_CSP_REPORT_URI:-}" ]; then
+    SPA_CSP="$SPA_CSP; report-uri $SPA_CSP_REPORT_URI"
+  fi
+fi
+erp_config_header_value SPA_CSP "$SPA_CSP"
+
+NGINX_LOCAL_RESOLVERS="${NGINX_LOCAL_RESOLVERS:-127.0.0.11}"
+
+# shellcheck disable=SC2090 # exported by name for envsubst, never word-split, so SPA_CSP's quotes stay literal
+export SERVER_NAME SITES_SERVER_NAME API_UPSTREAM CLIENT_MAX_BODY_SIZE HTTPS_PORT_SUFFIX HSTS_HEADER \
+  SPA_CSP SPA_CSP_HEADER NGINX_LOCAL_RESOLVERS
+echo "18-erp-config.envsh: SERVER_NAME=$SERVER_NAME sites=$SITES_SERVER_NAME api=$API_UPSTREAM" \
+  "max_body=$CLIENT_MAX_BODY_SIZE csp=$SPA_CSP_HEADER"

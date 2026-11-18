@@ -12,6 +12,7 @@ import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { User } from '../users/user.model';
 import { Role, UserRole } from '../permissions/models';
+import { memberVisibilityWhere } from '../permissions/access.service';
 import { uploadMiddleware } from '../files/files.routes';
 import { deleteFile, saveUploadedFile, signedUrlFor } from '../files/files.service';
 import { FileObject } from '../files/file.model';
@@ -187,8 +188,12 @@ export function employeeRoutes(r: Router) {
 
   /** Institute members not yet linked to an employee (teachers are employees). */
   r.get('/employees/candidates', requirePermission('hr', 'create'), async (req, res) => {
-    const { search } = parse(z.object({ search: z.string().trim().max(100).optional() }), req.query);
+    const q = parse(z.object({ search: z.string().trim().max(100).optional() }), req.query);
     const { instituteId } = requireTenantContext();
+    const search = q.search
+      ? { [Op.or]: [{ name: { [Op.like]: `%${q.search}%` } }, { mobile: { [Op.like]: `%${q.search}%` } }] }
+      : undefined;
+    const visible = memberVisibilityWhere();
     const linked = (
       await Employee.findAll({ where: { instituteId, userId: { [Op.ne]: null } }, attributes: ['userId'] })
     ).map((e) => e.userId!);
@@ -198,9 +203,7 @@ export function employeeRoutes(r: Router) {
         {
           model: User,
           as: 'user',
-          where: search
-            ? { [Op.or]: [{ name: { [Op.like]: `%${search}%` } }, { mobile: { [Op.like]: `%${search}%` } }] }
-            : undefined,
+          where: search && visible ? { [Op.and]: [search, visible] } : (search ?? visible),
         },
         { model: Role, as: 'role' },
       ],

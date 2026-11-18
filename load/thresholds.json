@@ -1,0 +1,13 @@
+{
+  "$comment": "Pass/fail limits per scenario, calibrated for the default settings (10 connections, 20 students). LOAD_MAX_P50_MS, LOAD_MAX_P95_MS, LOAD_MAX_P99_MS, LOAD_MAX_ERROR_RATE and LOAD_MIN_RPS override them for every scenario. The spec sets no targets yet: these are guard rails about 4-5x the local baseline in docs/load-testing.md, to catch order-of-magnitude regressions without flaking on a busy machine. They are not SLOs.",
+  "defaults": {
+    "maxP95Ms": 2000,
+    "maxP99Ms": 5000,
+    "maxErrorRate": 0.01
+  },
+  "scenarios": {
+    "login": { "maxP95Ms": 15000, "maxP99Ms": 20000 },
+    "lms-media": { "maxP95Ms": 500, "maxP99Ms": 1000 },
+    "exam-submit": { "maxP95Ms": 3000, "maxP99Ms": 5000 }
+  }
+}
