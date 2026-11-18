@@ -121,3 +121,16 @@ export function formatRupees(paise: number): string {
   const rest = s.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',');
   return `${neg ? '-' : ''}${rest ? `${rest},` : ''}${last3}.${p}`;
 }
+
+/** Retries a transactional unit of work on InnoDB deadlocks / lock wait timeouts. */
+export async function withLockRetry<T>(fn: () => Promise<T>, attempts = 4): Promise<T> {
+  for (let i = 1; ; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const code = (err as { parent?: { code?: string } }).parent?.code;
+      if (i >= attempts || (code !== 'ER_LOCK_DEADLOCK' && code !== 'ER_LOCK_WAIT_TIMEOUT')) throw err;
+      await new Promise((r) => setTimeout(r, 20 * i));
+    }
+  }
+}
