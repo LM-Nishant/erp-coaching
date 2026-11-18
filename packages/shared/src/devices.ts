@@ -73,3 +73,16 @@ export interface PlatformUserDto extends DeviceUserDto {
   /** Institutes the user belongs to. */
   institutes: { id: number; name: string }[];
 }
+
+/** Protected screens (`<SecureView screen="…">`): lowercase words joined by hyphens. */
+export const SECURE_SCREEN_NAME = /^[a-z][a-z0-9-]{0,39}$/;
+
+/**
+ * `POST /auth/capture-events`: the app saw a screenshot or a screen recording / mirroring session while protected
+ * content was on screen (iOS reports both; Android blocks them with FLAG_SECURE; web cannot detect them). Audited.
+ */
+export interface CaptureEventInput {
+  kind: 'screenshot' | 'recording';
+  /** Protected screens visible at the time, e.g. `exam-attempt`. */
+  screens: string[];
+}

@@ -65,19 +65,38 @@ export async function saveSession(session: StoredSession | null) {
   );
 }
 
-export async function updateTokens(
-  tokens: Pick<AuthTokens, 'accessToken'> & { refreshToken?: string | null },
-) {
-  const current = (await loadSession()) ?? { accessToken: '', refreshToken: null };
-  await saveSession({
-    ...current,
-    accessToken: tokens.accessToken,
-    refreshToken: tokens.refreshToken ?? current.refreshToken,
-  });
+/**
+ * Updates the stored session if there still is one and `matches` it. Never brings back a session that was signed out
+ * (or replaced) while the caller was waiting, e.g. on a token refresh. Returns whether it was updated.
+ */
+export async function patchSession(
+  patch: Partial<StoredSession>,
+  matches: (current: StoredSession) => boolean = () => true,
+): Promise<boolean> {
+  await loadSession();
+  if (!cache || !matches(cache)) return false;
+  await saveSession({ ...cache, ...patch });
+  return true;
 }
 
-/** Last `/auth/me` response: lets the app start offline (offline lectures) and show who is signed in on the lock screen. */
+/** Stores refreshed tokens, unless the session was signed out or replaced during the refresh. */
+export const updateTokens = (
+  tokens: Pick<AuthTokens, 'accessToken'> & { refreshToken?: string | null },
+  usedRefreshToken: string,
+) =>
+  patchSession(
+    { accessToken: tokens.accessToken, ...(tokens.refreshToken ? { refreshToken: tokens.refreshToken } : {}) },
+    (s) => s.refreshToken === usedRefreshToken,
+  );
+
+/**
+ * Last `/auth/me` response: lets the app start offline (offline lectures) and show who is signed in on the lock screen.
+ * A profile is written only while there is a session, so a response arriving after sign-out cannot restore it.
+ */
 export const loadProfile = () => secureGetJson<MeDto>(SecureKey.profile);
 
 export const saveProfile = (me: MeDto | null) =>
-  persist(() => (me ? secureSetJson(SecureKey.profile, me) : secureRemove(SecureKey.profile)));
+  persist(async () => {
+    if (!me) return secureRemove(SecureKey.profile);
+    if (cache) await secureSetJson(SecureKey.profile, me);
+  });

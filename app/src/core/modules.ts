@@ -29,6 +29,11 @@ export interface AppModule {
   toolbarItems?: Component[];
   /** Cards contributed to shared dashboards (see CONTRIBUTING "Dashboard widgets"). */
   widgets?: DashboardWidget[];
+  /**
+   * Removes data this module keeps on the device for a user (e.g. downloaded lectures) when their access ends: device
+   * revoked by an administrator or account deactivated. `null` = unknown user, remove everything. See core/session.ts.
+   */
+  wipeUserData?: (userId: number | null) => Promise<void>;
 }
 
 /** Known dashboard slots and the props each passes to its widgets. */
@@ -69,6 +74,11 @@ export const appModules: AppModule[] = Object.values(
 ).map((m) => m.default);
 
 export const toolbarItems: Component[] = appModules.flatMap((m) => m.toolbarItems ?? []);
+
+/** Runs every module's `wipeUserData`; one failing module doesn't stop the others. */
+export async function wipeUserData(userId: number | null) {
+  await Promise.all(appModules.map((m) => m.wipeUserData?.(userId).catch(() => undefined)));
+}
 
 const allWidgets: DashboardWidget[] = appModules.flatMap((m) => m.widgets ?? []);
 

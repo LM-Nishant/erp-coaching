@@ -11,6 +11,8 @@
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>The camera is used to stream your live classes and to scan attendance QR codes.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Use Face ID to unlock the app instead of typing your password.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>The microphone is used in live classes when you teach or are allowed to speak.</string>
 	<key>CFBundleDevelopmentRegion</key>

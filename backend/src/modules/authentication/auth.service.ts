@@ -225,6 +225,12 @@ export async function verifyOtp(
 export async function refreshTokens(token: string): Promise<AuthTokens> {
   const row = await RefreshToken.findOne({ where: { tokenHash: sha256(token) } });
   if (!row) throw Unauthorized('Invalid refresh token', 'INVALID_REFRESH_TOKEN');
+  // Checked before reuse detection: revoking a device also revokes its tokens, and the app must still
+  // learn that the device was revoked (it then deletes its offline content and credentials).
+  const [user, device] = await Promise.all([User.findByPk(row.userId), Device.findByPk(row.deviceId)]);
+  if (!device || device.status !== 'active')
+    throw Unauthorized('This device session has been revoked', 'SESSION_REVOKED');
+  if (!user || user.status !== 'active') throw Unauthorized('Account is not active', 'ACCOUNT_INACTIVE');
   if (row.revokedAt) {
     await RefreshToken.update(
       { revokedAt: new Date() },
@@ -233,10 +239,6 @@ export async function refreshTokens(token: string): Promise<AuthTokens> {
     throw Unauthorized('Refresh token reuse detected', 'INVALID_REFRESH_TOKEN');
   }
   if (row.expiresAt < new Date()) throw Unauthorized('Refresh token expired', 'INVALID_REFRESH_TOKEN');
-  const [user, device] = await Promise.all([User.findByPk(row.userId), Device.findByPk(row.deviceId)]);
-  if (!user || user.status !== 'active' || !device || device.status !== 'active') {
-    throw Unauthorized('Session is no longer valid', 'SESSION_REVOKED');
-  }
   if (isIdle(device.lastSeenAt, await getIdleTimeoutMinutes(row.instituteId))) {
     await RefreshToken.update(
       { revokedAt: new Date() },

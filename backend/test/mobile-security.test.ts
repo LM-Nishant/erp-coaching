@@ -102,6 +102,7 @@ describe('mobile & device security (spec 4.18)', () => {
     await createUser('teacher', { role: SYSTEM_ROLES.TEACHER, branchId: branchB });
     await createUser('bio', { role: SYSTEM_ROLES.STUDENT, branchId: branchA });
     await createUser('idle', { role: SYSTEM_ROLES.STUDENT, branchId: branchA });
+    await createUser('capture', { role: SYSTEM_ROLES.STUDENT, branchId: branchA });
     await createUser('platform', { superAdmin: true });
 
     const course = await Course.create({
@@ -187,8 +188,10 @@ describe('mobile & device security (spec 4.18)', () => {
     const me = await api('get', '/auth/me', onPhone.accessToken);
     expect(me.status).toBe(401);
     expect(me.body.error.code).toBe('SESSION_REVOKED');
+    // The (now revoked) refresh token reports the revocation too, so an app whose access token expired still wipes.
     const refresh = await request(app).post('/api/auth/refresh').send({ refreshToken: onPhone.refreshToken });
     expect(refresh.status).toBe(401);
+    expect(refresh.body.error.code).toBe('SESSION_REVOKED');
     expect((await api('get', '/auth/me', onLaptop.accessToken)).status).toBe(200);
 
     const audit = await AuditEvent.findOne({
@@ -353,6 +356,31 @@ describe('mobile & device security (spec 4.18)', () => {
     expect(afterRevoke.status).toBe(401);
     expect(afterRevoke.body.error.code).toBe('SESSION_REVOKED');
     expect((await iosRow.reload()).unlockKeyHash).toBeNull();
+  });
+
+  it('audits screenshots and recordings of protected screens reported by the app', async () => {
+    const s = await login(u.capture, device('ios'));
+    const row = (await deviceOf(s.device))!;
+    const send = (body: unknown) => api('post', '/auth/capture-events', s.accessToken).send(body);
+    expect((await send({ kind: 'screenshot', screens: ['Exam attempt'] })).status).toBe(422);
+    expect((await send({ kind: 'photo', screens: [] })).status).toBe(422);
+    await send({ kind: 'screenshot', screens: ['exam-attempt', 'exam-attempt'] }).expect(204);
+    await send({ kind: 'recording', screens: ['lms-content'] }).expect(204);
+    const events = await AuditEvent.findAll({
+      where: {
+        entityType: 'device',
+        entityId: String(row.id),
+        action: ['device.screenshot_detected', 'device.recording_detected'],
+      },
+      order: [['id', 'ASC']],
+    });
+    expect(events.map((e) => [e.action, e.metadata, e.actorUserId, e.instituteId])).toEqual([
+      ['device.screenshot_detected', { screens: ['exam-attempt'] }, u.capture.id, instituteId],
+      ['device.recording_detected', { screens: ['lms-content'] }, u.capture.id, instituteId],
+    ]);
+    expect(
+      (await request(app).post('/api/auth/capture-events').send({ kind: 'screenshot', screens: [] })).status,
+    ).toBe(401);
   });
 
   it('expires idle sessions on the server using the institute setting', async () => {

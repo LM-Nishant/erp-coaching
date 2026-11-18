@@ -5,7 +5,9 @@ import { authenticate } from '../../shared/middleware/authenticate';
 import { requireSuperAdmin } from '../../shared/middleware/authorize';
 import { authRateLimit } from '../../shared/middleware/security';
 import { BadRequest, NotFound } from '../../shared/errors';
+import { audit } from '../../shared/audit/audit.service';
 import { idParam } from '../../shared/utilities/pagination';
+import { SECURE_SCREEN_NAME } from '@erp/shared';
 import { User } from '../users/user.model';
 import * as auth from './auth.service';
 import { listUserDevices, revokeDevice, searchPlatformUsers } from './devices.service';
@@ -72,6 +74,24 @@ export function authRoutes(api: Router) {
   // Activity heartbeat: keeps the session alive while the user is active without API calls
   // (reading, watching, writing). `authenticate` records the activity.
   r.post('/activity', authenticate, (_req, res) => {
+    res.status(204).end();
+  });
+
+  // The app saw a screenshot or screen recording of protected content (iOS can only detect them).
+  r.post('/capture-events', authenticate, async (req, res) => {
+    const body = parse(
+      z.object({
+        kind: z.enum(['screenshot', 'recording']),
+        screens: z.array(z.string().regex(SECURE_SCREEN_NAME)).max(10),
+      }),
+      req.body,
+    );
+    await audit({
+      action: body.kind === 'screenshot' ? 'device.screenshot_detected' : 'device.recording_detected',
+      entityType: 'device',
+      entityId: req.ctx.deviceId,
+      metadata: { screens: [...new Set(body.screens)] },
+    });
     res.status(204).end();
   });
 

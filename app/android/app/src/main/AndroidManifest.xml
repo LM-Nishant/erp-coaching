@@ -49,4 +49,6 @@
     <!-- Photo picker / document upload -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- Biometric unlock (fingerprint / face) -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 </manifest>

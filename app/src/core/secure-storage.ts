@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
-import { NativeBiometric } from '@capgo/capacitor-native-biometric';
+import { AccessControl, NativeBiometric, type GetSecureDataOptions } from '@capgo/capacitor-native-biometric';
 
 /**
  * Key/value store for secrets: session tokens, the cached profile, offline content keys and the biometric unlock
@@ -73,3 +73,22 @@ export async function secureGetJson<T>(key: SecureKeyName): Promise<T | null> {
 }
 
 export const secureSetJson = (key: SecureKeyName, value: unknown) => secureSet(key, JSON.stringify(value));
+
+/**
+ * App only. Stores a value that the OS releases only after Face ID / Touch ID / fingerprint
+ * (iOS `biometryCurrentSet`, Android Keystore key requiring biometric auth). Enrolling a new
+ * fingerprint or face invalidates it.
+ */
+export async function secureSetProtected(key: SecureKeyName, value: string): Promise<void> {
+  await init();
+  await NativeBiometric.setData({ key, value, accessControl: AccessControl.BIOMETRY_CURRENT_SET });
+}
+
+/** Shows the OS biometric prompt, then returns the value. Rejects with the plugin's error code (see core/biometric.ts). */
+export async function secureGetProtected(
+  key: SecureKeyName,
+  prompt: Omit<GetSecureDataOptions, 'key'>,
+): Promise<string> {
+  await init();
+  return (await NativeBiometric.getSecureData({ key, ...prompt })).value;
+}

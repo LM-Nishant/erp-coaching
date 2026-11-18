@@ -15,8 +15,9 @@ const config: CapacitorConfig = {
   },
   plugins: {
     SplashScreen: { launchShowDuration: 800 },
-    // Turned on only while protected LMS content is on screen (see modules/lms/privacy.ts).
-    PrivacyScreen: { enable: false },
+    // Turned on only while a protected screen is visible (core/secure-screen.ts). iOS screenshot prevention is
+    // off: the plugin's layer workaround does not apply to scene-based apps; captures are detected instead.
+    PrivacyScreen: { enable: false, preventScreenshots: false },
   },
 };
 

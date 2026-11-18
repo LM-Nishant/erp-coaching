@@ -1,5 +1,5 @@
 import type { ApiErrorBody, AuthTokens } from '@erp/shared';
-import { loadSession, saveSession, updateTokens } from './token-storage';
+import { loadSession, patchSession, saveSession, updateTokens } from './token-storage';
 
 export const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:4000').replace(/\/$/, '');
 
@@ -28,7 +28,7 @@ export interface RequestOptions {
 }
 
 /** 401 codes a token refresh cannot fix: inactivity timeout, revoked device, deactivated account. */
-const SESSION_END_CODES = new Set(['SESSION_IDLE', 'SESSION_REVOKED', 'ACCOUNT_INACTIVE']);
+export const SESSION_END_CODES: ReadonlySet<string> = new Set(['SESSION_IDLE', 'SESSION_REVOKED', 'ACCOUNT_INACTIVE']);
 
 type SessionEndedHandler = (code: string) => void | Promise<void>;
 /** Called with the API's error code once the session is over (main.ts locks the app or goes to login). */
@@ -38,8 +38,8 @@ export function setSessionExpiredHandler(fn: SessionEndedHandler) {
 }
 
 let ending: Promise<void> | null = null;
-/** Concurrent 401s end the session once. */
-function sessionEnded(code: string) {
+/** Concurrent 401s end the session once. Also used when an anonymous call (biometric unlock) reports a revoked device. */
+export function sessionEnded(code: string) {
   ending ??= (async () => {
     if (onSessionEnded) await onSessionEnded(code);
     else await saveSession(null);
@@ -48,6 +48,9 @@ function sessionEnded(code: string) {
     .finally(() => (ending = null));
   return ending;
 }
+
+/** Resolves once a session end in progress (including its handler) has finished. */
+export const sessionEndSettled = () => ending ?? Promise.resolve();
 
 async function errorCode(res: Response): Promise<string | undefined> {
   if (!res.headers.get('content-type')?.includes('application/json')) return undefined;
@@ -71,8 +74,9 @@ async function refreshAccessToken(): Promise<{ ok: boolean; code?: string }> {
       body: JSON.stringify({ refreshToken: session.refreshToken }),
     });
     if (!res.ok) return { ok: false, code: await errorCode(res) };
-    await updateTokens((await res.json()) as AuthTokens);
-    return { ok: true };
+    if (await updateTokens((await res.json()) as AuthTokens, session.refreshToken)) return { ok: true };
+    // Signed out or signed in again during the refresh: retry with the current session, if any.
+    return { ok: !!(await loadSession()) };
   })().finally(() => {
     refreshing = null;
   });
@@ -92,11 +96,9 @@ async function send(method: string, path: string, opts: RequestOptions, retried 
   const isForm = opts.body instanceof FormData;
   if (opts.body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
   if (opts.background) headers['X-Background-Request'] = '1';
-  if (!opts.anonymous) {
-    const session = await loadSession();
-    if (session?.accessToken) headers.Authorization = `Bearer ${session.accessToken}`;
-    if (session?.branchId) headers['X-Branch-Id'] = String(session.branchId);
-  }
+  const sent = opts.anonymous ? null : await loadSession();
+  if (sent?.accessToken) headers.Authorization = `Bearer ${sent.accessToken}`;
+  if (sent?.branchId) headers['X-Branch-Id'] = String(sent.branchId);
   const res = await fetch(buildUrl(path, opts.query), {
     method,
     headers,
@@ -104,15 +106,25 @@ async function send(method: string, path: string, opts: RequestOptions, retried 
     body: opts.body === undefined ? undefined : isForm ? (opts.body as FormData) : JSON.stringify(opts.body),
   });
   if (res.status !== 401 || opts.anonymous) return res;
+  const current = await loadSession();
+  // Signed out (or the session already ended) while this request was in flight.
+  if (!current) return res;
+  // Sent with an older token (refreshed, unlocked or signed in again meanwhile): retry with the current one.
+  if (current.accessToken !== sent?.accessToken) return retried ? res : send(method, path, opts, true);
   let code = await errorCode(res);
   if (!retried && !SESSION_END_CODES.has(code ?? '')) {
     const refreshed = await refreshAccessToken();
     if (refreshed.ok) return send(method, path, opts, true);
     const session = await loadSession();
-    if (session?.impersonator) {
+    if (!session) return res;
+    if (session.accessToken !== sent?.accessToken) return send(method, path, opts, true);
+    if (session.impersonator) {
       // Impersonation token expired: fall back to the super admin session (refreshed if needed).
-      await saveSession({ ...session.impersonator, impersonator: null, branchId: null });
-      return send(method, path, opts);
+      const fellBack = await patchSession(
+        { ...session.impersonator, impersonator: null, branchId: null },
+        (s) => s.accessToken === session.accessToken,
+      );
+      return send(method, path, opts, !fellBack);
     }
     code = refreshed.code ?? code;
   }
