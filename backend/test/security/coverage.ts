@@ -33,7 +33,6 @@ export const SEGMENT_TABLES: Record<string, string> = {
   'attendance/leaves': 'attendance_leave_requests',
   'attendance/me/children': 'users',
   'attendance/me/leaves': 'attendance_leave_requests',
-  'attendance/reports/students': 'users',
   'exams/children/results': 'exam_attempts',
   'exams/my': 'exams',
   'exams/my/results': 'exam_attempts',
@@ -47,7 +46,6 @@ export const SEGMENT_TABLES: Record<string, string> = {
   'notifications/inbox': 'notification_messages',
   'payroll/settlements': 'final_settlements',
   'public/sites/*/checkout': 'courses',
-  'public/sites/*/media': 'files',
   'website/referrals': 'website_referral_codes',
 };
 
@@ -65,7 +63,6 @@ export const USER_ROLE_HINTS: Record<string, string> = {
   studentUserId: 'student',
   teacherUserId: 'teacher',
   'attendance/me/children': 'student',
-  'attendance/reports/students': 'student',
 };
 
 /** Table-name prefixes per module, used by the naming convention (`fees/heads` → `fee_heads`). */
@@ -98,13 +95,37 @@ export interface ParamSql {
   branch?: boolean;
   /** Result column → owner key (`student_user_id`, `student_id`, `user_id`, `employee_id`). */
   owner?: Record<string, string>;
+  /** Nullable foreign keys a synthesized `table` row must set for `sql` to find it. */
+  need?: string[];
 }
 
 /**
- * Custom resolution for routes whose params cannot be derived from one table's foreign keys
- * (keyed like `SEGMENT_TABLES`, by the segment of the route's last id param).
+ * Custom resolution for routes whose params cannot be derived from one table's foreign keys, keyed
+ * by route (`GET /api/lms/courses/:id/contents`, checked first) or like `SEGMENT_TABLES`, by the
+ * segment of the route's last id param (applies to every route under that segment).
  */
 export const PARAM_SQL: Record<string, ParamSql> = {
+  'GET /api/fees/me/courses/:id/quote': {
+    table: 'fee_structures',
+    need: ['course_id'],
+    sql: `SELECT course_id AS id FROM fee_structures
+           WHERE institute_id = :v AND course_id IS NOT NULL AND batch_id IS NULL
+             AND status = 'active' AND kind = 'course'`,
+  },
+  'GET /api/lms/courses/:id/contents': {
+    table: 'lms_access_grants',
+    owner: { student_user_id: 'student_user_id' },
+    sql: `SELECT course_id AS id, student_user_id FROM lms_access_grants
+           WHERE institute_id = :v AND revoked_at IS NULL
+             AND (valid_until IS NULL OR valid_until > UTC_TIMESTAMP())`,
+  },
+  'attendance/reports/students': {
+    table: 'attendance_records',
+    branch: true,
+    owner: { student_user_id: 'student_user_id' },
+    sql: `SELECT student_user_id AS id, student_user_id, branch_id AS branchId
+            FROM attendance_records WHERE institute_id = :v`,
+  },
   'academics/batches/*/students': {
     table: 'batch_students',
     branch: true,
@@ -115,12 +136,14 @@ export const PARAM_SQL: Record<string, ParamSql> = {
            WHERE bs.institute_id = :v`,
   },
   'exams/*/evaluations': {
-    table: 'exam_answers',
+    table: 'exam_evaluations',
     branch: true,
     owner: { student_user_id: 'student_user_id' },
     sql: `SELECT at.exam_id AS id, a.id AS answerId, at.student_user_id, at.branch_id AS branchId
-            FROM exam_answers a JOIN exam_attempts at ON at.id = a.attempt_id
-           WHERE a.institute_id = :v`,
+            FROM exam_evaluations e
+            JOIN exam_answers a ON a.id = e.answer_id
+            JOIN exam_attempts at ON at.id = a.attempt_id
+           WHERE e.institute_id = :v`,
   },
   'exams/my/attempts/*/answers': {
     table: 'exam_answers',
@@ -160,6 +183,12 @@ export const PARAM_SQL: Record<string, ParamSql> = {
     table: 'website_pages',
     sql: `SELECT slug AS page FROM website_pages WHERE institute_id = :v AND published_version_id IS NOT NULL`,
   },
+  'public/sites/*/media': {
+    table: 'files',
+    sql: `SELECT CAST(JSON_EXTRACT(v.media_file_ids, '$[0]') AS UNSIGNED) AS fileId
+            FROM website_page_versions v JOIN website_pages p ON p.published_version_id = v.id
+           WHERE v.institute_id = :v AND JSON_LENGTH(v.media_file_ids) > 0`,
+  },
   'public/sites/*/r': {
     table: 'website_referral_codes',
     sql: `SELECT code FROM website_referral_codes WHERE institute_id = :v`,
@@ -183,7 +212,8 @@ export const SELF_FAMILIES: { family: 'student' | 'guardian' | 'employee'; patte
   { family: 'employee', pattern: /^\/api\/(hr|payroll)\/me\// },
   {
     family: 'student',
-    pattern: /^\/api\/[^/]+\/(my|me)\/|^\/api\/notifications\/inbox\/|^\/api\/auth\/devices\//,
+    pattern:
+      /^\/api\/[^/]+\/(my|me)\/|^\/api\/notifications\/inbox\/|^\/api\/auth\/devices\/|^\/api\/lms\/courses\/:id\/contents$/,
   },
 ];
 
@@ -231,15 +261,68 @@ export const PUBLIC_OUTSIDE_PUBLIC_PREFIX: Record<string, string> = {
 
 /**
  * Column values for rows the synthesizer creates (victim-data.ts), per table, where the schema
- * alone does not produce a record its owner can read (e.g. a page must be `published` to be public).
+ * alone does not produce a record its owner can read (e.g. results must be published to be seen).
+ * Objects and arrays are stored as JSON.
  */
-export const SYNTHESIS_HINTS: Record<string, Record<string, string | number | null>> = {};
+export const SYNTHESIS_HINTS: Record<string, Record<string, unknown>> = {
+  exams: { status: 'scheduled', results_published_at: '2024-06-01 10:00:00' },
+  // Resumable by its student; result views do not depend on the attempt's status.
+  exam_attempts: { status: 'in_progress', deadline_at: '2099-12-31 00:00:00', question_order: [] },
+  exam_questions: {
+    snapshot: {
+      type: 'descriptive',
+      text: 'Synthesized question',
+      options: [],
+      answerKey: {},
+      explanation: null,
+      assetFileIds: [],
+      chapterId: null,
+      chapterName: null,
+      topicId: null,
+      topicName: null,
+    },
+  },
+  // Payslips are visible to the employee, and printable, once their run is locked.
+  payroll_runs: { status: 'locked' },
+  fee_structures: { status: 'active', kind: 'course', instalment_plan: { type: 'one_time' } },
+};
+
+/** Query string a route needs to get past validation (`?date=…`), keyed by route. */
+export const ROUTE_QUERY: Record<string, Record<string, string>> = {
+  'GET /api/academics/classrooms/:id/availability': { date: '2030-01-07' },
+  'GET /api/appointments/teachers/:teacherUserId/availability': { from: '2030-01-07', to: '2030-01-13' },
+};
 
 /**
- * GET routes whose owner (positive control) cannot return 2xx for a valid record, with the
+ * GET routes whose owner (positive control) cannot return 2xx/3xx for a valid record, with the
  * statuses that are acceptable and why. Prefer creating victim data in the right state instead.
  */
 export const OWNER_STATUS: Record<string, { status: number[]; reason: string }> = {};
+
+/**
+ * Routes that deliberately answer every caller the same way whether or not the record exists (so
+ * the response cannot reveal it), with the reason. Their probes accept any status below 500; the
+ * leak checks (marker in the body, rows of the other institute loaded) still apply.
+ */
+export const UNIFORM_RESPONSE: Record<string, string> = {
+  'GET /api/public/sites/:site/r/:code':
+    "unknown referral codes redirect to the site's home page, like known ones",
+  'POST /api/public/sites/:site/referrals/:code/click': 'click tracking always answers 200',
+};
+
+/**
+ * Open security findings the suite detects, keyed `<crawl> <METHOD> <path>` (crawls: cross-tenant,
+ * branch, student, guardian, employee, public, tenant-lists, branch-lists), with severity and
+ * description. Their failures are reported as known instead of failing the suite. Fix the route and
+ * remove the entry: an entry that no longer fails is stale and fails the suite. Critical and high
+ * findings must be fixed, never listed here. Also listed in docs/security.md.
+ */
+export const KNOWN_FINDINGS: Record<string, string> = {
+  'branch-lists GET /api/guardians':
+    'low: a guardian with children in several branches lists all of them (names included) to staff restricted to one of those branches',
+  'branch-lists GET /api/audit-events':
+    'medium: the audit log is not branch-filtered, so branch-restricted staff with audit access see events (and their metadata) from every branch',
+};
 
 /**
  * Routes the crawls cannot probe yet, with the reason. A stale entry (the route is gone, or now

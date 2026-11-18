@@ -15,13 +15,15 @@ import {
   ok,
   query,
   signIn,
+  upload,
 } from './harness';
 
 /**
  * The world probed by the tenant-isolation suite: an attacker institute, a victim institute with a
  * second branch, and a pair of every self-service persona in the victim (student, guardian,
- * employee) so each can be pointed at the other's records. The people are created through the API;
- * the records the crawlers need (one per table) are synthesized on demand by `synthesizer`.
+ * employee) so each can be pointed at the other's records, plus one of each in the attacker
+ * institute for the cross-tenant crawl of self-service routes. The people are created through the
+ * API; the records the crawlers need (one per table) are synthesized on demand by `synthesizer`.
  */
 export interface StudentPersona {
   actor: Actor;
@@ -46,23 +48,77 @@ export interface World {
   branchMarker: string;
   superAdmin: Actor;
   attacker: Tenant;
+  /** Self-service personas of the attacker institute (attack the victim's self-service routes). */
+  attackerPersonas: { student: Actor; guardian: Actor; employee: Actor };
   victim: Tenant;
   branch2Id: number;
   /** Every permission, but only on the victim's main branch. */
   restricted: Actor;
   teacherUserIds: { main: number; branch2: number };
+  /** s1, s2: main branch; s3: branch 2. */
   students: { s1: StudentPersona; s2: StudentPersona; s3: StudentPersona };
+  /** Guardians of s1 and s2. */
   guardians: { g1: GuardianPersona; g2: GuardianPersona };
-  employees: { e1: EmployeePersona; e2: EmployeePersona };
+  /** e1, e2: institute-wide; e3: branch 2. */
+  employees: { e1: EmployeePersona; e2: EmployeePersona; e3: EmployeePersona };
 }
 
 const SELF_SERVICE_PERMISSIONS = ['hr-self-service.view', 'hr-self-service.create'];
+
+/** A 1×1 PNG, for the website image the public crawl needs. */
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64',
+);
 
 async function systemRoleId(slug: string): Promise<number> {
   const [role] = await query<{ id: number }>('SELECT id FROM roles WHERE slug = ? AND institute_id IS NULL', [
     slug,
   ]);
   return role.id;
+}
+
+/** Creates students, guardians and employees in `tenant` through its admin. */
+function people(tenant: Tenant, mobile: () => string) {
+  const admin = tenant.admin;
+  return {
+    async student(label: string, name: string, branchId: number): Promise<StudentPersona> {
+      const m = mobile();
+      const s = await ok(admin, 'POST', '/api/students', { name, mobile: m, branchId });
+      const actor = await signIn(label, m);
+      return { actor, userId: actor.userId, studentId: s.id };
+    },
+    async guardian(label: string, name: string, of: StudentPersona): Promise<GuardianPersona> {
+      const m = mobile();
+      await ok(admin, 'POST', `/api/students/${of.studentId}/guardians`, {
+        name,
+        mobile: m,
+        relation: 'mother',
+      });
+      const actor = await signIn(label, m);
+      const [g] = await query<{ id: number }>(
+        'SELECT id FROM guardians WHERE user_id = ? AND institute_id = ?',
+        [actor.userId, tenant.id],
+      );
+      return { actor, userId: actor.userId, guardianId: g.id };
+    },
+    async employee(label: string, name: string, branchId: number | null): Promise<EmployeePersona> {
+      const actor = await createStaff(admin, {
+        label,
+        mobile: mobile(),
+        permissions: SELF_SERVICE_PERMISSIONS,
+        branchId,
+      });
+      const e = await ok(admin, 'POST', '/api/hr/employees', {
+        userId: actor.userId,
+        name,
+        dateOfJoining: '2024-06-01',
+        designation: 'Teacher',
+        ...(branchId ? { branchId } : {}),
+      });
+      return { actor, userId: actor.userId, employeeId: e.id };
+    },
+  };
 }
 
 export async function buildWorld(mobile: () => string): Promise<World> {
@@ -88,10 +144,20 @@ export async function buildWorld(mobile: () => string): Promise<World> {
     code: `B2-${marker.slice(-6)}`.toUpperCase(),
   });
 
-  // The public website crawl needs a published page (pages are published through versions).
+  // The public website crawl needs a published page (pages are published through versions) with an
+  // image, since the public media route serves only images referenced by published pages.
+  const image = await upload(
+    admin,
+    '/api/files',
+    { name: `${marker}.png`, type: 'image/png', data: PNG },
+    {
+      module: 'website',
+    },
+  );
   const page = await ok(admin, 'POST', '/api/website/pages', {
     slug: `${marker}-page`,
     title: `${marker} Page`,
+    seo: { ogImageFileId: image.id },
   });
   await ok(admin, 'POST', `/api/website/pages/${page.id}/publish`, {});
 
@@ -120,58 +186,34 @@ export async function buildWorld(mobile: () => string): Promise<World> {
     branch2: await teacher(`${branchMarker} Teacher 2`, branch2.id),
   };
 
-  const student = async (label: string, name: string, branchId: number): Promise<StudentPersona> => {
-    const m = mobile();
-    const s = await ok(admin, 'POST', '/api/students', { name, mobile: m, branchId });
-    const actor = await signIn(label, m);
-    return { actor, userId: actor.userId, studentId: s.id };
-  };
-  const s1 = await student('student 1', `${marker} Student 1`, victim.mainBranchId);
-  const s2 = await student('student 2', `${marker} Student 2`, victim.mainBranchId);
-  const s3 = await student('student 3', `${branchMarker} Student 3`, branch2.id);
+  const v = people(victim, mobile);
+  const s1 = await v.student('student 1', `${marker} Student 1`, victim.mainBranchId);
+  const s2 = await v.student('student 2', `${marker} Student 2`, victim.mainBranchId);
+  const s3 = await v.student('student 3', `${branchMarker} Student 3`, branch2.id);
+  const g1 = await v.guardian('guardian 1', `${marker} Guardian 1`, s1);
+  const g2 = await v.guardian('guardian 2', `${marker} Guardian 2`, s2);
+  const e1 = await v.employee('employee 1', `${marker} employee 1`, null);
+  const e2 = await v.employee('employee 2', `${marker} employee 2`, null);
+  const e3 = await v.employee('employee 3', `${branchMarker} employee 3`, branch2.id);
 
-  const guardian = async (label: string, name: string, of: StudentPersona): Promise<GuardianPersona> => {
-    const m = mobile();
-    await ok(admin, 'POST', `/api/students/${of.studentId}/guardians`, {
-      name,
-      mobile: m,
-      relation: 'mother',
-    });
-    const actor = await signIn(label, m);
-    const [g] = await query<{ id: number }>('SELECT id FROM guardians WHERE user_id = ?', [actor.userId]);
-    return { actor, userId: actor.userId, guardianId: g.id };
-  };
-  const g1 = await guardian('guardian 1', `${marker} Guardian 1`, s1);
-  const g2 = await guardian('guardian 2', `${marker} Guardian 2`, s2);
-
-  const employee = async (label: string): Promise<EmployeePersona> => {
-    const actor = await createStaff(admin, {
-      label,
-      mobile: mobile(),
-      permissions: SELF_SERVICE_PERMISSIONS,
-      branchId: null,
-    });
-    const e = await ok(admin, 'POST', '/api/hr/employees', {
-      userId: actor.userId,
-      name: `${marker} ${label}`,
-      dateOfJoining: '2024-06-01',
-      designation: 'Teacher',
-    });
-    return { actor, userId: actor.userId, employeeId: e.id };
-  };
+  const a = people(attacker, mobile);
+  const as = await a.student('attacker student', `${attackerTag} Student`, attacker.mainBranchId);
+  const ag = await a.guardian('attacker guardian', `${attackerTag} Guardian`, as);
+  const ae = await a.employee('attacker employee', `${attackerTag} employee`, null);
 
   return {
     marker,
     branchMarker,
     superAdmin,
     attacker,
+    attackerPersonas: { student: as.actor, guardian: ag.actor, employee: ae.actor },
     victim,
     branch2Id: branch2.id,
     restricted,
     teacherUserIds,
     students: { s1, s2, s3 },
     guardians: { g1, g2 },
-    employees: { e1: await employee('employee 1'), e2: await employee('employee 2') },
+    employees: { e1, e2, e3 },
   };
 }
 
@@ -281,14 +323,17 @@ const PREFERRED_ENUM = [
   'completed',
 ];
 
-const pad = (n: number) => String(n).padStart(2, '0');
-const today = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
-const now = () => {
-  const d = new Date();
-  return `${today()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+// UTC, like the API's database connection (timezone +00:00).
+const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
+const today = () => now().slice(0, 10);
+
+/** Largest signed value per integer type (unsigned doubles it). */
+const INT_MAX: Record<string, number> = {
+  tinyint: 127,
+  smallint: 32_767,
+  mediumint: 8_388_607,
+  int: 2_147_483_647,
+  bigint: Number.MAX_SAFE_INTEGER,
 };
 
 let sequence = 0;
@@ -332,7 +377,19 @@ function scalarValue(column: Column, tag: string, unique: boolean): unknown {
     return PREFERRED_ENUM.find((p) => options.includes(p)) ?? options[0];
   }
   if (t === 'tinyint' && /tinyint\(1\)/.test(column.columnType)) return 0;
-  if (/int|decimal|float|double|numeric/.test(t)) return unique ? 1_000_000 + crypto.randomInt(8_000_000) : 1;
+  if (/int|decimal|float|double|numeric/.test(t)) {
+    if (/(^|_)year$/.test(column.name)) return new Date().getUTCFullYear();
+    if (/(^|_)month$/.test(column.name)) return new Date().getUTCMonth() + 1;
+    if (!unique) return 1;
+    const precision = /\((\d+),(\d+)\)/.exec(column.columnType);
+    const max = INT_MAX[t]
+      ? INT_MAX[t] * (/unsigned/.test(column.columnType) ? 2 : 1)
+      : precision
+        ? 10 ** (Number(precision[1]) - Number(precision[2])) - 1
+        : 8_000_000;
+    return 1 + crypto.randomInt(Math.max(1, Math.min(max - 1, 8_000_000)));
+  }
+  if ((t === 'char' || t === 'varchar') && column.maxLength === 36) return crypto.randomUUID();
   if (t === 'date') return today();
   if (t === 'datetime' || t === 'timestamp') return now();
   if (t === 'time') return '10:00:00';
@@ -409,7 +466,9 @@ async function createRow(table: string, state: State, depth: number, need: Set<s
       values.set(name, scalarValue(column, state.tag, uniqueCols.has(name)));
     }
   }
-  for (const [name, value] of Object.entries(SYNTHESIS_HINTS[table] ?? {})) values.set(name, value);
+  for (const [name, value] of Object.entries(SYNTHESIS_HINTS[table] ?? {})) {
+    values.set(name, value !== null && typeof value === 'object' ? JSON.stringify(value) : value);
+  }
   // A row that some unique key says already exists (one per student, per day…) is reused.
   for (const cols of info.uniques) {
     if (!cols.every((c) => values.get(c) !== undefined && values.get(c) !== null)) continue;
@@ -465,7 +524,8 @@ async function parentValue(column: string, fk: ForeignKey, state: State, depth: 
 
 /** An existing row of `table` in the scope that agrees with the parents chosen so far. */
 async function findParent(table: string, state: State): Promise<unknown> {
-  const info = (await schema()).get(table);
+  const tables = await schema();
+  const info = tables.get(table);
   if (!info) return undefined;
   const has = (c: string) => info.columns.some((x) => x.name === c);
   const conds: string[] = [];
@@ -481,6 +541,15 @@ async function findParent(table: string, state: State): Promise<unknown> {
   if (has('branch_id')) {
     conds.push('(branch_id = ? OR branch_id IS NULL)');
     params.push(state.branchId);
+  } else if (
+    state.scope.branchId &&
+    [...info.fks.values()].some(
+      (fk) => fk.table !== 'branches' && tables.get(fk.table)?.columns.some((c) => c.name === 'branch_id'),
+    )
+  ) {
+    // Its branch comes from its parents (an answer from its attempt): an existing row may belong
+    // to another branch, so the branch crawl creates its own.
+    return undefined;
   }
   for (const [column, value] of Object.entries(state.scope.ownerColumns ?? {})) {
     if (has(column)) {
@@ -544,7 +613,7 @@ export function synthesizer(world: World): Synthesize {
         teacher: inBranch2 ? world.teacherUserIds.branch2 : world.teacherUserIds.main,
         student: ownStudent ?? (inBranch2 ? world.students.s3 : world.students.s2),
         guardian: world.guardians.g2,
-        employee: ownEmployee ?? world.employees.e2,
+        employee: ownEmployee ?? (inBranch2 ? world.employees.e3 : world.employees.e2),
       },
       chosen: new Map(),
     };

@@ -2,7 +2,9 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import request from 'supertest';
 import { Model, QueryTypes } from 'sequelize';
+import { vi } from 'vitest';
 import { getSequelize } from '../../src/infrastructure/database/sequelize';
+import { logger } from '../../src/infrastructure/logger';
 import { getContext } from '../../src/shared/context';
 import { User } from '../../src/modules/users/user.model';
 import { bearer, getApp, lastOtpFor, login, purgeRows, stableDevice } from '../helpers';
@@ -39,6 +41,30 @@ export async function query<T extends object>(sql: string, replacements?: unknow
   });
 }
 
+let serverError = '';
+let capturing = false;
+
+/**
+ * Records the error behind the last 5xx (the error handler logs it; the logger is silent in tests),
+ * so failure reports can say why a probe crashed instead of just "500".
+ */
+function captureServerErrors() {
+  if (capturing) return;
+  capturing = true;
+  const original = logger.error.bind(logger);
+  vi.spyOn(logger, 'error').mockImplementation(((obj: unknown, ...rest: unknown[]) => {
+    const err = (obj as { err?: unknown } | null)?.err;
+    if (err instanceof Error) {
+      const frame = err.stack?.split('\n').find((l) => l.includes('/src/') && !l.includes('node_modules'));
+      serverError = `${err.message.split('\n')[0]}${frame ? ` @ ${frame.trim().replace(/^at /, '')}` : ''}`;
+    }
+    return (original as (...a: unknown[]) => void)(obj, ...rest);
+  }) as typeof logger.error);
+}
+
+/** Why the last request sent with `send` answered 5xx (empty when it did not, or nothing was logged). */
+export const lastServerError = () => serverError;
+
 /** Sends one API request as `who` (an actor, a raw token or anonymous). JSON body for writes. */
 export async function send(
   who: Who,
@@ -47,6 +73,8 @@ export async function send(
   body?: unknown,
   headers: Record<string, string> = {},
 ) {
+  captureServerErrors();
+  serverError = '';
   const m = method.toLowerCase() as Method;
   let req = request(await getApp())[m](url);
   const token = typeof who === 'string' ? who : who?.token;
@@ -63,6 +91,24 @@ export async function ok(who: Who, method: string, url: string, body?: unknown):
   if (res.status < 200 || res.status >= 300) {
     throw new Error(`${method.toUpperCase()} ${url} → ${res.status}: ${res.text.slice(0, 600)}`);
   }
+  return res.body;
+}
+
+/** Uploads one file (multipart field `file`, plus form `fields`) as `who`; throws unless 2xx. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function upload(
+  who: Actor,
+  url: string,
+  file: { name: string; type: string; data: Buffer },
+  fields: Record<string, string> = {},
+): Promise<any> {
+  let req = request(await getApp())
+    .post(url)
+    .set(bearer(who.token));
+  for (const [k, v] of Object.entries(fields)) req = req.field(k, v);
+  const res = await req.attach('file', file.data, { filename: file.name, contentType: file.type });
+  if (res.status < 200 || res.status >= 300)
+    throw new Error(`POST ${url} (upload) → ${res.status}: ${res.text}`);
   return res.body;
 }
 

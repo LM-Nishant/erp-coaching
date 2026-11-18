@@ -5,6 +5,7 @@ import {
   NON_ID_PARAMS,
   PARAM_SQL,
   PARAM_TABLES,
+  ROUTE_QUERY,
   SEGMENT_TABLES,
   SELF_FAMILIES,
   TABLE_PREFIXES,
@@ -180,8 +181,11 @@ export async function resolveTarget(
   }
   const ids = params.filter((p) => !(p in NON_ID_PARAMS));
   const last = ids[ids.length - 1];
-  const sqlKey = segmentKey(route.path, last);
+  const sqlKey = PARAM_SQL[routeKey(route)] ? routeKey(route) : segmentKey(route.path, last);
   const custom = PARAM_SQL[sqlKey];
+  const extra = ROUTE_QUERY[routeKey(route)];
+  const url = (values: Record<string, unknown>) =>
+    `${fill(route.path, values)}${extra ? `?${new URLSearchParams(extra).toString()}` : ''}`;
   if (custom) {
     const conds: string[] = [];
     if (scope.branchId) {
@@ -201,7 +205,7 @@ export async function resolveTarget(
       )[0];
     let row = await find();
     if (!row && opts.synthesize) {
-      const failed = await opts.synthesize(custom.table, scope, []);
+      const failed = await opts.synthesize(custom.table, scope, custom.need ?? []);
       if (failed) return { reason: failed };
       row = await find();
     }
@@ -212,7 +216,7 @@ export async function resolveTarget(
     }
     return {
       target: {
-        url: fill(route.path, { ...row, ...values }),
+        url: url({ ...row, ...values }),
         table: custom.table,
         rowId: row[last] as number | string,
       },
@@ -262,7 +266,7 @@ export async function resolveTarget(
   }
   values[last] = row.id;
   for (const p of parents) values[p.param] = row[p.column as string];
-  return { target: { url: fill(route.path, values), table, rowId: row.id } };
+  return { target: { url: url(values), table, rowId: row.id } };
 }
 
 /** URL with sample values: `values`, else the `NON_ID_PARAMS` sample, else `1` for ids. */

@@ -81,55 +81,78 @@ afterAll(async () => {
   if (planId) await purgeRows('plans', [planId]);
 }, 120_000);
 
+/** Each sweep sends one request per route; allow for slow CI runners. */
+const SWEEP_TIMEOUT = 120_000;
+
 describe('authorization sweep', () => {
-  it('every authenticated route rejects anonymous requests with 401', async () => {
-    const failures: string[] = [];
-    for (const r of routes.filter((x) => x.authenticated)) {
-      const res = await send(null, r.method, sampleUrl(r), isWrite(r) ? {} : undefined);
-      if (res.status !== 401) failures.push(describeFailure(r, res));
-    }
-    expect(failures).toEqual([]);
-  });
-
-  it('every permission-guarded route returns 403 PERMISSION_DENIED without the permission', async () => {
-    const failures: string[] = [];
-    for (const r of routes.filter((x) => x.authenticated && !x.superAdmin && x.permissions.length)) {
-      const res = await send(nobody, r.method, sampleUrl(r), isWrite(r) ? {} : undefined);
-      if (res.status !== 403 || res.body?.error?.code !== 'PERMISSION_DENIED') {
-        failures.push(describeFailure(r, res));
+  it(
+    'every authenticated route rejects anonymous requests with 401',
+    async () => {
+      const failures: string[] = [];
+      for (const r of routes.filter((x) => x.authenticated)) {
+        const res = await send(null, r.method, sampleUrl(r), isWrite(r) ? {} : undefined);
+        if (res.status !== 401) failures.push(describeFailure(r, res));
       }
-    }
-    expect(failures).toEqual([]);
-  });
+      expect(failures).toEqual([]);
+    },
+    SWEEP_TIMEOUT,
+  );
 
-  it('self-service routes need only a signed-in user; uploads still check LMS permissions', async () => {
-    expect((await send(nobody, 'GET', '/api/auth/me')).status).toBe(200);
-    expect((await send(nobody, 'GET', '/api/auth/devices')).status).toBe(200);
-    expect((await send(nobody, 'POST', '/api/lms/uploads', {})).status).toBe(403);
-    expect((await send(nobody, 'POST', '/api/lms/files', {})).status).toBe(403);
-  });
-
-  it('platform routes return 403 SUPER_ADMIN_ONLY to institute users', async () => {
-    const failures: string[] = [];
-    for (const r of routes.filter((x) => x.superAdmin)) {
-      const res = await send(tenant.admin, r.method, sampleUrl(r), isWrite(r) ? {} : undefined);
-      if (res.status !== 403 || res.body?.error?.code !== 'SUPER_ADMIN_ONLY') {
-        failures.push(describeFailure(r, res));
+  it(
+    'every permission-guarded route returns 403 PERMISSION_DENIED without the permission',
+    async () => {
+      const failures: string[] = [];
+      for (const r of routes.filter((x) => x.authenticated && !x.superAdmin && x.permissions.length)) {
+        const res = await send(nobody, r.method, sampleUrl(r), isWrite(r) ? {} : undefined);
+        if (res.status !== 403 || res.body?.error?.code !== 'PERMISSION_DENIED') {
+          failures.push(describeFailure(r, res));
+        }
       }
-    }
-    expect(failures).toEqual([]);
-  });
+      expect(failures).toEqual([]);
+    },
+    SWEEP_TIMEOUT,
+  );
 
-  it('routes of modules outside the plan return 403 MODULE_DISABLED', async () => {
-    const failures: string[] = [];
-    const gatedRoutes = routes.filter((x) => x.authenticated && !x.superAdmin && x.planModules.length);
-    expect(gatedRoutes.length).toBeGreaterThan(100);
-    for (const r of gatedRoutes) {
-      const res = await send(gated.admin, r.method, sampleUrl(r), isWrite(r) ? {} : undefined);
-      if (res.status !== 403 || res.body?.error?.code !== 'MODULE_DISABLED') {
-        failures.push(describeFailure(r, res));
+  it(
+    'self-service routes need only a signed-in user; uploads still check LMS permissions',
+    async () => {
+      expect((await send(nobody, 'GET', '/api/auth/me')).status).toBe(200);
+      expect((await send(nobody, 'GET', '/api/auth/devices')).status).toBe(200);
+      expect((await send(nobody, 'POST', '/api/lms/uploads', {})).status).toBe(403);
+      expect((await send(nobody, 'POST', '/api/lms/files', {})).status).toBe(403);
+    },
+    SWEEP_TIMEOUT,
+  );
+
+  it(
+    'platform routes return 403 SUPER_ADMIN_ONLY to institute users',
+    async () => {
+      const failures: string[] = [];
+      for (const r of routes.filter((x) => x.superAdmin)) {
+        const res = await send(tenant.admin, r.method, sampleUrl(r), isWrite(r) ? {} : undefined);
+        if (res.status !== 403 || res.body?.error?.code !== 'SUPER_ADMIN_ONLY') {
+          failures.push(describeFailure(r, res));
+        }
       }
-    }
-    expect(failures).toEqual([]);
-  });
+      expect(failures).toEqual([]);
+    },
+    SWEEP_TIMEOUT,
+  );
+
+  it(
+    'routes of modules outside the plan return 403 MODULE_DISABLED',
+    async () => {
+      const failures: string[] = [];
+      const gatedRoutes = routes.filter((x) => x.authenticated && !x.superAdmin && x.planModules.length);
+      expect(gatedRoutes.length).toBeGreaterThan(100);
+      for (const r of gatedRoutes) {
+        const res = await send(gated.admin, r.method, sampleUrl(r), isWrite(r) ? {} : undefined);
+        if (res.status !== 403 || res.body?.error?.code !== 'MODULE_DISABLED') {
+          failures.push(describeFailure(r, res));
+        }
+      }
+      expect(failures).toEqual([]);
+    },
+    SWEEP_TIMEOUT,
+  );
 });

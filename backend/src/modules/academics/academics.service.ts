@@ -8,6 +8,7 @@ import { getContext, hasPermission, requireTenantContext } from '../../shared/co
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../shared/errors';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { Role, UserRole } from '../permissions/models';
+import { memberVisibilityWhere } from '../permissions/access.service';
 import { User } from '../users/user.model';
 import { Branch } from '../branches/branch.model';
 import {
@@ -123,11 +124,15 @@ export async function assertStudents(userIds: number[], transaction?: Transactio
 /** Users of the institute holding a role, for pickers. */
 export async function listUsersWithRole(roleSlug: string, search?: string) {
   const { instituteId } = requireTenantContext();
+  const match = search
+    ? { [Op.or]: [{ name: { [Op.like]: `%${search}%` } }, { mobile: { [Op.like]: `%${search}%` } }] }
+    : undefined;
+  const visible = memberVisibilityWhere();
   const users = await User.findAll({
     attributes: ['id', 'name', 'mobile'],
-    where: search
-      ? { [Op.or]: [{ name: { [Op.like]: `%${search}%` } }, { mobile: { [Op.like]: `%${search}%` } }] }
-      : undefined,
+    where: match && visible ? { [Op.and]: [match, visible] } : (match ?? visible),
+    // Keeps the role filter in the join (a LIMIT subquery cannot see the nested role include).
+    subQuery: false,
     include: [
       {
         model: UserRole,
