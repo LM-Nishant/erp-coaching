@@ -392,15 +392,25 @@ export async function aiChat(opts: AiChatOptions): Promise<AiChatResult> {
       estimatedCostUsd,
     };
   } catch (err) {
-    await AiUsage.create({
+    const row = await AiUsage.create({
       ...base,
       status: 'error',
       latencyMs: null,
       error: (err as Error).message.slice(0, 500),
     });
-    if (err instanceof AiProviderError) throw new AppError(502, 'AI_PROVIDER_ERROR', err.message);
+    if (err instanceof AiProviderError) {
+      const details: AiProviderErrorDetails = { provider: conn.provider, model: conn.model, usageId: row.id };
+      throw new AppError(502, 'AI_PROVIDER_ERROR', err.message, details);
+    }
     throw err;
   }
+}
+
+/** `details` of a 502 AI_PROVIDER_ERROR thrown by `aiChat`: which provider failed and its usage row. */
+export interface AiProviderErrorDetails {
+  provider: AiProviderId;
+  model: string;
+  usageId: number;
 }
 
 /** Test a (possibly unsaved) configuration. Falls back to the stored key when `apiKey` is empty. */
@@ -417,6 +427,22 @@ export async function testConnection(input: Partial<AiSettingsUpdate>): Promise<
   if (conn.provider === 'mock' && !isMockAllowed()) {
     return { ok: false, latencyMs: 0, message: 'The mock AI provider is not available in production' };
   }
+  if (!conn.apiKey && needsKey(conn.provider)) {
+    return { ok: false, latencyMs: 0, message: 'Enter an API key for this provider' };
+  }
+  // Stored price overrides apply when testing the stored provider/model; the form's prices win.
+  const sameAsStored = conn.provider === current.provider && conn.model === current.model;
+  const pricing = pricingFor({
+    ...conn,
+    inputUsdPer1M:
+      input.inputUsdPer1M !== undefined ? input.inputUsdPer1M : sameAsStored ? current.inputUsdPer1M : null,
+    outputUsdPer1M:
+      input.outputUsdPer1M !== undefined
+        ? input.outputUsdPer1M
+        : sameAsStored
+          ? current.outputUsdPer1M
+          : null,
+  });
   const jsonMode = input.jsonMode ?? current.jsonMode;
   try {
     const request: ChatRequest = {
@@ -441,10 +467,7 @@ export async function testConnection(input: Partial<AiSettingsUpdate>): Promise<
       promptTokens: res.usage.promptTokens,
       completionTokens: res.usage.completionTokens,
       totalTokens: res.usage.totalTokens,
-      estimatedCostUsd: estimateCostUsd(
-        pricingFor({ ...conn, inputUsdPer1M: input.inputUsdPer1M, outputUsdPer1M: input.outputUsdPer1M }),
-        res.usage,
-      ),
+      estimatedCostUsd: estimateCostUsd(pricing, res.usage),
       status: 'success',
       latencyMs: res.latencyMs,
       error: null,

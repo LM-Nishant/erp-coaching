@@ -20,7 +20,7 @@ import { getStorage } from '../../infrastructure/storage';
 import { logger } from '../../infrastructure/logger';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import type { ChatMessage } from '../../infrastructure/ai-providers/openai-compatible.client';
-import { aiChat, assertAiQuota, getAiAvailability } from '../ai/ai.service';
+import { aiChat, assertAiQuota, getAiAvailability, type AiProviderErrorDetails } from '../ai/ai.service';
 import { FileObject } from '../files/file.model';
 import { User } from '../users/user.model';
 import { extractJson } from '../question-bank/api';
@@ -372,6 +372,7 @@ export async function startGrading(examId: number, opts: { regrade?: boolean } =
     ? await answerRepo.findAll({
         where: { attemptId: attempts.map((a) => a.id) },
         attributes: ['id'],
+        order: [['id', 'ASC']],
         include: [
           {
             model: ExamEvaluation,
@@ -588,12 +589,21 @@ export async function runGradingJob(payload: { gradingJobId: number; answerIds: 
       }
     } catch (err) {
       const e = err as AppError;
+      // Provider failures say which provider/model failed and which usage row metered the call.
+      const failedCall =
+        e instanceof AppError && e.code === 'AI_PROVIDER_ERROR'
+          ? (e.details as AiProviderErrorDetails | undefined)
+          : undefined;
+      if (failedCall && !job.provider)
+        await job.update({ provider: failedCall.provider, model: failedCall.model });
       await resultRepo.create({
         gradingJobId: job.id,
         answerId,
         promptVersionId: job.promptVersionId,
         status: 'error',
-        model: null,
+        provider: failedCall?.provider ?? null,
+        aiUsageId: failedCall?.usageId ?? null,
+        model: failedCall?.model ?? null,
         marks: null,
         feedback: null,
         confidence: null,
