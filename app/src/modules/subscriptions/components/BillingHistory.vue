@@ -1,9 +1,9 @@
 <template>
   <div>
-    <ion-segment v-model="tab">
-      <ion-segment-button value="invoices"><ion-label>Invoices</ion-label></ion-segment-button>
-      <ion-segment-button value="payments"><ion-label>Payments</ion-label></ion-segment-button>
-      <ion-segment-button value="credits"><ion-label>Credit notes</ion-label></ion-segment-button>
+    <ion-segment v-if="tabs.length > 1" v-model="tab">
+      <ion-segment-button v-for="t in tabs" :key="t" :value="t"
+        ><ion-label>{{ TAB_LABELS[t] }}</ion-label></ion-segment-button
+      >
     </ion-segment>
 
     <ion-list v-if="tab === 'invoices'">
@@ -21,7 +21,7 @@
           <ion-badge :color="INVOICE_STATUS_COLORS[i.status]">{{ i.status }}</ion-badge>
         </div>
       </ion-item>
-      <p v-if="!invoices.items.length && !loading" class="muted ion-padding">No invoices yet.</p>
+      <p v-if="!invoices.items.length && !loading" class="muted ion-padding">No invoices.</p>
     </ion-list>
 
     <ion-list v-else-if="tab === 'payments'">
@@ -41,9 +41,18 @@
             <template v-if="p.reference"> · Ref {{ p.reference }}</template>
           </p>
         </ion-label>
+        <ion-button
+          v-if="p.status === 'pending' && p.method === 'gateway'"
+          slot="end"
+          size="small"
+          fill="clear"
+          :disabled="syncing === p.id"
+          @click.stop="sync(p)"
+          >Check status</ion-button
+        >
         <ion-badge slot="end" :color="PAYMENT_STATUS_COLORS[p.status]">{{ p.status }}</ion-badge>
       </ion-item>
-      <p v-if="!payments.items.length && !loading" class="muted ion-padding">No payments yet.</p>
+      <p v-if="!payments.items.length && !loading" class="muted ion-padding">No payments.</p>
     </ion-list>
 
     <ion-list v-else>
@@ -82,9 +91,9 @@ import {
 } from '@ionic/vue';
 import { downloadOutline } from 'ionicons/icons';
 import type { Paginated, SaasCreditNoteDto, SaasInvoiceDto, SaasPaymentDto } from '@erp/shared';
-import { toastError } from '@/core/toast';
+import { toast, toastError } from '@/core/toast';
 import { rupees } from '@/modules/hr/api';
-import { billingAdminApi, billingApi, openLink } from '../api';
+import { billingAdminApi, billingApi, openLink, type InvoiceFilters, type PaymentFilters } from '../api';
 import {
   INVOICE_KIND_LABELS,
   INVOICE_STATUS_COLORS,
@@ -94,19 +103,39 @@ import {
   formatDay,
 } from '../format';
 
-/** Tenant mode uses `/subscription`; admin mode lists one institute (or all when `instituteId` is unset). */
-const props = withDefaults(defineProps<{ admin?: boolean; instituteId?: number; reloadKey?: number }>(), {
-  admin: false,
-  instituteId: undefined,
-  reloadKey: 0,
-});
-const emit = defineEmits<{ open: [invoiceId: number] }>();
-
 type Tab = 'invoices' | 'payments' | 'credits';
+const TAB_LABELS: Record<Tab, string> = {
+  invoices: 'Invoices',
+  payments: 'Payments',
+  credits: 'Credit notes',
+};
+
+/** Tenant mode uses `/subscription`; admin mode lists one institute (or all when `instituteId` is unset). */
+const props = withDefaults(
+  defineProps<{
+    admin?: boolean;
+    instituteId?: number;
+    reloadKey?: number;
+    tabs?: Tab[];
+    invoiceFilters?: InvoiceFilters;
+    paymentFilters?: PaymentFilters;
+  }>(),
+  {
+    admin: false,
+    instituteId: undefined,
+    reloadKey: 0,
+    tabs: () => ['invoices', 'payments', 'credits'],
+    invoiceFilters: () => ({}),
+    paymentFilters: () => ({}),
+  },
+);
+const emit = defineEmits<{ open: [invoiceId: number]; changed: [] }>();
+
 const PAGE_SIZE = 20;
 const empty = <T,>(): Paginated<T> => ({ items: [], total: 0, page: 0, pageSize: PAGE_SIZE });
 
-const tab = ref<Tab>('invoices');
+const tab = ref<Tab>(props.tabs[0] ?? 'invoices');
+const syncing = ref<number | null>(null);
 const loading = ref(false);
 const invoices = reactive(empty<SaasInvoiceDto>());
 const payments = reactive(empty<SaasPaymentDto>());
@@ -122,13 +151,13 @@ const hasMore = computed(() => {
 function fetchPage(t: Tab, page: number): Promise<Paginated<unknown>> {
   const q = { page, pageSize: PAGE_SIZE };
   if (!props.admin) {
-    if (t === 'invoices') return billingApi.invoices(q);
-    if (t === 'payments') return billingApi.payments(q);
+    if (t === 'invoices') return billingApi.invoices({ ...q, ...props.invoiceFilters });
+    if (t === 'payments') return billingApi.payments({ ...q, ...props.paymentFilters });
     return billingApi.creditNotes(q);
   }
   const scoped = { ...q, instituteId: props.instituteId };
-  if (t === 'invoices') return billingAdminApi.invoices(scoped);
-  if (t === 'payments') return billingAdminApi.payments(scoped);
+  if (t === 'invoices') return billingAdminApi.invoices({ ...scoped, ...props.invoiceFilters });
+  if (t === 'payments') return billingAdminApi.payments({ ...scoped, ...props.paymentFilters });
   return billingAdminApi.creditNotes(scoped);
 }
 
@@ -157,9 +186,31 @@ async function creditPdf(id: number) {
   }
 }
 
+async function sync(p: SaasPaymentDto) {
+  syncing.value = p.id;
+  try {
+    const result = await (props.admin ? billingAdminApi.syncPayment(p.id) : billingApi.sync(p.id));
+    payments.items = payments.items.map((x) => (x.id === p.id ? result.payment : x));
+    if (result.payment.status === 'pending') await toast('The gateway has not confirmed it yet', 'medium');
+    else {
+      await toast(result.payment.status === 'success' ? 'Payment confirmed' : 'The payment failed', 'medium');
+      emit('changed');
+    }
+  } catch (e) {
+    void toastError(e);
+  } finally {
+    syncing.value = null;
+  }
+}
+
 watch(tab, (t) => void load(t, 1));
 watch(
-  () => [props.reloadKey, props.instituteId],
+  () => [
+    props.reloadKey,
+    props.instituteId,
+    JSON.stringify(props.invoiceFilters),
+    JSON.stringify(props.paymentFilters),
+  ],
   () => void load(tab.value, 1),
   { immediate: true },
 );

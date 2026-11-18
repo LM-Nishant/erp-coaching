@@ -39,6 +39,8 @@ export interface InvoiceQuery extends PageQuery {
   status?: SaasInvoiceStatus;
   kind?: SaasInvoiceKind;
   instituteId?: number;
+  /** Matches part of the invoice number. */
+  search?: string;
 }
 export interface PaymentQuery extends PageQuery {
   instituteId?: number;
@@ -48,6 +50,17 @@ export interface PaymentQuery extends PageQuery {
   from?: string;
   to?: string;
 }
+export type InvoiceFilters = Pick<InvoiceQuery, 'status' | 'kind' | 'search'>;
+export type PaymentFilters = Pick<PaymentQuery, 'status' | 'method' | 'from' | 'to'>;
+
+/** Super admin plan assignment; `endsAt` null = open-ended (platform-managed, no self-service). */
+export interface AssignPlanInput {
+  planId: number;
+  status: 'trial' | 'active';
+  billingCycle: BillingCycle;
+  endsAt: string | null;
+}
+
 export interface PaymentResult {
   outcome: string;
   payment: SaasPaymentDto;
@@ -116,6 +129,8 @@ export const billingAdminApi = {
     api.post<SubscriptionDto>(`/admin/billing/institutes/${instituteId}/suspend`, { reason }),
   reactivate: (instituteId: number, extendDays: number | null) =>
     api.post<SubscriptionDto>(`/admin/billing/institutes/${instituteId}/reactivate`, { extendDays }),
+  assignPlan: (instituteId: number, b: AssignPlanInput) =>
+    api.post<SubscriptionDto>(`/admin/institutes/${instituteId}/subscriptions`, b),
   renewalInvoice: (instituteId: number) =>
     api.post<BillingActionResultDto>(`/admin/billing/institutes/${instituteId}/renewal-invoice`),
   invoices: (q: InvoiceQuery = {}) => api.get<Paginated<SaasInvoiceDto>>('/admin/billing/invoices', { ...q }),
