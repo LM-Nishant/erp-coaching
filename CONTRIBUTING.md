@@ -185,10 +185,12 @@ Current wiring:
 | website → students (direct call)                  | `self-registration.routes.ts`  | self-registration honours `ref`/`courseId` (body or query) and records `recordReferralConversion({ kind: 'signup' })`; failures never block registration                                                     |
 | admissions → website (direct calls)               | `admissions/api.ts`            | website enquiries use `createEnquiry`, `activeForm`, `validateCustomFields`                                                                                                                                  |
 | fees, attendance, exams, lms → parent-portal      | `<module>/parent-portal.ts`    | `registerParentPortalProvider`: dues/overdue/recent payments (30), month attendance % (20), latest **published** results (40), pending homework (50)                                                         |
+| report source modules → reports                   | `<module>/reporting.ts`        | read-only queries taking a validated `ReportScope`, exported from `api.ts`: academics, admissions, students, fees, attendance, exams, payroll, grievances, appointments, live-classes, lms                   |
+| SaaS billing → reports                            | billing `integrations.ts`      | `setSaasBillingStatsProvider` (`reports/api`): MRR/ARR and revenue for the super admin dashboard; the default estimates MRR from paid active subscriptions (`source: 'subscriptions'`)                       |
 
 Identity note: academics rosters and grievances key students by **login user id**; students/guardians use `students.id` (`students.user_id` is nullable — siblings sharing a mobile have no login). Use `getStudentUserId`, `getLinkedStudentUsers`, `getGuardianUserIdsForStudentUsers` from `guardians/guardian-access` to convert.
 
-Module-owned files: `GET /files/:id/url` refuses (404) files whose `purpose` is owned by a module (`MODULE_OWNED_FILE_PURPOSES` in `files/files.service.ts`: lms, exams, question-bank, live-classes, fees, payroll, hr, students, grievances, admissions, appointments, parent-portal) unless the requester uploaded it. The owning module signs its own files behind its own permission checks; add any new module purpose to that list.
+Module-owned files: `GET /files/:id/url` refuses (404) files whose `purpose` is owned by a module (`MODULE_OWNED_FILE_PURPOSES` in `files/files.service.ts`: lms, exams, question-bank, live-classes, fees, payroll, hr, students, grievances, admissions, appointments, parent-portal, reports) unless the requester uploaded it. The owning module signs its own files behind its own permission checks; add any new module purpose to that list.
 
 ### Institute timezone
 
@@ -218,6 +220,43 @@ registerParentPortalProvider({
 ```
 
 `child` is a `ParentChildDto` (`{ studentId, studentUserId, name, admissionNumber, branchId, branchName, batches }`) (`studentId` = `students.id`; `studentUserId` = login user id for rosters/attendance/grievances, may be null). Return `ParentPortalSectionDto` (`packages/shared/src/parent-portal.ts`). Providers whose module is disabled for the institute are skipped, and a throwing provider is logged and skipped, so one module can't break the page. Built-in providers: attendance 20, fees 30, exams 40, lms 50, appointments 60. **Never expose staff-only data** (e.g. private notes): the output goes straight to parents.
+
+### Reports and analytics (backend)
+
+The `reports` module owns the catalogue, filters, scoping, role dashboards and exports. Each source module owns its SQL in `<module>/reporting.ts`, exported from its `api.ts`. Shared types are in `packages/shared/src/reports.ts`.
+
+- **Audience.** Each report request is resolved to one audience from the caller's roles:
+  - `management`: institute and branch admins
+  - `finance`: accountant
+  - `teacher`
+  - `student`
+  - `parent`
+- **Scope.** The reports module turns the audience and filters into a `ReportScope` (`shared/reporting.ts`):
+  - It always sets the institute and the allowed branches, plus any course and batch filter.
+  - For teachers it adds `batchIds` and `teacherUserId`.
+  - For students and parents it adds `studentUserIds` and `studentIds` (own data, or linked children only).
+  - It validates branch, course and batch filters, and rejects them for students and parents.
+- **Query helpers.** A helper receives the scope and nothing from the request context, so it also runs inside export jobs.
+  - Use `reportQuery` with `SqlFilter`. Raw SQL bypasses the tenant hooks, so **always filter on `instituteId` and apply every non-null scope field**. `SqlFilter.in()` with an empty list matches nothing.
+  - Use `scope.start`/`scope.end` (instants with the institute timezone applied) for timestamps, and `scope.from`/`scope.to` for date columns.
+  - Respect `scope.limit` for detail rows.
+- **Adding a report.**
+  1. Add the key to `REPORT_KEYS`.
+  2. Add a `ReportDefinition` to `reports/definitions.ts`, with:
+     - `filters`
+     - `planModule`
+     - `access`: the source-module permissions each audience needs, on top of `reports.view`
+     - `run`, which builds metrics and tables
+  3. The report is then included in the catalogue, the screen views and all three export formats automatically.
+- **Exports.**
+  - `POST /api/reports/:key/exports` renders CSV, XLSX or PDF during the request when every table fits in 2,000 rows. Otherwise it queues the `reports.export` job, which allows up to 50,000 rows per table and notifies `reports.export-ready`.
+  - Files use the `reports` purpose, count toward the storage quota, and expire after 24 hours.
+  - Each download is a separately audited, 5-minute signed link (`POST /api/reports/exports/:id/download`).
+  - Requests and downloads are audited as `report.exported` and `report.export_downloaded`.
+- **SaaS dashboard.**
+  - `GET /api/admin/reports/dashboard` (super admin) aggregates every institute.
+  - `GET /api/admin/reports/institutes/export` exports the institutes table, audited as `report.saas_exported`.
+  - Revenue figures come from `setSaasBillingStatsProvider` (see the wiring table).
 
 ### 7. Tests (required)
 
@@ -277,6 +316,7 @@ export default defineAppModule({
   - UI checks are a convenience. **The backend is the authority.**
 - **API calls.**
   - Go through `core/api.ts` only, never raw `fetch` or axios. It handles tokens, refresh and `X-Branch-Id`.
+  - For endpoints that respond with a file attachment, use `api.download(path, query)`. It returns `{ blob, fileName }`; `fileName` is null when the browser can't read `Content-Disposition` cross-origin.
   - Show errors with `errorMessage(e)` and `toast`.
 - **Branding.** Use Ionic colour variables (`var(--ion-color-primary)`) and never hard-code brand colours.
 - **Native APIs.** Use Capacitor plugins and guard them with `Capacitor.isNativePlatform()` when behaviour differs.
@@ -285,7 +325,17 @@ export default defineAppModule({
 
 ### Dashboard widgets
 
-Shared dashboards render cards from every module's `widgets` (`DashboardWidget` in `app/src/core/modules.ts`). Today there is one slot, `parent-home` (`/parent-home`, owned by `parent-portal`): the parent picks a linked child and every widget is rendered with the prop `child: ParentChildDto`.
+Shared dashboards render cards from every module's `widgets` (`DashboardWidget` in `app/src/core/modules.ts`). There are three slots:
+
+| Slot            | Host                                               | Props                   | Notes                                                                                     |
+| --------------- | -------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
+| `parent-home`   | `/parent-home` (parent-portal)                     | `child: ParentChildDto` | The parent picks a linked child. Contract below.                                          |
+| `home`          | `/home` dashboard, institute users                 | none                    | Remounted on pull-to-refresh and branch switch. Built-in: reports `Analytics` (order 10). |
+| `platform-home` | `/home` dashboard, super admin (not impersonating) | none                    | Built-in: reports platform summary (order 10).                                            |
+
+For `home` and `platform-home`, load your own data and follow the error rules below. The active branch is sent automatically as `X-Branch-Id`.
+
+Example for `parent-home`:
 
 ```ts
 // app/src/modules/fees/module.ts
@@ -303,7 +353,7 @@ widgets: [
 ],
 ```
 
-Widget component contract:
+Widget component contract (`parent-home`):
 
 - `defineProps<{ child: ParentChildDto }>()`. Use `child.studentId` for students/guardians/fees data and `child.studentUserId` (nullable) for rosters, attendance and grievances.
 - The host supplies the card and title; render only the body. Load your own data through your `api.ts`, show an empty state, and swallow or toast errors. Don't throw.
