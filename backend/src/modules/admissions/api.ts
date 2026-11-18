@@ -8,6 +8,13 @@ export {
   type AdmissionCompletedEvent,
   type AdmissionCompletedListener,
 } from './admission-events';
+export {
+  admitForCoursePurchase,
+  purchaseBatchError,
+  releaseCoursePurchaseBatch,
+  type CoursePurchaseAdmission,
+  type PurchaseBatchIssue,
+} from './course-purchase';
 export { activeForm, validateCustomFields } from './forms.service';
 
 export interface CreateEnquiryInput {

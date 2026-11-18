@@ -8,11 +8,11 @@ import type { CheckoutOrderDto, CourseQuoteDto, PaymentGatewayKey } from '@erp/s
 import { config } from '../../infrastructure/config';
 import { requireTenantContext } from '../../shared/context';
 import { Conflict, NotFound } from '../../shared/errors';
-import { Course } from '../academics/api';
+import { Batch, Course, batchAvailability, batchUnavailableError, openBatchesForCourse } from '../academics/api';
 import { Student } from '../students/models';
 import { isModuleEnabled } from '../subscriptions/subscription.service';
 import { validateCoupon } from '../website/api';
-import { FeeAccount, FeePayment, FeeStructure } from './models';
+import { FeeAccount, FeeCourseEnrolment, FeePayment, FeeStructure } from './models';
 import { findStructureFor } from './structures.service';
 import { generateAccount } from './accounts.service';
 import { couponCustomerKey, createCheckout } from './payments.service';
@@ -144,6 +144,26 @@ export async function quoteCourse(input: {
       }
     }
   }
+  const chosen = input.batchId ?? account?.batchId ?? null;
+  const [availability, open, enrolment] = await Promise.all([
+    chosen
+      ? batchAvailability(chosen, {
+          courseId: course.id,
+          branchId: student.branchId,
+          studentUserId: student.userId,
+        })
+      : null,
+    openBatchesForCourse(course.id, student.branchId),
+    account
+      ? FeeCourseEnrolment.findOne({ where: { instituteId: student.instituteId, accountId: account.id } })
+      : null,
+  ]);
+  const enrolledBatch = enrolment?.batchId
+    ? await Batch.findOne({
+        where: { instituteId: student.instituteId, id: enrolment.batchId },
+        attributes: ['name'],
+      })
+    : null;
   return {
     courseId: course.id,
     courseName: course.name,
@@ -153,7 +173,54 @@ export async function quoteCourse(input: {
     payable: amount - discount,
     coupon,
     alreadyPaid: !!account && account.balance <= 0,
+    batch: availability
+      ? {
+          id: chosen!,
+          // Another branch's batch is invisible to the student: report it without its name.
+          name: availability.batch && availability.reason !== 'other_branch' ? availability.batch.name : null,
+          available: !availability.reason,
+          reason: availability.reason,
+        }
+      : null,
+    openBatches: open.map(({ batch, seatsLeft }) => ({
+      id: batch.id,
+      name: batch.name,
+      startDate: batch.startDate,
+      seatsLeft,
+    })),
+    enrolment: enrolment
+      ? { status: enrolment.status, batchId: enrolment.batchId, batchName: enrolledBatch?.name ?? null }
+      : null,
   };
+}
+
+/**
+ * The batch chosen at checkout must be one the student can join now (409 BATCH_FULL / BATCH_CLOSED
+ * otherwise). An unpaid purchase may switch batch; once money is in, or when the price itself is the
+ * batch's, the purchase stays with its batch.
+ */
+async function applyCheckoutBatch(
+  target: Awaited<ReturnType<typeof purchaseTarget>>,
+  batchId: number | null,
+): Promise<void> {
+  if (!batchId) return;
+  const { student, course, account } = target;
+  const { reason } = await batchAvailability(batchId, {
+    courseId: course.id,
+    branchId: student.branchId,
+    studentUserId: student.userId,
+  });
+  if (reason) throw batchUnavailableError(reason);
+  if (!account || account.batchId === batchId) return;
+  const structure = account.structureId
+    ? await FeeStructure.findOne({
+        where: { instituteId: account.instituteId, id: account.structureId },
+        attributes: ['batchId'],
+      })
+    : null;
+  if (account.paid > 0 || structure?.batchId)
+    throw Conflict('This course purchase is already for another batch', 'PURCHASE_BATCH_FIXED');
+  await account.update({ batchId });
 }
 
 /** Creates (or reuses) the student's fee account for the course and starts an online checkout. */
@@ -169,6 +236,7 @@ export async function startCoursePurchase(input: {
   const { instituteId } = requireTenantContext();
   const batchId = input.batchId ?? null;
   const target = await purchaseTarget(input.studentId, input.courseId, batchId);
+  await applyCheckoutBatch(target, batchId);
   let account = target.account;
   if (!account) {
     // A cancelled earlier purchase keeps its sourceRef, so number the attempts.

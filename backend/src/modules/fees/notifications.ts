@@ -34,6 +34,16 @@ export function registerFeeNotificationEvents() {
       defaultChannels: ['whatsapp'],
       defaultRecipientTypes: ['guardian', 'student'],
     },
+    {
+      key: 'fees.course-enrolment-pending',
+      label: 'Course bought online, batch to assign',
+      category: 'Fees',
+      variables: ['student.name', 'course', 'reason'],
+      title: 'Assign a batch: {{student.name}}',
+      body: '{{student.name}} paid for {{course}} online but could not be placed in a batch: {{reason}}. Assign one under Fees → Course enrolments.',
+      defaultChannels: ['in_app', 'push'],
+      defaultRecipientTypes: ['staff'],
+    },
   ]);
 }
 

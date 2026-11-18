@@ -3,6 +3,7 @@ import { Op, type WhereOptions } from 'sequelize';
 import { z } from 'zod';
 import {
   FEE_ADJUSTMENT_TYPES,
+  FEE_COURSE_ENROLMENT_STATUSES,
   INSTALMENT_PLAN_TYPES,
   OFFLINE_PAYMENT_MODES,
   PAYMENT_GATEWAYS,
@@ -19,6 +20,7 @@ import {
   FeeAccount,
   FeeAdjustment,
   FeeConcessionRule,
+  FeeCourseEnrolment,
   FeeHead,
   FeeLedgerEntry,
   FeePayment,
@@ -62,6 +64,7 @@ import {
 } from './payments.service';
 import { findReceipt, receiptDto, receiptPdfUrl } from './receipts';
 import { quoteCourse, startCoursePurchase } from './course-sales';
+import { courseEnrolmentDtos, courseEnrolmentRepo, reconcileCourseEnrolment } from './course-enrolment';
 import { enabledGateways, gatewayDto, gatewayRepo, upsertGatewayConfig } from './gateways.service';
 import {
   bankAccountDto,
@@ -935,6 +938,59 @@ function selfRoutes(r: Router) {
   });
 }
 
+// ------------------------------------------------------------------ course purchase enrolments
+
+/**
+ * Admissions and batch enrolments produced by online course purchases. `awaiting_batch` is the
+ * queue of paid students no batch could take; an admin assigns one.
+ */
+function courseEnrolmentRoutes(r: Router) {
+  r.get('/course-enrolments', can('view'), async (req, res) => {
+    const q = parse(
+      paginationSchema.extend({
+        status: z.enum(FEE_COURSE_ENROLMENT_STATUSES).optional(),
+        branchId: qId,
+        courseId: qId,
+        studentId: qId,
+      }),
+      req.query,
+    );
+    const where: Record<string, unknown> = {};
+    for (const k of ['status', 'branchId', 'courseId', 'studentId'] as const) if (q[k]) where[k] = q[k];
+    const { rows, count } = await courseEnrolmentRepo.findAndCountAll({
+      where: where as WhereOptions<FeeCourseEnrolment>,
+      include: q.search
+        ? [
+            {
+              model: Student,
+              as: 'student',
+              attributes: [],
+              where: {
+                [Op.or]: [
+                  { name: { [Op.like]: `%${q.search}%` } },
+                  { admissionNumber: { [Op.like]: `%${q.search}%` } },
+                  { mobile: { [Op.like]: `%${q.search}%` } },
+                ],
+              },
+            },
+          ]
+        : [],
+      order: [['id', 'DESC']],
+      ...toLimitOffset(q),
+    });
+    res.json(paginated(await courseEnrolmentDtos(rows), count, q));
+  });
+  r.post('/course-enrolments/:id/assign', can('approve'), async (req, res) => {
+    const { id } = parse(idParam, req.params);
+    const { batchId } = parse(z.object({ batchId: z.number().int().positive() }), req.body ?? {});
+    const row = await courseEnrolmentRepo.findById(id);
+    courseEnrolmentRepo.assertRowWritable(row);
+    const saved = await reconcileCourseEnrolment(row.accountId, { batchId });
+    if (!saved) throw NotFound('Course enrolment');
+    res.json((await courseEnrolmentDtos([saved]))[0]);
+  });
+}
+
 // ------------------------------------------------------------------ accounting & reports
 
 function ledgerDto(e: FeeLedgerEntry) {
@@ -1416,6 +1472,7 @@ export function feesRoutes(api: Router) {
   accountRoutes(r);
   paymentRoutes(r);
   selfRoutes(r);
+  courseEnrolmentRoutes(r);
   accountingRoutes(r);
   reportRoutes(r);
   api.use('/fees', r);

@@ -442,6 +442,147 @@ export async function enrollStudentsInBatch(
   return opts.transaction ? run(opts.transaction) : getSequelize().transaction(run);
 }
 
+export type BatchUnavailableReason = 'not_found' | 'other_course' | 'other_branch' | 'closed' | 'full';
+
+/** The API error for a batch a student can't join (see `batchAvailability`). */
+export function batchUnavailableError(reason: BatchUnavailableReason) {
+  switch (reason) {
+    case 'not_found':
+      return NotFound('Batch');
+    case 'other_course':
+      return BadRequest('The batch is not part of this course');
+    case 'other_branch':
+      return BadRequest("The batch belongs to a different branch from the student's");
+    case 'closed':
+      return Conflict('The batch is not open for enrolment', 'BATCH_CLOSED');
+    case 'full':
+      return Conflict('The batch is full', 'BATCH_FULL');
+  }
+}
+
+const OPEN_BATCH_STATUSES = ['planned', 'active'] as const;
+
+async function activeSeatCounts(batchIds: number[], transaction?: Transaction) {
+  const counts = new Map<number, number>();
+  if (!batchIds.length) return counts;
+  const rows = await repos.batchStudents.findAll({
+    where: { batchId: { [Op.in]: batchIds }, status: 'active' },
+    attributes: ['batchId'],
+    transaction,
+  });
+  for (const r of rows) counts.set(r.batchId, (counts.get(r.batchId) ?? 0) + 1);
+  return counts;
+}
+
+/**
+ * Whether a student can join a batch of a course in a branch: the batch must be visible, belong to
+ * that course and branch, be planned or active and not yet ended, and have a free seat (a student
+ * already actively enrolled always "fits"). `reason` is null when the batch is available. Inside a
+ * transaction the batch row is locked, so the answer holds until the caller enrolls the student.
+ */
+export async function batchAvailability(
+  batchId: number,
+  opts: { courseId: number; branchId: number; studentUserId?: number | null; transaction?: Transaction },
+): Promise<{ batch: Batch | null; reason: BatchUnavailableReason | null; seatsLeft: number }> {
+  const { transaction } = opts;
+  const batch = await repos.batches.findOne({
+    where: { id: batchId },
+    transaction,
+    lock: transaction ? transaction.LOCK.UPDATE : undefined,
+  });
+  if (!batch) return { batch: null, reason: 'not_found', seatsLeft: 0 };
+  if (batch.courseId !== opts.courseId) return { batch, reason: 'other_course', seatsLeft: 0 };
+  if (batch.branchId !== opts.branchId) return { batch, reason: 'other_branch', seatsLeft: 0 };
+  const isOpen =
+    (OPEN_BATCH_STATUSES as readonly string[]).includes(batch.status) &&
+    (!batch.endDate || batch.endDate >= (await today()));
+  if (!isOpen) return { batch, reason: 'closed', seatsLeft: 0 };
+  const seatsLeft = Math.max(0, batch.capacity - ((await activeSeatCounts([batch.id], transaction)).get(batch.id) ?? 0));
+  if (seatsLeft > 0) return { batch, reason: null, seatsLeft };
+  if (opts.studentUserId) {
+    const mine = await repos.batchStudents.findOne({
+      where: { batchId: batch.id, studentUserId: opts.studentUserId, status: 'active' },
+      attributes: ['id'],
+      transaction,
+    });
+    if (mine) return { batch, reason: null, seatsLeft };
+  }
+  return { batch, reason: 'full', seatsLeft };
+}
+
+/**
+ * Open batches of a course in a branch that still have seats: planned or active, not yet ended,
+ * earliest start first (so a running batch is preferred over one that starts later).
+ */
+export async function openBatchesForCourse(
+  courseId: number,
+  branchId: number,
+  opts: { transaction?: Transaction } = {},
+): Promise<{ batch: Batch; seatsLeft: number }[]> {
+  const day = await today();
+  const batches = await repos.batches.findAll({
+    where: {
+      courseId,
+      branchId,
+      status: { [Op.in]: [...OPEN_BATCH_STATUSES] },
+      [Op.or]: [{ endDate: null }, { endDate: { [Op.gte]: day } }],
+    } as WhereOptions<Batch>,
+    order: [
+      ['startDate', 'ASC'],
+      ['id', 'ASC'],
+    ],
+    transaction: opts.transaction,
+  });
+  const counts = await activeSeatCounts(
+    batches.map((b) => b.id),
+    opts.transaction,
+  );
+  return batches
+    .map((batch) => ({ batch, seatsLeft: Math.max(0, batch.capacity - (counts.get(batch.id) ?? 0)) }))
+    .filter((b) => b.seatsLeft > 0);
+}
+
+/** The batch of a course the student is actively enrolled in (earliest enrolment first), if any. */
+export async function activeBatchForCourse(
+  studentUserId: number,
+  courseId: number,
+  opts: { transaction?: Transaction } = {},
+): Promise<Batch | null> {
+  const rows = await repos.batchStudents.findAll({
+    where: { studentUserId, status: 'active' },
+    attributes: ['batchId'],
+    order: [['id', 'ASC']],
+    transaction: opts.transaction,
+  });
+  if (!rows.length) return null;
+  const batches = await repos.batches.findAll({
+    where: { id: { [Op.in]: rows.map((r) => r.batchId) }, courseId },
+    transaction: opts.transaction,
+  });
+  const byId = new Map(batches.map((b) => [b.id, b]));
+  for (const r of rows) {
+    const batch = byId.get(r.batchId);
+    if (batch) return batch;
+  }
+  return null;
+}
+
+/** Marks a student's active enrolment in a batch as left (today). Returns false when not enrolled. */
+export async function leaveBatch(
+  batchId: number,
+  studentUserId: number,
+  opts: { transaction?: Transaction } = {},
+): Promise<boolean> {
+  const row = await repos.batchStudents.findOne({
+    where: { batchId, studentUserId, status: 'active' },
+    transaction: opts.transaction,
+    lock: opts.transaction ? opts.transaction.LOCK.UPDATE : undefined,
+  });
+  if (!row) return false;
+  await row.update({ status: 'left', leftOn: await today() }, { transaction: opts.transaction });
+  return true;
+}
+
 export async function notifyClassChanged(payload: ClassChangedJobPayload) {
   await enqueueJob(ACADEMICS_CLASS_CHANGED_JOB, { ...payload });
 }

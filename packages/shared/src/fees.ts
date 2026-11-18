@@ -225,6 +225,26 @@ export interface CheckoutOrderDto {
   checkout: Record<string, unknown>;
 }
 
+/** Why an online course purchase could not use a batch (the one chosen at checkout, or any). */
+export const COURSE_BATCH_ISSUES = [
+  'not_found',
+  'other_course',
+  'other_branch',
+  'closed',
+  'full',
+  'no_login',
+  'no_open_batch',
+] as const;
+export type CourseBatchIssue = (typeof COURSE_BATCH_ISSUES)[number];
+
+/** An open batch of a course with free seats, offered at checkout. */
+export interface CourseBatchOptionDto {
+  id: number;
+  name: string;
+  startDate: string;
+  seatsLeft: number;
+}
+
 /** Price of a course for the "buy course" checkout (paise). */
 export interface CourseQuoteDto {
   courseId: number;
@@ -235,6 +255,41 @@ export interface CourseQuoteDto {
   payable: number;
   coupon: { code: string; valid: boolean; message: string } | null;
   alreadyPaid: boolean;
+  /** The batch chosen at checkout and whether it still has a seat for the student (null: none chosen). */
+  batch: { id: number; name: string | null; available: boolean; reason: CourseBatchIssue | null } | null;
+  /** Open batches of the course in the student's branch with free seats. */
+  openBatches: CourseBatchOptionDto[];
+  /** Once paid: the admission and batch enrolment the purchase produced (null before that). */
+  enrolment: { status: FeeCourseEnrolmentStatus; batchId: number | null; batchName: string | null } | null;
+}
+
+export const FEE_COURSE_ENROLMENT_STATUSES = ['enrolled', 'awaiting_batch', 'revoked'] as const;
+export type FeeCourseEnrolmentStatus = (typeof FEE_COURSE_ENROLMENT_STATUSES)[number];
+
+/**
+ * The admission and batch enrolment produced by an online course purchase. `awaiting_batch` rows
+ * form the admin queue: the student is paid and admitted but no batch could take them.
+ */
+export interface CourseEnrolmentDto {
+  id: number;
+  accountId: number;
+  branchId: number;
+  studentId: number;
+  studentName: string | null;
+  admissionNumber: string | null;
+  courseId: number;
+  courseName: string | null;
+  status: FeeCourseEnrolmentStatus;
+  requestedBatchId: number | null;
+  requestedBatchName: string | null;
+  batchId: number | null;
+  batchName: string | null;
+  applicationId: number | null;
+  /** Why the chosen batch was not used, or why no batch was found. */
+  reason: CourseBatchIssue | null;
+  enrolledAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
 }
 
 export interface GatewayConfigDto {
