@@ -46,6 +46,7 @@ export const SEGMENT_TABLES: Record<string, string> = {
   'notifications/inbox': 'notification_messages',
   'payroll/settlements': 'final_settlements',
   'public/sites/*/checkout': 'courses',
+  'tenant-data/exports': 'data_exports',
   'website/referrals': 'website_referral_codes',
 };
 
@@ -237,6 +238,7 @@ export const SELF_SERVICE_ROUTES: Record<string, string> = {
   'GET /api/auth/me': 'own profile',
   'POST /api/auth/select-institute': 'switch between own institutes',
   'GET /api/auth/devices': 'own devices',
+  'GET /api/subscription/status': 'subscription banner state for every member',
   'DELETE /api/auth/devices/:id': 'own devices',
   'POST /api/auth/impersonation/stop': 'end own impersonation',
   'POST /api/lms/files': 'checks lms upload permission in the handler',

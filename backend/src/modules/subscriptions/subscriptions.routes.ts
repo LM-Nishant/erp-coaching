@@ -9,6 +9,7 @@ import { requirePermission, requireSuperAdmin, requireTenant } from '../../share
 import { getContext, hasPermission, requireTenantContext } from '../../shared/context';
 import { BadRequest, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
+import { webhookRateLimit } from '../../shared/middleware/security';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { Institute } from '../institutes/institute.model';
 import { User } from '../users/user.model';
@@ -720,6 +721,7 @@ function publicRoutes(api: Router) {
   // before anything is trusted; replays are recognised by the gateway event id.
   api.post(
     '/subscriptions/public/webhooks/:gateway',
+    webhookRateLimit,
     express.raw({ type: () => true, limit: '1mb' }),
     async (req, res) => {
       const { gateway } = parse(z.object({ gateway: z.string().regex(/^[a-z0-9-]{2,30}$/) }), req.params);
