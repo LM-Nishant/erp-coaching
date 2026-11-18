@@ -2,6 +2,7 @@ import { Op, type Transaction, type WhereOptions } from 'sequelize';
 import type {
   SaasCheckoutDto,
   SaasCreditNoteDto,
+  SaasInvoiceDetailDto,
   SaasInvoiceDto,
   SaasPaymentDto,
   SaasPaymentMethod,
@@ -22,7 +23,12 @@ import {
 import { audit } from '../../shared/audit/audit.service';
 import { runWithContext } from '../../shared/context';
 import { AppError, BadRequest, Conflict, NotFound } from '../../shared/errors';
-import { SubscriptionInvoice, SubscriptionPayment, SubscriptionWebhookEvent } from './models';
+import {
+  SubscriptionCreditNote,
+  SubscriptionInvoice,
+  SubscriptionPayment,
+  SubscriptionWebhookEvent,
+} from './models';
 import {
   createCreditNote,
   findInvoice,
@@ -99,7 +105,11 @@ export function toPaymentDto(
   };
 }
 
-const invoiceInclude = { model: SubscriptionInvoice, as: 'invoice', attributes: ['id', 'number', 'billedTo'] };
+const invoiceInclude = {
+  model: SubscriptionInvoice,
+  as: 'invoice',
+  attributes: ['id', 'number', 'billedTo'],
+};
 
 export interface PaymentListQuery {
   instituteId?: number;
@@ -135,6 +145,23 @@ export async function listPayments(q: PaymentListQuery, tenantScoped: boolean) {
   return { items: rows.map((p) => toPaymentDto(p)), total: count, page: q.page, pageSize: q.pageSize };
 }
 
+/** Invoice with its payments and credit notes (`instituteId` null: super admin). */
+export async function invoiceDetail(id: number, instituteId: number | null): Promise<SaasInvoiceDetailDto> {
+  const inv = await findInvoice(id, instituteId);
+  const scoped = <T extends { where: object }>(opts: T): T =>
+    instituteId === null ? platform(opts) : { ...opts, where: { ...opts.where, instituteId } };
+  const order = [['id', 'DESC']] as [string, string][];
+  const [payments, notes] = await Promise.all([
+    SubscriptionPayment.findAll(scoped({ where: { invoiceId: inv.id }, order })),
+    SubscriptionCreditNote.findAll(scoped({ where: { invoiceId: inv.id }, order })),
+  ]);
+  return {
+    invoice: toInvoiceDto(inv),
+    payments: payments.map((p) => toPaymentDto(p, inv)),
+    creditNotes: notes.map((n) => toCreditNoteDto(n, inv.number)),
+  };
+}
+
 async function loadPayment(id: number, instituteId: number | null) {
   const opts = { where: instituteId === null ? { id } : { instituteId, id }, include: [invoiceInclude] };
   const p = await SubscriptionPayment.findOne(instituteId === null ? platform(opts) : opts);
@@ -168,19 +195,16 @@ async function applyToInvoice(
     { transaction },
   );
   if (!wasOpen)
-    await p.update({ note: 'Received after the invoice was settled: refund or adjust the excess' }, { transaction });
+    await p.update(
+      { note: 'Received after the invoice was settled: refund or adjust the excess' },
+      { transaction },
+    );
   if (settled) await applyInvoicePaid(inv, transaction, now);
   return settled;
 }
 
 export type SaasWebhookOutcome =
-  | 'paid'
-  | 'failed'
-  | 'duplicate'
-  | 'already_processed'
-  | 'unmatched'
-  | 'amount_mismatch'
-  | 'pending';
+  'paid' | 'failed' | 'duplicate' | 'already_processed' | 'unmatched' | 'amount_mismatch' | 'pending';
 
 interface AppliedResult {
   outcome: SaasWebhookOutcome;
@@ -246,7 +270,10 @@ async function applyVerified(
           }
         } else if (v.status === 'failed') {
           if (p.status === 'pending') {
-            await p.update({ status: 'failed', gatewayPaymentId: v.gatewayPaymentId || null }, { transaction });
+            await p.update(
+              { status: 'failed', gatewayPaymentId: v.gatewayPaymentId || null },
+              { transaction },
+            );
             outcome = 'failed';
           } else outcome = 'already_processed';
         }
@@ -324,7 +351,10 @@ export async function startCheckout(
     if (existing) return replay(existing, inv);
   }
   if (inv.status !== 'open')
-    throw Conflict(inv.status === 'paid' ? 'The invoice is already paid' : 'The invoice is void', 'INVOICE_NOT_OPEN');
+    throw Conflict(
+      inv.status === 'paid' ? 'The invoice is already paid' : 'The invoice is void',
+      'INVOICE_NOT_OPEN',
+    );
   const amount = invoiceBalance(inv);
   if (amount <= 0) throw Conflict('Nothing is due on this invoice', 'INVOICE_NOT_OPEN');
   const cfg = await resolveGateway(undefined, 'checkout');
@@ -414,7 +444,11 @@ export async function processWebhook(
 }
 
 /** Development/test only: simulates the mock gateway's hosted checkout and delivers its webhook. */
-export async function completeMockCheckout(instituteId: number, paymentId: number, outcome: 'success' | 'failed') {
+export async function completeMockCheckout(
+  instituteId: number,
+  paymentId: number,
+  outcome: 'success' | 'failed',
+) {
   if (config.isProd) throw NotFound('Payment');
   const p = await loadPayment(paymentId, instituteId);
   if (p.gateway !== 'mock' || !p.gatewayOrderId) throw BadRequest('Not a mock gateway payment');

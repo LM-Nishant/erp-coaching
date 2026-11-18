@@ -326,6 +326,13 @@ export interface SaasCreditNoteDto {
   createdAt: string;
 }
 
+/** Invoice with its payments and credit notes. */
+export interface SaasInvoiceDetailDto {
+  invoice: SaasInvoiceDto;
+  payments: SaasPaymentDto[];
+  creditNotes: SaasCreditNoteDto[];
+}
+
 export interface PlanChangePreviewDto {
   /** `trial` = plan switch during the free trial (no charge). */
   kind: 'upgrade' | 'downgrade' | 'trial' | 'same';
@@ -458,7 +465,8 @@ export interface DataExportDto {
   createdAt: string;
 }
 
-export type DeletionRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'completed' | 'failed';
+export type DeletionRequestStatus =
+  'pending' | 'approved' | 'rejected' | 'cancelled' | 'completed' | 'failed';
 
 export interface DeletionRequestDto {
   id: number;
