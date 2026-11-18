@@ -299,7 +299,12 @@ export const ROUTE_QUERY: Record<string, Record<string, string>> = {
  * GET routes whose owner (positive control) cannot return 2xx/3xx for a valid record, with the
  * statuses that are acceptable and why. Prefer creating victim data in the right state instead.
  */
-export const OWNER_STATUS: Record<string, { status: number[]; reason: string }> = {};
+export const OWNER_STATUS: Record<string, { status: number[]; reason: string }> = {
+  'GET /api/exams/:id/evaluations/:answerId/history': {
+    status: [409],
+    reason: 'synthesized attempts stay in progress for the resume routes; history exists once submitted',
+  },
+};
 
 /**
  * Routes that deliberately answer every caller the same way whether or not the record exists (so

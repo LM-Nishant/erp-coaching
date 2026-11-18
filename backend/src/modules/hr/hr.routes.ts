@@ -8,6 +8,7 @@ import { authenticate } from '../../shared/middleware/authenticate';
 import { requireModule, requirePermission } from '../../shared/middleware/authorize';
 import { BadRequest, Conflict, Forbidden } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
+import { instituteToday } from '../../shared/timezone';
 import { Employee, LeaveType } from './models';
 import {
   applyLeave,
@@ -32,7 +33,7 @@ import {
   visibleEmployeeIds,
 } from './hr.service';
 import { employeeRoutes } from './employees.routes';
-import { hhmm, isoDate, monthBounds, today } from './dates';
+import { hhmm, isoDate, monthBounds } from './dates';
 
 const date = z.string().regex(isoDate, 'Use YYYY-MM-DD');
 const time = z.string().regex(hhmm, 'Use HH:mm');
@@ -314,7 +315,7 @@ function leaveRoutes(r: Router) {
       req.query,
     );
     await employeeRepo.findById(id);
-    res.json(await leaveBalances(id, year ?? Number(today().slice(0, 4))));
+    res.json(await leaveBalances(id, year ?? Number((await instituteToday()).slice(0, 4))));
   });
 }
 
@@ -359,7 +360,8 @@ function lifecycleRoutes(r: Router) {
     const asset = await assetRepo.findById(id);
     await employeeRepo.findById(asset.employeeId);
     const before = asset.toJSON();
-    if (body.status === 'returned' && !body.returnedOn && !asset.returnedOn) body.returnedOn = today();
+    if (body.status === 'returned' && !body.returnedOn && !asset.returnedOn)
+      body.returnedOn = await instituteToday();
     await asset.update(body);
     await audit({
       action: 'hr.asset.updated',
@@ -444,7 +446,7 @@ function selfServiceRoutes(r: Router) {
       req.query,
     );
     const emp = await currentEmployee();
-    res.json(await leaveBalances(emp.id, year ?? Number(today().slice(0, 4))));
+    res.json(await leaveBalances(emp.id, year ?? Number((await instituteToday()).slice(0, 4))));
   });
   r.get('/me/leave-types', requirePermission('hr-self-service', 'view'), async (_req, res) => {
     await ensureDefaultLeaveTypes();
@@ -500,9 +502,9 @@ function selfServiceRoutes(r: Router) {
   r.post('/me/resignation', requirePermission('hr-self-service', 'create'), async (req, res) => {
     const body = parse(z.object({ lastWorkingDay: date.optional(), reason: optStr(2000) }), req.body);
     const emp = await currentEmployee();
-    if (body.lastWorkingDay && body.lastWorkingDay < today())
-      throw BadRequest('lastWorkingDay is in the past');
-    const sep = await submitSeparation(emp, { ...body, type: 'resignation', submittedOn: today() });
+    const day = await instituteToday();
+    if (body.lastWorkingDay && body.lastWorkingDay < day) throw BadRequest('lastWorkingDay is in the past');
+    const sep = await submitSeparation(emp, { ...body, type: 'resignation', submittedOn: day });
     await audit({
       action: 'hr.separation.created',
       entityType: 'EmployeeSeparation',

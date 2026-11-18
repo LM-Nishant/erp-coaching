@@ -315,5 +315,5 @@ export async function ingestPunches(
 }
 
 export async function parseDevicePayload(payload: unknown) {
-  return getBiometricAdapter().parsePush(payload);
+  return getBiometricAdapter().parsePush(payload, { timeZone: await getInstituteTimezone() });
 }

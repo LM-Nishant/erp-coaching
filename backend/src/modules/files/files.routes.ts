@@ -12,7 +12,7 @@ import { authenticate } from '../../shared/middleware/authenticate';
 import { requirePermission, requireTenant } from '../../shared/middleware/authorize';
 import { withContext } from '../../shared/middleware/context';
 import { getContext } from '../../shared/context';
-import { BadRequest, NotFound } from '../../shared/errors';
+import { BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
 import { isBlockedUploadType, setFileResponseHeaders } from '../../shared/utilities/file-response';
 import { mediaRateLimit } from '../../shared/middleware/security';
@@ -121,6 +121,12 @@ export function fileRoutes(api: Router) {
 
   r.delete('/:id', requirePermission('files', 'delete'), async (req, res) => {
     const { id } = parse(idParam, req.params);
+    const file = await fileRepo.findById(id);
+    fileRepo.assertRowWritable(file);
+    // Module-owned files (exam answer scans, receipts, payslips…) are removed only by their module so
+    // records such as submitted answers keep their evidence.
+    if (isModuleOwnedPurpose(file.module))
+      throw Conflict('This file is managed by its module and cannot be deleted here', 'MODULE_OWNED_FILE');
     await deleteFile(id);
     await audit({ action: 'file.deleted', entityType: 'file', entityId: id });
     res.status(204).end();

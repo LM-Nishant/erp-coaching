@@ -23,8 +23,8 @@
           </h2>
           <p>
             {{ a.mobile }}<span v-if="a.email"> · {{ a.email }}</span> · applied {{ fmtDate(a.createdAt) }}
-            <span v-if="a.courseId"> · course #{{ a.courseId }}</span
-            ><span v-if="a.batchId"> · batch #{{ a.batchId }}</span>
+            <span v-if="a.courseId"> · {{ a.courseName ?? `course #${a.courseId}` }}</span
+            ><span v-if="a.batchId"> · {{ a.batchName ?? `batch #${a.batchId}` }}</span>
           </p>
           <p v-if="a.remarks" class="muted">{{ a.remarks }}</p>
           <p v-if="a.studentId"><router-link :to="`/students/${a.studentId}`">View student →</router-link></p>
@@ -254,7 +254,10 @@ async function actions(a: ApplicationDto) {
   if (canApprove) {
     if (a.status !== 'approved')
       buttons.push({ text: 'Approve', handler: () => act(() => admissionsApi.approve(a.id), 'Approved') });
-    buttons.push({ text: 'Admit as student', handler: () => void admit(a) });
+    buttons.push({
+      text: a.studentId ? 'Confirm admission' : 'Admit as student',
+      handler: () => void admit(a),
+    });
     if (a.status === 'pending')
       buttons.push({
         text: 'Move to waiting list',

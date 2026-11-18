@@ -129,6 +129,9 @@ Every `/api` request passes the app-wide `apiRateLimit`, so authenticated routes
 
 - **Files**: `saveUploadedFile()` and `signedUrlFor()`. Store `file_id` FKs to `files`, never paths or public URLs.
 - **AI**: `aiChat({ feature: '<module>.<feature>', messages })`. Don't read AI settings or keys yourself.
+  - It enforces the plan's monthly quota (429 `AI_QUOTA_EXCEEDED`) and meters tokens, images and estimated cost in `ai_usage`.
+  - `getAiAvailability(instituteId)` tells a screen whether AI can run, which provider is used and how much quota is left.
+  - In development and tests, while no API key is configured, calls go to the deterministic mock provider (see [AI configuration](ARCHITECTURE.md#ai-configuration)), so AI features can be tested offline.
 - **Notifications (SMS/WhatsApp/email/push/in-app)**: call `notify()`; see [Sending notifications](#sending-notifications). Don't call `getMessagingProvider()` from business modules.
 - **Calendar / online meetings**: `getCalendarProvider(instituteId)` from `infrastructure/calendar` (Google Calendar/Meet interface; the mock generates `https://meet.mock.invalid/...` links).
 - **Payments, streaming, biometric**: use the adapters under `infrastructure/`. Don't import vendor SDKs in modules.
@@ -188,7 +191,10 @@ Current wiring:
 | admissions → academics                            | `admissions.service.ts`        | admitting an application with `batchId` enrols the student via `enrollStudentsInBatch` in the admit transaction; `admissions.confirmed` is sent to student + guardians                                       |
 | academics, grievances, admissions → notifications | `notify()`                     | `classes.cancelled/rescheduled/substituted` (students, their guardians, teachers), `grievances.activity`, `admissions.follow-up-due`                                                                         |
 | hr → subscriptions                                | `hr.service.ts`                | `assertTeacherSeat()` enforces the plan's `maxTeachers` (non-exited employees with `isTeacher`)                                                                                                              |
-| admissions → fees                                 | `fees/integrations.ts`         | `onAdmissionCompleted` (from `admissions/api`, emitted in a job after admit) → fee account generated from the matching structure; idempotent per admission                                                   |
+| admissions → fees                                 | `fees/integrations.ts`         | `onAdmissionCompleted` (from `admissions/api`, emitted in a job after admit) → fee account generated from the matching structure; idempotent per admission; skipped if it has `feeAccountId`                 |
+| fees → admissions, academics                      | `fees/course-enrolment.ts`     | `fees.course-enrolment` job (purchase entitlement granted/lost) → `admitForCoursePurchase`/`releaseCoursePurchaseBatch` (`admissions/api`) → `enrollStudentsInBatch`/`leaveBatch`; see below                 |
+| academics → admissions, fees (direct calls)       | `academics/api.ts`             | `openBatchesForCourse` (seats left, earliest start first), `batchAvailability`/`batchUnavailableError` (`not_found`, `other_course`, `other_branch`, `closed`, `full`), `activeBatchForCourse`, `leaveBatch` |
+| students → admissions (direct call)               | `self-registration.routes.ts`  | with `courseId`, `recordSelfRegistrationIntent` → enquiry (source `referral` or `website`) + pending application for the course, linked to the new student; admitting it admits that student                 |
 | fees → LMS / exams                                | `fees/api.ts`                  | `hasCourseEntitlement(studentUserId, courseId)`, `hasSubjectEntitlement`, `entitledCourseIds`: access granted once the configured instalment is paid                                                         |
 | fees → notifications                              | `notify()`                     | `fees.due`, `fees.overdue`, `fees.receipt`, `fees.payment-failed`, `fees.refund`, `fees.receipt-share` (student + guardians)                                                                                 |
 | guardians, academics → appointments               | `appointments.service.ts`      | parents must pass `assertGuardianOf`; the teacher must teach one of the child's batches (`Batch`/`BatchTeacher`/`BatchStudent`)                                                                              |
@@ -214,11 +220,22 @@ Current wiring:
 
 Identity note: academics rosters and grievances key students by **login user id**; students/guardians use `students.id` (`students.user_id` is nullable — siblings sharing a mobile have no login). Use `getStudentUserId`, `getLinkedStudentUsers`, `getGuardianUserIdsForStudentUsers` from `guardians/guardian-access` to convert.
 
+Course purchases (`fees/course-enrolment.ts`):
+
+- **Trigger.** A `purchase:` fee account that gains or loses its course entitlement queues `fees.course-enrolment` in the posting transaction. The job reads the current state, so webhook replays and retries are no-ops.
+- **Paid.** `admitForCoursePurchase` completes (or creates) the student's application for the course and emits `onAdmissionCompleted` with `feeAccountId`, so fees doesn't bill the admission again. It then enrols the student in the batch chosen at checkout, else the application's batch, else the earliest open batch of the course with seats in the student's branch.
+- **No batch.** The row waits as `awaiting_batch` and admins get `fees.course-enrolment-pending`. Fees → Course enrolments (`GET /fees/course-enrolments`, `GET …/:id/batches`, `POST …/:id/assign`) places the student.
+- **Refund or reversal.** Losing the entitlement takes the student out of the batch the purchase put them in (`releaseCoursePurchaseBatch`) and marks the row `revoked`, alongside the existing coupon release on a full refund.
+
 Module-owned files: `GET /files/:id/url` refuses (404) files whose `purpose` is owned by a module (`MODULE_OWNED_FILE_PURPOSES` in `files/files.service.ts`: lms, exams, question-bank, live-classes, fees, payroll, hr, students, grievances, admissions, appointments, parent-portal, reports) unless the requester uploaded it. The owning module signs its own files behind its own permission checks; add any new module purpose to that list.
 
 ### Institute timezone
 
 Each institute has a timezone setting (`institute_settings` key `timezone`, IANA name, default `Asia/Kolkata`; `PUT /api/institute/settings/timezone`). Wall-clock values (`YYYY-MM-DD`, `HH:mm`) must be converted to instants with `backend/src/shared/timezone.ts` (`getInstituteTimezone`, `zonedDateTimeToUtc`, `todayIn`/`instituteToday`), never by building a `Date` from a local date/time string or with server-local getters.
+
+- **Today.** "Today" (due dates, late fees, leave balances, timetable weeks, AI metering months) is `instituteToday()` in a request or job, or `todayIn(tz)`; never `new Date().toISOString().slice(0, 10)`.
+- **Calendar arithmetic.** Arithmetic on `YYYY-MM-DD` strings is safe only when it parses and formats in UTC (``Date.parse(`${d}T00:00:00Z`)`` … `toISOString().slice(0, 10)`), as `hr/dates.ts` and `fees/util.ts` do.
+- **Tests.** Cover the midnight boundary with a fixed clock and a server timezone different from the institute's (see `backend/test/timezone-boundaries.test.ts`).
 
 ### Parent portal providers (backend)
 

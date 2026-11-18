@@ -8,7 +8,19 @@ export {
   type AdmissionCompletedEvent,
   type AdmissionCompletedListener,
 } from './admission-events';
+export {
+  admitForCoursePurchase,
+  purchaseBatchError,
+  releaseCoursePurchaseBatch,
+  type CoursePurchaseAdmission,
+  type PurchaseBatchIssue,
+} from './course-purchase';
 export { activeForm, validateCustomFields } from './forms.service';
+export {
+  recordSelfRegistrationIntent,
+  type SelfRegistrationIntent,
+  type SelfRegistrationIntentInput,
+} from './self-registration';
 
 export interface CreateEnquiryInput {
   branchId: number;

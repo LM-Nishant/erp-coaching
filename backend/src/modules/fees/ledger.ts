@@ -52,13 +52,14 @@ export async function postJournal(j: Journal, transaction: Transaction): Promise
   });
   if (exists) return false;
   const userId = getContext().userId ?? null;
+  const entryDate = j.date ?? (await today());
   await FeeLedgerEntry.bulkCreate(
     lines.map((l, i) => ({
       instituteId,
       branchId: j.branchId ?? null,
       journalKey: j.key,
       line: i + 1,
-      entryDate: j.date ?? today(),
+      entryDate,
       account: l.account,
       debit: l.debit,
       credit: l.credit,

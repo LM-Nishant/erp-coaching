@@ -126,7 +126,8 @@
             <router-link :to="`/students/${detail.studentId}`">View student →</router-link>
           </p>
 
-          <template v-if="!detail.studentId && auth.can('admissions.edit')">
+          <!-- A self-registered student is linked before admission: keep following up until converted. -->
+          <template v-if="detail.status !== 'converted' && auth.can('admissions.edit')">
             <ion-item>
               <ion-select
                 :value="detail.status"
@@ -150,6 +151,8 @@
               @click="assignToMe"
               >Assign to me</ion-button
             >
+          </template>
+          <template v-if="!detail.studentId && auth.can('admissions.edit')">
             <ion-button v-can="'admissions.create'" size="small" fill="outline" @click="toApplication(false)"
               >Create application</ion-button
             >
@@ -196,7 +199,7 @@
             >
           </ion-list>
 
-          <form v-if="!detail.studentId" v-can="'admissions.edit'" @submit.prevent="addFollowUp">
+          <form v-if="detail.status !== 'converted'" v-can="'admissions.edit'" @submit.prevent="addFollowUp">
             <ion-list>
               <ion-list-header><ion-label>Log / schedule follow-up</ion-label></ion-list-header>
               <ion-item

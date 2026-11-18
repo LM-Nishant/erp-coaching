@@ -2,6 +2,8 @@ import type {
   BankAccountDto,
   BankStatementLineDto,
   CheckoutOrderDto,
+  CourseBatchOptionDto,
+  CourseEnrolmentDto,
   CourseQuoteDto,
   FeeAccountDto,
   FeeAdjustmentDto,
@@ -140,6 +142,14 @@ export const feesApi = {
       balanced: boolean;
     }>('/fees/ledger/trial-balance'),
 
+  // admissions and batch enrolments produced by online course purchases
+  courseEnrolments: (q: Query = {}) =>
+    api.get<Page<CourseEnrolmentDto>>('/fees/course-enrolments', { pageSize: 25, ...q }),
+  courseEnrolmentBatches: (id: number) =>
+    api.get<CourseBatchOptionDto[]>(`/fees/course-enrolments/${id}/batches`),
+  assignCourseEnrolment: (id: number, batchId: number) =>
+    api.post<CourseEnrolmentDto>(`/fees/course-enrolments/${id}/assign`, { batchId }),
+
   // student / parent
   my: (studentId?: number) => api.get<MyFeesDto>('/fees/me', { studentId }),
   myCheckout: (b: { accountId: number; amount?: number; gateway?: PaymentGatewayKey }) =>
@@ -156,6 +166,16 @@ export const feesApi = {
   myReceiptPdf: (id: number) => api.get<SignedUrl>(`/fees/me/receipts/${id}/pdf`),
   myShareReceipt: (id: number) => api.post<{ shared: boolean }>(`/fees/me/receipts/${id}/share`),
 };
+
+/** "Morning A · from 1 May 2051 · 12 seats left" */
+export function batchOptionLabel(b: CourseBatchOptionDto): string {
+  const from = new Date(`${b.startDate}T00:00:00`).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+  return `${b.name} · from ${from} · ${b.seatsLeft} ${b.seatsLeft === 1 ? 'seat' : 'seats'} left`;
+}
 
 /** Downloads a CSV/Excel report with the session's auth headers. */
 export async function downloadFeesReport(path: string, query: Query, format: 'csv' | 'xls') {
