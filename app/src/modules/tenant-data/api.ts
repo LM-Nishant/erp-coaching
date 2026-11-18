@@ -150,7 +150,7 @@ export function exportDetail(x: DataExportDto): string {
 }
 
 /** Totals of a completed deletion. */
-export function deletionTotals(r: DeletionRequestDto): string {
+export function deletionTotals(r: Pick<DeletionRequestDto, 'summary'>): string {
   const s = r.summary;
   if (!s) return '';
   const counts = Object.values(s.tables);
