@@ -22,7 +22,7 @@ import { lmsApi } from './api';
  *   the copy. A revoked device or deactivated account also wipes the user's copies as soon as the app hears of it
  *   (`wipeOffline`, run from core/session.ts).
  * - Offline, expiry relies on the device clock. If the clock reads earlier than a time the app has already seen,
- *   copies do not open until a check with the server succeeds.
+ *   copies do not open until a check with the server succeeds; that check also replaces the time seen.
  * - The web build never downloads videos.
  */
 
@@ -180,6 +180,8 @@ export async function syncOffline() {
   const valid = new Map(server.filter((l) => l.contentKey && !l.revokedAt).map((l) => [l.id, l]));
   await exclusive(async () => {
     const s = await load();
+    // Checked with the server: earlier clock readings no longer count (e.g. a clock that ran ahead and was put right).
+    s.ring.seenAt = Date.now();
     await purge(s, (i) => owns(me, i) && !valid.has(i.licenseId));
     for (const i of s.items) {
       const lic = owns(me, i) ? valid.get(i.licenseId) : undefined;

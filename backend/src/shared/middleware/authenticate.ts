@@ -28,7 +28,11 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
   const ctx = req.ctx;
 
   const user = await User.findByPk(claims.sub);
-  if (!user || user.status !== 'active') throw Unauthorized('Account is not active', 'ACCOUNT_INACTIVE');
+  if (!user || user.status !== 'active') {
+    // While impersonating, `sub` is the impersonated user: only the impersonation ends, not the super admin's session.
+    if (claims.imp) throw Unauthorized('Impersonation session ended', 'IMPERSONATION_ENDED');
+    throw Unauthorized('Account is not active', 'ACCOUNT_INACTIVE');
+  }
 
   const device = await Device.findByPk(claims.did);
   if (!device || device.status !== 'active' || device.userId !== (claims.imp ?? claims.sub)) {

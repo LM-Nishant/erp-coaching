@@ -177,13 +177,15 @@ describe('offline lectures', () => {
     expect([1, 2].some(hasFiles)).toBe(false);
   });
 
-  it('does not open copies offline once the device clock has been set back, until the server confirms them', async () => {
+  it('locks copies offline once the device clock has been set back, until a check with the server succeeds', async () => {
     signIn(A);
     await download(107, 7);
     vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(Date.now() + 30 * 60_000);
+    const now = Date.now();
+    // the clock ran ahead while the app was open, then was put right
+    vi.setSystemTime(now + 30 * 60_000);
     await listOffline();
-    vi.setSystemTime(Date.now() - 24 * HOUR);
+    vi.setSystemTime(now);
     h.auth.offline = true;
     await expect(openOffline(107)).rejects.toThrow(/clock has been set back/);
 
@@ -191,6 +193,11 @@ describe('offline lectures', () => {
     const played = capturePlayback();
     await openOffline(107);
     expect(await played()).toBe('hello video');
+
+    // the server check replaced the time seen: the copy opens offline again
+    h.auth.offline = true;
+    await openOffline(107);
+    expect(h.api.offlineLicenses).toHaveBeenCalledTimes(1);
   });
 
   it('wipes a user’s copies in every institute, plus copies no account has adopted yet', async () => {

@@ -384,13 +384,17 @@ export async function startImpersonation(
   } else {
     const ur = await UserRole.findOne({
       where: { instituteId, branchId: null },
-      include: [{ model: Role, as: 'role', where: { slug: 'institute-admin' } }],
+      include: [
+        { model: Role, as: 'role', where: { slug: 'institute-admin' } },
+        { model: User, as: 'user', where: { status: 'active' }, attributes: ['id'] },
+      ],
       order: [['id', 'ASC']],
     });
     target = ur ? await User.findByPk(ur.userId) : null;
   }
   if (!target) throw NotFound('Institute admin user');
   if (target.isSuperAdmin) throw BadRequest('Cannot impersonate a super admin');
+  if (target.status !== 'active') throw BadRequest('This user account is not active');
   if (!(await membershipInstituteIds(target.id)).includes(instituteId))
     throw BadRequest('User is not a member of this institute');
 

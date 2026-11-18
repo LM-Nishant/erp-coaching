@@ -84,4 +84,47 @@ describe('api session handling', () => {
     expect(onEnded).not.toHaveBeenCalled();
     expect(await loadSession()).toMatchObject({ accessToken: 'b1' });
   });
+
+  const impersonating = () =>
+    saveSession({
+      accessToken: 'imp',
+      refreshToken: null,
+      userId: 1,
+      branchId: 5,
+      impersonator: { accessToken: 'sa1', refreshToken: 'rs1' },
+    });
+
+  it.each(['IMPERSONATION_ENDED', 'ACCOUNT_INACTIVE'])(
+    'returns to the super admin session, refreshed once, when an impersonation gets %s',
+    async (code) => {
+      await impersonating();
+      serve(({ path, token }) => {
+        if (path === '/auth/refresh') return json(200, { accessToken: 'sa2', refreshToken: 'rs2' });
+        if (token === 'imp') return unauthorized(code);
+        return token === 'sa2' ? json(200, { ok: path }) : unauthorized('TOKEN_EXPIRED');
+      });
+
+      expect(await Promise.all([api.get('/a'), api.get('/b')])).toEqual([{ ok: '/a' }, { ok: '/b' }]);
+      await sessionEndSettled();
+      expect(onEnded).not.toHaveBeenCalled();
+      expect(calls.filter((c) => c.path === '/auth/refresh')).toHaveLength(1);
+      expect(await loadSession()).toEqual({
+        accessToken: 'sa2',
+        refreshToken: 'rs2',
+        userId: 1,
+        branchId: null,
+        impersonator: null,
+      });
+    },
+  );
+
+  it('ends the session when the device is revoked during an impersonation', async () => {
+    await impersonating();
+    serve(() => unauthorized('SESSION_REVOKED'));
+
+    await expect(api.get('/a')).rejects.toMatchObject({ status: 401, code: 'SESSION_REVOKED' });
+    await sessionEndSettled();
+    expect(onEnded).toHaveBeenCalledExactlyOnceWith('SESSION_REVOKED');
+    expect(calls.map((c) => c.token)).toEqual(['imp']);
+  });
 });

@@ -181,7 +181,7 @@ app/src/
 - Nothing stops a second camera pointed at the screen; the watermark identifies the source.
 - iOS cannot prevent screenshots, only detect them after the fact. iOS's native full-screen video player hides the watermark: the shield takes the player out of full screen when a recording starts. `preventScreenshots` of the privacy-screen plugin has no effect with a scene delegate.
 - Rooted or jailbroken devices can get around these protections, `FLAG_SECURE` included.
-- A revoked device that stays offline keeps playing its downloads until it reconnects or the licence expires. Offline, expiry relies on the device clock. Setting the clock more than 10 minutes behind a time the app has already seen is detected, and copies stay locked until a check with the server succeeds. A device kept offline with its clock held back while the app is closed can still play past expiry.
+- A revoked device that stays offline keeps playing its downloads until it reconnects or the licence expires. Offline, expiry relies on the device clock. Setting the clock more than 10 minutes behind a time the app has already seen is detected, and copies stay locked until a check with the server succeeds; that check also replaces the time seen, so a clock that was wrongly set ahead cannot lock copies for good. A device kept offline with its clock held back while the app is closed, or already behind at its last successful check, can still play past expiry.
 - Biometric unlock reopens the session of the last user who turned it on for that device. Another user signs in with a password or OTP.
 - The web app relies on the watermark, short access tokens and the server-side inactivity timeout.
 

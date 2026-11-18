@@ -95,7 +95,17 @@ function buildUrl(path: string, query?: Query) {
   return url.toString();
 }
 
-async function send(method: string, path: string, opts: RequestOptions, retried = false): Promise<Response> {
+/** A request is re-sent at most this many times after a 401 (newer token, refresh, impersonation over). */
+const MAX_RESENDS = 3;
+
+/** `refreshed`: this request already triggered a token refresh (at most one per request). */
+async function send(
+  method: string,
+  path: string,
+  opts: RequestOptions,
+  refreshed = false,
+  resends = 0,
+): Promise<Response> {
   const headers: Record<string, string> = { Accept: 'application/json', ...opts.headers };
   const isForm = opts.body instanceof FormData;
   if (opts.body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
@@ -113,24 +123,28 @@ async function send(method: string, path: string, opts: RequestOptions, retried 
   const current = await loadSession();
   // Signed out (or the session already ended) while this request was in flight.
   if (!current) return res;
-  // Sent with an older token (refreshed, unlocked or signed in again meanwhile): retry with the current one.
-  if (current.accessToken !== sent?.accessToken) return retried ? res : send(method, path, opts, true);
+  const resend = (afterRefresh: boolean) =>
+    resends < MAX_RESENDS ? send(method, path, opts, afterRefresh, resends + 1) : Promise.resolve(res);
+  // Sent with an older token (refreshed, unlocked, signed in again or impersonation left meanwhile): retry with the
+  // current one, which may still need its own refresh.
+  if (current.accessToken !== sent?.accessToken) return resend(refreshed);
   let code = await errorCode(res);
-  if (!retried && !SESSION_END_CODES.has(code ?? '')) {
-    const refreshed = await refreshAccessToken();
-    if (refreshed.ok) return send(method, path, opts, true);
+  if (current.impersonator && code !== 'SESSION_REVOKED') {
+    // The impersonation is over (expired, stopped, impersonated account deactivated): back to the super admin's own
+    // session, refreshed if needed. Only a revoked device ends that session too.
+    await patchSession(
+      { ...current.impersonator, impersonator: null, branchId: null },
+      (s) => s.accessToken === current.accessToken,
+    );
+    return resend(refreshed);
+  }
+  if (!refreshed && !SESSION_END_CODES.has(code ?? '')) {
+    const r = await refreshAccessToken();
+    if (r.ok) return resend(true);
     const session = await loadSession();
     if (!session) return res;
-    if (session.accessToken !== sent?.accessToken) return send(method, path, opts, true);
-    if (session.impersonator) {
-      // Impersonation token expired: fall back to the super admin session (refreshed if needed).
-      const fellBack = await patchSession(
-        { ...session.impersonator, impersonator: null, branchId: null },
-        (s) => s.accessToken === session.accessToken,
-      );
-      return send(method, path, opts, !fellBack);
-    }
-    code = refreshed.code ?? code;
+    if (session.accessToken !== sent?.accessToken) return resend(true);
+    code = r.code ?? code;
   }
   void sessionEnded(code ?? 'UNAUTHORIZED');
   return res;

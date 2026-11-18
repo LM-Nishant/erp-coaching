@@ -320,6 +320,35 @@ describe('mobile & device security (spec 4.18)', () => {
     ).toBe(1);
   });
 
+  it('ends only the impersonation when the impersonated account is deactivated', async () => {
+    const platform = await session('platform');
+    const target = await createUser('impTarget', { role: SYSTEM_ROLES.INSTITUTE_ADMIN });
+    const impersonate = (body: object) =>
+      api('post', '/auth/impersonate', platform.accessToken).send({ instituteId, reason: 'mobsec', ...body });
+    const meOf = (token: string) => api('get', '/auth/me', token);
+
+    const imp = await impersonate({ userId: target.id });
+    expect(imp.status).toBe(200);
+    expect((await meOf(imp.body.accessToken)).body.user.id).toBe(target.id);
+    await User.update({ status: 'inactive' }, { where: { id: target.id } });
+    const ended = await meOf(imp.body.accessToken);
+    expect(ended.status).toBe(401);
+    expect(ended.body.error.code).toBe('IMPERSONATION_ENDED');
+    expect((await meOf(platform.accessToken)).status).toBe(200);
+    expect((await impersonate({ userId: target.id })).status).toBe(400);
+
+    // without a user, the first active institute admin is picked
+    await User.update({ status: 'active' }, { where: { id: target.id } });
+    await User.update({ status: 'inactive' }, { where: { id: u.admin.id } });
+    try {
+      const picked = await impersonate({});
+      expect(picked.status).toBe(200);
+      expect((await meOf(picked.body.accessToken)).body.user.id).toBe(target.id);
+    } finally {
+      await User.update({ status: 'active' }, { where: { id: u.admin.id } });
+    }
+  });
+
   it('enrols, uses and disables biometric unlock on app devices only', async () => {
     const web = await login(u.bio, device('web'));
     const ios = device('ios');
