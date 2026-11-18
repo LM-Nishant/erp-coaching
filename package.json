@@ -26,6 +26,7 @@
     "e2e": "npm run test -w @erp/e2e",
     "e2e:install": "npm run install:browsers -w @erp/e2e",
     "load": "npm run start -w @erp/load",
+    "load:serve": "npm run serve:api -w @erp/load",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

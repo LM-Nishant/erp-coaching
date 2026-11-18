@@ -5,6 +5,7 @@
   "description": "autocannon load scenarios for the key API endpoints",
   "scripts": {
     "start": "tsx src/run.ts",
+    "serve:api": "tsx scripts/serve-api.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
