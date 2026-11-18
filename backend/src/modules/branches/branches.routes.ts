@@ -7,10 +7,11 @@ import { authenticate } from '../../shared/middleware/authenticate';
 import { requirePermission } from '../../shared/middleware/authorize';
 import { requireTenantContext } from '../../shared/context';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
-import { Forbidden } from '../../shared/errors';
+import { BadRequest, Conflict, Forbidden } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
 import { assertWithinLimit } from '../subscriptions/subscription.service';
 import { Branch } from './branch.model';
+import { branchClosureBlockers } from './api';
 
 /** Reference implementation of a tenant-scoped CRUD module. Copy this pattern. */
 export const branchRepo = new TenantRepository(Branch, { entity: 'Branch' });
@@ -58,7 +59,8 @@ export function branchRoutes(api: Router) {
   r.post('/', requirePermission('branches', 'create'), async (req, res) => {
     const body = parse(branchBody, req.body);
     const { instituteId } = requireTenantContext();
-    await assertWithinLimit(instituteId, 'maxBranches', await branchRepo.count({ status: 'active' }));
+    if (body.status !== 'closed')
+      await assertWithinLimit(instituteId, 'maxBranches', await branchRepo.count({ status: 'active' }));
     const branch = await branchRepo.create({
       name: body.name,
       code: body.code,
@@ -75,7 +77,9 @@ export function branchRoutes(api: Router) {
   r.patch('/:id', requirePermission('branches', 'edit'), async (req, res) => {
     const { id } = parse(idParam, req.params);
     assertBranchVisible(id);
-    const body = parse(branchBody.partial(), req.body);
+    if (req.body && typeof req.body === 'object' && 'status' in req.body)
+      throw BadRequest('Use the close/activate actions to change a branch status');
+    const body = parse(branchBody.omit({ status: true }).partial(), req.body);
     const branch = await branchRepo.update(id, body);
     await audit({
       action: 'branch.updated',
@@ -84,6 +88,48 @@ export function branchRoutes(api: Router) {
       metadata: { fields: Object.keys(body) },
     });
     res.json(branch);
+  });
+
+  /** Closure keeps the branch and its history but stops it counting towards the plan's branches. */
+  r.post('/:id/close', requirePermission('branches', 'configure'), async (req, res) => {
+    const { id } = parse(idParam, req.params);
+    assertBranchVisible(id);
+    const { reason } = parse(z.object({ reason: z.string().trim().max(500).optional() }), req.body ?? {});
+    const branch = await branchRepo.findById(id);
+    if (branch.status === 'closed') {
+      res.json(branch);
+      return;
+    }
+    if ((await branchRepo.count({ status: 'active' })) <= 1)
+      throw Conflict('An institute needs at least one active branch', 'LAST_ACTIVE_BRANCH');
+    const blockers = await branchClosureBlockers(id);
+    if (blockers.length)
+      throw Conflict(`This branch cannot be closed yet: ${blockers.join('; ')}`, 'BRANCH_IN_USE', {
+        blockers,
+      });
+    const updated = await branchRepo.update(id, { status: 'closed' });
+    await audit({
+      action: 'branch.closed',
+      entityType: 'branch',
+      entityId: id,
+      metadata: { reason: reason ?? null },
+    });
+    res.json(updated);
+  });
+
+  r.post('/:id/activate', requirePermission('branches', 'configure'), async (req, res) => {
+    const { id } = parse(idParam, req.params);
+    assertBranchVisible(id);
+    const branch = await branchRepo.findById(id);
+    if (branch.status === 'active') {
+      res.json(branch);
+      return;
+    }
+    const { instituteId } = requireTenantContext();
+    await assertWithinLimit(instituteId, 'maxBranches', await branchRepo.count({ status: 'active' }));
+    const updated = await branchRepo.update(id, { status: 'active' });
+    await audit({ action: 'branch.activated', entityType: 'branch', entityId: id });
+    res.json(updated);
   });
 
   r.delete('/:id', requirePermission('branches', 'delete'), async (req, res) => {

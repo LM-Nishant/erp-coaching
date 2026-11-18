@@ -14,6 +14,23 @@ import { PaymentGatewayConfig } from './models';
 
 export const gatewayRepo = new TenantRepository(PaymentGatewayConfig, { entity: 'Payment gateway' });
 
+/**
+ * Super admin fallback, registered by the platform module: the global gateway offered to institutes
+ * that have no enabled gateway of their own. Institute configuration always takes precedence.
+ */
+export interface PlatformFeesGatewayProvider {
+  /** Gateway currently offered to institutes, or null. */
+  offered(): Promise<{ gateway: PaymentGatewayKey; sandbox: boolean } | null>;
+  /** The platform's current credentials for a gateway, or null once it is removed. */
+  credentials(gateway: PaymentGatewayKey): GatewayCredentials | null;
+}
+
+let platformGateway: PlatformFeesGatewayProvider | null = null;
+
+export function setPlatformFeesGatewayProvider(provider: PlatformFeesGatewayProvider | null): void {
+  platformGateway = provider;
+}
+
 export function webhookUrl(c: PaymentGatewayConfig) {
   return `${config.API_PUBLIC_URL}/api/fees/public/webhooks/${c.gateway}/${c.webhookKey}`;
 }
@@ -28,6 +45,7 @@ export function gatewayDto(c: PaymentGatewayConfig): GatewayConfigDto {
     keyHint: c.keyHint,
     sandbox: c.sandbox,
     webhookUrl: webhookUrl(c),
+    platformManaged: c.platformManaged,
   };
 }
 
@@ -71,6 +89,8 @@ export async function upsertGatewayConfig(input: GatewayConfigInput) {
       secrets.secretKey || secrets.webhookSecret ? encryptSecret(JSON.stringify(secrets)) : null,
     keyHint: secrets.secretKey ? maskSecret(secrets.secretKey) : null,
     sandbox: input.sandbox ?? existing?.sandbox ?? true,
+    // Saving makes it the institute's own configuration (no longer the platform fallback).
+    platformManaged: false,
   };
   const before = existing ? gatewayDto(existing) : null;
   const row = existing
@@ -85,6 +105,7 @@ export async function upsertGatewayConfig(input: GatewayConfigInput) {
 }
 
 export function credentialsOf(c: PaymentGatewayConfig): GatewayCredentials {
+  if (c.platformManaged) return platformGateway?.credentials(c.gateway) ?? { sandbox: c.sandbox };
   const s: StoredSecrets = c.secretEncrypted ? JSON.parse(decryptSecret(c.secretEncrypted)) : {};
   return {
     merchantId: c.merchantId ?? undefined,
@@ -99,6 +120,10 @@ export function adapterFor(c: PaymentGatewayConfig): PaymentGateway {
   return createPaymentGateway(c.gateway, credentialsOf(c));
 }
 
+/**
+ * Enabled gateways, default first. Without an enabled gateway of its own the institute gets the
+ * platform's offered gateway, provisioned on first use as a platform-managed config.
+ */
 export async function enabledGateways(): Promise<PaymentGatewayConfig[]> {
   const rows = await gatewayRepo.findAll({
     where: { enabled: true },
@@ -107,13 +132,48 @@ export async function enabledGateways(): Promise<PaymentGatewayConfig[]> {
       ['id', 'ASC'],
     ],
   });
-  return rows;
+  const own = rows.filter((r) => !r.platformManaged);
+  if (own.length || !platformGateway) return own;
+  const offered = await platformGateway.offered();
+  if (!offered) return [];
+  const managed = rows.find((r) => r.gateway === offered.gateway);
+  if (managed) return [managed];
+  const provisioned = await provisionPlatformGateway(offered);
+  return provisioned ? [provisioned] : [];
+}
+
+async function provisionPlatformGateway(offered: { gateway: PaymentGatewayKey; sandbox: boolean }) {
+  // The institute's own (disabled) configuration of this gateway takes precedence: no fallback.
+  const existing = await gatewayRepo.findOne({ where: { gateway: offered.gateway } });
+  if (existing) return existing.platformManaged && existing.enabled ? existing : null;
+  try {
+    return await gatewayRepo.create({
+      gateway: offered.gateway,
+      enabled: true,
+      isDefault: false,
+      merchantId: null,
+      secretEncrypted: null,
+      keyHint: null,
+      sandbox: offered.sandbox,
+      webhookKey: randomToken(24),
+      platformManaged: true,
+    });
+  } catch (err) {
+    if ((err as { name?: string }).name !== 'SequelizeUniqueConstraintError') throw err;
+    return gatewayRepo.findOne({ where: { gateway: offered.gateway, enabled: true, platformManaged: true } });
+  }
 }
 
 /** Picks the requested (or default) enabled gateway for checkout. */
 export async function resolveGateway(name?: PaymentGatewayKey): Promise<PaymentGatewayConfig> {
   const rows = await enabledGateways();
-  const row = name ? rows.find((r) => r.gateway === name) : rows[0];
+  let row = name ? rows.find((r) => r.gateway === name) : rows[0];
+  // Payments taken through the platform fallback stay serviceable (status sync, refunds) after the
+  // institute configures its own gateway, while the platform still has the gateway.
+  if (!row && name && platformGateway?.credentials(name))
+    row =
+      (await gatewayRepo.findOne({ where: { gateway: name, enabled: true, platformManaged: true } })) ??
+      undefined;
   if (!row) throw BadRequest('Online payments are not configured for this institute');
   return row;
 }

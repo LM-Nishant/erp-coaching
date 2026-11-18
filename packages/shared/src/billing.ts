@@ -400,8 +400,18 @@ export interface RevenuePointDto {
 export const STORAGE_DRIVERS = ['local', 's3', 'r2'] as const;
 export type StorageDriverKey = (typeof STORAGE_DRIVERS)[number];
 
+/**
+ * Result of the last connection test. A configuration can be enabled (activated) only after it
+ * passes a test; changing its connection settings or credentials resets the result.
+ */
+export interface IntegrationTestStatus {
+  lastTestedAt: string | null;
+  lastTestOk: boolean | null;
+  lastTestMessage: string | null;
+}
+
 /** Global payment gateway used for SaaS billing (and optionally as the institutes' fee fallback). */
-export interface PlatformGatewayDto {
+export interface PlatformGatewayDto extends IntegrationTestStatus {
   gateway: string;
   enabled: boolean;
   /** Gateway used for SaaS subscription payments. */
@@ -412,22 +422,46 @@ export interface PlatformGatewayDto {
   merchantId: string | null;
   hasSecret: boolean;
   keyHint: string | null;
+  hasWebhookSecret: boolean;
+  /** SaaS subscription payment webhook to register with the gateway. */
   webhookUrl: string;
   updatedAt: string | null;
 }
 
+export interface PlatformGatewayInput {
+  enabled: boolean;
+  isDefault: boolean;
+  useForInstitutes: boolean;
+  sandbox: boolean;
+  merchantId?: string | null;
+  /** Blank/omitted keeps the stored secret. */
+  secretKey?: string;
+  webhookSecret?: string;
+}
+
 /** Global default notification provider per channel (institute providers take precedence). */
-export interface PlatformMessagingDto {
+export interface PlatformMessagingDto extends IntegrationTestStatus {
   channel: 'sms' | 'whatsapp' | 'email' | 'push';
   provider: string;
   enabled: boolean;
   settings: Record<string, string>;
   /** Masked hints of saved secret fields. */
   secretHints: Record<string, string>;
+  /** False when nothing is saved: the built-in console provider is the default. */
+  configured: boolean;
   updatedAt: string | null;
 }
 
-export interface PlatformStorageDto {
+export interface PlatformMessagingInput {
+  provider: string;
+  enabled: boolean;
+  /** Provider fields (`PROVIDER_FIELDS`); blank secret fields keep the stored value. */
+  settings: Record<string, string>;
+  /** Recipient for the test message sent before enabling an untested configuration. */
+  testTo?: string;
+}
+
+export interface PlatformStorageDto extends IntegrationTestStatus {
   driver: StorageDriverKey;
   /** The configured driver is in use (activation requires a passing connection test). */
   active: boolean;
@@ -437,11 +471,35 @@ export interface PlatformStorageDto {
   accessKeyId: string | null;
   hasSecret: boolean;
   secretHint: string | null;
-  lastTestedAt: string | null;
-  lastTestOk: boolean | null;
-  lastTestMessage: string | null;
   /** Driver currently serving files. */
   effectiveDriver: string;
+  /** Driver selected by the server environment (`STORAGE_DRIVER`). */
+  envDriver: string;
+  updatedAt: string | null;
+}
+
+export interface PlatformStorageInput {
+  driver: StorageDriverKey;
+  active: boolean;
+  bucket?: string | null;
+  region?: string | null;
+  endpoint?: string | null;
+  accessKeyId?: string | null;
+  /** Blank/omitted keeps the stored secret. */
+  secretAccessKey?: string;
+}
+
+/** `GET /admin/platform/integrations`. */
+export interface PlatformIntegrationsDto {
+  gateways: PlatformGatewayDto[];
+  messaging: PlatformMessagingDto[];
+  storage: PlatformStorageDto;
+}
+
+export interface IntegrationTestResultDto {
+  ok: boolean;
+  message: string;
+  testedAt: string;
 }
 
 // ------------------------------------------------------------------ data export and deletion
