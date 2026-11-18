@@ -18,14 +18,13 @@ import './theme/variables.css';
 import App from './App.vue';
 import { router } from './router';
 import { vCan } from './core/permissions';
-import { setSessionExpiredHandler } from './core/api';
-import { useAuthStore } from './stores/auth';
+import { installSession } from './core/session';
+import { initSecureScreen } from './core/secure-screen';
 
-const app = createApp(App).use(IonicVue).use(createPinia()).use(router).directive('can', vCan);
-
-setSessionExpiredHandler(() => {
-  void useAuthStore().clear();
-  void router.replace({ name: 'login' });
-});
+const app = createApp(App).use(IonicVue).use(createPinia());
+// Before the router: installing it starts the first navigation, which restores the session.
+installSession(router);
+initSecureScreen();
+app.use(router).directive('can', vCan);
 
 router.isReady().then(() => app.mount('#app'));

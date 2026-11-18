@@ -65,7 +65,9 @@ const base = '/notifications';
 export const inboxApi = {
   list: (q: { page?: number; unreadOnly?: boolean } = {}) =>
     api.get<Page<InboxItemDto> & { unread: number }>(`${base}/inbox`, q),
-  unreadCount: () => api.get<{ unread: number }>(`${base}/inbox/unread-count`),
+  /** Polled by the bell: a background request, so it does not count as activity for inactivity logout. */
+  unreadCount: () =>
+    api.get<{ unread: number }>(`${base}/inbox/unread-count`, undefined, { background: true }),
   markRead: (id: number) => api.post<InboxItemDto>(`${base}/inbox/${id}/read`),
   markAllRead: () => api.post<{ updated: number }>(`${base}/inbox/read-all`),
   preferences: () => api.get<NotificationPreferenceDto[]>(`${base}/preferences`),

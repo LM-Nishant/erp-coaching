@@ -1,11 +1,6 @@
 <template>
   <ion-app>
-    <ion-split-pane
-      content-id="main"
-      when="lg"
-      :disabled="!showMenu"
-      :style="auth.me?.impersonatedBy ? { bottom: '52px' } : undefined"
-    >
+    <ion-split-pane content-id="main" when="lg" :disabled="!showMenu" :style="paneStyle">
       <ion-menu content-id="main" type="overlay" :disabled="!showMenu">
         <ion-header>
           <ion-toolbar color="primary">
@@ -77,6 +72,8 @@
       <ion-router-outlet id="main" />
     </ion-split-pane>
     <ImpersonationBanner />
+    <OfflineBanner />
+    <BiometricOffer />
   </ion-app>
 </template>
 
@@ -103,8 +100,11 @@ import {
 } from '@ionic/vue';
 import { logOutOutline } from 'ionicons/icons';
 import { appModules } from '@/core/modules';
+import { worksOffline } from '@/router';
 import { useAuthStore } from '@/stores/auth';
+import BiometricOffer from '@/components/BiometricOffer.vue';
 import ImpersonationBanner from '@/components/ImpersonationBanner.vue';
+import OfflineBanner from '@/components/OfflineBanner.vue';
 
 const auth = useAuthStore();
 const route = useRoute();
@@ -114,12 +114,22 @@ const institute = computed(() => auth.me?.institute ?? null);
 const showMenu = computed(() => auth.isAuthenticated && !auth.needsInstitute && !route.meta.public);
 const roleLabel = computed(() => auth.me?.roles.map((r) => r.replace(/-/g, ' ')).join(', ') ?? '');
 const branchOptions = computed(() => auth.me?.branches ?? []);
+// Room for the banner at the bottom (impersonation / offline).
+const paneStyle = computed(() =>
+  auth.me?.impersonatedBy
+    ? { bottom: '52px' }
+    : auth.offline
+      ? { bottom: 'calc(36px + var(--ion-safe-area-bottom, 0px))' }
+      : undefined,
+);
 
 /** Role-aware menu built from every module's `menu` entries. */
 const menu = computed(() =>
   appModules
     .flatMap((m) => m.menu ?? [])
     .filter((item) => {
+      // Offline (app, cached profile): only pages that work without network.
+      if (auth.offline && !worksOffline(router.resolve(item.path))) return false;
       if (item.superAdmin) return auth.isPlatformAdmin;
       if (auth.isPlatformAdmin) return !item.permission;
       if (item.permission && !auth.can(item.permission)) return false;

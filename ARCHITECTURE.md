@@ -118,6 +118,17 @@ Deployment, TLS, backups and scaling are covered in [docs/deployment.md](docs/de
   - At most **2 active devices** per user (`MAX_ACTIVE_DEVICES`).
   - A user's first device is trusted. Any further new device must pass OTP.
   - When the limit is reached, login returns `device_limit_reached` with the active device list.
+- **Device sessions** (spec 4.18): every authenticated request checks the device row, so a revoked device gets 401 `SESSION_REVOKED` at once (its unexpired access tokens included) and a deactivated account gets `ACCOUNT_INACTIVE`.
+- **Revoking a device:**
+  - Users: their own devices, `GET`/`DELETE /auth/devices`.
+  - Institute admins: `GET /users/devices` (members with sign-ins), `GET /users/:id/devices`, `DELETE /users/:id/devices/:deviceId` (`users.view` to list, `users.edit` to revoke). Institute-wide admins manage any member. Branch admins manage only members limited to branches they share. Anyone else (institute-wide members for a branch admin, super-admin accounts, other institutes' users) is 404.
+  - Super admin: anyone, `GET /admin/users?search=`, `GET /admin/users/:id/devices`, `DELETE /admin/users/:id/devices/:deviceId`.
+  - Revoking ends the device's refresh tokens and biometric unlock, is audited (`device.revoked`), notifies the user when an admin did it, and emits `onDeviceRevoked` (`authentication/api`): LMS revokes the device's offline licences, notifications drop its push tokens.
+- **Inactivity logout:**
+  - Institute setting `security.idle_timeout_minutes` (Institute profile → Security; 0 = never, 5–1440; `GET/PATCH /institute` field `idleTimeoutMinutes`). `SESSION_IDLE_TIMEOUT_MINUTES` (default 0) applies to institutes without the setting and to sessions without an institute.
+  - The device's `lastSeenAt` is the last user activity: any request except background polls (`X-Background-Request: 1`), plus the app's heartbeat `POST /auth/activity`. After the timeout, requests and `/auth/refresh` return 401 `SESSION_IDLE` (`shared/session-policy.ts`). Impersonation tokens have their own expiry and are exempt.
+  - The app enforces the same timeout on its own timer (`core/idle.ts`) and when it resumes.
+- **Biometric unlock** (app only, opt-in after a full sign-in): `POST /auth/biometric` returns a device-bound secret. The server keeps only its hash; the app keeps it in the Keychain / Keystore behind the OS biometric prompt. `POST /auth/biometric/unlock` exchanges it for a new session on the same device and revokes the device's older refresh tokens. Sign-out, revocation and `DELETE /auth/biometric` turn it off; password and OTP always work.
 
 ## Platform services available to modules
 
@@ -239,19 +250,49 @@ Deployment, TLS, backups and scaling are covered in [docs/deployment.md](docs/de
 ```
 app/src/
   main.ts App.vue          # Ionic shell: split-pane menu, branch switcher, impersonation banner
-  core/                    # api client, token storage (Capacitor Preferences), device id, branding,
-                           # module registry, v-can directive, toast
+  core/                    # api client, secure storage + token storage, device id, branding, module registry,
+                           # v-can directive, toast, session (lock / sign-out), idle monitor, biometric, secure screens
   stores/auth.ts           # session, memberships, permissions: can('module.action'), moduleEnabled()
   router/index.ts          # collects routes from modules; guards: auth, institute selection, meta.permission, meta.superAdmin
   components/              # AppPage, StatCard, ImpersonationBanner, ...
   modules/<name>/module.ts # defineAppModule({ id, routes, menu, toolbarItems }), auto-discovered with import.meta.glob
 ```
 
-- **API client** (`core/api.ts`): adds the Bearer token and `X-Branch-Id`. On a 401 it refreshes once (single-flight) and retries. If the refresh fails, the session is cleared.
+- **API client** (`core/api.ts`): adds the Bearer token and `X-Branch-Id`. On a 401 it refreshes once (single-flight) and retries. If the refresh fails, the session ends. `SESSION_IDLE`, `SESSION_REVOKED` and `ACCOUNT_INACTIVE` end it without a refresh. `core/session.ts` then locks the app when biometric unlock is set up, unless the device was revoked or the account deactivated, and otherwise signs out. A revoked device or deactivated account also runs every module's `wipeUserData`. Pass `{ background: true }` for automatic polls.
 - **Branding**: after institute selection, `applyBranding()` sets the Ionic `--ion-color-primary/secondary` variants and the document title from the institute's settings. The logo is shown in the menu header.
 - **Menu**: built from every module's `menu` items, filtered by `permission`, `superAdmin` and `planModule` (whether the institute's plan includes the module).
 - **Subscription state**:
   - The subscriptions module adds a toolbar chip for the trial, grace, restricted and suspended states.
   - Through its `navigationGuards` entry, a suspended institute can only open routes with `meta.allowWhenSuspended`.
   - `setPaymentRequiredHandler()` in `core/api.ts` hands it every 402, so the state refreshes as soon as the API starts refusing.
-- **Native apps**: the same build runs in Capacitor (`app/android`, `app/ios`). Preferences hold tokens; Device provides the device id.
+- **Native apps**: the same build runs in Capacitor (`app/android`, `app/ios`). Device provides the device id.
+  - Tokens, the cached profile, offline content keys and the biometric credential live in secure storage (`core/secure-storage.ts`: iOS Keychain, Android Keystore-backed AES-GCM), never plain preferences. The web build uses localStorage.
+  - iOS uses Swift Package Manager (`ios/App/CapApp-SPM`, written by `cap sync`): every plugin must ship a `Package.swift`. Android `minSdkVersion` is 26 (required by the QR scanner).
+
+## Mobile and device security (spec 4.18) and platform limits (spec 9)
+
+**Protected screens.** Screens opt in with `<SecureView screen="…">` (`app/src/components/SecureView.vue`), so ordinary screens are unaffected. Protected today: `lms-content` (lecture player), `live-class` (students in a live room), `live-recording`, `exam-attempt`, `exam-result`, `question-paper` and `question-bank`. While a protected screen is shown:
+
+- A **dynamic watermark** is tiled over the content: the viewer's name and mobile number plus the current time, drifting every few seconds.
+- **Capture restrictions** apply as far as the platform allows (`core/secure-screen.ts`). The privacy-screen plugin is off by default and is turned on only while a protected screen is shown.
+  - Android: `FLAG_SECURE` (`@capacitor-community/privacy-screen`). Screenshots, recordings and casting come out black, and the app switcher shows a blank card.
+  - iOS: capture cannot be blocked. Recording, mirroring and AirPlay are detected (app-local `ScreenCapture` plugin) and the content is shielded until they stop. Screenshots are detected after they are taken, and the user is warned. Both are reported to `POST /auth/capture-events` and audited as `device.screenshot_detected` / `device.recording_detected` with the screen names. The privacy screen replaces the app-switcher snapshot.
+  - Web: capture can be neither blocked nor detected. The watermark is the only deterrent.
+
+**Offline content** (LMS downloads, app only):
+
+- A download needs an unlocked entitlement for an offline-enabled lecture and an offline licence bound to the device (app only). The licence lasts the lecture's offline hours, capped by the learner's access. The copy is encrypted with AES-256-GCM and its key is kept in secure storage.
+- Each copy belongs to the account that downloaded it. Signing out keeps downloads, but no other account on the device can see or delete them.
+- When online, a copy's licence is checked with the server (server time) before it plays, and when the offline list or the library opens. The server revokes licences whose access ended or whose lecture was unpublished or is no longer offline-enabled; the app deletes copies whose licence was revoked or has expired.
+- Revoking a device revokes its licences. The app deletes the user's copies as soon as it hears of it (401 `SESSION_REVOKED` or `ACCOUNT_INACTIVE` runs every module's `wipeUserData`).
+
+**Limits** that no app can remove (spec 9). Document them for institutes rather than promise more:
+
+- Nothing stops a second camera pointed at the screen; the watermark identifies the source.
+- iOS cannot prevent screenshots, only detect them after the fact. iOS's native full-screen video player hides the watermark: the shield takes the player out of full screen when a recording starts. `preventScreenshots` of the privacy-screen plugin has no effect with a scene delegate.
+- Rooted or jailbroken devices can get around these protections, `FLAG_SECURE` included.
+- A revoked device that stays offline keeps playing its downloads until it reconnects or the licence expires. Offline, expiry relies on the device clock. Setting the clock more than 10 minutes behind a time the app has already seen is detected, and copies stay locked until a check with the server succeeds; that check also replaces the time seen, so a clock that was wrongly set ahead cannot lock copies for good. A device kept offline with its clock held back while the app is closed, or already behind at its last successful check, can still play past expiry.
+- Biometric unlock reopens the session of the last user who turned it on for that device. Another user signs in with a password or OTP.
+- The web app relies on the watermark, short access tokens and the server-side inactivity timeout.
+
+**QR check-in** uses `@capacitor/barcode-scanner` (Swift Package Manager on iOS, bundled ML Kit on Android). `@capacitor-mlkit/barcode-scanning` was dropped because it has no SPM support. The web build keeps the browser camera / manual code fallback.

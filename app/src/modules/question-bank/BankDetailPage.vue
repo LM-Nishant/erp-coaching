@@ -88,12 +88,14 @@
       </ion-row>
     </ion-grid>
 
-    <ion-list>
-      <QuestionItem v-for="q in questions" :key="q.id" :question="q" />
-      <ion-item v-if="!loading && !questions.length">
-        <ion-label class="muted">No questions found.</ion-label>
-      </ion-item>
-    </ion-list>
+    <SecureView screen="question-bank">
+      <ion-list>
+        <QuestionItem v-for="q in questions" :key="q.id" :question="q" />
+        <ion-item v-if="!loading && !questions.length">
+          <ion-label class="muted">No questions found.</ion-label>
+        </ion-item>
+      </ion-list>
+    </SecureView>
     <ion-infinite-scroll :disabled="questions.length >= total" @ion-infinite="more">
       <ion-infinite-scroll-content />
     </ion-infinite-scroll>
@@ -177,6 +179,7 @@ import {
   type QuestionImportResult,
 } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import SecureView from '@/components/SecureView.vue';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import { questionBankApi } from './api';

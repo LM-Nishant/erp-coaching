@@ -1,7 +1,13 @@
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { Op } from 'sequelize';
-import type { AuthTokens, LoginResult, MeDto } from '@erp/shared';
+import type {
+  AuthTokens,
+  BiometricUnlockEnrolmentDto,
+  BiometricUnlockInput,
+  LoginResult,
+  MeDto,
+} from '@erp/shared';
 import { config } from '../../infrastructure/config';
 import { randomDigits, randomToken, sha256, safeEqual } from '../../infrastructure/crypto';
 import { getDefaultMessagingProvider } from '../../infrastructure/messaging';
@@ -9,6 +15,7 @@ import { logger } from '../../infrastructure/logger';
 import { AppError, BadRequest, Forbidden, Unauthorized, NotFound } from '../../shared/errors';
 import { getContext } from '../../shared/context';
 import { audit } from '../../shared/audit/audit.service';
+import { getIdleTimeoutMinutes, isIdle } from '../../shared/session-policy';
 import { User } from '../users/user.model';
 import { Institute } from '../institutes/institute.model';
 import { Branch } from '../branches/branch.model';
@@ -85,6 +92,8 @@ async function checkDevice(user: User, input: DeviceInput, otpVerified: boolean)
     lastIp: ctx.ip ?? null,
     revokedAt: null,
     revokedBy: null,
+    unlockKeyHash: null,
+    unlockEnrolledAt: null,
   };
   const device = existing
     ? await existing.update(values)
@@ -97,14 +106,6 @@ async function checkDevice(user: User, input: DeviceInput, otpVerified: boolean)
     metadata: { userId: user.id, platform: input.platform },
   });
   return { device };
-}
-
-export async function revokeDevice(deviceId: number, userId: number, revokedBy: number) {
-  const device = await Device.findOne({ where: { id: deviceId, userId } });
-  if (!device) throw NotFound('Device');
-  await device.update({ status: 'revoked', revokedAt: new Date(), revokedBy });
-  await RefreshToken.update({ revokedAt: new Date() }, { where: { deviceId: device.id, revokedAt: null } });
-  await audit({ action: 'device.revoked', entityType: 'device', entityId: device.id, metadata: { userId } });
 }
 
 // ---------------------------------------------------------------- OTP
@@ -233,6 +234,12 @@ export async function verifyOtp(
 export async function refreshTokens(token: string): Promise<AuthTokens> {
   const row = await RefreshToken.findOne({ where: { tokenHash: sha256(token) } });
   if (!row) throw Unauthorized('Invalid refresh token', 'INVALID_REFRESH_TOKEN');
+  // Checked before reuse detection: revoking a device also revokes its tokens, and the app must still
+  // learn that the device was revoked (it then deletes its offline content and credentials).
+  const [user, device] = await Promise.all([User.findByPk(row.userId), Device.findByPk(row.deviceId)]);
+  if (!device || device.status !== 'active')
+    throw Unauthorized('This device session has been revoked', 'SESSION_REVOKED');
+  if (!user || user.status !== 'active') throw Unauthorized('Account is not active', 'ACCOUNT_INACTIVE');
   if (row.revokedAt) {
     await RefreshToken.update(
       { revokedAt: new Date() },
@@ -241,9 +248,9 @@ export async function refreshTokens(token: string): Promise<AuthTokens> {
     throw Unauthorized('Refresh token reuse detected', 'INVALID_REFRESH_TOKEN');
   }
   if (row.expiresAt < new Date()) throw Unauthorized('Refresh token expired', 'INVALID_REFRESH_TOKEN');
-  const [user, device] = await Promise.all([User.findByPk(row.userId), Device.findByPk(row.deviceId)]);
-  if (!user || user.status !== 'active' || !device || device.status !== 'active') {
-    throw Unauthorized('Session is no longer valid', 'SESSION_REVOKED');
+  if (isIdle(device.lastSeenAt, await getIdleTimeoutMinutes(row.instituteId))) {
+    await RefreshToken.update({ revokedAt: new Date() }, { where: { deviceId: device.id, revokedAt: null } });
+    throw Unauthorized('Signed out after a period of inactivity', 'SESSION_IDLE');
   }
   if (row.instituteId) await assertInstituteActive(row.instituteId);
   await row.update({ revokedAt: new Date() });
@@ -251,9 +258,14 @@ export async function refreshTokens(token: string): Promise<AuthTokens> {
 }
 
 export async function logout(token: string) {
-  await RefreshToken.update(
-    { revokedAt: new Date() },
-    { where: { tokenHash: sha256(token), revokedAt: null } },
+  const row = await RefreshToken.findOne({ where: { tokenHash: sha256(token) } });
+  if (!row) return;
+  if (!row.revokedAt) await row.update({ revokedAt: new Date() });
+  // Signing out turns biometric unlock off on that device (the app deletes its credential too).
+  // Locking after inactivity does not call this, so unlock keeps working there.
+  await Device.update(
+    { unlockKeyHash: null, unlockEnrolledAt: null },
+    { where: { id: row.deviceId, unlockKeyHash: { [Op.ne]: null } } },
   );
 }
 
@@ -278,6 +290,87 @@ export async function selectInstitute(
   return issueTokens(user, device, instituteId);
 }
 
+// ---------------------------------------------------------------- biometric unlock
+
+const NATIVE_PLATFORMS = new Set(['android', 'ios']);
+
+async function currentOwnDevice(): Promise<Device> {
+  const ctx = getContext();
+  if (ctx.impersonatorId) throw BadRequest('Not available while impersonating');
+  const device = ctx.deviceId ? await Device.findByPk(ctx.deviceId) : null;
+  if (!device || device.status !== 'active' || device.userId !== ctx.userId) throw Unauthorized();
+  return device;
+}
+
+/**
+ * Sets up biometric unlock on the current (mobile app) device after a full sign-in. The app keeps
+ * the returned secret in the Keychain / Android Keystore behind the OS biometric prompt; the server
+ * stores only its hash, bound to this device. A new enrolment replaces the previous secret.
+ */
+export async function enrolBiometric(): Promise<BiometricUnlockEnrolmentDto> {
+  const device = await currentOwnDevice();
+  if (!NATIVE_PLATFORMS.has((device.platform ?? '').toLowerCase()))
+    throw Forbidden('Biometric unlock is only available in the mobile app', 'BIOMETRIC_APP_ONLY');
+  const secret = randomToken(32);
+  await device.update({ unlockKeyHash: sha256(secret), unlockEnrolledAt: new Date() });
+  await audit({
+    action: 'auth.biometric_enabled',
+    entityType: 'device',
+    entityId: device.id,
+    instituteId: null,
+    metadata: { userId: device.userId, platform: device.platform },
+  });
+  return { deviceId: device.id, secret };
+}
+
+export async function removeBiometric(): Promise<void> {
+  const device = await currentOwnDevice();
+  if (!device.unlockKeyHash) return;
+  await device.update({ unlockKeyHash: null, unlockEnrolledAt: null });
+  await audit({
+    action: 'auth.biometric_disabled',
+    entityType: 'device',
+    entityId: device.id,
+    instituteId: null,
+    metadata: { userId: device.userId },
+  });
+}
+
+/**
+ * Exchanges the device's biometric secret (released by the OS only after Face ID / Touch ID /
+ * fingerprint) for a fresh session on that device. Works only while the device is active, so
+ * revoking a device or signing out disables it.
+ */
+export async function unlockWithBiometric(input: BiometricUnlockInput): Promise<LoginResult> {
+  const invalid = () =>
+    new AppError(401, 'BIOMETRIC_INVALID', 'Biometric sign-in is not set up on this device any more');
+  const device = await Device.findByPk(input.deviceId);
+  if (!device || !safeEqual(device.deviceUid, input.deviceUid)) throw invalid();
+  if (device.status !== 'active')
+    throw Unauthorized('This device session has been revoked', 'SESSION_REVOKED');
+  if (!device.unlockKeyHash || !safeEqual(device.unlockKeyHash, sha256(input.secret))) throw invalid();
+  const user = await User.findByPk(device.userId);
+  if (!user || user.status !== 'active') throw Forbidden('Account is not active', 'ACCOUNT_INACTIVE');
+
+  let instituteId: number | undefined;
+  if (input.instituteId && (await membershipInstituteIds(user.id)).includes(input.instituteId)) {
+    await assertInstituteActive(input.instituteId);
+    instituteId = input.instituteId;
+  }
+  const ctx = getContext();
+  // One session per device: tokens left over from before the lock stop working.
+  await RefreshToken.update({ revokedAt: new Date() }, { where: { deviceId: device.id, revokedAt: null } });
+  await device.update({ lastSeenAt: new Date(), lastIp: ctx.ip ?? null });
+  await audit({
+    action: 'auth.login',
+    entityType: 'user',
+    entityId: user.id,
+    instituteId: null,
+    metadata: { method: 'biometric', deviceId: device.id },
+  });
+  return { status: 'authenticated', ...(await issueTokens(user, device, instituteId)) };
+}
+
 // ---------------------------------------------------------------- impersonation
 
 export async function startImpersonation(
@@ -294,13 +387,17 @@ export async function startImpersonation(
   } else {
     const ur = await UserRole.findOne({
       where: { instituteId, branchId: null },
-      include: [{ model: Role, as: 'role', where: { slug: 'institute-admin' } }],
+      include: [
+        { model: Role, as: 'role', where: { slug: 'institute-admin' } },
+        { model: User, as: 'user', where: { status: 'active' }, attributes: ['id'] },
+      ],
       order: [['id', 'ASC']],
     });
     target = ur ? await User.findByPk(ur.userId) : null;
   }
   if (!target) throw NotFound('Institute admin user');
   if (target.isSuperAdmin) throw BadRequest('Cannot impersonate a super admin');
+  if (target.status !== 'active') throw BadRequest('This user account is not active');
   if (!(await membershipInstituteIds(target.id)).includes(instituteId))
     throw BadRequest('User is not a member of this institute');
 
@@ -383,6 +480,7 @@ export async function buildMe(): Promise<MeDto> {
     impersonatedBy = sa ? { id: sa.id, name: sa.name } : null;
   }
   const isPlatformAdmin = user.isSuperAdmin && !ctx.impersonatorId;
+  const device = ctx.deviceId && !ctx.impersonatorId ? await Device.findByPk(ctx.deviceId) : null;
   return {
     user: {
       id: user.id,
@@ -399,6 +497,11 @@ export async function buildMe(): Promise<MeDto> {
     memberships,
     impersonatedBy,
     enabledModules,
+    session: {
+      // Impersonation sessions have their own fixed lifetime.
+      idleTimeoutMinutes: ctx.impersonatorId ? 0 : await getIdleTimeoutMinutes(ctx.instituteId ?? null),
+      biometricUnlock: !!device?.unlockKeyHash,
+    },
   };
 }
 

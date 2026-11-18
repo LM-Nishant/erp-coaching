@@ -1,5 +1,5 @@
 import type { ApiErrorBody, AuthTokens } from '@erp/shared';
-import { loadSession, saveSession, updateTokens } from './token-storage';
+import { loadSession, patchSession, saveSession, updateTokens } from './token-storage';
 
 export const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:4000').replace(/\/$/, '');
 
@@ -23,12 +23,22 @@ export interface RequestOptions {
   signal?: AbortSignal;
   /** Extra request headers (e.g. `Idempotency-Key`). */
   headers?: Record<string, string>;
+  /** Automatic poll, not a user action: does not keep the session alive (inactivity logout). */
+  background?: boolean;
 }
 
-/** Called when the session can no longer be refreshed (router redirects to login). */
-let onSessionExpired: (() => void) | null = null;
-export function setSessionExpiredHandler(fn: () => void) {
-  onSessionExpired = fn;
+/** 401 codes a token refresh cannot fix: inactivity timeout, revoked device, deactivated account. */
+export const SESSION_END_CODES: ReadonlySet<string> = new Set([
+  'SESSION_IDLE',
+  'SESSION_REVOKED',
+  'ACCOUNT_INACTIVE',
+]);
+
+type SessionEndedHandler = (code: string) => void | Promise<void>;
+/** Called with the API's error code once the session is over (main.ts locks the app or goes to login). */
+let onSessionEnded: SessionEndedHandler | null = null;
+export function setSessionExpiredHandler(fn: SessionEndedHandler) {
+  onSessionEnded = fn;
 }
 
 /** Called on every 402 (subscription restricted or suspended); the subscriptions module refreshes its banner. */
@@ -37,21 +47,46 @@ export function setPaymentRequiredHandler(fn: ((e: ApiError) => void) | null) {
   onPaymentRequired = fn;
 }
 
-let refreshing: Promise<boolean> | null = null;
+let ending: Promise<void> | null = null;
+/** Concurrent 401s end the session once. Also used when an anonymous call (biometric unlock) reports a revoked device. */
+export function sessionEnded(code: string) {
+  ending ??= (async () => {
+    if (onSessionEnded) await onSessionEnded(code);
+    else await saveSession(null);
+  })()
+    .catch(() => undefined)
+    .finally(() => (ending = null));
+  return ending;
+}
+
+/** Resolves once a session end in progress (including its handler) has finished. */
+export const sessionEndSettled = () => ending ?? Promise.resolve();
+
+async function errorCode(res: Response): Promise<string | undefined> {
+  if (!res.headers.get('content-type')?.includes('application/json')) return undefined;
+  try {
+    return ((await res.clone().json()) as ApiErrorBody)?.error?.code;
+  } catch {
+    return undefined;
+  }
+}
+
+let refreshing: Promise<{ ok: boolean; code?: string }> | null = null;
 
 /** Single-flight refresh: concurrent 401s share one refresh call (refresh tokens rotate). */
-async function refreshAccessToken(): Promise<boolean> {
+async function refreshAccessToken(): Promise<{ ok: boolean; code?: string }> {
   refreshing ??= (async () => {
     const session = await loadSession();
-    if (!session?.refreshToken || session.impersonator) return false;
+    if (!session?.refreshToken || session.impersonator) return { ok: false };
     const res = await fetch(`${API_URL}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken: session.refreshToken }),
     });
-    if (!res.ok) return false;
-    await updateTokens((await res.json()) as AuthTokens);
-    return true;
+    if (!res.ok) return { ok: false, code: await errorCode(res) };
+    if (await updateTokens((await res.json()) as AuthTokens, session.refreshToken)) return { ok: true };
+    // Signed out or signed in again during the refresh: retry with the current session, if any.
+    return { ok: !!(await loadSession()) };
   })().finally(() => {
     refreshing = null;
   });
@@ -66,32 +101,58 @@ function buildUrl(path: string, query?: Query) {
   return url.toString();
 }
 
-async function send(method: string, path: string, opts: RequestOptions, retried = false): Promise<Response> {
+/** A request is re-sent at most this many times after a 401 (newer token, refresh, impersonation over). */
+const MAX_RESENDS = 3;
+
+/** `refreshed`: this request already triggered a token refresh (at most one per request). */
+async function send(
+  method: string,
+  path: string,
+  opts: RequestOptions,
+  refreshed = false,
+  resends = 0,
+): Promise<Response> {
   const headers: Record<string, string> = { Accept: 'application/json', ...opts.headers };
   const isForm = opts.body instanceof FormData;
   if (opts.body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
-  if (!opts.anonymous) {
-    const session = await loadSession();
-    if (session?.accessToken) headers.Authorization = `Bearer ${session.accessToken}`;
-    if (session?.branchId) headers['X-Branch-Id'] = String(session.branchId);
-  }
+  if (opts.background) headers['X-Background-Request'] = '1';
+  const sent = opts.anonymous ? null : await loadSession();
+  if (sent?.accessToken) headers.Authorization = `Bearer ${sent.accessToken}`;
+  if (sent?.branchId) headers['X-Branch-Id'] = String(sent.branchId);
   const res = await fetch(buildUrl(path, opts.query), {
     method,
     headers,
     signal: opts.signal,
     body: opts.body === undefined ? undefined : isForm ? (opts.body as FormData) : JSON.stringify(opts.body),
   });
-  if (res.status === 401 && !opts.anonymous && !retried) {
-    if (await refreshAccessToken()) return send(method, path, opts, true);
-    const session = await loadSession();
-    if (session?.impersonator) {
-      // Impersonation token expired: fall back to the super admin session.
-      await saveSession({ ...session.impersonator, impersonator: null, branchId: null });
-      return send(method, path, opts, true);
-    }
-    await saveSession(null);
-    onSessionExpired?.();
+  if (res.status !== 401 || opts.anonymous) return res;
+  const current = await loadSession();
+  // Signed out (or the session already ended) while this request was in flight.
+  if (!current) return res;
+  const resend = (afterRefresh: boolean) =>
+    resends < MAX_RESENDS ? send(method, path, opts, afterRefresh, resends + 1) : Promise.resolve(res);
+  // Sent with an older token (refreshed, unlocked, signed in again or impersonation left meanwhile): retry with the
+  // current one, which may still need its own refresh.
+  if (current.accessToken !== sent?.accessToken) return resend(refreshed);
+  let code = await errorCode(res);
+  if (current.impersonator && code !== 'SESSION_REVOKED') {
+    // The impersonation is over (expired, stopped, impersonated account deactivated): back to the super admin's own
+    // session, refreshed if needed. Only a revoked device ends that session too.
+    await patchSession(
+      { ...current.impersonator, impersonator: null, branchId: null },
+      (s) => s.accessToken === current.accessToken,
+    );
+    return resend(refreshed);
   }
+  if (!refreshed && !SESSION_END_CODES.has(code ?? '')) {
+    const r = await refreshAccessToken();
+    if (r.ok) return resend(true);
+    const session = await loadSession();
+    if (!session) return res;
+    if (session.accessToken !== sent?.accessToken) return resend(true);
+    code = r.code ?? code;
+  }
+  void sessionEnded(code ?? 'UNAUTHORIZED');
   return res;
 }
 

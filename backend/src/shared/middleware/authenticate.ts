@@ -6,6 +6,12 @@ import { Branch } from '../../modules/branches/branch.model';
 import { Device, ImpersonationSession } from '../../modules/authentication/models';
 import { verifyAccessToken } from '../../modules/authentication/token.service';
 import { computeAccess, loadAssignments } from '../../modules/permissions/access.service';
+import {
+  ACTIVITY_TOUCH_INTERVAL_MS,
+  BACKGROUND_REQUEST_HEADER,
+  getIdleTimeoutMinutes,
+  isIdle,
+} from '../session-policy';
 
 /** Extra check for tenant requests, run once the context is filled. Throw an AppError to refuse. */
 export type TenantRequestGuard = (req: Request) => Promise<void> | void;
@@ -24,6 +30,9 @@ export function addTenantRequestGuard(name: string, guard: TenantRequestGuard): 
  * Verifies the bearer token and fills the request context (user, device, institute, roles,
  * permissions, allowed branches). Tenant comes ONLY from the signed token; the optional
  * `X-Branch-Id` header is validated against the user's allowed branches.
+ *
+ * Also enforces the institute's inactivity timeout (401 `SESSION_IDLE`) and records activity on the
+ * device (`lastSeenAt`), except for background polls sent with `X-Background-Request: 1`.
  */
 export const authenticate: RequestHandler = async (req, _res, next) => {
   const header = req.header('authorization');
@@ -32,7 +41,11 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
   const ctx = req.ctx;
 
   const user = await User.findByPk(claims.sub);
-  if (!user || user.status !== 'active') throw Unauthorized('Account is not active', 'ACCOUNT_INACTIVE');
+  if (!user || user.status !== 'active') {
+    // While impersonating, `sub` is the impersonated user: only the impersonation ends, not the super admin's session.
+    if (claims.imp) throw Unauthorized('Impersonation session ended', 'IMPERSONATION_ENDED');
+    throw Unauthorized('Account is not active', 'ACCOUNT_INACTIVE');
+  }
 
   const device = await Device.findByPk(claims.did);
   if (!device || device.status !== 'active' || device.userId !== (claims.imp ?? claims.sub)) {
@@ -51,6 +64,8 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
     }
     ctx.impersonatorId = claims.imp;
     ctx.impersonationSessionId = session.id;
+  } else if (isIdle(device.lastSeenAt, await getIdleTimeoutMinutes(claims.inst ?? null))) {
+    throw Unauthorized('Signed out after a period of inactivity', 'SESSION_IDLE');
   }
 
   ctx.userId = user.id;
@@ -89,6 +104,14 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
   } else {
     ctx.roles = [];
     ctx.permissions = new Set();
+  }
+
+  const now = Date.now();
+  if (
+    req.header(BACKGROUND_REQUEST_HEADER) !== '1' &&
+    (!device.lastSeenAt || now - device.lastSeenAt.getTime() > ACTIVITY_TOUCH_INTERVAL_MS)
+  ) {
+    await Device.update({ lastSeenAt: new Date(now), lastIp: ctx.ip ?? null }, { where: { id: device.id } });
   }
   next();
 };

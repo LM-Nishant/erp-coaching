@@ -50,13 +50,14 @@ export default defineAppModule({
       path: '/lms/resources/:id(\\d+)',
       name: 'lms-resource',
       component: () => import('./ResourcePlayerPage.vue'),
-      meta: { permission: 'lms.view' },
+      // `?offline=1` plays the encrypted copy saved in the app
+      meta: { permission: 'lms.view', offline: (to) => to.query.offline === '1' },
     },
     {
       path: '/lms/offline',
       name: 'lms-offline',
       component: () => import('./OfflinePage.vue'),
-      meta: { permission: 'lms.view' },
+      meta: { permission: 'lms.view', offline: true },
     },
     {
       path: '/lms/homework',
@@ -125,4 +126,6 @@ export default defineAppModule({
       order: 44,
     },
   ],
+  // device revoked or account deactivated: the user's downloaded lectures go with it
+  wipeUserData: async (userId) => (await import('./offline-store')).wipeOffline(userId),
 });

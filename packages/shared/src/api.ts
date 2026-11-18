@@ -1,3 +1,4 @@
+import type { SessionPolicyDto } from './devices';
 import type { PermissionKey } from './permissions';
 
 export interface ApiErrorBody {
@@ -43,6 +44,8 @@ export interface MeDto {
   memberships: MembershipDto[];
   impersonatedBy: { id: number; name: string } | null;
   enabledModules: string[] | null;
+  /** Inactivity timeout and biometric unlock state of this session (absent on older APIs). */
+  session?: SessionPolicyDto;
 }
 
 export interface Paginated<T> {

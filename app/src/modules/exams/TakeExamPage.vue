@@ -25,7 +25,7 @@
       <ion-button @click="load">Retry</ion-button>
     </div>
 
-    <div v-if="session && q && cur" class="exam-layout">
+    <SecureView v-if="session && q && cur" class="exam-layout" screen="exam-attempt">
       <div class="exam-main">
         <ion-segment
           v-if="session.sections.length > 1"
@@ -178,7 +178,7 @@
           >Submit exam</ion-button
         >
       </aside>
-    </div>
+    </SecureView>
 
     <ion-modal :is-open="paletteOpen" @did-dismiss="paletteOpen = false">
       <ion-header>
@@ -254,7 +254,9 @@ import {
   type SaveAnswerInput,
 } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import SecureView from '@/components/SecureView.vue';
 import { ApiError, errorMessage } from '@/core/api';
+import { useSessionHold } from '@/core/idle';
 import { toast, toastError } from '@/core/toast';
 import { examsApi, fmtMarks } from './api';
 import ExamQuestionPalette, { type PaletteItem, type PaletteStatus } from './ExamQuestionPalette.vue';
@@ -303,6 +305,9 @@ const saveState = ref<SaveState>('idle');
 const nowMs = ref(Date.now());
 const deadlineMs = ref(0);
 const finished = ref(false);
+const viewActive = ref(false);
+// Reading and working out answers is activity: no inactivity lock during an open attempt.
+useSessionHold(() => viewActive.value && !!session.value && !finished.value);
 
 /** Server clock minus local clock, so the countdown is immune to a wrong device clock. */
 let clockOffset = 0;
@@ -664,6 +669,7 @@ function stopTimers() {
 }
 
 onIonViewWillEnter(async () => {
+  viewActive.value = true;
   finished.value = false;
   closedHandled = false;
   window.addEventListener('online', onOnline);
@@ -673,6 +679,7 @@ onIonViewWillEnter(async () => {
 });
 
 onIonViewWillLeave(() => {
+  viewActive.value = false;
   stopTimers();
   window.removeEventListener('online', onOnline);
   window.removeEventListener('offline', onOffline);

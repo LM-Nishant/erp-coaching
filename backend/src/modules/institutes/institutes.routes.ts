@@ -10,7 +10,13 @@ import { getStorage } from '../../infrastructure/storage';
 import { Institute } from './institute.model';
 import { getAllSettings, setSetting } from './settings.service';
 import { clearInstituteTimezoneCache, getInstituteTimezone, isValidTimeZone } from '../../shared/timezone';
-import { INSTITUTE_TIMEZONE_SETTING, type InstituteSettingsDto } from '@erp/shared';
+import { clearIdleTimeoutCache, getIdleTimeoutMinutes } from '../../shared/session-policy';
+import {
+  INSTITUTE_IDLE_TIMEOUT_SETTING,
+  INSTITUTE_TIMEZONE_SETTING,
+  isValidIdleTimeout,
+  type InstituteSettingsDto,
+} from '@erp/shared';
 import { setFileResponseHeaders } from '../../shared/utilities/file-response';
 import { FileObject } from '../files/file.model';
 
@@ -25,6 +31,26 @@ const timezone = z.string().max(64).refine(isValidTimeZone, 'Unknown IANA timezo
 async function saveTimezone(tz: string) {
   await setSetting(INSTITUTE_TIMEZONE_SETTING, tz);
   clearInstituteTimezoneCache(requireTenantContext().instituteId);
+}
+
+/** Inactivity logout for web and app sessions (spec 4.18): 0 (never) or 5–1440 minutes. */
+const idleTimeout = z
+  .number()
+  .int()
+  .refine(isValidIdleTimeout, 'Use 0 (never) or between 5 and 1440 minutes');
+
+async function saveIdleTimeout(minutes: number) {
+  await setSetting(INSTITUTE_IDLE_TIMEOUT_SETTING, minutes);
+  clearIdleTimeoutCache(requireTenantContext().instituteId);
+}
+
+async function profileDto(inst: Institute) {
+  return {
+    ...inst.toJSON(),
+    timezone: await getInstituteTimezone(inst.id),
+    idleTimeoutMinutes: await getIdleTimeoutMinutes(inst.id),
+    branding: inst.toBranding(),
+  };
 }
 
 export function instituteRoutes(api: Router) {
@@ -53,11 +79,7 @@ export function instituteRoutes(api: Router) {
   r.get('/', requirePermission('institute', 'view'), async (_req, res) => {
     const inst = await Institute.findByPk(requireTenantContext().instituteId);
     if (!inst) throw NotFound('Institute');
-    res.json({
-      ...inst.toJSON(),
-      timezone: await getInstituteTimezone(inst.id),
-      branding: inst.toBranding(),
-    });
+    res.json(await profileDto(inst));
   });
 
   r.patch('/', requirePermission('institute', 'configure'), async (req, res) => {
@@ -76,11 +98,12 @@ export function instituteRoutes(api: Router) {
         bankDetails: z.record(z.string(), z.string()).nullable().optional(),
         logoFileId: z.number().int().positive().nullable().optional(),
         timezone: timezone.optional(),
+        idleTimeoutMinutes: idleTimeout.optional(),
       }),
       req.body,
     );
     const { instituteId } = requireTenantContext();
-    const { timezone: tz, ...profile } = body;
+    const { timezone: tz, idleTimeoutMinutes, ...profile } = body;
     if (body.logoFileId) {
       const file = await FileObject.findOne({ where: { id: body.logoFileId, instituteId } });
       if (!file || !file.mimeType.startsWith('image/'))
@@ -90,17 +113,17 @@ export function instituteRoutes(api: Router) {
     if (!inst) throw NotFound('Institute');
     await inst.update(profile);
     if (tz) await saveTimezone(tz);
+    if (idleTimeoutMinutes !== undefined) await saveIdleTimeout(idleTimeoutMinutes);
     await audit({
       action: 'institute.profile_updated',
       entityType: 'institute',
       entityId: instituteId,
-      metadata: { fields: Object.keys(body) },
+      metadata: {
+        fields: Object.keys(body),
+        ...(idleTimeoutMinutes !== undefined ? { idleTimeoutMinutes } : {}),
+      },
     });
-    res.json({
-      ...inst.toJSON(),
-      timezone: await getInstituteTimezone(inst.id),
-      branding: inst.toBranding(),
-    });
+    res.json(await profileDto(inst));
   });
 
   r.get('/settings', requirePermission('institute', 'view'), async (_req, res) => {
@@ -112,8 +135,14 @@ export function instituteRoutes(api: Router) {
     const key = parse(z.string().regex(/^[a-z0-9_.-]{2,120}$/), req.params.key);
     const { value } = parse(z.object({ value: z.unknown() }), req.body);
     if (key === INSTITUTE_TIMEZONE_SETTING) await saveTimezone(parse(timezone, value));
+    else if (key === INSTITUTE_IDLE_TIMEOUT_SETTING) await saveIdleTimeout(parse(idleTimeout, value));
     else await setSetting(key, value);
-    await audit({ action: 'institute.setting_changed', entityType: 'institute_setting', entityId: key });
+    await audit({
+      action: 'institute.setting_changed',
+      entityType: 'institute_setting',
+      entityId: key,
+      ...(key === INSTITUTE_IDLE_TIMEOUT_SETTING ? { metadata: { value } } : {}),
+    });
     res.json({ key, value });
   });
 

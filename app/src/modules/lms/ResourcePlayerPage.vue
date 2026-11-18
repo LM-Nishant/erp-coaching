@@ -5,7 +5,7 @@
     </div>
 
     <template v-else-if="playback || offlineUrl">
-      <div v-if="isVideo" class="player" @contextmenu.prevent>
+      <SecureView v-if="isVideo" class="player" screen="lms-content" :text="watermark">
         <video
           ref="videoEl"
           :src="videoSrc"
@@ -16,19 +16,18 @@
           preload="metadata"
           @loadedmetadata="onLoaded"
           @timeupdate="onTime"
-          @pause="flush()"
-          @ended="flush(true)"
+          @play="playing = true"
+          @pause="onPause"
+          @ended="onEnded"
           @error="onVideoError"
         />
-        <Watermark :text="watermark" />
-      </div>
+      </SecureView>
 
       <template v-else-if="playback?.kind === 'file'">
-        <div v-if="inline" class="doc" @contextmenu.prevent>
+        <SecureView v-if="inline" class="doc" screen="lms-content" :text="watermark">
           <img v-if="playback.mimeType?.startsWith('image/')" :src="playback.url" alt="" />
           <iframe v-else :src="`${playback.url}#toolbar=0`" title="document" />
-          <Watermark :text="watermark" />
-        </div>
+        </SecureView>
         <p v-else class="muted">This file type cannot be previewed in the app.</p>
       </template>
 
@@ -66,6 +65,8 @@ import { IonBadge, IonButton, IonIcon, onIonViewDidLeave, onIonViewWillEnter } f
 import { cloudDownloadOutline, downloadOutline } from 'ionicons/icons';
 import type { LmsLearnerResourceDto, LmsPlaybackDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import SecureView from '@/components/SecureView.vue';
+import { useSessionHold } from '@/core/idle';
 import { toast, toastError } from '@/core/toast';
 import { fmtDateTime, lmsApi } from './api';
 import {
@@ -75,9 +76,7 @@ import {
   saveOffline,
   type OfflineItem,
 } from './offline-store';
-import { protectScreen } from './privacy';
 import { useLmsRole } from './roles';
-import Watermark from './Watermark.vue';
 
 const REPORT_EVERY_SECONDS = 15;
 
@@ -96,6 +95,9 @@ const completed = ref(false);
 const savedOffline = ref(false);
 const savingOffline = ref(false);
 const offlinePct = ref(0);
+// A lecture playing is activity: no inactivity lock mid-video.
+const playing = ref(false);
+useSessionHold(playing);
 
 let lastTime = 0;
 let watchedDelta = 0;
@@ -136,7 +138,6 @@ async function load() {
   error.value = '';
   playback.value = null;
   completed.value = false;
-  await protectScreen(true);
   try {
     if (offlineMode.value) {
       const { url, item } = await openOffline(id.value);
@@ -172,6 +173,16 @@ function onTime() {
   }
   lastTime = v.currentTime;
   if (sinceReport >= REPORT_EVERY_SECONDS) void flush();
+}
+
+function onPause() {
+  playing.value = false;
+  void flush();
+}
+
+function onEnded() {
+  playing.value = false;
+  void flush(true);
 }
 
 async function flush(ended = false) {
@@ -243,7 +254,6 @@ async function leave() {
   videoEl.value?.pause();
   if (offlineUrl.value) URL.revokeObjectURL(offlineUrl.value);
   offlineUrl.value = null;
-  await protectScreen(false);
 }
 
 onIonViewWillEnter(load);
@@ -274,10 +284,6 @@ onBeforeUnmount(() => void leave());
 }
 .doc img {
   max-width: 100%;
-}
-.doc :deep(.wm) {
-  color: rgba(0, 0, 0, 0.25);
-  text-shadow: none;
 }
 .description {
   white-space: pre-wrap;

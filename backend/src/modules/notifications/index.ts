@@ -2,6 +2,7 @@ import { defineModule } from '../../shared/module';
 import { associateNotificationModels, initNotificationModels } from './models';
 import { notificationRoutes } from './notifications.routes';
 import { CAMPAIGN_JOB, DELIVER_JOB, deliverMessage, runCampaign } from './notify.service';
+import { registerNotificationIntegrations } from './integrations';
 
 /**
  * Notifications & communication (spec §4.14). Other modules use the public API exported from
@@ -36,4 +37,5 @@ export default defineModule({
     [DELIVER_JOB]: (payload) => deliverMessage(payload as { messageId: number }),
     [CAMPAIGN_JOB]: (payload) => runCampaign(payload as { campaignId: number }),
   },
+  onReady: registerNotificationIntegrations,
 });

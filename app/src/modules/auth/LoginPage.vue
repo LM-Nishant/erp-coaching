@@ -8,6 +8,20 @@
           <p class="muted">Sign in to your institute</p>
         </div>
 
+        <ion-text v-if="notice" color="warning"
+          ><p class="notice">{{ notice }}</p></ion-text
+        >
+        <ion-button
+          v-if="auth.canUnlock"
+          expand="block"
+          fill="outline"
+          class="unlock"
+          @click="router.replace({ name: 'unlock', query: route.query })"
+        >
+          <ion-icon slot="start" :icon="fingerPrintOutline" />
+          Unlock with biometrics
+        </ion-button>
+
         <ion-segment v-model="mode">
           <ion-segment-button value="password"><ion-label>Password</ion-label></ion-segment-button>
           <ion-segment-button value="otp"><ion-label>Mobile OTP</ion-label></ion-segment-button>
@@ -63,11 +77,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   IonButton,
   IonContent,
+  IonIcon,
   IonInput,
   IonInputPasswordToggle,
   IonItem,
@@ -79,6 +94,7 @@ import {
   IonSpinner,
   IonText,
 } from '@ionic/vue';
+import { fingerPrintOutline } from 'ionicons/icons';
 import { errorMessage } from '@/core/api';
 import { useAuthStore, type NextStep } from '@/stores/auth';
 
@@ -92,6 +108,15 @@ const password = ref('');
 const mobile = ref('');
 const busy = ref(false);
 const error = ref('');
+
+/** Why the last session ended (inactivity, device signed out by an admin…). */
+const ENDED: Record<string, string> = {
+  idle: 'You were signed out after a period of inactivity.',
+  revoked: 'This device was signed out of your account. Sign in again to continue.',
+  inactive: 'Your account is inactive. Contact your institute.',
+  expired: 'Your session has expired. Please sign in again.',
+};
+const notice = computed(() => (auth.endReason ? ENDED[auth.endReason] : ''));
 
 async function submit() {
   busy.value = true;
@@ -112,7 +137,7 @@ async function submit() {
 async function go(next: NextStep) {
   if (next === 'device-limit') {
     error.value =
-      'You are already signed in on the maximum number of devices. Ask your institute admin to remove an old device.';
+      'You are already signed in on the maximum number of devices. Sign out of one in "My devices" on another device, or ask your institute admin to remove an old device.';
     return;
   }
   if (next === 'otp') return router.push({ name: 'otp', query: route.query });
@@ -139,5 +164,12 @@ async function go(next: NextStep) {
 .error {
   white-space: pre-line;
   font-size: 14px;
+}
+.notice {
+  text-align: center;
+  font-size: 14px;
+}
+.unlock {
+  margin-bottom: 16px;
 }
 </style>
