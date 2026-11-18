@@ -44,6 +44,10 @@ export type AppNavigationGuard = (
 export interface WidgetSlotProps {
   /** Parent home (`/parent-home`): one linked child at a time, switched by the parent. */
   'parent-home': { child: ParentChildDto };
+  /** Home dashboard (`/home`) of institute users, every role; widgets scope data to the signed-in user. */
+  home: Record<string, never>;
+  /** Home dashboard (`/home`) of the platform super admin (not while impersonating). */
+  'platform-home': Record<string, never>;
 }
 export type WidgetSlot = keyof WidgetSlotProps;
 

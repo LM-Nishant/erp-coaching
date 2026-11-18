@@ -135,6 +135,7 @@ Deployment, TLS, backups and scaling are covered in [docs/deployment.md](docs/de
 | Payments / streaming / biometric | `getPaymentGateway(instituteId)`, `infrastructure/streaming`, `infrastructure/biometric` (mock implementations)                                                              |
 | Calendar / online meetings       | `getCalendarProvider(instituteId)` from `infrastructure/calendar`: create/update/cancel events and get a meeting link (mock implementation)                                  |
 | Parent portal                    | `registerParentPortalProvider()` from `modules/parent-portal/api` (backend sections); app `widgets` with slot `parent-home` (see CONTRIBUTING.md)                            |
+| Reports / analytics              | module `reporting.ts` queries take a `ReportScope` (`shared/reporting.ts`); `setSaasBillingStatsProvider()` in `modules/reports/api`; widget slots `home`, `platform-home`   |
 
 ## Files
 

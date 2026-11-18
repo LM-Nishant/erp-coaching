@@ -5,3 +5,6 @@
  */
 export { recordAttendance, type RecordAttendanceInput } from './sessions.service';
 export { computeTotals, studentSummary } from './reports.service';
+
+/** Read-only report queries (reports module, spec §4.17); callers pass a validated `ReportScope`. */
+export { attendanceReport } from './reporting';
