@@ -147,7 +147,10 @@ export function platformRoutes(api: Router) {
 
   admin.put('/storage', async (req, res) => {
     const body = parse(storageSchema, req.body);
-    const dto = await saveStorage({ ...body, endpoint: body.endpoint || null }, req.ctx.userId ?? null);
+    const dto = await saveStorage(
+      { ...body, endpoint: body.endpoint === '' ? null : body.endpoint },
+      req.ctx.userId ?? null,
+    );
     await audit({
       action: 'platform.storage_updated',
       entityType: 'platform_storage',
