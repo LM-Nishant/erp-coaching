@@ -37,11 +37,8 @@ const WINDOW_15M = 15 * MINUTE;
 const MEDIA_PATH = /^\/(files\/signed|lms\/public\/hls)\//;
 
 /** Every /api request except media. */
-export const apiRateLimit = limiter(
-  'api',
-  MINUTE,
-  config.RATE_LIMIT_API_PER_MIN,
-  (req) => MEDIA_PATH.test(req.path),
+export const apiRateLimit = limiter('api', MINUTE, config.RATE_LIMIT_API_PER_MIN, (req) =>
+  MEDIA_PATH.test(req.path),
 );
 
 /** Signed file downloads and HLS segments. */

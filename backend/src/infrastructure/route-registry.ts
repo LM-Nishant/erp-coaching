@@ -47,7 +47,8 @@ export function describeRoutes(modules: ModuleDefinition[]): RouteInfo[] {
   proto.use = function (...args) {
     const before = this.stack.length;
     const result = use.apply(this, args);
-    const path = typeof args[0] === 'string' ? args[0] : typeof args[0] === 'function' ? '/' : String(args[0]);
+    const path =
+      typeof args[0] === 'string' ? args[0] : typeof args[0] === 'function' ? '/' : String(args[0]);
     for (const layer of this.stack.slice(before)) {
       mountPath.set(layer, path);
       owner.set(layer, current);
