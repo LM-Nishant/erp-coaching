@@ -348,15 +348,16 @@ To add a new slot, extend `WidgetSlotProps` in `core/modules.ts` with the slot's
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request, every push to `main`, nightly and on demand. Every job must pass before a PR is merged:
 
-| Job             | What it checks                                                                           | Run it locally                                                                                    |
-| --------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `quality`       | lint, format, typecheck and build of every workspace                                     | `npm run lint && npm run format:check && npm run typecheck && npm run build`                      |
-| `app-tests`     | shared package and app unit tests                                                        | `npm run test -w app`                                                                             |
-| `backend-tests` | the backend suite against MySQL 8.4; nightly also in reverse and shuffled file order     | `npm test -w backend`; repeat a shuffled order with `TEST_FILE_SEED` from the job log             |
-| `audit`         | known vulnerabilities in dependencies                                                    | `node scripts/audit-check.mjs`                                                                    |
-| `secrets`       | credentials anywhere in the git history (gitleaks)                                       | `gitleaks git --redact .`                                                                         |
-| `e2e`           | the browser workflows against MySQL 8.4                                                  | `npm run e2e`                                                                                     |
-| `deploy`        | shellcheck of `deploy/`, the Compose file, the Docker images and the backup restore test | see [docs/deployment.md](docs/deployment.md) and [docs/backup-restore.md](docs/backup-restore.md) |
+| Job              | What it checks                                                                                    | Run it locally                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `quality`        | lint, format, typecheck and build of every workspace                                              | `npm run lint && npm run format:check && npm run typecheck && npm run build`                 |
+| `app-tests`      | shared package and app unit tests                                                                 | `npm run test -w app`                                                                        |
+| `backend-tests`  | the backend suite against MySQL 8.4; nightly also in reverse and shuffled file order              | `npm test -w backend`; repeat a shuffled order with `TEST_FILE_SEED` from the job log        |
+| `audit`          | known vulnerabilities in dependencies                                                             | `node scripts/audit-check.mjs`                                                               |
+| `secrets`        | credentials anywhere in the git history (gitleaks)                                                | `gitleaks git --redact .`                                                                    |
+| `e2e`            | the browser workflows against MySQL 8.4                                                           | `npm run e2e`                                                                                |
+| `deploy`         | shellcheck of `deploy/`; builds the Docker images and smoke-tests the Compose stack through nginx | `deploy/smoke-test.sh` (Docker and Compose v2), see [docs/deployment.md](docs/deployment.md) |
+| `backup-restore` | backup, restore and verification of a seeded database and media against MySQL 8.4                 | `deploy/backup/restore-test.sh`, see [docs/backup-restore.md](docs/backup-restore.md)        |
 
 CI has no `backend/.env`: the backend runs on its defaults plus the `DB_*` and `TEST_DB_NAME` variables, in UTC. If a test passes locally but fails on CI, look for a dependency on your `backend/.env` or your machine's time zone. [`.github/workflows/load.yml`](.github/workflows/load.yml) runs the [load tests](#load-tests) on demand only.
 
