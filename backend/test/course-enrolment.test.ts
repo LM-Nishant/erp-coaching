@@ -181,6 +181,8 @@ describe('online course purchase → admission and batch enrolment', () => {
     request(app).get('/api/fees/course-enrolments').query(query).set(bearer(token));
   const assign = (id: number, batchId: number, token = admin) =>
     request(app).post(`/api/fees/course-enrolments/${id}/assign`).set(bearer(token)).send({ batchId });
+  const batchOptions = (id: number, token = admin) =>
+    request(app).get(`/api/fees/course-enrolments/${id}/batches`).set(bearer(token));
   const replay = (accountId: number) => runWithContext(SYSTEM, () => reconcileCourseEnrolment(accountId));
 
   beforeAll(async () => {
@@ -488,8 +490,17 @@ describe('online course purchase → admission and batch enrolment', () => {
     expect((await assign(row.id, a1)).status).toBe(400);
     expect((await assign(row.id, 99_999_999)).status).toBe(404);
     expect((await enrolmentOf(s4, courseD)).status).toBe('awaiting_batch');
+    expect((await batchOptions(row.id)).body).toEqual([]);
 
     const open = await createBatch(courseD, 'D3', { startDate: '2051-05-01' });
+    const options = await batchOptions(row.id);
+    expect(options.status).toBe(200);
+    expect(options.body).toEqual([
+      { id: open, name: 'CE Batch D3', startDate: '2051-05-01', seatsLeft: expect.any(Number) },
+    ]);
+    expect(options.body[0].seatsLeft).toBeGreaterThan(0);
+    expect((await batchOptions(row.id, zenith)).status).toBe(404);
+    expect((await batchOptions(row.id, s4.token)).status).toBe(403);
     const assigned = await assign(row.id, open);
     expect(assigned.status).toBe(200);
     expect(assigned.body).toMatchObject({
@@ -541,7 +552,10 @@ describe('online course purchase → admission and batch enrolment', () => {
     // An unpaid purchase may switch batch.
     await buy(s7, courseA, { batchId: a1 });
     await buy(s7, courseA, { batchId: a2 });
-    expect((await quote(s7, courseA)).body.batch).toMatchObject({ id: a2, available: true });
+    expect((await quote(s7, courseA)).body).toMatchObject({
+      batch: { id: a2, available: true },
+      batchFixed: false,
+    });
     expect((await FeeAccount.findOne({ where: { instituteId: 1, studentId: s7.id } }))?.batchId).toBe(a2);
 
     // A batch-specific price ties the purchase to its batch.
@@ -551,6 +565,7 @@ describe('online course purchase → admission and batch enrolment', () => {
     await createStructure(courseF, 400_000, f1);
     expect((await quote(s7, courseF, { batchId: f1 })).body.amount).toBe(400_000);
     expect((await buy(s7, courseF, { batchId: f1 })).amount).toBe(400_000);
+    expect((await quote(s7, courseF)).body).toMatchObject({ batch: { id: f1 }, batchFixed: true });
     const moved = await checkout(s7, courseF, { batchId: f2 });
     expect(moved.status).toBe(409);
     expect(moved.body.error.code).toBe('PURCHASE_BATCH_FIXED');

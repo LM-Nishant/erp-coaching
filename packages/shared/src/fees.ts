@@ -237,6 +237,17 @@ export const COURSE_BATCH_ISSUES = [
 ] as const;
 export type CourseBatchIssue = (typeof COURSE_BATCH_ISSUES)[number];
 
+/** Reasons shown to admins and buyers. */
+export const COURSE_BATCH_ISSUE_LABELS: Record<CourseBatchIssue, string> = {
+  not_found: 'the batch chosen at checkout no longer exists',
+  other_course: 'the batch chosen at checkout is for another course',
+  other_branch: "the batch chosen at checkout is in another branch from the student's",
+  closed: 'the batch chosen at checkout is closed',
+  full: 'the batch chosen at checkout is full',
+  no_login: 'the student has no login of their own yet',
+  no_open_batch: 'no open batch of the course has free seats',
+};
+
 /** An open batch of a course with free seats, offered at checkout. */
 export interface CourseBatchOptionDto {
   id: number;
@@ -257,6 +268,8 @@ export interface CourseQuoteDto {
   alreadyPaid: boolean;
   /** The batch chosen at checkout and whether it still has a seat for the student (null: none chosen). */
   batch: { id: number; name: string | null; available: boolean; reason: CourseBatchIssue | null } | null;
+  /** The purchase can no longer switch batch: it is part-paid, or priced for its batch. */
+  batchFixed: boolean;
   /** Open batches of the course in the student's branch with free seats. */
   openBatches: CourseBatchOptionDto[];
   /** Once paid: the admission and batch enrolment the purchase produced (null before that). */

@@ -21,3 +21,27 @@
   flex-wrap: wrap;
   gap: 4px;
 }
+
+/* Inline status banner: <div class="notice warning|danger|medium">. */
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 14px;
+  background: rgba(var(--ion-color-medium-rgb), 0.12);
+}
+.notice.warning {
+  background: rgba(var(--ion-color-warning-rgb), 0.15);
+  color: var(--ion-color-warning-shade);
+}
+.notice.danger {
+  background: rgba(var(--ion-color-danger-rgb), 0.1);
+  color: var(--ion-color-danger);
+}
+.notice ion-icon {
+  flex: none;
+  font-size: 20px;
+}

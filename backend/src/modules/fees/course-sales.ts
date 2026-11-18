@@ -23,6 +23,7 @@ import { findStructureFor } from './structures.service';
 import { generateAccount } from './accounts.service';
 import { couponCustomerKey, createCheckout } from './payments.service';
 import { enabledGateways } from './gateways.service';
+import { batchOptionDto } from './course-enrolment';
 
 /** A course is sold through fees when it has an active course fee structure. */
 export async function isPaidCourse(instituteId: number, courseId: number): Promise<boolean> {
@@ -151,7 +152,7 @@ export async function quoteCourse(input: {
     }
   }
   const chosen = input.batchId ?? account?.batchId ?? null;
-  const [availability, open, enrolment] = await Promise.all([
+  const [availability, open, enrolment, batchFixed] = await Promise.all([
     chosen
       ? batchAvailability(chosen, {
           courseId: course.id,
@@ -163,6 +164,7 @@ export async function quoteCourse(input: {
     account
       ? FeeCourseEnrolment.findOne({ where: { instituteId: student.instituteId, accountId: account.id } })
       : null,
+    purchaseBatchFixed(account),
   ]);
   const enrolledBatch = enrolment?.batchId
     ? await Batch.findOne({
@@ -188,22 +190,29 @@ export async function quoteCourse(input: {
           reason: availability.reason,
         }
       : null,
-    openBatches: open.map(({ batch, seatsLeft }) => ({
-      id: batch.id,
-      name: batch.name,
-      startDate: batch.startDate,
-      seatsLeft,
-    })),
+    batchFixed,
+    openBatches: open.map(batchOptionDto),
     enrolment: enrolment
       ? { status: enrolment.status, batchId: enrolment.batchId, batchName: enrolledBatch?.name ?? null }
       : null,
   };
 }
 
+/** Once money is in, or when the price itself is the batch's, a purchase stays with its batch. */
+async function purchaseBatchFixed(account: FeeAccount | null): Promise<boolean> {
+  if (!account) return false;
+  if (account.paid > 0) return true;
+  if (!account.structureId) return false;
+  const structure = await FeeStructure.findOne({
+    where: { instituteId: account.instituteId, id: account.structureId },
+    attributes: ['batchId'],
+  });
+  return !!structure?.batchId;
+}
+
 /**
  * The batch chosen at checkout must be one the student can join now (409 BATCH_FULL / BATCH_CLOSED
- * otherwise). An unpaid purchase may switch batch; once money is in, or when the price itself is the
- * batch's, the purchase stays with its batch.
+ * otherwise). An unpaid purchase may switch batch unless purchaseBatchFixed.
  */
 async function applyCheckoutBatch(
   target: Awaited<ReturnType<typeof purchaseTarget>>,
@@ -218,13 +227,7 @@ async function applyCheckoutBatch(
   });
   if (reason) throw batchUnavailableError(reason);
   if (!account || account.batchId === batchId) return;
-  const structure = account.structureId
-    ? await FeeStructure.findOne({
-        where: { instituteId: account.instituteId, id: account.structureId },
-        attributes: ['batchId'],
-      })
-    : null;
-  if (account.paid > 0 || structure?.batchId)
+  if (await purchaseBatchFixed(account))
     throw Conflict('This course purchase is already for another batch', 'PURCHASE_BATCH_FIXED');
   await account.update({ batchId });
 }

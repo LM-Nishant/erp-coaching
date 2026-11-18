@@ -64,7 +64,12 @@ import {
 } from './payments.service';
 import { findReceipt, receiptDto, receiptPdfUrl } from './receipts';
 import { quoteCourse, startCoursePurchase } from './course-sales';
-import { courseEnrolmentDtos, courseEnrolmentRepo, reconcileCourseEnrolment } from './course-enrolment';
+import {
+  courseEnrolmentBatchOptions,
+  courseEnrolmentDtos,
+  courseEnrolmentRepo,
+  reconcileCourseEnrolment,
+} from './course-enrolment';
 import { enabledGateways, gatewayDto, gatewayRepo, upsertGatewayConfig } from './gateways.service';
 import {
   bankAccountDto,
@@ -980,6 +985,11 @@ function courseEnrolmentRoutes(r: Router) {
     });
     res.json(paginated(await courseEnrolmentDtos(rows), count, q));
   });
+  r.get('/course-enrolments/:id/batches', can('approve'), async (req, res) => {
+    const { id } = parse(idParam, req.params);
+    res.json(await courseEnrolmentBatchOptions(await courseEnrolmentRepo.findById(id)));
+  });
+
   r.post('/course-enrolments/:id/assign', can('approve'), async (req, res) => {
     const { id } = parse(idParam, req.params);
     const { batchId } = parse(z.object({ batchId: z.number().int().positive() }), req.body ?? {});

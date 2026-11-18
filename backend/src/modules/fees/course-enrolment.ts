@@ -7,14 +7,19 @@
  * the purchase put them in. The job reads the current state, so replays and retries are no-ops.
  */
 import { Op, type Transaction } from 'sequelize';
-import type { CourseBatchIssue, CourseEnrolmentDto, FeeCourseEnrolmentStatus } from '@erp/shared';
+import {
+  COURSE_BATCH_ISSUE_LABELS,
+  type CourseBatchOptionDto,
+  type CourseEnrolmentDto,
+  type FeeCourseEnrolmentStatus,
+} from '@erp/shared';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { enqueueJob } from '../../infrastructure/jobs/queue';
 import { logger } from '../../infrastructure/logger';
 import { requireTenantContext } from '../../shared/context';
 import { Conflict } from '../../shared/errors';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
-import { Batch, Course } from '../academics/api';
+import { Batch, Course, openBatchesForCourse } from '../academics/api';
 import { admitForCoursePurchase, releaseCoursePurchaseBatch } from '../admissions/api';
 import { notify } from '../notifications/api';
 import { Student } from '../students/models';
@@ -51,16 +56,6 @@ export async function courseEnrolmentJob(payload: Record<string, unknown>): Prom
   if (!Number.isInteger(accountId) || accountId <= 0) return;
   await reconcileCourseEnrolment(accountId);
 }
-
-export const COURSE_BATCH_ISSUE_LABELS: Record<CourseBatchIssue, string> = {
-  not_found: 'the batch chosen at checkout no longer exists',
-  other_course: 'the batch chosen at checkout is for another course',
-  other_branch: "the batch chosen at checkout is in another branch from the student's",
-  closed: 'the batch chosen at checkout is closed',
-  full: 'the batch chosen at checkout is full',
-  no_login: 'the student has no login of their own yet',
-  no_open_batch: 'no open batch of the course has free seats',
-};
 
 /**
  * Brings a purchase's admission and batch enrolment in line with its entitlement:
@@ -253,4 +248,22 @@ export async function courseEnrolmentDtos(rows: FeeCourseEnrolment[]): Promise<C
     revokedAt: iso(r.revokedAt),
     createdAt: r.createdAt.toISOString(),
   }));
+}
+
+export const batchOptionDto = ({
+  batch,
+  seatsLeft,
+}: {
+  batch: Batch;
+  seatsLeft: number;
+}): CourseBatchOptionDto => ({
+  id: batch.id,
+  name: batch.name,
+  startDate: batch.startDate,
+  seatsLeft,
+});
+
+/** Batches an admin can place a queued purchase in: open batches of its course in its branch with free seats. */
+export async function courseEnrolmentBatchOptions(row: FeeCourseEnrolment): Promise<CourseBatchOptionDto[]> {
+  return (await openBatchesForCourse(row.courseId, row.branchId)).map(batchOptionDto);
 }

@@ -1,4 +1,5 @@
 import type {
+  AiAdminUsageDto,
   AiSettingsDto,
   AiSettingsUpdate,
   AiTestResult,
@@ -72,6 +73,7 @@ export const adminApi = {
   saveAiSettings: (b: AiSettingsUpdate) => api.put<AiSettingsDto>('/admin/ai/settings', b),
   removeAiKey: () => api.delete<AiSettingsDto>('/admin/ai/settings/key'),
   testAi: (b: Partial<AiSettingsUpdate>) => api.post<AiTestResult>('/admin/ai/settings/test', b),
+  aiUsage: (days = 30) => api.get<AiAdminUsageDto>('/admin/ai/usage', { days }),
   audit: (q: { page?: number; action?: string }) =>
     api.get<Paginated<AuditEventRow>>('/admin/audit-events', q),
 };
