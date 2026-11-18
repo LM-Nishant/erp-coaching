@@ -106,7 +106,10 @@ const GST_STATE_CODES: Record<string, string> = {
 export function gstStateCode(party: { gstin: string | null; state: string | null }): string | null {
   const gstin = party.gstin?.trim();
   if (gstin && /^\d{2}/.test(gstin)) return gstin.slice(0, 2);
-  const name = (party.state ?? '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z]/g, '');
+  const name = (party.state ?? '')
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z]/g, '');
   return name ? (GST_STATE_CODES[name] ?? name) : null;
 }
 

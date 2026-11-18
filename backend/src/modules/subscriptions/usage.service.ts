@@ -71,7 +71,11 @@ export async function usageFor(instituteId: number) {
   return { ...u, aiTokensThisMonth: u.aiTokens };
 }
 
-export function usageMetrics(usage: UsageNow, included: PlanLimits | null, plan: Plan | null): UsageMetricDto[] {
+export function usageMetrics(
+  usage: UsageNow,
+  included: PlanLimits | null,
+  plan: Plan | null,
+): UsageMetricDto[] {
   return METERED_METRICS.map((metric) => {
     const limit = included ? (included[METRIC_LIMIT_KEY[metric]] ?? null) : null;
     const used = usage[metric];
@@ -97,7 +101,11 @@ export async function aiQuota(
   const from = startOfMonth(now);
   const [rows, credits] = await Promise.all([
     AiUsage.findAll({
-      attributes: ['feature', [fn('SUM', col('total_tokens')), 'tokens'], [fn('COUNT', col('id')), 'requests']],
+      attributes: [
+        'feature',
+        [fn('SUM', col('total_tokens')), 'tokens'],
+        [fn('COUNT', col('id')), 'requests'],
+      ],
       where: { instituteId, createdAt: { [Op.gte]: from } },
       group: ['feature'],
       raw: true,
@@ -212,6 +220,9 @@ export async function computeOverage(sub: Subscription, plan: Plan, month: Date)
     });
   }
   if (lines.length)
-    logger.info({ instituteId: sub.instituteId, month: isoDay(from), lines }, 'subscription overage computed');
+    logger.info(
+      { instituteId: sub.instituteId, month: isoDay(from), lines },
+      'subscription overage computed',
+    );
   return lines;
 }

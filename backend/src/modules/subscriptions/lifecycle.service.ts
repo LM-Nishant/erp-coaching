@@ -223,7 +223,11 @@ async function loadTargetPlan(planId: number, transaction?: Transaction): Promis
 const withTransaction = <T>(fn: (t: Transaction) => Promise<T>) => getSequelize().transaction(fn);
 
 /** Open invoices of the subscription that apply a lifecycle action when paid. */
-async function openActionInvoices(sub: Subscription, action: InvoiceMeta['action'], transaction: Transaction) {
+async function openActionInvoices(
+  sub: Subscription,
+  action: InvoiceMeta['action'],
+  transaction: Transaction,
+) {
   const open = await SubscriptionInvoice.findAll({
     where: { instituteId: sub.instituteId, subscriptionId: sub.id, status: 'open' },
     order: [['id', 'ASC']],
@@ -283,6 +287,18 @@ async function usageBlockers(sub: Subscription, plan: Plan, now: Date, transacti
 // ------------------------------------------------------------------ renewal
 
 /**
+ * Start of the next paid term: a trial converts when it ends; a subscription renewed before the
+ * end of its grace period continues back-to-back from `termStart`, a longer-lapsed one from now.
+ */
+async function nextTermStart(sub: Subscription, termStart: Date, now: Date): Promise<Date> {
+  if (sub.status === 'trial') return new Date(Math.max(now.getTime(), sub.endsAt?.getTime() ?? 0));
+  const start = sub.endsAt && sub.endsAt > termStart ? sub.endsAt : termStart;
+  if (start >= now) return start;
+  const { graceEndsAt } = computeAccessState(sub, await getBillingPolicy(), now);
+  return graceEndsAt && now < graceEndsAt ? start : now;
+}
+
+/**
  * Issues the invoice for the next term: the pending (downgrade) plan or the current one, plus the
  * recurring add-ons that continue. A trial converts from the end of the trial. A free renewal is
  * applied at once (returns null).
@@ -296,8 +312,7 @@ async function issueRenewal(
   const target = sub.pendingPlan ?? sub.plan!;
   const cycle = sub.pendingBillingCycle ?? sub.billingCycle;
   const trial = sub.status === 'trial';
-  const endsAt = sub.endsAt ?? now;
-  const periodStart = trial ? new Date(Math.max(now.getTime(), endsAt.getTime())) : endsAt;
+  const periodStart = await nextTermStart(sub, sub.endsAt ?? now, now);
   const periodEnd = addCycle(periodStart, cycle);
   const addons = trial ? [] : await carriedAddons(sub, target, transaction);
   const lines: InvoiceLineInput[] = [];
@@ -357,17 +372,13 @@ async function refreshOpenRenewal(sub: Subscription, transaction: Transaction, n
 
 /** Paid renewal: the next term starts at the end of the current one (or now, after the grace). */
 async function applyRenewal(sub: Subscription, meta: InvoiceMeta, transaction: Transaction, now: Date) {
-  const policy = await getBillingPolicy();
-  const access = computeAccessState(sub, policy, now);
   const cycle = meta.billingCycle ?? sub.billingCycle;
   const planId = meta.planId ?? sub.planId;
-  const termStart = meta.periodStart ? new Date(meta.periodStart) : (sub.endsAt ?? now);
-  let start: Date;
-  if (sub.status === 'trial') start = new Date(Math.max(now.getTime(), sub.endsAt?.getTime() ?? 0));
-  else {
-    start = sub.endsAt && sub.endsAt > termStart ? sub.endsAt : termStart;
-    if (start < now && (!access.graceEndsAt || now >= access.graceEndsAt)) start = now;
-  }
+  const start = await nextTermStart(
+    sub,
+    meta.periodStart ? new Date(meta.periodStart) : (sub.endsAt ?? now),
+    now,
+  );
   await sub.update(
     {
       planId,
@@ -414,7 +425,12 @@ async function applyPlanChange(sub: Subscription, meta: InvoiceMeta, transaction
       pendingBillingCycle: null,
       ...(meta.keepPeriod
         ? {}
-        : { status: 'active' as const, currentPeriodStart: now, endsAt: addCycle(now, cycle), lastNotice: null }),
+        : {
+            status: 'active' as const,
+            currentPeriodStart: now,
+            endsAt: addCycle(now, cycle),
+            lastNotice: null,
+          }),
     },
     { transaction },
   );
@@ -500,7 +516,8 @@ async function planChange(
   transaction?: Transaction,
 ): Promise<PlannedChange> {
   if (!sub.endsAt) throw Conflict(MANAGED_MESSAGE, 'PLAN_MANAGED');
-  if (sub.suspendedAt) throw Conflict('The subscription is suspended. Contact support.', 'SUBSCRIPTION_SUSPENDED');
+  if (sub.suspendedAt)
+    throw Conflict('The subscription is suspended. Contact support.', 'SUBSCRIPTION_SUSPENDED');
   assertCycleOffered(target, cycle);
   const current = sub.plan!;
   const [profile, policy] = await Promise.all([getBillingProfile(), getBillingPolicy()]);
@@ -549,7 +566,11 @@ async function planChange(
         kind = 'upgrade';
         periodStart = now;
         periodEnd = sub.endsAt;
-        Object.assign(meta, { keepPeriod: true, periodStart: now.toISOString(), periodEnd: sub.endsAt.toISOString() });
+        Object.assign(meta, {
+          keepPeriod: true,
+          periodStart: now.toISOString(),
+          periodEnd: sub.endsAt.toISOString(),
+        });
         lines = [
           {
             description: `${current.name} to ${target.name} (${cycle}), prorated ${formatDay(now)} to ${formatDay(
@@ -626,7 +647,9 @@ async function planChange(
           left -= use;
           return {
             ...line,
-            description: use ? `${line.description} (less Rs. ${formatRupees(use)} unused credit)` : line.description,
+            description: use
+              ? `${line.description} (less Rs. ${formatRupees(use)} unused credit)`
+              : line.description,
             amountPaise: amount - use,
           };
         });
@@ -645,7 +668,10 @@ async function planChange(
     message = `Reduce usage before switching to ${target.name}: ${blockedBy
       .map((b) => `${METRIC_LABELS[b.metric]} ${b.used} of ${b.limit}`)
       .join(', ')}.`;
-  const subtotal = mode === 'invoice' || mode === 'lapsed' ? lines.reduce((s, l) => s + (l.amountPaise ?? l.unitPricePaise * (l.quantity ?? 1)), 0) : 0;
+  const subtotal =
+    mode === 'invoice' || mode === 'lapsed'
+      ? lines.reduce((s, l) => s + (l.amountPaise ?? l.unitPricePaise * (l.quantity ?? 1)), 0)
+      : 0;
   const tax = Math.round((subtotal * Math.max(0, Math.round(profile.gstRatePercent * 100))) / 10000);
   return {
     mode,
@@ -727,7 +753,7 @@ export async function changePlan(
         }
         const open = await openActionInvoices(sub, 'renew', transaction);
         const invoice = open.every(untouched)
-          ? ((await voidSuperseded(open, 'Replaced after a plan change', transaction)),
+          ? (await voidSuperseded(open, 'Replaced after a plan change', transaction),
             await issueRenewal(sub, transaction, now, userId))
           : open[0];
         return {
@@ -872,7 +898,11 @@ export async function purchaseAddon(
       transaction,
     );
     await addon.update({ invoiceId: invoice.id }, { transaction });
-    return { applied: false, invoice: toInvoiceDto(invoice), message: 'Pay the invoice to activate the add-on.' };
+    return {
+      applied: false,
+      invoice: toInvoiceDto(invoice),
+      message: 'Pay the invoice to activate the add-on.',
+    };
   });
   await audit({
     action: 'subscription.addon_purchased',
@@ -905,7 +935,8 @@ export async function cancelAddon(instituteId: number, addonId: number, now = ne
       return a;
     }
     if (a.status !== 'active') throw Conflict('The add-on is not active', 'ADDON_NOT_ACTIVE');
-    if (!isRecurringAddon(a.kind)) throw Conflict('AI credit packs cannot be cancelled', 'ADDON_NOT_CANCELLABLE');
+    if (!isRecurringAddon(a.kind))
+      throw Conflict('AI credit packs cannot be cancelled', 'ADDON_NOT_CANCELLABLE');
     if (!a.cancelAtPeriodEnd) {
       await a.update({ cancelAtPeriodEnd: true }, { transaction });
       const sub = await getCurrentSubscription(instituteId, { transaction, lock: true });
@@ -914,7 +945,12 @@ export async function cancelAddon(instituteId: number, addonId: number, now = ne
     return a;
   });
   invalidateAccess(instituteId);
-  await audit({ action: 'subscription.addon_cancelled', entityType: 'subscription_addon', entityId: addonId, instituteId });
+  await audit({
+    action: 'subscription.addon_cancelled',
+    entityType: 'subscription_addon',
+    entityId: addonId,
+    instituteId,
+  });
   return addon;
 }
 
@@ -927,7 +963,8 @@ export async function requestRenewal(
   const invoice = await withTransaction(async (transaction) => {
     const sub = await requireSubscription(instituteId, transaction);
     if (!sub.endsAt) throw Conflict('Your subscription does not expire', 'PLAN_MANAGED');
-    if (sub.suspendedAt) throw Conflict('The subscription is suspended. Contact support.', 'SUBSCRIPTION_SUSPENDED');
+    if (sub.suspendedAt)
+      throw Conflict('The subscription is suspended. Contact support.', 'SUBSCRIPTION_SUSPENDED');
     const open = await openActionInvoices(sub, 'renew', transaction);
     if (open.length) return open[0];
     return issueRenewal(sub, transaction, now, userId);
@@ -1003,7 +1040,11 @@ export async function suspendSubscription(instituteId: number, reason: string, n
 }
 
 /** Lifts a manual suspension and/or extends a lapsed subscription by `extendDays`. */
-export async function reactivateSubscription(instituteId: number, extendDays: number | null, now = new Date()) {
+export async function reactivateSubscription(
+  instituteId: number,
+  extendDays: number | null,
+  now = new Date(),
+) {
   const sub = await withTransaction(async (transaction) => {
     const s = await requireSubscription(instituteId, transaction);
     if (!s.suspendedAt && !extendDays)
@@ -1042,7 +1083,11 @@ export interface AssignSubscriptionInput {
  * Super admin: replaces the current subscription. Unpaid renewal / plan change invoices of the
  * replaced one are voided and add-ons move to the new subscription.
  */
-export async function assignSubscription(instituteId: number, input: AssignSubscriptionInput, now = new Date()) {
+export async function assignSubscription(
+  instituteId: number,
+  input: AssignSubscriptionInput,
+  now = new Date(),
+) {
   const sub = await withTransaction(async (transaction) => {
     const old = await Subscription.findAll({
       where: { instituteId, status: { [Op.in]: CURRENT_STATUSES } },
@@ -1050,7 +1095,10 @@ export async function assignSubscription(instituteId: number, input: AssignSubsc
       lock: transaction.LOCK.UPDATE,
     });
     for (const s of old) {
-      await s.update({ status: 'cancelled', endsAt: s.endsAt && s.endsAt < now ? s.endsAt : now }, { transaction });
+      await s.update(
+        { status: 'cancelled', endsAt: s.endsAt && s.endsAt < now ? s.endsAt : now },
+        { transaction },
+      );
       const open = await SubscriptionInvoice.findAll({
         where: { instituteId, subscriptionId: s.id, status: 'open' },
         transaction,

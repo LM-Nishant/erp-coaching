@@ -175,7 +175,8 @@ export async function createInvoice(
   const seller = sellerParty(profile);
   const gst = gstFor(subtotal, profile.gstRatePercent, seller, billedTo);
   const issueDate = billingDate(now);
-  const dueDate = input.dueDate && input.dueDate > issueDate ? input.dueDate : addDaysIso(issueDate, policy.invoiceDueDays);
+  const dueDate =
+    input.dueDate && input.dueDate > issueDate ? input.dueDate : addDaysIso(issueDate, policy.invoiceDueDays);
   await ensureSequence('invoice', scopeFor(profile.invoicePrefix, issueDate));
   const run = async (tx: Transaction) => {
     const number = await allocateNumber('invoice', profile.invoicePrefix, issueDate, tx);
@@ -255,8 +256,6 @@ export function toInvoiceDto(inv: SubscriptionInvoice): SaasInvoiceDto {
   };
 }
 
-const withLines = { include: [{ model: SubscriptionInvoiceLine, as: 'lines' }] };
-
 /** Invoice of the institute (tenant routes) or any invoice (`instituteId` null: platform). */
 export async function findInvoice(
   id: number,
@@ -267,7 +266,11 @@ export async function findInvoice(
   const inv =
     instituteId === null
       ? await SubscriptionInvoice.findOne(platform({ where: { id }, transaction: opts.transaction, lock }))
-      : await SubscriptionInvoice.findOne({ where: { instituteId, id }, transaction: opts.transaction, lock });
+      : await SubscriptionInvoice.findOne({
+          where: { instituteId, id },
+          transaction: opts.transaction,
+          lock,
+        });
   if (!inv) throw NotFound('Invoice');
   inv.lines = await SubscriptionInvoiceLine.findAll({
     where: { invoiceId: inv.id },
@@ -338,7 +341,9 @@ export async function createCreditNote(
   if (amountPaise <= 0 || amountPaise > creditable)
     throw BadRequest(`Credit must be between 0.01 and ${formatRupees(creditable)}`);
   const profile = await getBillingProfile();
-  const taxable = inv.totalPaise ? Math.round((amountPaise * inv.subtotalPaise) / inv.totalPaise) : amountPaise;
+  const taxable = inv.totalPaise
+    ? Math.round((amountPaise * inv.subtotalPaise) / inv.totalPaise)
+    : amountPaise;
   const tax = amountPaise - taxable;
   const intra = inv.igstPaise === 0;
   const cgst = intra ? Math.floor(tax / 2) : 0;
@@ -362,7 +367,8 @@ export async function createCreditNote(
     },
     { transaction },
   );
-  const settled = inv.status === 'open' && inv.totalPaise - (inv.creditedPaise + amountPaise) - inv.paidPaise <= 0;
+  const settled =
+    inv.status === 'open' && inv.totalPaise - (inv.creditedPaise + amountPaise) - inv.paidPaise <= 0;
   await inv.update(
     {
       creditedPaise: inv.creditedPaise + amountPaise,
@@ -390,7 +396,10 @@ export function toCreditNoteDto(n: SubscriptionCreditNote, invoiceNumber: string
   };
 }
 
-export async function listCreditNotes(q: { instituteId?: number; page: number; pageSize: number }, tenantScoped: boolean) {
+export async function listCreditNotes(
+  q: { instituteId?: number; page: number; pageSize: number },
+  tenantScoped: boolean,
+) {
   const opts = {
     where: q.instituteId ? { instituteId: q.instituteId } : {},
     include: [{ model: SubscriptionInvoice, as: 'invoice', attributes: ['id', 'number'] }],
@@ -398,9 +407,7 @@ export async function listCreditNotes(q: { instituteId?: number; page: number; p
     limit: q.pageSize,
     offset: (q.page - 1) * q.pageSize,
   };
-  const { rows, count } = await SubscriptionCreditNote.findAndCountAll(
-    tenantScoped ? opts : platform(opts),
-  );
+  const { rows, count } = await SubscriptionCreditNote.findAndCountAll(tenantScoped ? opts : platform(opts));
   return {
     items: rows.map((n) => toCreditNoteDto(n, n.invoice?.number ?? '')),
     total: count,
@@ -466,7 +473,10 @@ function renderDocument(doc: {
   }
   let iy = top;
   for (const [k, v] of doc.info) {
-    t.push({ x: 330, y: iy, text: k, size: 9, bold: true }, { x: 545, y: iy, text: v, size: 9, align: 'right' });
+    t.push(
+      { x: 330, y: iy, text: k, size: 9, bold: true },
+      { x: 545, y: iy, text: v, size: 9, align: 'right' },
+    );
     iy += 14;
   }
   y = Math.max(y, iy) + 14;
@@ -506,7 +516,12 @@ function renderDocument(doc: {
     t.push({ x: 50, y, text: s, size: 8 });
     y += 11;
   }
-  t.push({ x: 50, y: 800, text: 'This is a computer-generated document and does not require a signature.', size: 8 });
+  t.push({
+    x: 50,
+    y: 800,
+    text: 'This is a computer-generated document and does not require a signature.',
+    size: 8,
+  });
   return renderPdf(t, l);
 }
 

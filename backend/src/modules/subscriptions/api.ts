@@ -27,11 +27,7 @@ export {
   isModuleEnabled,
 } from './subscription.service';
 export { registerUsageCounter, type UsageCounter } from './usage.service';
-export {
-  setSaasGatewayResolver,
-  type SaasGatewayConfig,
-  type SaasGatewayResolver,
-} from './payments.service';
+export { setSaasGatewayResolver, type SaasGatewayConfig, type SaasGatewayResolver } from './payments.service';
 
 // ------------------------------------------------------------------ Reports hand-off (spec 4.17)
 
@@ -60,10 +56,14 @@ function monthsBetween(from: string, to: string): string[] {
 export async function revenueByMonth(range: { from: string; to: string }): Promise<RevenuePointDto[]> {
   const start = `${range.from.slice(0, 7)}-01`;
   const months = monthsBetween(start, range.to);
-  const points = new Map(months.map((month) => [month, { month, invoicedPaise: 0, collectedPaise: 0, creditedPaise: 0 }]));
+  const points = new Map(
+    months.map((month) => [month, { month, invoicedPaise: 0, collectedPaise: 0, creditedPaise: 0 }]),
+  );
   // Timestamps are filtered with a day of slack on both sides, then bucketed in the billing timezone.
   const tsFrom = new Date(new Date(`${start}T00:00:00Z`).getTime() - 86_400_000);
-  const tsTo = new Date(new Date(`${months[months.length - 1] ?? start}T00:00:00Z`).getTime() + 32 * 86_400_000);
+  const tsTo = new Date(
+    new Date(`${months[months.length - 1] ?? start}T00:00:00Z`).getTime() + 32 * 86_400_000,
+  );
   const [invoices, payments, notes] = await Promise.all([
     SubscriptionInvoice.findAll(
       platform({
@@ -162,7 +162,10 @@ export async function subscriptionsByPlan(now = new Date()) {
     const mrrPaise = paying.reduce(
       (sum, s) =>
         sum +
-        monthlyValue(s.billingCycle === 'yearly' ? plan.priceYearlyPaise : plan.priceMonthlyPaise, s.billingCycle) +
+        monthlyValue(
+          s.billingCycle === 'yearly' ? plan.priceYearlyPaise : plan.priceMonthlyPaise,
+          s.billingCycle,
+        ) +
         (addonMrr.get(s.id) ?? 0),
       0,
     );
@@ -185,10 +188,14 @@ export async function saasBillingKpis(now = new Date()) {
     SubscriptionInvoice.findAll(platform({ where: { status: 'open' } })),
   ]);
   const today = billingDate(now);
-  const balance = (rows: SubscriptionInvoice[]) => rows.reduce((s, i) => s + Math.max(0, invoiceBalance(i)), 0);
+  const balance = (rows: SubscriptionInvoice[]) =>
+    rows.reduce((s, i) => s + Math.max(0, invoiceBalance(i)), 0);
   return {
     mrrPaise: byPlan.reduce((s, p) => s + p.mrrPaise, 0),
-    byState: Object.fromEntries(byState.map((s) => [s.state, s.count])) as Record<SubscriptionAccessState, number>,
+    byState: Object.fromEntries(byState.map((s) => [s.state, s.count])) as Record<
+      SubscriptionAccessState,
+      number
+    >,
     openInvoices: open.length,
     receivablePaise: balance(open),
     overduePaise: balance(open.filter((i) => i.dueDate < today)),

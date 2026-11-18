@@ -89,7 +89,10 @@ async function sendStateNotice(sub: Subscription, policy: BillingPolicyDto, now:
       },
     };
   if (!notice || sub.lastNotice === notice.key) return false;
-  await Subscription.update({ lastNotice: notice.key }, { where: { instituteId: sub.instituteId, id: sub.id } });
+  await Subscription.update(
+    { lastNotice: notice.key },
+    { where: { instituteId: sub.instituteId, id: sub.id } },
+  );
   sub.lastNotice = notice.key;
   await notifyInstituteAdmins(sub.instituteId, notice.event, notice.data);
   return true;
@@ -204,7 +207,13 @@ export async function sweepInstitute(
 
 /** Hourly across all institutes with a current subscription. */
 export async function runBillingSweep(now = new Date()): Promise<BillingSweepResult> {
-  const result: BillingSweepResult = { institutes: 0, renewalInvoices: 0, overageInvoices: 0, notices: 0, failures: 0 };
+  const result: BillingSweepResult = {
+    institutes: 0,
+    renewalInvoices: 0,
+    overageInvoices: 0,
+    notices: 0,
+    failures: 0,
+  };
   const policy = await getBillingPolicy();
   const rows = await Subscription.findAll(
     platform({
@@ -226,7 +235,11 @@ export async function runBillingSweep(now = new Date()): Promise<BillingSweepRes
 export async function scheduleBillingSweep(): Promise<void> {
   const pending = await Job.findOne({ where: { name: BILLING_SWEEP_JOB, status: 'pending' } });
   if (pending) return;
-  await enqueueJob(BILLING_SWEEP_JOB, {}, { instituteId: null, runAt: new Date(Date.now() + SWEEP_INTERVAL_MS) });
+  await enqueueJob(
+    BILLING_SWEEP_JOB,
+    {},
+    { instituteId: null, runAt: new Date(Date.now() + SWEEP_INTERVAL_MS) },
+  );
 }
 
 export async function billingSweepJob(): Promise<void> {

@@ -79,7 +79,9 @@ export function computeAccessState(
   let graceEndsAt: Date | null = null;
   let suspendsAt: Date | null = null;
   if (sub.endsAt) {
-    graceEndsAt = new Date(sub.endsAt.getTime() + (trial ? policy.trialGraceDays : policy.graceDays) * DAY_MS);
+    graceEndsAt = new Date(
+      sub.endsAt.getTime() + (trial ? policy.trialGraceDays : policy.graceDays) * DAY_MS,
+    );
     if (policy.afterGrace === 'suspended') suspendsAt = graceEndsAt;
     else if (policy.suspendAfterDays !== null)
       suspendsAt = new Date(graceEndsAt.getTime() + policy.suspendAfterDays * DAY_MS);
