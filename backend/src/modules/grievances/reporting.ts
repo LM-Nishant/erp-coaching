@@ -27,13 +27,8 @@ export async function grievanceReport(scope: ReportScope) {
     .in('t.branch_id', scope.branchIds)
     .eq('t.assignee_user_id', scope.teacherUserId);
   if (scope.studentUserIds) {
-    // Students/parents: tickets they raised, or raised about their children.
-    const requesters = [...scope.studentUserIds, ...(scope.viewerUserId ? [scope.viewerUserId] : [])];
-    f.where(
-      '(t.requester_user_id IN (?) OR t.on_behalf_of_user_id IN (?))',
-      requesters.length ? requesters : [0],
-      scope.studentUserIds.length ? scope.studentUserIds : [0],
-    );
+    // Students/parents: only tickets they raised themselves, as in the grievances module.
+    f.where('t.requester_user_id = ?', scope.viewerUserId ?? 0);
   }
   const from = 'FROM grievance_tickets t';
   const STATS = `COUNT(*) total, SUM(${OPEN}) open_count, SUM(t.resolved_at IS NOT NULL) resolved,

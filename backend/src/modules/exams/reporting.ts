@@ -39,7 +39,14 @@ export async function examReport(scope: ReportScope) {
       scope.teacherUserId ?? 0,
     );
   }
-  if (personal) f.where('e.results_published_at IS NOT NULL');
+  if (personal) {
+    // Only published exams the student (or linked child) actually sat.
+    f.where('e.results_published_at IS NOT NULL').where(
+      `EXISTS (SELECT 1 FROM exam_attempts ox WHERE ox.exam_id = e.id
+         AND ox.status IN ('submitted', 'auto_submitted') AND ox.student_user_id IN (?))`,
+      scope.studentUserIds?.length ? scope.studentUserIds : [0],
+    );
+  }
   const att = f.nested().in('x.branch_id', scope.branchIds).in('x.student_user_id', scope.studentUserIds);
   const attempts = `LEFT JOIN exam_attempts x ON x.exam_id = e.id AND ${SUBMITTED} AND ${att.sql}`;
   const from = `FROM exams e LEFT JOIN batches b ON b.id = e.batch_id`;

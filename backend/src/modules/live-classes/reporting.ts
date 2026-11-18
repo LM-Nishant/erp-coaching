@@ -89,6 +89,14 @@ export async function liveClassReport(scope: ReportScope) {
   const minutes = (secs: unknown) => (secs === null || secs === undefined ? null : round(num(secs) / 60, 0));
   let rows: Record<string, string | number | null>[] = [];
   let totalRows = num(t?.sessions);
+  /** Student/parent scope: the own (or linked children's) attendance, one entry per session per student. */
+  let own: {
+    sessions: number;
+    ended: number;
+    attended: number;
+    attendance: number | null;
+    minutesAttended: number;
+  } | null = null;
   if (personal) {
     // One row per session per own/linked student: did they attend, and for how long.
     const p = f.nested().where('bs.student_user_id IN (?)', students);
@@ -99,8 +107,20 @@ export async function liveClassReport(scope: ReportScope) {
       LEFT JOIN live_participants lp ON lp.live_session_id = s.id AND lp.user_id = e.student_user_id
       LEFT JOIN batches b2 ON b2.id = s.batch_id
       LEFT JOIN users u ON u.id = s.teacher_user_id`;
-    const [c] = await reportQuery<Record<string, unknown>>(`SELECT COUNT(*) n ${personalFrom}`, f.params);
+    const [c] = await reportQuery<Record<string, unknown>>(
+      `SELECT COUNT(*) n, SUM(s.status = 'ended') ended,
+         SUM(s.status = 'ended' AND lp.first_joined_at IS NOT NULL) attended,
+         COALESCE(SUM(lp.total_seconds), 0) secs ${personalFrom}`,
+      f.params,
+    );
     totalRows = num(c?.n);
+    own = {
+      sessions: totalRows,
+      ended: num(c?.ended),
+      attended: num(c?.attended),
+      attendance: percent(num(c?.attended), num(c?.ended)),
+      minutesAttended: round(num(c?.secs) / 60, 0),
+    };
     rows = scope.limit
       ? (
           await reportQuery<Record<string, unknown>>(
@@ -150,5 +170,5 @@ export async function liveClassReport(scope: ReportScope) {
       };
     });
   }
-  return { totals: stats(t), byTeacher, byBranch, rows, totalRows };
+  return { totals: stats(t), own, byTeacher, byBranch, rows, totalRows };
 }

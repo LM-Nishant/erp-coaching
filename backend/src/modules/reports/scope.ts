@@ -26,6 +26,8 @@ export interface ResolvedReportRequest {
   period: ReportPeriodDto;
   filters: ReportAppliedFiltersDto;
   scopeLabel: string;
+  /** Optional data sources the caller may see (checked at request time, reused by export jobs). */
+  sources: string[];
 }
 
 /** JSON form stored with an export (instants as ISO strings). */
@@ -124,6 +126,7 @@ export async function resolveReportRequest(
     period: periodDto(period),
     filters,
     scopeLabel,
+    sources: [],
   });
 
   if (isPersonal(audience)) {
