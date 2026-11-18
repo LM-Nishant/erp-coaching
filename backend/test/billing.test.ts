@@ -1,4 +1,5 @@
 import request from 'supertest';
+import type { Request } from 'express';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { QueryTypes } from 'sequelize';
 import type { SaasInvoiceDto } from '@erp/shared';
@@ -17,6 +18,7 @@ import {
   getBillingPolicy,
 } from '../src/modules/subscriptions/billing-settings';
 import { computeAccessState } from '../src/modules/subscriptions/subscription.service';
+import { subscriptionAccessGuard } from '../src/modules/subscriptions/access-guard';
 import type { Subscription } from '../src/modules/subscriptions/models';
 import { renderPdf } from '../src/modules/subscriptions/pdf';
 import { sweepInstitute, type BillingSweepResult } from '../src/modules/subscriptions/sweep.service';
@@ -33,6 +35,9 @@ const PASSWORD = 'Password@123';
 const mobile = () => `9421${String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0')}`;
 const WEBHOOK = '/api/subscriptions/public/webhooks/mock';
 const SETTING_KEYS = ['billing.profile', 'billing.policy'];
+/** Like the live-class socket handshake, which authenticates a request without a URL or method. */
+const socketHandshakeGuard = (t: { id: number }) =>
+  subscriptionAccessGuard({ ctx: { instituteId: t.id } } as unknown as Request);
 
 const PROFILE = {
   legalName: 'Billing Test Cloud Pvt Ltd',
@@ -642,6 +647,7 @@ describe('SaaS billing', () => {
     const readOnly = await write();
     expect(readOnly.status).toBe(402);
     expect(readOnly.body.error.code).toBe('SUBSCRIPTION_RESTRICTED');
+    await expect(socketHandshakeGuard(A)).resolves.toBeUndefined();
     status = await request(app).get('/api/subscription/status').set(bearer(A.token));
     expect(status.body.state).toBe('restricted');
 
@@ -649,6 +655,10 @@ describe('SaaS billing', () => {
     const blocked = await request(app).get('/api/branches').set(bearer(A.token));
     expect(blocked.status).toBe(402);
     expect(blocked.body.error.code).toBe('SUBSCRIPTION_SUSPENDED');
+    await expect(socketHandshakeGuard(A)).rejects.toMatchObject({
+      status: 402,
+      code: 'SUBSCRIPTION_SUSPENDED',
+    });
     // The super admin (and support while impersonating) is never blocked.
     expect((await request(app).get(`/api/admin/institutes/${A.id}`).set(bearer(sa))).status).toBe(200);
 

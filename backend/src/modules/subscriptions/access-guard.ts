@@ -17,7 +17,10 @@ const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 export async function subscriptionAccessGuard(req: Request): Promise<void> {
   const ctx = req.ctx;
   if (!ctx.instituteId || ctx.isSuperAdmin || ctx.impersonatorId) return;
-  const path = req.originalUrl.split('?')[0];
+  // Non-HTTP callers (the live-class socket handshake) pass a request without a URL or method. They
+  // count as reads, so a suspended institute is refused and a read-only one is not.
+  const path = (req.originalUrl ?? '').split('?')[0];
+  const method = req.method ?? 'GET';
   if (ALWAYS_ALLOWED.some((r) => r.test(path))) return;
   const { state } = await getAccessStateCached(ctx.instituteId);
   if (state === 'suspended')
@@ -27,7 +30,7 @@ export async function subscriptionAccessGuard(req: Request): Promise<void> {
       'The subscription is suspended. Renew it from Subscription & billing or contact support.',
       { state },
     );
-  if (state === 'restricted' && !READ_METHODS.has(req.method) && !RESTRICTED_WRITES.some((r) => r.test(path)))
+  if (state === 'restricted' && !READ_METHODS.has(method) && !RESTRICTED_WRITES.some((r) => r.test(path)))
     throw new AppError(
       402,
       SUBSCRIPTION_ERROR_CODES.RESTRICTED,
