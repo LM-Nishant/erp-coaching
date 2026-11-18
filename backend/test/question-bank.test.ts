@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import zlib from 'node:zlib';
 import { DEMO_PASSWORD, USERS, bearer, getApp, login } from './helpers';
 import { parseCsv, parseXlsx } from '../src/modules/question-bank/spreadsheet';
+import { config } from '../src/infrastructure/config';
 
 const STUDENT = { mobile: '9100000005', password: DEMO_PASSWORD };
 
@@ -373,11 +374,25 @@ describe('question bank', () => {
   });
 
   it('generates AI draft questions without saving them', async () => {
-    const off = await request(app)
-      .post('/api/question-bank/generate')
-      .set(bearer(teacher))
-      .send({ topic: 'Bohr model', type: 'single', count: 2 });
-    expect(off.status).toBe(503);
+    // No key and the dev/test mock fallback disabled: AI is unavailable.
+    await request(app).put('/api/admin/ai/settings').set(bearer(sa)).send({
+      provider: 'custom',
+      baseUrl: 'https://ai.example.test/v1',
+      model: 'mock-model',
+      jsonMode: true,
+    });
+    await request(app).delete('/api/admin/ai/settings/key').set(bearer(sa));
+    const mockFallback = config.AI_MOCK_FALLBACK;
+    config.AI_MOCK_FALLBACK = false;
+    try {
+      const off = await request(app)
+        .post('/api/question-bank/generate')
+        .set(bearer(teacher))
+        .send({ topic: 'Bohr model', type: 'single', count: 2 });
+      expect(off.status).toBe(503);
+    } finally {
+      config.AI_MOCK_FALLBACK = mockFallback;
+    }
 
     await request(app).put('/api/admin/ai/settings').set(bearer(sa)).send({
       provider: 'custom',

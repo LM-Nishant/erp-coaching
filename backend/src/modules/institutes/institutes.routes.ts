@@ -17,6 +17,7 @@ import {
   isValidIdleTimeout,
   type InstituteSettingsDto,
 } from '@erp/shared';
+import { setFileResponseHeaders } from '../../shared/utilities/file-response';
 import { FileObject } from '../files/file.model';
 
 const color = z
@@ -67,8 +68,7 @@ export function instituteRoutes(api: Router) {
     if (!inst?.logoFileId) throw NotFound('Logo');
     const file = await FileObject.findOne({ where: { id: inst.logoFileId, instituteId: inst.id } });
     if (!file) throw NotFound('Logo');
-    res.setHeader('Content-Type', file.mimeType);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    setFileResponseHeaders(res, file, 'public, max-age=86400');
     (await getStorage().getStream(file.storageKey)).pipe(res);
   });
 

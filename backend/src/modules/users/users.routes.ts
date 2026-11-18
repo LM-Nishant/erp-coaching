@@ -13,7 +13,7 @@ import { audit } from '../../shared/audit/audit.service';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { Branch } from '../branches/branch.model';
 import { Role, UserBranch, UserRole } from '../permissions/models';
-import { resolveAccess } from '../permissions/access.service';
+import { assertMemberInBranchScope, memberVisibilityWhere } from '../permissions/access.service';
 import { Device, listUserDevices, revokeDevice } from '../authentication/api';
 import { User } from './user.model';
 
@@ -73,33 +73,29 @@ async function replaceAssignments(userId: number, input: z.infer<typeof assignme
   });
 }
 
-async function memberOrThrow(userId: number) {
+async function memberOrThrow(userId: number, mode: 'read' | 'manage' = 'read') {
   const { instituteId } = requireTenantContext();
   const roles = await UserRole.findAll({
     where: { instituteId, userId },
     include: [{ model: Role, as: 'role' }],
   });
   if (!roles.length) throw NotFound('User');
+  await assertMemberInBranchScope(userId, mode);
   return roles;
 }
 
 const isPlatformAdmin = (ctx: TenantContext) => !!ctx.isSuperAdmin && !ctx.impersonatorId;
 
 /**
- * A member whose sign-in devices the requester may manage (spec 4.18): anyone in the institute for
- * institute-wide admins; for branch-scoped admins only members whose access is limited to branches
- * they share. Super admin accounts are managed by the platform only. Anyone else → 404.
+ * A member whose sign-in devices the requester may manage (spec 4.18), with the same branch rule as
+ * role changes: branch-scoped admins only manage members whose access lies wholly within their own
+ * branches (`assertMemberInBranchScope`). Super admin accounts are managed by the platform only.
  */
 async function manageableMember(userId: number) {
   const ctx = requireTenantContext();
-  await memberOrThrow(userId);
+  await memberOrThrow(userId, 'manage');
   const user = await User.findByPk(userId);
   if (!user || (user.isSuperAdmin && !isPlatformAdmin(ctx))) throw NotFound('User');
-  if (ctx.allowedBranchIds !== null) {
-    const allowed = ctx.allowedBranchIds;
-    const target = await resolveAccess(userId, ctx.instituteId);
-    if (!target.allowedBranchIds?.some((b) => allowed.includes(b))) throw NotFound('User');
-  }
   return user;
 }
 
@@ -164,7 +160,7 @@ export function userRoutes(api: Router) {
   r.get('/', requirePermission('users', 'view'), async (req, res) => {
     const q = parse(paginationSchema.extend({ role: z.string().optional() }), req.query);
     const { instituteId } = requireTenantContext();
-    const userWhere = q.search
+    const search = q.search
       ? {
           [Op.or]: [
             { name: { [Op.like]: `%${q.search}%` } },
@@ -173,6 +169,8 @@ export function userRoutes(api: Router) {
           ],
         }
       : undefined;
+    const visible = memberVisibilityWhere();
+    const userWhere = search && visible ? { [Op.and]: [search, visible] } : (search ?? visible);
     const { rows, count } = await User.findAndCountAll({
       where: userWhere,
       include: [
@@ -270,7 +268,7 @@ export function userRoutes(api: Router) {
   r.put('/:id/roles', requirePermission('users', 'edit'), async (req, res) => {
     const { id } = parse(idParam, req.params);
     const body = parse(assignmentSchema, req.body);
-    const before = await memberOrThrow(id);
+    const before = await memberOrThrow(id, 'manage');
     if (id === req.ctx.userId) throw Forbidden('You cannot change your own roles');
     await validateAssignment(body);
     await replaceAssignments(id, body);
@@ -285,7 +283,7 @@ export function userRoutes(api: Router) {
 
   r.delete('/:id', requirePermission('users', 'delete'), async (req, res) => {
     const { id } = parse(idParam, req.params);
-    await memberOrThrow(id);
+    await memberOrThrow(id, 'manage');
     if (id === req.ctx.userId) throw Forbidden('You cannot remove yourself');
     const { instituteId } = requireTenantContext();
     await UserRole.destroy({ where: { instituteId, userId: id } });

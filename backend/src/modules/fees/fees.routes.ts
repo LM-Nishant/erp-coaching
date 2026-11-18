@@ -3,6 +3,7 @@ import { Op, type WhereOptions } from 'sequelize';
 import { z } from 'zod';
 import {
   FEE_ADJUSTMENT_TYPES,
+  FEE_COURSE_ENROLMENT_STATUSES,
   INSTALMENT_PLAN_TYPES,
   OFFLINE_PAYMENT_MODES,
   PAYMENT_GATEWAYS,
@@ -11,6 +12,7 @@ import { parse } from '../../shared/utilities/validation';
 import { idParam, paginated, paginationSchema, toLimitOffset } from '../../shared/utilities/pagination';
 import { authenticate } from '../../shared/middleware/authenticate';
 import { requireModule, requirePermission } from '../../shared/middleware/authorize';
+import { webhookRateLimit } from '../../shared/middleware/security';
 import { hasPermission, requireTenantContext } from '../../shared/context';
 import { BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { Student } from '../students/models';
@@ -19,6 +21,7 @@ import {
   FeeAccount,
   FeeAdjustment,
   FeeConcessionRule,
+  FeeCourseEnrolment,
   FeeHead,
   FeeLedgerEntry,
   FeePayment,
@@ -62,6 +65,12 @@ import {
 } from './payments.service';
 import { findReceipt, receiptDto, receiptPdfUrl } from './receipts';
 import { quoteCourse, startCoursePurchase } from './course-sales';
+import {
+  courseEnrolmentBatchOptions,
+  courseEnrolmentDtos,
+  courseEnrolmentRepo,
+  reconcileCourseEnrolment,
+} from './course-enrolment';
 import { enabledGateways, gatewayDto, gatewayRepo, upsertGatewayConfig } from './gateways.service';
 import {
   bankAccountDto,
@@ -310,6 +319,7 @@ function publicRoutes(api: Router) {
   // payload signature is verified before anything is trusted (see processWebhook).
   api.post(
     '/fees/public/webhooks/:gateway/:webhookKey',
+    webhookRateLimit,
     express.raw({ type: () => true, limit: '1mb' }),
     async (req, res) => {
       const { gateway, webhookKey } = parse(
@@ -440,7 +450,7 @@ function configRoutes(r: Router) {
 
   r.post('/jobs/sweep', can('configure'), async (req, res) => {
     const { asOf } = parse(z.object({ asOf: date.optional() }), req.body ?? {});
-    res.json(await runInstituteSweep(asOf ?? today()));
+    res.json(await runInstituteSweep(asOf));
   });
 }
 
@@ -583,7 +593,8 @@ function accountRoutes(r: Router) {
       order: [['id', 'DESC']],
       ...toLimitOffset(q),
     });
-    let items = rows.map((a) => accountDto(a));
+    const asOf = await today();
+    let items = rows.map((a) => accountDto(a, asOf));
     if (q.dues !== undefined) items = items.filter((a) => a.balance > 0 === q.dues);
     res.json(paginated(items, count, q));
   });
@@ -599,7 +610,7 @@ function accountRoutes(r: Router) {
         order: [['id', 'DESC']],
       }),
     ]);
-    res.json({ ...accountDto(a, { adjustments }), payments: payments.map(paymentDto) });
+    res.json({ ...accountDto(a, await today(), { adjustments }), payments: payments.map(paymentDto) });
   });
   r.get('/accounts/:id/ledger', can('view'), async (req, res) => {
     const { id } = parse(idParam, req.params);
@@ -623,13 +634,14 @@ function accountRoutes(r: Router) {
       req.body,
     );
     const { account, created } = await generateAccount({ ...body, source: 'manual' });
+    const asOf = await today();
     await auditFee({
       action: 'fees.account.create',
       entityType: 'fee_account',
       entityId: account.id,
-      after: accountDto(account),
+      after: accountDto(account, asOf),
     });
-    res.status(created ? 201 : 200).json(accountDto(await getAccount(account.id)));
+    res.status(created ? 201 : 200).json(accountDto(await getAccount(account.id), asOf));
   });
   r.post('/accounts/generate-batch', can('create'), async (req, res) => {
     const body = parse(
@@ -653,7 +665,7 @@ function accountRoutes(r: Router) {
     const { id } = parse(idParam, req.params);
     const { reason } = parse(reasonBody, req.body ?? {});
     await cancelAccount(id, reason ?? undefined);
-    res.json(accountDto(await getAccount(id)));
+    res.json(accountDto(await getAccount(id), await today()));
   });
   r.post('/accounts/:id/adjustments', can('edit'), async (req, res) => {
     const { id } = parse(idParam, req.params);
@@ -849,7 +861,8 @@ function selfRoutes(r: Router) {
       limit: 100,
     });
     const gateways = (await enabledGateways()).map((g) => g.gateway);
-    const dtos = accounts.map((a) => accountDto(a));
+    const asOf = await today();
+    const dtos = accounts.map((a) => accountDto(a, asOf));
     res.json({
       student: { id: student.id, name: student.name, admissionNumber: student.admissionNumber },
       students: students.map((s) => ({ id: s.id, name: s.name, admissionNumber: s.admissionNumber })),
@@ -929,6 +942,64 @@ function selfRoutes(r: Router) {
     const rc = await findReceipt(id);
     await assertMyPayment(rc.paymentId);
     res.json(await shareReceipt(rc));
+  });
+}
+
+// ------------------------------------------------------------------ course purchase enrolments
+
+/**
+ * Admissions and batch enrolments produced by online course purchases. `awaiting_batch` is the
+ * queue of paid students no batch could take; an admin assigns one.
+ */
+function courseEnrolmentRoutes(r: Router) {
+  r.get('/course-enrolments', can('view'), async (req, res) => {
+    const q = parse(
+      paginationSchema.extend({
+        status: z.enum(FEE_COURSE_ENROLMENT_STATUSES).optional(),
+        branchId: qId,
+        courseId: qId,
+        studentId: qId,
+      }),
+      req.query,
+    );
+    const where: Record<string, unknown> = {};
+    for (const k of ['status', 'branchId', 'courseId', 'studentId'] as const) if (q[k]) where[k] = q[k];
+    const { rows, count } = await courseEnrolmentRepo.findAndCountAll({
+      where: where as WhereOptions<FeeCourseEnrolment>,
+      include: q.search
+        ? [
+            {
+              model: Student,
+              as: 'student',
+              attributes: [],
+              where: {
+                [Op.or]: [
+                  { name: { [Op.like]: `%${q.search}%` } },
+                  { admissionNumber: { [Op.like]: `%${q.search}%` } },
+                  { mobile: { [Op.like]: `%${q.search}%` } },
+                ],
+              },
+            },
+          ]
+        : [],
+      order: [['id', 'DESC']],
+      ...toLimitOffset(q),
+    });
+    res.json(paginated(await courseEnrolmentDtos(rows), count, q));
+  });
+  r.get('/course-enrolments/:id/batches', can('approve'), async (req, res) => {
+    const { id } = parse(idParam, req.params);
+    res.json(await courseEnrolmentBatchOptions(await courseEnrolmentRepo.findById(id)));
+  });
+
+  r.post('/course-enrolments/:id/assign', can('approve'), async (req, res) => {
+    const { id } = parse(idParam, req.params);
+    const { batchId } = parse(z.object({ batchId: z.number().int().positive() }), req.body ?? {});
+    const row = await courseEnrolmentRepo.findById(id);
+    courseEnrolmentRepo.assertRowWritable(row);
+    const saved = await reconcileCourseEnrolment(row.accountId, { batchId });
+    if (!saved) throw NotFound('Course enrolment');
+    res.json((await courseEnrolmentDtos([saved]))[0]);
   });
 }
 
@@ -1267,7 +1338,7 @@ function accountingRoutes(r: Router) {
 
 function reportRoutes(r: Router) {
   r.get('/reports/summary', can('view'), async (_req, res) => {
-    const t = today();
+    const t = await today();
     const monthStart = `${t.slice(0, 8)}01`;
     const [day, month, dues, approvals, adjustments] = await Promise.all([
       collectionsReport({ from: t, to: t }),
@@ -1288,7 +1359,7 @@ function reportRoutes(r: Router) {
   });
   r.get('/reports/daily-cash', can('view'), async (req, res) => {
     const q = parse(z.object({ date: date.optional(), branchId: qId }).merge(format), req.query);
-    const rep = await dailyCashReport(q.date ?? today(), q.branchId);
+    const rep = await dailyCashReport(q.date ?? (await today()), q.branchId);
     const rows: Cell[][] = [
       ['', 'Opening cash', null, null, rupees(rep.opening)],
       ...rep.rows.map(
@@ -1413,6 +1484,7 @@ export function feesRoutes(api: Router) {
   accountRoutes(r);
   paymentRoutes(r);
   selfRoutes(r);
+  courseEnrolmentRoutes(r);
   accountingRoutes(r);
   reportRoutes(r);
   api.use('/fees', r);

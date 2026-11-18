@@ -1,5 +1,5 @@
 <template>
-  <AppPage title="Dashboard" :on-refresh="load">
+  <AppPage title="Dashboard" :on-refresh="refresh">
     <h2 class="hello">Hello, {{ auth.me?.user.name }}</h2>
 
     <template v-if="auth.isPlatformAdmin">
@@ -52,17 +52,30 @@
         </ion-card-content>
       </ion-card>
     </template>
+
+    <!-- Module widgets for this audience; `:key` remounts them (and so reloads them) on refresh. -->
+    <div v-if="widgets.length" :key="refreshKey" class="widgets">
+      <ion-card v-for="w in widgets" :key="w.id" :class="['widget', w.size ?? 'half']">
+        <ion-card-header>
+          <ion-card-title>{{ w.title }}</ion-card-title>
+        </ion-card-header>
+        <ion-card-content>
+          <component :is="w.component" />
+        </ion-card-content>
+      </ion-card>
+    </div>
   </AppPage>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { IonCard, IonCardContent, IonCol, IonGrid, IonRow } from '@ionic/vue';
+import { IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonCol, IonGrid, IonRow } from '@ionic/vue';
 import type { PlanLimits } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import StatCard from '@/components/StatCard.vue';
 import { api } from '@/core/api';
+import { widgetsFor } from '@/core/modules';
 import { useAuthStore } from '@/stores/auth';
 
 interface SubscriptionInfo {
@@ -83,13 +96,25 @@ const platform = ref<PlatformStats | null>(null);
 
 const limit = (n: number | null | undefined) => (n === null || n === undefined ? 'unlimited' : `of ${n}`);
 
+const refreshKey = ref(0);
+const widgets = computed(() =>
+  widgetsFor(auth.isPlatformAdmin ? 'platform-home' : 'home').filter(
+    (w) => (!w.permission || auth.can(w.permission)) && (!w.planModule || auth.moduleEnabled(w.planModule)),
+  ),
+);
+
 async function load() {
   if (auth.isPlatformAdmin) platform.value = await api.get<PlatformStats>('/admin/dashboard');
   else if (auth.can('subscription.view')) sub.value = await api.get<SubscriptionInfo>('/subscription');
 }
 
+async function refresh() {
+  refreshKey.value++;
+  await load();
+}
+
 onMounted(load);
-watch(() => [route.query.b, auth.me?.institute?.id], load);
+watch(() => [route.query.b, auth.me?.institute?.id, auth.activeBranchId], refresh);
 </script>
 
 <style scoped>
@@ -98,5 +123,17 @@ watch(() => [route.query.b, auth.me?.institute?.id], load);
 }
 .cap {
   text-transform: capitalize;
+}
+.widgets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.widget.full {
+  grid-column: 1 / -1;
+}
+@media (max-width: 768px) {
+  .widgets {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

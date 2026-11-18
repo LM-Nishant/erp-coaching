@@ -17,7 +17,9 @@ export function registerFeesIntegrations(): void {
   registerCourseSalesIntegrations();
   // A completed admission gets its fee account from the best matching active structure
   // (batch → course+branch → course). `sourceRef = admission:<id>` makes retries no-ops.
+  // Admissions completed by an online course purchase are already billed (`feeAccountId`).
   onAdmissionCompleted('fees.account', async (e) => {
+    if (e.feeAccountId) return;
     const { instituteId } = requireTenantContext();
     if (!(await isModuleEnabled(instituteId, 'fees'))) return;
     const account = await generateForAdmission(e);

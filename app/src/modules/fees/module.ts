@@ -5,6 +5,7 @@ import {
   checkmarkDoneOutline,
   layersOutline,
   peopleOutline,
+  schoolOutline,
   settingsOutline,
   walletOutline,
 } from 'ionicons/icons';
@@ -41,6 +42,12 @@ export default defineAppModule({
       path: '/fees/approvals',
       name: 'fee-approvals',
       component: () => import('./FeeApprovalsPage.vue'),
+      meta: { permission: 'fees.view' },
+    },
+    {
+      path: '/fees/course-enrolments',
+      name: 'fee-course-enrolments',
+      component: () => import('./CourseEnrolmentsPage.vue'),
       meta: { permission: 'fees.view' },
     },
     {
@@ -109,6 +116,14 @@ export default defineAppModule({
       title: 'Fee approvals',
       path: '/fees/approvals',
       icon: checkmarkDoneOutline,
+      permission: 'fees.view',
+      planModule: 'fees',
+      order: 63,
+    },
+    {
+      title: 'Course enrolments',
+      path: '/fees/course-enrolments',
+      icon: schoolOutline,
       permission: 'fees.view',
       planModule: 'fees',
       order: 63,

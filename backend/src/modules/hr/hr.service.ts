@@ -5,6 +5,7 @@ import { getBiometricAdapter } from '../../infrastructure/biometric';
 import { getContext, requireTenantContext } from '../../shared/context';
 import { BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
+import { getInstituteTimezone, nowInZone } from '../../shared/timezone';
 import { Branch } from '../branches/branch.model';
 import { assertWithinLimit } from '../subscriptions/subscription.service';
 import {
@@ -17,13 +18,17 @@ import {
   Shift,
   StaffAttendance,
 } from './models';
-import { addDays, daysInclusive, eachDate, today } from './dates';
+import { addDays, daysInclusive, eachDate } from './dates';
 
 /** Branch-scoped: branch admins only see staff of their branches. */
 export const employeeRepo = new TenantRepository(Employee, { entity: 'Employee', branchScoped: true });
 /** Institute-scoped lookup used only for self-service (ownership is checked by user id). */
 const employeeSelfRepo = new TenantRepository(Employee, { entity: 'Employee' });
-export const shiftRepo = new TenantRepository(Shift, { entity: 'Shift' });
+export const shiftRepo = new TenantRepository(Shift, {
+  entity: 'Shift',
+  branchScoped: true,
+  instituteWideRows: true,
+});
 export const leaveTypeRepo = new TenantRepository(LeaveType, { entity: 'Leave type' });
 export const leaveRepo = new TenantRepository(LeaveApplication, { entity: 'Leave application' });
 export const attendanceRepo = new TenantRepository(StaffAttendance, { entity: 'Attendance' });
@@ -268,16 +273,16 @@ export async function saveManualAttendance(entries: ManualAttendanceEntry[]) {
 }
 
 const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
-const localHhmm = (d: Date) =>
-  `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
 /**
- * Ingests device punches through the biometric adapter (mock today). First punch of the day is
- * check-in, last is check-out; late is decided from the employee's shift and grace minutes.
- * Days already marked as leave or edited manually are left untouched.
+ * Ingests device punches through the biometric adapter (mock today). Punch instants are read on the
+ * institute's wall clock. First punch of the day is check-in, last is check-out; late is decided
+ * from the employee's shift and grace minutes. Days already marked as leave or edited manually are
+ * left untouched.
  */
 export async function ingestBiometric(payload: unknown) {
-  const punches = await getBiometricAdapter().parsePush(payload);
+  const tz = await getInstituteTimezone();
+  const punches = await getBiometricAdapter().parsePush(payload, { timeZone: tz });
   const enrolments = [...new Set(punches.map((p) => p.enrolmentId))];
   const employees = await employeeRepo.findAll({
     where: { biometricEnrolmentId: { [Op.in]: enrolments } },
@@ -292,10 +297,10 @@ export async function ingestBiometric(payload: unknown) {
       unmatched.add(p.enrolmentId);
       continue;
     }
-    const date = today(p.punchedAt);
+    const { date, time } = nowInZone(tz, p.punchedAt);
     const key = `${employee.id}:${date}`;
     const g = groups.get(key) ?? { employee, date, times: [] };
-    g.times.push(localHhmm(p.punchedAt));
+    g.times.push(time);
     groups.set(key, g);
   }
   let updated = 0;

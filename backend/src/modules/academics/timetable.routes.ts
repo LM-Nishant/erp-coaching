@@ -66,8 +66,8 @@ async function assertSubject(subjectId: number | null | undefined) {
   if (subjectId) await repos.subjects.findById(subjectId);
 }
 
-function defaultRange(from?: string, to?: string) {
-  const start = from ?? today();
+async function defaultRange(from?: string, to?: string) {
+  const start = from ?? (await today());
   const end = to ?? new Date(Date.parse(`${start}T00:00:00Z`) + 6 * 86400000).toISOString().slice(0, 10);
   if (end < start) throw BadRequest('"to" must be on or after "from"');
   return { from: start, to: end };
@@ -214,9 +214,10 @@ export function timetableRoutes(r: Router) {
     const { id } = parse(idParam, req.params);
     const row = await repos.schedules.findById(id);
     const { instituteId } = requireTenantContext();
+    const day = await today();
     await getSequelize().transaction(async (transaction) => {
       await ClassSession.destroy({
-        where: { instituteId, scheduleId: id, status: 'scheduled', date: { [Op.gte]: today() } },
+        where: { instituteId, scheduleId: id, status: 'scheduled', date: { [Op.gte]: day } },
         transaction,
       });
       await row.destroy({ transaction });
@@ -245,7 +246,7 @@ export function timetableRoutes(r: Router) {
   /* ---------------- class sessions ---------------- */
   r.get('/class-sessions', can('view'), async (req, res) => {
     const q = parse(classSessionQuery, req.query);
-    const { from, to } = defaultRange(q.from, q.to);
+    const { from, to } = await defaultRange(q.from, q.to);
     const where: Record<string | symbol, unknown> = { date: { [Op.between]: [from, to] } };
     for (const k of ['batchId', 'teacherUserId', 'classroomId', 'status'] as const) if (q[k]) where[k] = q[k];
     const { rows, count } = await repos.classSessions.findAndCountAll({
@@ -263,7 +264,7 @@ export function timetableRoutes(r: Router) {
   /** Classes for the signed-in user: as teacher (incl. substitutions) and as an enrolled student. */
   r.get('/my-timetable', can('view'), async (req, res) => {
     const q = parse(z.object({ from: dateStr.optional(), to: dateStr.optional() }), req.query);
-    const { from, to } = defaultRange(q.from, q.to);
+    const { from, to } = await defaultRange(q.from, q.to);
     const { userId, instituteId } = requireTenantContext();
     const enrolled = await repos.batchStudents.findAll({
       where: { studentUserId: userId!, status: 'active' },

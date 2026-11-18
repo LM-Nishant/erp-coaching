@@ -3,6 +3,7 @@ import { enqueueJob } from '../../infrastructure/jobs/queue';
 import { Job } from '../../infrastructure/jobs/job.model';
 import { logger } from '../../infrastructure/logger';
 import { requireTenantContext, runWithContext } from '../../shared/context';
+import { todayIn } from '../../shared/timezone';
 import { isModuleEnabled } from '../subscriptions/subscription.service';
 import { Student } from '../students/models';
 import { FeeAccount, FeeInstalment } from './models';
@@ -19,10 +20,12 @@ const SWEEP_INTERVAL_MS = 6 * 60 * 60 * 1000;
 /**
  * Per-institute daily work: due-date reminders, overdue notices and late fees. Each step is
  * idempotent (`reminderSentAt`, `overdueNotifiedAt`, late-fee journal keys), so re-runs are safe.
+ * `asOf` defaults to the institute's today.
  */
-export async function runInstituteSweep(asOf = today()) {
+export async function runInstituteSweep(asOf?: string) {
   const { instituteId } = requireTenantContext();
   if (!(await isModuleEnabled(instituteId, 'fees'))) return { reminders: 0, overdue: 0, lateFees: 0 };
+  asOf ??= await today();
   const settings = await getFeeSettings();
   const open = await FeeInstalment.findAll({
     where: {
@@ -81,8 +84,10 @@ export async function runInstituteSweep(asOf = today()) {
 /** Platform sweep: fans out to institutes with open instalments; re-enqueues itself. */
 export async function runFeesSweep() {
   try {
+    // Coarse prefilter across institutes; the extra day covers zones ahead of UTC.
+    const horizon = addDays(todayIn('UTC'), 32);
     const rows = (await FeeInstalment.findAll({
-      where: { status: { [Op.in]: ['pending', 'partial'] }, dueDate: { [Op.lte]: addDays(today(), 31) } },
+      where: { status: { [Op.in]: ['pending', 'partial'] }, dueDate: { [Op.lte]: horizon } },
       attributes: ['instituteId'],
       group: ['instituteId'],
       raw: true,

@@ -23,8 +23,11 @@ export interface ScheduleLine {
   amount: number;
 }
 
-/** Splits a total into instalments according to the plan (last instalment absorbs rounding). */
-export function buildSchedule(total: number, plan: InstalmentPlan, start = today()): ScheduleLine[] {
+/**
+ * Splits a total into instalments according to the plan (last instalment absorbs rounding).
+ * `start` (YYYY-MM-DD) is the first due date when the plan doesn't set one.
+ */
+export function buildSchedule(total: number, plan: InstalmentPlan, start: string): ScheduleLine[] {
   const first = plan.firstDueDate ?? start;
   if (plan.type === 'custom') {
     const custom = plan.custom ?? [];
@@ -136,7 +139,8 @@ export async function createStructure(
   const components = await resolveComponents(input.components);
   const total = components.reduce((s, c) => s + c.amount, 0);
   if (total <= 0) throw BadRequest('Fee structure total must be positive');
-  buildSchedule(total, input.instalmentPlan);
+  const effectiveFrom = input.effectiveFrom ?? (await today());
+  buildSchedule(total, input.instalmentPlan, effectiveFrom);
   const targets = await resolveTargets(input);
   const row = await structureRepo.create(
     {
@@ -146,7 +150,7 @@ export async function createStructure(
       kind: input.kind,
       name: input.name,
       status: input.status ?? 'active',
-      effectiveFrom: input.effectiveFrom ?? today(),
+      effectiveFrom,
       components,
       total,
       instalmentPlan: input.instalmentPlan,

@@ -20,6 +20,7 @@ import { processDueJobs } from '../src/infrastructure/jobs/queue';
 import { AuditEvent } from '../src/shared/audit/audit-event.model';
 import { parseGradingOutput } from '../src/modules/exams/grading.service';
 import { rankScores, scoreObjective } from '../src/modules/exams/scoring';
+import { config } from '../src/infrastructure/config';
 
 const STUDENT = { mobile: '9100000005', password: DEMO_PASSWORD };
 const ZENITH_STUDENT = { mobile: '9200000005', password: DEMO_PASSWORD };
@@ -789,16 +790,25 @@ describe('exams module', () => {
       pendingEvaluations: 0,
     });
 
-    // AI not configured: the job fails gracefully and the answer stays pending for manual marking.
+    // AI not configured (and no dev/test mock fallback): the job fails gracefully and the answer
+    // stays pending for manual marking.
     await request(app).delete('/api/admin/ai/settings/key').set(bearer(sa));
-    const a2 = await request(app).post(`/api/exams/my/${id}/start`).set(bearer(s2));
-    await request(app)
-      .put(`/api/exams/my/attempts/${a2.body.attemptId}/answers/${descEq}`)
-      .set(bearer(s2))
-      .send({ response: { text: 'No idea' } });
-    await request(app).post(`/api/exams/my/attempts/${a2.body.attemptId}/submit`).set(bearer(s2));
-    await processDueJobs();
-    expect((await ExamAttempt.findByPk(a2.body.attemptId, BYPASS))!.pendingEvaluations).toBe(1);
+    let a2Id: number;
+    const mockFallback = config.AI_MOCK_FALLBACK;
+    config.AI_MOCK_FALLBACK = false;
+    try {
+      const a2 = await request(app).post(`/api/exams/my/${id}/start`).set(bearer(s2));
+      await request(app)
+        .put(`/api/exams/my/attempts/${a2.body.attemptId}/answers/${descEq}`)
+        .set(bearer(s2))
+        .send({ response: { text: 'No idea' } });
+      await request(app).post(`/api/exams/my/attempts/${a2.body.attemptId}/submit`).set(bearer(s2));
+      await processDueJobs();
+      a2Id = a2.body.attemptId;
+    } finally {
+      config.AI_MOCK_FALLBACK = mockFallback;
+    }
+    expect((await ExamAttempt.findByPk(a2Id, BYPASS))!.pendingEvaluations).toBe(1);
     const jobs = await request(app).get(`/api/exams/${id}/grading-jobs`).set(bearer(admin));
     expect(jobs.body[0]).toMatchObject({ status: 'failed' });
     expect(jobs.body[0].error).toMatch(/not configured/i);

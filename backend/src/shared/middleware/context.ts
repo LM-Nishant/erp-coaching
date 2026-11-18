@@ -13,10 +13,18 @@ declare global {
   }
 }
 
+const SAFE_REQUEST_ID = /^[\w.:-]{1,64}$/;
+
+/** Reuses a well-formed `X-Request-Id` from the proxy/client, otherwise generates one. */
+export function resolveRequestId(header: string | string[] | undefined): string {
+  return typeof header === 'string' && SAFE_REQUEST_ID.test(header) ? header : crypto.randomUUID();
+}
+
 /** Creates the per-request context (AsyncLocalStorage). Must run after body parsers. */
 export const contextMiddleware: RequestHandler = (req, res, next) => {
   const ctx: RequestContext = {
-    requestId: (req.header('x-request-id') ?? crypto.randomUUID()).slice(0, 64),
+    // pino-http (when enabled) already assigned the id, so access logs and app logs correlate.
+    requestId: typeof req.id === 'string' ? req.id : resolveRequestId(req.headers['x-request-id']),
     ip: req.ip,
     userAgent: req.header('user-agent'),
   };

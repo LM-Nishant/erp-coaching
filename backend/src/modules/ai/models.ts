@@ -17,6 +17,9 @@ export class AiSetting extends Model<InferAttributes<AiSetting>, InferCreationAt
   declare model: string;
   declare apiKeyEncrypted: string | null;
   declare jsonMode: CreationOptional<boolean>;
+  /** Price overrides (USD per 1M tokens) for cost estimates; null uses the preset price. */
+  declare inputUsdPer1M: CreationOptional<number | null>;
+  declare outputUsdPer1M: CreationOptional<number | null>;
   declare updatedBy: number | null;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
@@ -33,11 +36,24 @@ export class AiUsage extends Model<InferAttributes<AiUsage>, InferCreationAttrib
   declare promptTokens: CreationOptional<number>;
   declare completionTokens: CreationOptional<number>;
   declare totalTokens: CreationOptional<number>;
+  declare imageCount: CreationOptional<number>;
+  declare estimatedCostUsd: CreationOptional<number>;
   declare status: 'success' | 'error';
   declare latencyMs: number | null;
   declare error: string | null;
   declare createdAt: CreationOptional<Date>;
 }
+
+/** MySQL returns DECIMAL as a string; expose it as a number. */
+const decimal = (precision: number, scale: number, field: string, allowNull: boolean) => ({
+  type: DataTypes.DECIMAL(precision, scale),
+  allowNull,
+  ...(allowNull ? {} : { defaultValue: 0 }),
+  get(this: Model) {
+    const v = this.getDataValue(field);
+    return v === null || v === undefined ? v : Number(v);
+  },
+});
 
 export function initAiModels(sequelize: Sequelize) {
   AiSetting.init(
@@ -49,6 +65,8 @@ export function initAiModels(sequelize: Sequelize) {
       model: { type: DataTypes.STRING(150), allowNull: false },
       apiKeyEncrypted: DataTypes.TEXT,
       jsonMode: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+      inputUsdPer1M: { ...decimal(10, 4, 'inputUsdPer1M', true), field: 'input_usd_per_1m' },
+      outputUsdPer1M: { ...decimal(10, 4, 'outputUsdPer1M', true), field: 'output_usd_per_1m' },
       updatedBy: DataTypes.INTEGER.UNSIGNED,
       createdAt: DataTypes.DATE,
       updatedAt: DataTypes.DATE,
@@ -66,6 +84,8 @@ export function initAiModels(sequelize: Sequelize) {
       promptTokens: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
       completionTokens: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
       totalTokens: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
+      imageCount: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
+      estimatedCostUsd: decimal(12, 6, 'estimatedCostUsd', false),
       status: { type: DataTypes.STRING(10), allowNull: false },
       latencyMs: DataTypes.INTEGER.UNSIGNED,
       error: DataTypes.STRING(500),

@@ -1,7 +1,8 @@
-import { Op } from 'sequelize';
+import { Op, type Transaction } from 'sequelize';
 import { Job } from './job.model';
 import { getContext, runWithContext } from '../../shared/context';
 import { logger } from '../logger';
+import { captureError } from '../error-tracking';
 import { getSequelize } from '../database/sequelize';
 
 export type JobHandler<P = Record<string, unknown>> = (payload: P, job: Job) => Promise<void>;
@@ -16,23 +17,27 @@ export function registerJobHandler(name: string, handler: JobHandler): void {
 
 /**
  * Enqueue a background job. The current tenant is captured and restored when the job runs,
- * so handlers can use TenantRepository as in a request.
+ * so handlers can use TenantRepository as in a request. Pass `transaction` to commit the job
+ * atomically with the change that triggers it (it is discarded if that transaction rolls back).
  */
 export async function enqueueJob(
   name: string,
   payload: Record<string, unknown>,
-  opts: { runAt?: Date; maxAttempts?: number; instituteId?: number | null } = {},
+  opts: { runAt?: Date; maxAttempts?: number; instituteId?: number | null; transaction?: Transaction } = {},
 ): Promise<Job> {
-  return Job.create({
-    name,
-    payload,
-    instituteId: opts.instituteId !== undefined ? opts.instituteId : (getContext().instituteId ?? null),
-    runAt: opts.runAt ?? new Date(),
-    maxAttempts: opts.maxAttempts ?? 5,
-    lockedAt: null,
-    lastError: null,
-    completedAt: null,
-  });
+  return Job.create(
+    {
+      name,
+      payload,
+      instituteId: opts.instituteId !== undefined ? opts.instituteId : (getContext().instituteId ?? null),
+      runAt: opts.runAt ?? new Date(),
+      maxAttempts: opts.maxAttempts ?? 5,
+      lockedAt: null,
+      lastError: null,
+      completedAt: null,
+    },
+    { transaction: opts.transaction },
+  );
 }
 
 async function claimNext(): Promise<Job | null> {
@@ -76,6 +81,8 @@ async function execute(job: Job): Promise<void> {
       runAt: retry ? new Date(Date.now() + backoffMs) : job.runAt,
     });
     logger.warn({ job: job.name, id: job.id, attempt: job.attempts, retry }, `Job failed: ${message}`);
+    if (!retry)
+      captureError(err, { source: 'job', job: job.name, jobId: job.id, instituteId: job.instituteId });
   }
 }
 

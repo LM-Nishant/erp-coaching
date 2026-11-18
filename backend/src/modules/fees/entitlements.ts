@@ -1,13 +1,15 @@
 import { Op, type Transaction } from 'sequelize';
 import { requireTenantContext } from '../../shared/context';
 import { Student } from '../students/models';
+import { queueCourseEnrolment } from './course-enrolment';
 import { FeeAccount, FeeEntitlement, type FeeInstalment } from './models';
 import { getFeeSettings } from './settings.service';
 
 /**
  * Grants course/subject access once the first N instalments (setting
  * `entitlementAfterInstalment`) are fully paid; revokes it again if a refund/cancellation
- * leaves them unpaid. Runs inside posting transactions.
+ * leaves them unpaid. Runs inside posting transactions; a change on an online course purchase also
+ * queues its admission and batch enrolment (`course-enrolment.ts`).
  */
 export async function evaluateEntitlement(
   account: FeeAccount,
@@ -25,6 +27,7 @@ export async function evaluateEntitlement(
     lock: transaction.LOCK.UPDATE,
   });
   if (satisfied) {
+    if (existing && !existing.revokedAt) return;
     if (!existing)
       await FeeEntitlement.create(
         {
@@ -39,11 +42,12 @@ export async function evaluateEntitlement(
         },
         { transaction },
       );
-    else if (existing.revokedAt)
-      await existing.update({ revokedAt: null, grantedAt: new Date() }, { transaction });
+    else await existing.update({ revokedAt: null, grantedAt: new Date() }, { transaction });
   } else if (existing && !existing.revokedAt) {
     await existing.update({ revokedAt: new Date() }, { transaction });
-  }
+  } else return;
+  // A bought course also admits the student and enrolls them in a batch (or takes them out again).
+  await queueCourseEnrolment(account, transaction);
 }
 
 async function studentIdsForUser(instituteId: number, studentUserId: number) {

@@ -13,7 +13,13 @@ export default defineAppModule({
       path: '/select-institute',
       name: 'select-institute',
       component: () => import('./SelectInstitutePage.vue'),
+      meta: { allowWhenSuspended: true },
     },
-    { path: '/forbidden', name: 'forbidden', component: () => import('./ForbiddenPage.vue') },
+    {
+      path: '/forbidden',
+      name: 'forbidden',
+      component: () => import('./ForbiddenPage.vue'),
+      meta: { allowWhenSuspended: true },
+    },
   ],
 });

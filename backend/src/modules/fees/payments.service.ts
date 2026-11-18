@@ -114,7 +114,7 @@ async function applyCouponDiscount(
         feeAccountId: account.id,
         refType: 'payment',
         refId: payment.id,
-        date: payment.paidOn ?? today(),
+        date: payment.paidOn ?? (await today()),
         narration: `Coupon ${payment.couponCode ?? ''} discount (${i.label})`,
         lines: [
           { account: L.FEE_INCOME, debit: take },
@@ -301,7 +301,7 @@ async function postLocked(
       allocs.map((a) => ({ ...a, instituteId: payment.instituteId, paymentId: payment.id })),
       { transaction },
     );
-  const date = payment.paidOn ?? today();
+  const date = payment.paidOn ?? (await today());
   const base = {
     branchId: payment.branchId,
     feeAccountId: account.id,
@@ -411,7 +411,7 @@ async function afterPosted(paymentId: number) {
   await notifyStudent(
     'fees.receipt',
     p.student,
-    { amount: money(p.amount), receiptNo: p.receipt.number, paidOn: p.paidOn ?? today() },
+    { amount: money(p.amount), receiptNo: p.receipt.number, paidOn: p.paidOn ?? (await today()) },
     p.branchId,
   );
 }
@@ -477,7 +477,7 @@ export async function recordOfflinePayment(
             chequeNumber: input.chequeNumber ?? null,
             chequeDate: input.chequeDate ?? null,
             bankName: input.bankName ?? null,
-            paidOn: input.paidOn ?? today(),
+            paidOn: input.paidOn ?? (await today()),
             gatewayOrderId: null,
             idempotencyKey,
             bankAccountId: input.bankAccountId ?? null,

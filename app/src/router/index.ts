@@ -6,7 +6,7 @@ import type {
   RouteRecordRaw,
 } from 'vue-router';
 import type { PermissionKey } from '@erp/shared';
-import { appModules } from '@/core/modules';
+import { appModules, navigationGuards } from '@/core/modules';
 import { useAuthStore } from '@/stores/auth';
 
 declare module 'vue-router' {
@@ -22,6 +22,8 @@ declare module 'vue-router' {
      * open; a function decides per location (e.g. `?offline=1`).
      */
     offline?: boolean | ((to: RouteLocation) => boolean);
+    /** Stays reachable while the institute's subscription is suspended (billing, data export). */
+    allowWhenSuspended?: boolean;
   }
 }
 
@@ -78,5 +80,9 @@ router.beforeEach(async (to: RouteLocationNormalized) => {
   }
   if (to.meta.superAdmin && !auth.isPlatformAdmin) return '/home';
   if (to.meta.permission && !auth.can(to.meta.permission)) return { name: 'forbidden' };
+  for (const guard of navigationGuards) {
+    const result = await guard(to);
+    if (result !== true) return result;
+  }
   return true;
 });

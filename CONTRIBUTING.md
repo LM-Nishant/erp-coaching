@@ -53,6 +53,10 @@ The module loader picks up the folder automatically, and the migrator picks up `
   - The `branchId` in a body is allowed, but must be checked with `repo.assertBranchAllowed()`.
 - **Bypasses.** `{ tenantBypass: true }` is only for super-admin platform code or system jobs, and must come with a comment.
 - **Not-found behaviour.** A record from another institute must result in **404**.
+- **Institute export and deletion.** Registered tenant models are exported and purged automatically by `tenant-data`.
+  - A table with `institute_id` that is not a registered model (raw-SQL counters, platform bookkeeping) must be listed in `UNREGISTERED_INSTITUTE_TABLES` in `tenant-data/catalog.ts`; otherwise `test/tenant-data.test.ts` fails.
+  - Pass `registerTenantModel(Model, { retainOnInstituteDeletion: true })` only for rows the operator must legally keep, such as SaaS invoices. Their `institute_id` FK must be `ON DELETE SET NULL`.
+  - Columns named like `password`, `secret`, `token`, `*_hash` or `*_encrypted` are never exported. Add any other secret column to `SENSITIVE_COLUMNS` in the same file.
 
 ### 4. Permissions (RBAC)
 
@@ -76,12 +80,12 @@ permissions: [{
 - Mount every router under your module's prefix: `api.use('/students', r)`. Apply `authenticate` **per router** (`r.use(authenticate)`) or per route.
 - **Never** call `api.use(middleware)` or `api.use('/', router)`. Router-level middleware at the root runs for every module registered after yours (modules load alphabetically), so `authenticate` there would return 401 for their public routes. `createApp` refuses to boot if a module does this (`test/routing.test.ts`).
 - `/admin/*` is reserved for super-admin platform routes. Those routers use `authenticate, requireSuperAdmin`, so don't put tenant or public routes there.
-- **Public (unauthenticated) routes** go on a separate router or an individual route without `authenticate`, under your prefix. Give them their own rate limit if they are abuse-prone, and validate input as usual:
+- **Public (unauthenticated) routes** go on a separate router or an individual route without `authenticate`, under a `/public` path segment: `/api/<module>/public/...` as below, or `/api/public/...`. A public route anywhere else fails `test/security/route-registry.test.ts`. Validate input as usual, and give every anonymous write a dedicated [rate limiter](#rate-limiters):
 
 ```ts
 export function admissionRoutes(api: Router) {
   const pub = Router(); // public: e.g. online enquiry form
-  pub.post('/enquiries', authRateLimit, async (req, res) => {
+  pub.post('/enquiries', publicFormRateLimit, async (req, res) => {
     /* ... */
   });
   api.use('/admissions/public', pub);
@@ -97,6 +101,21 @@ export function admissionRoutes(api: Router) {
 
 Register the public router before the authenticated one when they share a prefix, as above. Public handlers have no tenant context, so resolve the institute explicitly (e.g. from a signed token or a public institute code) and pass `{ tenantBypass: true }` only with a comment explaining why.
 
+#### Rate limiters
+
+Every `/api` request passes the app-wide `apiRateLimit`, so authenticated routes need nothing more. Anonymous routes other than `GET` must also use one of the dedicated limiters in `shared/middleware/security.ts`, or `test/security/route-registry.test.ts` fails. Each limiter keeps its own per-IP budget, so one kind of traffic can't use up another's:
+
+| Limiter               | Use it for                                                                    | Default budget (env)                         |
+| --------------------- | ----------------------------------------------------------------------------- | -------------------------------------------- |
+| `publicFormRateLimit` | anonymous writes from public pages: enquiry forms, checkout, coupons, sign-up | 60 per 15 min (`RATE_LIMIT_PUBLIC_FORM_MAX`) |
+| `authRateLimit`       | password login and OTP request/verify                                         | 30 per 15 min (`RATE_LIMIT_AUTH_MAX`)        |
+| `tokenRateLimit`      | routes whose credential is a refresh token (refresh, logout)                  | 600 per 15 min (`RATE_LIMIT_TOKEN_MAX`)      |
+| `webhookRateLimit`    | payment and provider webhooks; verify the signature in the handler            | 300 per min (`RATE_LIMIT_WEBHOOK_PER_MIN`)   |
+| `deviceRateLimit`     | pushes from hardware authenticated by a device key (biometric punches)        | 120 per min (`RATE_LIMIT_DEVICE_PER_MIN`)    |
+| `mediaRateLimit`      | token-authorised media (signed file URLs, HLS); exempt from `apiRateLimit`    | 3000 per min (`RATE_LIMIT_MEDIA_PER_MIN`)    |
+
+`apiRateLimit` allows 600 requests per minute per IP (`RATE_LIMIT_API_PER_MIN`). Counters are kept in memory, so each API process counts separately; see [docs/security.md](docs/security.md).
+
 ### 5. Request handling
 
 - Validate input with zod using `parse(schema, req.body | req.query | req.params)`. Use `idParam` and the pagination helpers from `shared/utilities`.
@@ -104,11 +123,15 @@ Register the public router before the authenticated one when they share a prefix
 - Error shape is always `{ error: { code, message, details? } }`. List endpoints return `{ items, total, page, pageSize }`.
 - Call `audit({ action: 'students.create', entityType: 'Student', entityId, after })` for every create, update, delete, approve or publish of business data. Include `before` for updates and deletes.
 - Check plan limits with `assertWithinLimit(instituteId, 'maxStudents', currentCount)` before creating limited entities.
+- **Raw SQL dates.** In `sequelize.query(sql, { replacements })`, Sequelize formats a `Date` in the server's local time and ignores the `timezone: '+00:00'` option. Pass UTC strings such as `'2026-01-01 00:00:00'`, or use model queries, which convert correctly.
 
 ### 6. Use platform services; never call vendors directly
 
 - **Files**: `saveUploadedFile()` and `signedUrlFor()`. Store `file_id` FKs to `files`, never paths or public URLs.
 - **AI**: `aiChat({ feature: '<module>.<feature>', messages })`. Don't read AI settings or keys yourself.
+  - It enforces the plan's monthly quota (429 `AI_QUOTA_EXCEEDED`) and meters tokens, images and estimated cost in `ai_usage`.
+  - `getAiAvailability(instituteId)` tells a screen whether AI can run, which provider is used and how much quota is left.
+  - In development and tests, while no API key is configured, calls go to the deterministic mock provider (see [AI configuration](ARCHITECTURE.md#ai-configuration)), so AI features can be tested offline.
 - **Notifications (SMS/WhatsApp/email/push/in-app)**: call `notify()`; see [Sending notifications](#sending-notifications). Don't call `getMessagingProvider()` from business modules.
 - **Calendar / online meetings**: `getCalendarProvider(instituteId)` from `infrastructure/calendar` (Google Calendar/Meet interface; the mock generates `https://meet.mock.invalid/...` links).
 - **Payments, streaming, biometric**: use the adapters under `infrastructure/`. Don't import vendor SDKs in modules.
@@ -168,7 +191,10 @@ Current wiring:
 | admissions → academics                            | `admissions.service.ts`        | admitting an application with `batchId` enrols the student via `enrollStudentsInBatch` in the admit transaction; `admissions.confirmed` is sent to student + guardians                                       |
 | academics, grievances, admissions → notifications | `notify()`                     | `classes.cancelled/rescheduled/substituted` (students, their guardians, teachers), `grievances.activity`, `admissions.follow-up-due`                                                                         |
 | hr → subscriptions                                | `hr.service.ts`                | `assertTeacherSeat()` enforces the plan's `maxTeachers` (non-exited employees with `isTeacher`)                                                                                                              |
-| admissions → fees                                 | `fees/integrations.ts`         | `onAdmissionCompleted` (from `admissions/api`, emitted in a job after admit) → fee account generated from the matching structure; idempotent per admission                                                   |
+| admissions → fees                                 | `fees/integrations.ts`         | `onAdmissionCompleted` (from `admissions/api`, emitted in a job after admit) → fee account generated from the matching structure; idempotent per admission; skipped if it has `feeAccountId`                 |
+| fees → admissions, academics                      | `fees/course-enrolment.ts`     | `fees.course-enrolment` job (purchase entitlement granted/lost) → `admitForCoursePurchase`/`releaseCoursePurchaseBatch` (`admissions/api`) → `enrollStudentsInBatch`/`leaveBatch`; see below                 |
+| academics → admissions, fees (direct calls)       | `academics/api.ts`             | `openBatchesForCourse` (seats left, earliest start first), `batchAvailability`/`batchUnavailableError` (`not_found`, `other_course`, `other_branch`, `closed`, `full`), `activeBatchForCourse`, `leaveBatch` |
+| students → admissions (direct call)               | `self-registration.routes.ts`  | with `courseId`, `recordSelfRegistrationIntent` → enquiry (source `referral` or `website`) + pending application for the course, linked to the new student; admitting it admits that student                 |
 | fees → LMS / exams                                | `fees/api.ts`                  | `hasCourseEntitlement(studentUserId, courseId)`, `hasSubjectEntitlement`, `entitledCourseIds`: access granted once the configured instalment is paid                                                         |
 | fees → notifications                              | `notify()`                     | `fees.due`, `fees.overdue`, `fees.receipt`, `fees.payment-failed`, `fees.refund`, `fees.receipt-share` (student + guardians)                                                                                 |
 | guardians, academics → appointments               | `appointments.service.ts`      | parents must pass `assertGuardianOf`; the teacher must teach one of the child's batches (`Batch`/`BatchTeacher`/`BatchStudent`)                                                                              |
@@ -186,14 +212,31 @@ Current wiring:
 | admissions → website (direct calls)               | `admissions/api.ts`            | website enquiries use `createEnquiry`, `activeForm`, `validateCustomFields`                                                                                                                                  |
 | fees, attendance, exams, lms → parent-portal      | `<module>/parent-portal.ts`    | `registerParentPortalProvider`: dues/overdue/recent payments (30), month attendance % (20), latest **published** results (40), pending homework (50)                                                         |
 | authentication → LMS, notifications (events)      | `<module>/integrations.ts`     | `onDeviceRevoked` (from `authentication/api`, run in a job without institute context; idempotent): `lms.offline` revokes the device's offline licences, `notifications.push-tokens` drops its push tokens    |
+| report source modules → reports                   | `<module>/reporting.ts`        | read-only queries taking a validated `ReportScope`, exported from `api.ts`: academics, admissions, students, fees, attendance, exams, payroll, grievances, appointments, live-classes, lms                   |
+| SaaS billing → reports                            | billing `integrations.ts`      | `setSaasBillingStatsProvider` (`reports/api`): MRR/ARR and revenue for the super admin dashboard; the default estimates MRR from paid active subscriptions (`source: 'subscriptions'`)                       |
+| platform → subscriptions, fees, messaging         | `platform/integrations.ts`     | `setSaasGatewayResolver` (SaaS payments), `setPlatformFeesGatewayProvider` (fee gateway fallback), `setDefaultMessagingResolver` (notification provider fallback). Institute settings keep precedence        |
+| students, hr → subscriptions                      | `<module>/integrations.ts`     | `registerUsageCounter('students' \| 'teachers')`: billable seats for usage snapshots, counted with the same rule as their plan-limit checks                                                                  |
+| students → branches                               | `students/integrations.ts`     | `registerBranchClosureGuard`: a branch with active or suspended students can't be closed until they are transferred                                                                                          |
+| subscriptions → every tenant request              | `subscriptions/index.ts`       | `addTenantRequestGuard('subscription-access')`: 402 `SUBSCRIPTION_RESTRICTED` / `SUBSCRIPTION_SUSPENDED` once the grace period ends (see ARCHITECTURE.md)                                                    |
 
 Identity note: academics rosters and grievances key students by **login user id**; students/guardians use `students.id` (`students.user_id` is nullable — siblings sharing a mobile have no login). Use `getStudentUserId`, `getLinkedStudentUsers`, `getGuardianUserIdsForStudentUsers` from `guardians/guardian-access` to convert.
 
-Module-owned files: `GET /files/:id/url` refuses (404) files whose `purpose` is owned by a module (`MODULE_OWNED_FILE_PURPOSES` in `files/files.service.ts`: lms, exams, question-bank, live-classes, fees, payroll, hr, students, grievances, admissions, appointments, parent-portal) unless the requester uploaded it. The owning module signs its own files behind its own permission checks; add any new module purpose to that list.
+Course purchases (`fees/course-enrolment.ts`):
+
+- **Trigger.** A `purchase:` fee account that gains or loses its course entitlement queues `fees.course-enrolment` in the posting transaction. The job reads the current state, so webhook replays and retries are no-ops.
+- **Paid.** `admitForCoursePurchase` completes (or creates) the student's application for the course and emits `onAdmissionCompleted` with `feeAccountId`, so fees doesn't bill the admission again. It then enrols the student in the batch chosen at checkout, else the application's batch, else the earliest open batch of the course with seats in the student's branch.
+- **No batch.** The row waits as `awaiting_batch` and admins get `fees.course-enrolment-pending`. Fees → Course enrolments (`GET /fees/course-enrolments`, `GET …/:id/batches`, `POST …/:id/assign`) places the student.
+- **Refund or reversal.** Losing the entitlement takes the student out of the batch the purchase put them in (`releaseCoursePurchaseBatch`) and marks the row `revoked`, alongside the existing coupon release on a full refund.
+
+Module-owned files: `GET /files/:id/url` refuses (404) files whose `purpose` is owned by a module (`MODULE_OWNED_FILE_PURPOSES` in `files/files.service.ts`: lms, exams, question-bank, live-classes, fees, payroll, hr, students, grievances, admissions, appointments, parent-portal, reports) unless the requester uploaded it. The owning module signs its own files behind its own permission checks; add any new module purpose to that list.
 
 ### Institute timezone
 
 Each institute has a timezone setting (`institute_settings` key `timezone`, IANA name, default `Asia/Kolkata`; `PUT /api/institute/settings/timezone`). Wall-clock values (`YYYY-MM-DD`, `HH:mm`) must be converted to instants with `backend/src/shared/timezone.ts` (`getInstituteTimezone`, `zonedDateTimeToUtc`, `todayIn`/`instituteToday`), never by building a `Date` from a local date/time string or with server-local getters.
+
+- **Today.** "Today" (due dates, late fees, leave balances, timetable weeks, AI metering months) is `instituteToday()` in a request or job, or `todayIn(tz)`; never `new Date().toISOString().slice(0, 10)`.
+- **Calendar arithmetic.** Arithmetic on `YYYY-MM-DD` strings is safe only when it parses and formats in UTC (``Date.parse(`${d}T00:00:00Z`)`` … `toISOString().slice(0, 10)`), as `hr/dates.ts` and `fees/util.ts` do.
+- **Tests.** Cover the midnight boundary with a fixed clock and a server timezone different from the institute's (see `backend/test/timezone-boundaries.test.ts`).
 
 ### Parent portal providers (backend)
 
@@ -220,6 +263,43 @@ registerParentPortalProvider({
 
 `child` is a `ParentChildDto` (`{ studentId, studentUserId, name, admissionNumber, branchId, branchName, batches }`) (`studentId` = `students.id`; `studentUserId` = login user id for rosters/attendance/grievances, may be null). Return `ParentPortalSectionDto` (`packages/shared/src/parent-portal.ts`). Providers whose module is disabled for the institute are skipped, and a throwing provider is logged and skipped, so one module can't break the page. Built-in providers: attendance 20, fees 30, exams 40, lms 50, appointments 60. **Never expose staff-only data** (e.g. private notes): the output goes straight to parents.
 
+### Reports and analytics (backend)
+
+The `reports` module owns the catalogue, filters, scoping, role dashboards and exports. Each source module owns its SQL in `<module>/reporting.ts`, exported from its `api.ts`. Shared types are in `packages/shared/src/reports.ts`.
+
+- **Audience.** Each report request is resolved to one audience from the caller's roles:
+  - `management`: institute and branch admins
+  - `finance`: accountant
+  - `teacher`
+  - `student`
+  - `parent`
+- **Scope.** The reports module turns the audience and filters into a `ReportScope` (`shared/reporting.ts`):
+  - It always sets the institute and the allowed branches, plus any course and batch filter.
+  - For teachers it adds `batchIds` and `teacherUserId`.
+  - For students and parents it adds `studentUserIds` and `studentIds` (own data, or linked children only).
+  - It validates branch, course and batch filters, and rejects them for students and parents.
+- **Query helpers.** A helper receives the scope and nothing from the request context, so it also runs inside export jobs.
+  - Use `reportQuery` with `SqlFilter`. Raw SQL bypasses the tenant hooks, so **always filter on `instituteId` and apply every non-null scope field**. `SqlFilter.in()` with an empty list matches nothing.
+  - Use `scope.start`/`scope.end` (instants with the institute timezone applied) for timestamps, and `scope.from`/`scope.to` for date columns.
+  - Respect `scope.limit` for detail rows.
+- **Adding a report.**
+  1. Add the key to `REPORT_KEYS`.
+  2. Add a `ReportDefinition` to `reports/definitions.ts`, with:
+     - `filters`
+     - `planModule`
+     - `access`: the source-module permissions each audience needs, on top of `reports.view`
+     - `run`, which builds metrics and tables
+  3. The report is then included in the catalogue, the screen views and all three export formats automatically.
+- **Exports.**
+  - `POST /api/reports/:key/exports` renders CSV, XLSX or PDF during the request when every table fits in 2,000 rows. Otherwise it queues the `reports.export` job, which allows up to 50,000 rows per table and notifies `reports.export-ready`.
+  - Files use the `reports` purpose, count toward the storage quota, and expire after 24 hours.
+  - Each download is a separately audited, 5-minute signed link (`POST /api/reports/exports/:id/download`).
+  - Requests and downloads are audited as `report.exported` and `report.export_downloaded`.
+- **SaaS dashboard.**
+  - `GET /api/admin/reports/dashboard` (super admin) aggregates every institute.
+  - `GET /api/admin/reports/institutes/export` exports the institutes table, audited as `report.saas_exported`.
+  - Revenue figures come from `setSaasBillingStatsProvider` (see the wiring table).
+
 ### 7. Tests (required)
 
 Add `backend/test/<module>.test.ts` using the helpers in `test/helpers.ts`: `getApp`, `login`, `USERS` and `bearer`. Each module must cover at least:
@@ -228,11 +308,26 @@ Add `backend/test/<module>.test.ts` using the helpers in `test/helpers.ts`: `get
 2. **403** for a role without the permission.
 3. **Tenant isolation**: Apex cannot read or update Zenith data (404), and a client-supplied `instituteId` is ignored. See `test/tenancy.test.ts`.
 
-Set a per-checkout `TEST_DB_NAME` in `backend/.env` (e.g. `erp_coaching_test_<module>`) so parallel sessions don't share a database. Tests run against the real MySQL test database, which is dropped, migrated and seeded once per run. Suites must clean up fixtures they create in the seeded institutes (`purgeAcademicFixtures`/`purgeRows` in `test/helpers.ts`) so the suite passes in any file order; check with `TEST_FILE_ORDER=reverse` or `TEST_FILE_ORDER=shuffle TEST_FILE_SEED=<n>`. Commands:
+On top of these, the [authorization and tenant-isolation suite](#authorization-and-tenant-isolation-suite) probes every route you register (401, 403, and 404 across institutes, branches, students, guardians and employees) without any code from you. Run it before pushing: a new route may need a coverage entry.
 
-- `npm test -w backend`
+Set a per-checkout `TEST_DB_NAME` in `backend/.env` (e.g. `erp_coaching_test_<module>`) so parallel sessions don't share a database. Tests run against the real MySQL test database, which is dropped, migrated and seeded once per run. Suites must clean up fixtures they create in the seeded institutes (`purgeAcademicFixtures`/`purgeRows` in `test/helpers.ts`) so the suite passes in any file order; check with `TEST_FILE_ORDER=reverse` or `TEST_FILE_ORDER=shuffle TEST_FILE_SEED=<n>`.
+
+**Test mobiles.** All test files share one database, so users a suite creates need mobile numbers no other suite uses. Pick an unused prefix and add it here:
+
+| Prefix           | Used by                                                                                                                                        |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `930…`           | `platform.test.ts`                                                                                                                             |
+| `931…`–`939…`    | module suites: students 931, guardians 932, admissions 933, integration and website 934, fees 935, attendance 936, exams 938, appointments 939 |
+| `9452…`, `9453…` | `test/security`: authorization sweep, tenant isolation                                                                                         |
+| `9454…`          | `release-readiness.test.ts`                                                                                                                    |
+| `9458…`          | load runs (`load/`)                                                                                                                            |
+| `9459…`          | browser E2E (`e2e/`)                                                                                                                           |
+
+Commands:
+
+- `npm test -w backend` (one file: `npx vitest run test/<file>` from `backend/`)
 - `npm run typecheck`
-- `npm run lint`
+- `npm run lint` and `npm run format:check`
 
 ## Frontend module
 
@@ -272,12 +367,14 @@ export default defineAppModule({
   - Route paths are prefixed with the module id.
   - Always lazy-load pages.
   - Set `meta.permission` (or `meta.superAdmin` for platform screens).
+  - A suspended institute can only open routes with `meta.allowWhenSuspended: true`, such as sign-in, Subscription & billing and data export. Set it only when every API call the page makes is still allowed while suspended.
 - **Pages.** Wrap every page in `<AppPage title="…">`, which provides the header, menu button and pull-to-refresh.
 - **UI.** Use Ionic components so the app works on web, Android and iOS.
 - **Permissions.** Hide actions with `v-can="'students.create'"`, or use `auth.can('students.create')` in script.
   - UI checks are a convenience. **The backend is the authority.**
 - **API calls.**
   - Go through `core/api.ts` only, never raw `fetch` or axios. It handles tokens, refresh and `X-Branch-Id`.
+  - For endpoints that respond with a file attachment, use `api.download(path, query)`. It returns `{ blob, fileName }`; `fileName` is null when the browser can't read `Content-Disposition` cross-origin.
   - Show errors with `errorMessage(e)` and `toast`.
   - Pass `{ background: true }` for automatic polls (unread counts, status refreshes) so they don't count as activity for the inactivity timeout.
 - **Branding.** Use Ionic colour variables (`var(--ion-color-primary)`) and never hard-code brand colours.
@@ -294,7 +391,17 @@ export default defineAppModule({
 
 ### Dashboard widgets
 
-Shared dashboards render cards from every module's `widgets` (`DashboardWidget` in `app/src/core/modules.ts`). Today there is one slot, `parent-home` (`/parent-home`, owned by `parent-portal`): the parent picks a linked child and every widget is rendered with the prop `child: ParentChildDto`.
+Shared dashboards render cards from every module's `widgets` (`DashboardWidget` in `app/src/core/modules.ts`). There are three slots:
+
+| Slot            | Host                                               | Props                   | Notes                                                                                     |
+| --------------- | -------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
+| `parent-home`   | `/parent-home` (parent-portal)                     | `child: ParentChildDto` | The parent picks a linked child. Contract below.                                          |
+| `home`          | `/home` dashboard, institute users                 | none                    | Remounted on pull-to-refresh and branch switch. Built-in: reports `Analytics` (order 10). |
+| `platform-home` | `/home` dashboard, super admin (not impersonating) | none                    | Built-in: reports platform summary (order 10).                                            |
+
+For `home` and `platform-home`, load your own data and follow the error rules below. The active branch is sent automatically as `X-Branch-Id`.
+
+Example for `parent-home`:
 
 ```ts
 // app/src/modules/fees/module.ts
@@ -312,7 +419,7 @@ widgets: [
 ],
 ```
 
-Widget component contract:
+Widget component contract (`parent-home`):
 
 - `defineProps<{ child: ParentChildDto }>()`. Use `child.studentId` for students/guardians/fees data and `child.studentUserId` (nullable) for rosters, attendance and grievances.
 - The host supplies the card and title; render only the body. Load your own data through your `api.ts`, show an empty state, and swallow or toast errors. Don't throw.
@@ -321,8 +428,85 @@ Widget component contract:
 
 To add a new slot, extend `WidgetSlotProps` in `core/modules.ts` with the slot's props and render `widgetsFor('<slot>')` in the host page.
 
+## Quality gates
+
+### CI
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request, every push to `main`, nightly and on demand. Every job must pass before a PR is merged:
+
+| Job              | What it checks                                                                                    | Run it locally                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `quality`        | lint, format, typecheck and build of every workspace                                              | `npm run lint && npm run format:check && npm run typecheck && npm run build`                 |
+| `app-tests`      | shared package and app unit tests                                                                 | `npm run test -w app`                                                                        |
+| `backend-tests`  | the backend suite against MySQL 8.4; nightly also in reverse and shuffled file order              | `npm test -w backend`; repeat a shuffled order with `TEST_FILE_SEED` from the job log        |
+| `audit`          | known vulnerabilities in dependencies                                                             | `node scripts/audit-check.mjs`                                                               |
+| `secrets`        | credentials anywhere in the git history (gitleaks)                                                | `gitleaks git --redact .`                                                                    |
+| `e2e`            | the browser workflows against MySQL 8.4                                                           | `npm run e2e`                                                                                |
+| `deploy`         | shellcheck of `deploy/`; builds the Docker images and smoke-tests the Compose stack through nginx | `deploy/smoke-test.sh` (Docker and Compose v2), see [docs/deployment.md](docs/deployment.md) |
+| `backup-restore` | backup, restore and verification of a seeded database and media against MySQL 8.4                 | `deploy/backup/restore-test.sh`, see [docs/backup-restore.md](docs/backup-restore.md)        |
+
+CI has no `backend/.env`: the backend runs on its defaults plus the `DB_*` and `TEST_DB_NAME` variables, in UTC. If a test passes locally but fails on CI, look for a dependency on your `backend/.env` or your machine's time zone. [`.github/workflows/load.yml`](.github/workflows/load.yml) runs the [load tests](#load-tests) on demand only.
+
+### Authorization and tenant-isolation suite
+
+`backend/test/security/` reads every route from the route registry (`describeRoutes()` in `src/infrastructure/route-registry.ts`), so routes you add are probed the next time it runs, with no per-route test code:
+
+- **`route-registry.test.ts`** checks how each route is guarded, without calling it:
+  - every route is under `/api/<module>`, and public routes are under a `/public` segment;
+  - `/api/admin/*` requires a super admin;
+  - authenticated institute routes call `requirePermission(...)`;
+  - every route is rate limited, and anonymous writes use a [dedicated limiter](#rate-limiters).
+- **`authz-sweep.test.ts`** calls every route as:
+  - an anonymous caller (401);
+  - a user without the route's permission (403 `PERMISSION_DENIED`);
+  - an institute user on platform routes (403 `SUPER_ADMIN_ONLY`);
+  - a user of an institute whose plan lacks the module (403 `MODULE_DISABLED`).
+- **`tenant-isolation.test.ts`** builds an attacker institute and a victim institute with two branches, students, guardians and employees (`victim-data.ts`). It then probes every route with a record id in its path:
+  - another institute's admin (and, on self-service routes, its student, guardian or employee) gets **404**, no victim row is even loaded while serving the request, and nothing of the victim changes;
+  - staff restricted to branch 1 get 403/404 for branch 2 records;
+  - student 1, guardian 1 and employee 1 get 403/404 for student 2's, student 2's children's and employee 2's records;
+  - list endpoints never include another institute's or branch's rows, even when the query string names them by id;
+  - one institute's public website never serves another's pages, media or courses.
+
+  Every probe has a positive control: the record's owner gets 2xx/3xx for the same URL, so a 404 always means "denied", never "wrong URL". The records come from your tables' schema: the suite creates one row per table, with its foreign keys, on demand.
+
+Run it from `backend/` with `npx vitest run test/security`. When a route fails, the message says what's missing. Fix the route if it's a real gap. Otherwise add an entry, with a reason, to `backend/test/security/coverage.ts`:
+
+| Entry                            | When                                                                                                                                                                                    |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NON_ID_PARAMS`                  | a path param that isn't a record id (`:channel`, `:token`); give a sample value                                                                                                         |
+| `SEGMENT_TABLES`, `PARAM_TABLES` | "cannot tell which table": the naming convention (`fees/heads/:id` → `fee_heads`) doesn't find the param's table                                                                        |
+| `TABLE_PREFIXES`                 | your module's tables don't start with the module name                                                                                                                                   |
+| `USER_ROLE_HINTS`                | a param that points at `users` must be a user with a given role                                                                                                                         |
+| `PARAM_SQL`                      | "cannot derive": the params come from several tables or need a record in a given state. Return one column per param, plus `branchId` and owner columns for the branch and portal checks |
+| `SYNTHESIS_HINTS`                | "found no row": column values the generated rows need so their owner can see them (a published result); or create the data in `victim-data.ts`                                          |
+| `ROUTE_QUERY`                    | the route needs a query string to pass validation                                                                                                                                       |
+| `SELF_FAMILIES`                  | a self-service path the student, guardian or employee patterns don't match yet                                                                                                          |
+| `SELF_SERVICE_ROUTES`            | an authenticated route that needs no permission (the caller's own data)                                                                                                                 |
+| `PUBLIC_OUTSIDE_PUBLIC_PREFIX`   | a public route that can't live under `/public` (sign-in, token-credential routes)                                                                                                       |
+| `PORTAL_SHARED`, `BRANCH_SHARED` | records deliberately shared by every student or branch (the course catalogue)                                                                                                           |
+| `UNIFORM_RESPONSE`               | a route that answers everyone the same way, so it can't reveal whether a record exists                                                                                                  |
+| `OWNER_STATUS`                   | a GET whose owner can't get 2xx for a valid record. Prefer creating the record in the right state                                                                                       |
+| `KNOWN_UNCOVERED`                | a route the suite can't probe yet                                                                                                                                                       |
+| `KNOWN_FINDINGS`                 | a medium or low finding you can't fix in your PR, with its severity; also list it in [docs/security.md](docs/security.md)                                                               |
+
+Critical and high findings are fixed, never listed. Entries naming routes that don't exist fail the suite, and so do `KNOWN_UNCOVERED` and `KNOWN_FINDINGS` entries for routes that now pass: remove the entry when you fix the route. Modules built in parallel are covered as soon as they merge; most new routes need no entry.
+
+### Browser E2E
+
+`e2e/` drives the critical workflows of spec §7 in Chromium against the real API, web app and MySQL (`npm run e2e`; see [e2e/README.md](e2e/README.md)). If your change touches a covered workflow, run its spec. To cover a new workflow, follow ["Adding a workflow spec"](e2e/README.md#adding-a-workflow-spec): one spec per workflow, setup through the API with the builders in `e2e/support/data.ts` (mobiles `9459…`), the user-facing steps in the browser, and an institute of its own for every spec.
+
+### Load tests
+
+`load/` holds autocannon scenarios for the busiest endpoints, with configurable thresholds ([docs/load-testing.md](docs/load-testing.md)). To load-test a hot endpoint of your module, append a scenario to `load/src/scenarios.ts`, put the fixtures it needs in `load/src/fixtures.ts`, run it with `npm run load:serve` and `npm run load -- <scenario>`, and add its numbers to the baseline in the doc.
+
+### Dependency and secret scanning
+
+- **Dependencies.** The `audit` job fails on a high or critical advisory in a production dependency, or a critical one anywhere. Upgrade the package; Dependabot opens weekly update PRs. When no fixed release exists and the vulnerable code isn't reachable, add the advisory to `.github/audit-allowlist.json` with the package, why it isn't reachable, and an `expires` date at most 90 days out. The job fails again after that date. See [docs/security.md](docs/security.md#dependency-and-secret-scanning).
+- **Secrets.** Never commit credentials, even for tests: the `secrets` job scans every commit with gitleaks. Fake keys in tests must start with `sk-test-`. Settings belong in `.env` files, with every variable documented in the matching `.env.example` with a safe or empty value. If a secret was pushed, rotate it: removing the commit doesn't make it secret again.
+
 ## Git and PRs
 
 - One module per branch and PR. Keep the PR focused on `backend/src/modules/<name>`, `app/src/modules/<name>`, its tests, and `packages/shared/src/<name>.ts`.
-- `npm run lint`, `npm run typecheck`, `npm test` and `npm run build` must pass.
+- `npm run lint`, `npm run format:check`, `npm run typecheck`, `npm test` and `npm run build` must pass, and so must every [CI](#ci) job.
 - Never commit `.env`, `backend/storage/` or secrets.

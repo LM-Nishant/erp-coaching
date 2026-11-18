@@ -1,3 +1,4 @@
+import type { Transaction } from 'sequelize';
 import { enqueueJob } from '../../infrastructure/jobs/queue';
 import { logger } from '../../infrastructure/logger';
 import { requireTenantContext } from '../../shared/context';
@@ -13,6 +14,11 @@ export interface AdmissionCompletedEvent {
   branchId: number;
   courseId: number | null;
   batchId: number | null;
+  /**
+   * Set when the admission comes from an online course purchase: the student already has this fee
+   * account for the course, so listeners must not bill the admission again.
+   */
+  feeAccountId?: number | null;
 }
 
 export type AdmissionCompletedListener = (event: AdmissionCompletedEvent) => Promise<void>;
@@ -28,10 +34,14 @@ export function onAdmissionCompleted(name: string, listener: AdmissionCompletedL
   listeners.set(name, listener);
 }
 
-export async function emitAdmissionCompleted(event: AdmissionCompletedEvent): Promise<void> {
+/** Pass the admit `transaction` to enqueue the event atomically with the admission. */
+export async function emitAdmissionCompleted(
+  event: AdmissionCompletedEvent,
+  opts: { transaction?: Transaction } = {},
+): Promise<void> {
   if (!listeners.size) return;
   requireTenantContext();
-  await enqueueJob(ADMISSION_COMPLETED_JOB, { ...event });
+  await enqueueJob(ADMISSION_COMPLETED_JOB, { ...event }, { transaction: opts.transaction });
 }
 
 export async function handleAdmissionCompleted(payload: Record<string, unknown>): Promise<void> {

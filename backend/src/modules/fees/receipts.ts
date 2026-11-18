@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { FeeReceiptDto } from '@erp/shared';
 import { requireTenantContext } from '../../shared/context';
 import { NotFound } from '../../shared/errors';
+import { getInstituteTimezone, nowInZone } from '../../shared/timezone';
 import { saveUploadedFile, signedUrlFor } from '../files/files.service';
 import { FileObject } from '../files/file.model';
 import { Institute } from '../institutes/institute.model';
@@ -45,12 +46,13 @@ const MODE_LABEL: Record<string, string> = {
 
 export async function receiptPdfBuffer(r: FeeReceipt): Promise<Buffer> {
   const { instituteId } = r;
-  const [institute, student, account, payment, settings] = await Promise.all([
+  const [institute, student, account, payment, settings, tz] = await Promise.all([
     Institute.findByPk(instituteId),
     Student.findOne({ where: { instituteId, id: r.studentId } }),
     FeeAccount.findOne({ where: { instituteId, id: r.accountId } }),
     FeePayment.findOne({ where: { instituteId, id: r.paymentId } }),
     getFeeSettings(),
+    getInstituteTimezone(instituteId),
   ]);
   const t: PdfText[] = [];
   const l: PdfLine[] = [];
@@ -71,7 +73,7 @@ export async function receiptPdfBuffer(r: FeeReceipt): Promise<Buffer> {
   const info: [string, string][] = [
     ['Receipt no.', r.number],
     ...(tax ? ([['Invoice no.', r.invoiceNumber!]] as [string, string][]) : []),
-    ['Date', r.issuedAt.toISOString().slice(0, 10)],
+    ['Date', nowInZone(tz, r.issuedAt).date],
     ['Student', student ? `${student.name} (${student.admissionNumber})` : '-'],
     ['Fee account', account?.title ?? '-'],
     ['Payment mode', MODE_LABEL[payment?.mode ?? ''] ?? payment?.mode ?? '-'],

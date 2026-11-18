@@ -19,7 +19,11 @@ import { activeBatchIds, applyRecord, resolveSession } from './sessions.service'
 import { localDate, localHhmm, minutes, minutesSinceStart } from './time';
 import { getInstituteTimezone } from '../../shared/timezone';
 
-export const deviceRepo = new TenantRepository(AttendanceDevice, { entity: 'Device' });
+export const deviceRepo = new TenantRepository(AttendanceDevice, {
+  entity: 'Device',
+  branchScoped: true,
+  instituteWideRows: true,
+});
 export const biometricEnrolmentRepo = new TenantRepository(AttendanceEnrolment, {
   entity: 'Biometric enrolment',
 });
@@ -67,7 +71,8 @@ export async function updateDevice(
   patch: { name?: string; active?: boolean; branchId?: number | null },
 ) {
   const d = await deviceRepo.findById(id);
-  if (patch.branchId) deviceRepo.assertBranchAllowed(patch.branchId);
+  deviceRepo.assertRowWritable(d);
+  deviceRepo.assertBranchAssignable(patch.branchId);
   const before = toDeviceDto(d);
   await d.update(patch);
   await audit({
@@ -81,6 +86,7 @@ export async function updateDevice(
 
 export async function rotateDeviceKey(id: number) {
   const d = await deviceRepo.findById(id);
+  deviceRepo.assertRowWritable(d);
   const apiKey = randomToken(24);
   await d.update({ apiKeyHash: sha256(apiKey) });
   await audit({ action: 'attendance.device.key-rotated', entityType: 'AttendanceDevice', entityId: id });
@@ -88,8 +94,7 @@ export async function rotateDeviceKey(id: number) {
 }
 
 export async function deleteDevice(id: number) {
-  const d = await deviceRepo.findById(id);
-  await d.destroy();
+  const d = await deviceRepo.destroy(id);
   await audit({
     action: 'attendance.device.deleted',
     entityType: 'AttendanceDevice',
@@ -310,5 +315,5 @@ export async function ingestPunches(
 }
 
 export async function parseDevicePayload(payload: unknown) {
-  return getBiometricAdapter().parsePush(payload);
+  return getBiometricAdapter().parsePush(payload, { timeZone: await getInstituteTimezone() });
 }

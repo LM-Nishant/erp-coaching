@@ -12,6 +12,9 @@ const bool = (def: boolean) =>
     .default(def ? 'true' : 'false')
     .transform((v) => v === 'true' || v === '1');
 
+export const DEFAULT_SUPERADMIN_PASSWORD = 'Admin@12345';
+export const DEFAULT_DEMO_PASSWORD = 'Password@123';
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(4000),
@@ -22,6 +25,12 @@ const schema = z.object({
       'http://localhost:5173,http://localhost:8100,capacitor://localhost,http://localhost,https://localhost',
     ),
   LOG_LEVEL: z.string().default(isProd ? 'info' : 'debug'),
+  /** Reported by /api/ready and attached to tracked errors (e.g. the git SHA or image tag). */
+  APP_VERSION: z.string().default('dev'),
+  /** Optional error tracking adapter: `log` writes a structured `error_tracking` entry. */
+  ERROR_TRACKING_PROVIDER: z.enum(['none', 'log', 'webhook']).default('none'),
+  /** For `webhook`: JSON events are POSTed here (your collector or a vendor's ingest proxy). */
+  ERROR_TRACKING_WEBHOOK_URL: z.string().url().optional(),
 
   DB_HOST: z.string().default('127.0.0.1'),
   DB_PORT: z.coerce.number().default(3306),
@@ -53,6 +62,8 @@ const schema = z.object({
   AI_MODEL: z.string().default('gpt-4o-mini'),
   AI_API_KEY: z.string().default(''),
   AI_TIMEOUT_MS: z.coerce.number().default(60000),
+  // Dev/test only: use the built-in mock provider while no API key is configured. Ignored in production.
+  AI_MOCK_FALLBACK: bool(true),
 
   SMS_PROVIDER: z.enum(['console']).default('console'),
   WHATSAPP_PROVIDER: z.enum(['console']).default('console'),
@@ -67,10 +78,24 @@ const schema = z.object({
   TRUST_PROXY: z.coerce.number().int().min(0).default(0),
   JOBS_POLL_INTERVAL_MS: z.coerce.number().default(2000),
   RATE_LIMIT_ENABLED: bool(true),
+  /** Per client IP. Clients behind one NAT (an institute's Wi-Fi) share these budgets. */
+  RATE_LIMIT_API_PER_MIN: z.coerce.number().int().positive().default(600),
+  RATE_LIMIT_MEDIA_PER_MIN: z.coerce.number().int().positive().default(3000),
+  RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(30),
+  RATE_LIMIT_TOKEN_MAX: z.coerce.number().int().positive().default(600),
+  RATE_LIMIT_PUBLIC_FORM_MAX: z.coerce.number().int().positive().default(60),
+  RATE_LIMIT_DEVICE_PER_MIN: z.coerce.number().int().positive().default(120),
+  RATE_LIMIT_WEBHOOK_PER_MIN: z.coerce.number().int().positive().default(300),
 
   SEED_SUPERADMIN_MOBILE: z.string().default('9000000000'),
-  SEED_SUPERADMIN_PASSWORD: z.string().default('Admin@12345'),
-  SEED_DEMO_PASSWORD: z.string().default('Password@123'),
+  /** Production seeding refuses the default; see docs/deployment.md. */
+  SEED_SUPERADMIN_PASSWORD: z.string().default(DEFAULT_SUPERADMIN_PASSWORD),
+  /** Demo institutes and users (README). Off by default in production. */
+  SEED_DEMO_DATA: bool(!isProd),
+  SEED_DEMO_PASSWORD: z.string().default(DEFAULT_DEMO_PASSWORD),
+
+  /** Dev/test only: also append every console-provider message (OTPs…) to this JSONL file. */
+  DEV_OUTBOX_FILE: z.string().optional(),
 });
 
 // Blank values (`KEY=`) count as unset so defaults apply.
@@ -82,12 +107,18 @@ if (!parsed.success) {
   console.error('Invalid environment configuration:', parsed.error.issues);
   throw new Error('Invalid environment configuration');
 }
+if (isProd && parsed.data.DEV_OUTBOX_FILE) throw new Error('DEV_OUTBOX_FILE must not be set in production');
+if (parsed.data.ERROR_TRACKING_PROVIDER === 'webhook' && !parsed.data.ERROR_TRACKING_WEBHOOK_URL)
+  throw new Error('ERROR_TRACKING_WEBHOOK_URL is required when ERROR_TRACKING_PROVIDER=webhook');
 
 export const config = {
   ...parsed.data,
   isProd,
   isTest: parsed.data.NODE_ENV === 'test',
   storageLocalRoot: path.resolve(__dirname, '../../..', parsed.data.STORAGE_LOCAL_ROOT),
+  devOutboxFile: parsed.data.DEV_OUTBOX_FILE
+    ? path.resolve(__dirname, '../../..', parsed.data.DEV_OUTBOX_FILE)
+    : null,
   corsOrigins: parsed.data.CORS_ORIGINS.split(',')
     .map((s) => s.trim())
     .filter(Boolean),

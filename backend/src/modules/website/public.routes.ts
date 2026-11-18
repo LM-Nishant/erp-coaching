@@ -7,7 +7,7 @@ import express, { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import type { PublicCheckoutResult } from '@erp/shared';
 import { getStorage } from '../../infrastructure/storage';
-import { authRateLimit } from '../../shared/middleware/security';
+import { publicFormRateLimit } from '../../shared/middleware/security';
 import { parse } from '../../shared/utilities/validation';
 import { AppError, BadRequest, NotFound } from '../../shared/errors';
 import { FileObject } from '../files/file.model';
@@ -18,6 +18,7 @@ import { validateCoupon } from './coupons.service';
 import { resolveCheckout } from './hooks';
 import { publicLeadSchema, submitLead } from './leads.service';
 import { recordReferralClick, visitorHash } from './referrals.service';
+import { setFileResponseHeaders } from '../../shared/utilities/file-response';
 import { renderSitemap } from './render';
 import { asInstitute, resolvePublicSite, type PublicSite } from './site.service';
 import {
@@ -178,9 +179,7 @@ export function websitePublicRoutes(api: Router) {
       return FileObject.findOne({ where: { id: fileId, instituteId: s.instituteId } });
     });
     if (!file || !file.mimeType.startsWith('image/')) throw NotFound('Image');
-    res.setHeader('Content-Type', file.mimeType);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
+    setFileResponseHeaders(res, file, 'public, max-age=86400');
     (await getStorage().getStream(file.storageKey)).pipe(res);
   });
 
@@ -196,7 +195,7 @@ export function websitePublicRoutes(api: Router) {
     res.redirect(302, `${s.basePath}/${code ? `?ref=${encodeURIComponent(code)}` : ''}`);
   });
 
-  pub.post('/:site/referrals/:code/click', authRateLimit, async (req, res) => {
+  pub.post('/:site/referrals/:code/click', publicFormRateLimit, async (req, res) => {
     const s = await site(req);
     const code = cleanRef(req.params.code);
     const counted = code
@@ -207,7 +206,7 @@ export function websitePublicRoutes(api: Router) {
     res.json({ counted });
   });
 
-  pub.post('/:site/coupons/validate', authRateLimit, async (req, res) => {
+  pub.post('/:site/coupons/validate', publicFormRateLimit, async (req, res) => {
     const s = await site(req);
     const body = parse(
       z.object({
@@ -262,11 +261,11 @@ export function websitePublicRoutes(api: Router) {
     else res.redirect(302, result.url);
   };
   pub.get('/:site/checkout/:courseId', checkout);
-  pub.post('/:site/checkout/:courseId', authRateLimit, checkout);
+  pub.post('/:site/checkout/:courseId', publicFormRateLimit, checkout);
 
   // Enquiry / demo-class forms → admissions enquiries. JSON for API clients; HTML forms get a
   // 303 redirect back to the page with a flash (post/redirect/get).
-  pub.post('/:site/forms/:page', authRateLimit, async (req, res) => {
+  pub.post('/:site/forms/:page', publicFormRateLimit, async (req, res) => {
     const s = await site(req);
     const json = wantsJson(req);
     const pageSlug = String(req.params.page).toLowerCase();

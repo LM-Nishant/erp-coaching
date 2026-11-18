@@ -123,13 +123,14 @@ export async function createFinanceEntry(input: FinanceEntryInput) {
     )
       throw BadRequest('Attachment not found');
   }
+  const entryDate = input.date ?? (await today());
   return getSequelize().transaction(async (transaction) => {
     const e = await entryRepo.create(
       {
         branchId: input.branchId ?? null,
         kind: input.kind,
         categoryId: category.id,
-        entryDate: input.date ?? today(),
+        entryDate,
         amount: input.amount,
         tax: input.tax ?? 0,
         mode: input.mode,
@@ -328,7 +329,7 @@ export async function outstandingReport(f: {
   batchId?: number;
   courseId?: number;
 }) {
-  const asOf = f.asOf ?? today();
+  const asOf = f.asOf ?? (await today());
   const where: Record<string, unknown> = { status: 'active' };
   if (f.branchId) where.branchId = f.branchId;
   if (f.batchId) where.batchId = f.batchId;

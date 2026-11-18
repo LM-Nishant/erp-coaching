@@ -8,7 +8,19 @@ export {
   type AdmissionCompletedEvent,
   type AdmissionCompletedListener,
 } from './admission-events';
+export {
+  admitForCoursePurchase,
+  purchaseBatchError,
+  releaseCoursePurchaseBatch,
+  type CoursePurchaseAdmission,
+  type PurchaseBatchIssue,
+} from './course-purchase';
 export { activeForm, validateCustomFields } from './forms.service';
+export {
+  recordSelfRegistrationIntent,
+  type SelfRegistrationIntent,
+  type SelfRegistrationIntentInput,
+} from './self-registration';
 
 export interface CreateEnquiryInput {
   branchId: number;
@@ -49,3 +61,6 @@ export function createEnquiry(
     opts,
   );
 }
+
+/** Read-only report queries (reports module, spec §4.17); callers pass a validated `ReportScope`. */
+export { admissionFunnelReport } from './reporting';

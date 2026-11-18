@@ -60,6 +60,28 @@ export function toFollowUpDto(f: EnquiryFollowUp): EnquiryFollowUpDto {
   };
 }
 
+/** Adds the course and batch names to application list rows. */
+export async function withCourseNames(dtos: ApplicationDto[]): Promise<ApplicationDto[]> {
+  const { instituteId } = requireTenantContext();
+  const ids = (k: 'courseId' | 'batchId') => [...new Set(dtos.flatMap((d) => (d[k] ? [d[k]] : [])))];
+  const [courseIds, batchIds] = [ids('courseId'), ids('batchId')];
+  const [courses, batches] = await Promise.all([
+    courseIds.length
+      ? Course.findAll({ where: { instituteId, id: courseIds }, attributes: ['id', 'name'] })
+      : [],
+    batchIds.length
+      ? Batch.findAll({ where: { instituteId, id: batchIds }, attributes: ['id', 'name'] })
+      : [],
+  ]);
+  const courseNames = new Map(courses.map((c) => [c.id, c.name]));
+  const batchNames = new Map(batches.map((b) => [b.id, b.name]));
+  return dtos.map((d) => ({
+    ...d,
+    courseName: (d.courseId && courseNames.get(d.courseId)) || null,
+    batchName: (d.batchId && batchNames.get(d.batchId)) || null,
+  }));
+}
+
 export function toApplicationDto(a: AdmissionApplication): ApplicationDto {
   return {
     id: a.id,
@@ -243,13 +265,15 @@ export async function assertAdmissionBatch(
 /**
  * Marks the application admitted (and its enquiry converted) and, when it names a batch, enrolls the
  * new student's login in it through academics (`batch_students`), inside the admit transaction so a
- * full batch (409 BATCH_FULL) rolls the admission back.
+ * full batch (409 BATCH_FULL) rolls the admission back. `enrol: false` means the caller has already
+ * enrolled the student in `a.batchId` (e.g. a course purchase picking a batch with free seats).
  */
 export async function completeAdmission(
   a: AdmissionApplication,
   student: { id: number; userId: number | null },
   branchId: number,
   transaction: Transaction,
+  opts: { enrol?: boolean } = {},
 ) {
   const studentId = student.id;
   const { userId } = requireTenantContext();
@@ -262,7 +286,8 @@ export async function completeAdmission(
   if (a.batchId) {
     // Siblings sharing a mobile get no login of their own and can't be enrolled by user id yet.
     if (student.userId) {
-      await enrollStudentsInBatch(a.batchId, [student.userId], { branchId, transaction });
+      if (opts.enrol !== false)
+        await enrollStudentsInBatch(a.batchId, [student.userId], { branchId, transaction });
       batchEnrolment = 'enrolled';
     } else batchEnrolment = 'no_login';
   }
@@ -288,7 +313,7 @@ export async function completeAdmission(
  * transaction commits; a delivery problem never undoes the admission.
  */
 export async function notifyAdmissionConfirmed(
-  a: AdmissionApplication,
+  a: Pick<AdmissionApplication, 'id' | 'courseId' | 'batchId'>,
   student: { id: number; name: string; branchId: number },
 ) {
   try {

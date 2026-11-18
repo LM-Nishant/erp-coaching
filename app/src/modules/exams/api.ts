@@ -1,5 +1,7 @@
 import type {
   AddExamQuestionsInput,
+  AiAvailabilityDto,
+  AnswerHistoryDto,
   AnswerPageDto,
   AttemptSessionDto,
   AttemptSummaryDto,
@@ -15,6 +17,8 @@ import type {
   ExamSectionDto,
   ExamSectionInput,
   GradingJobDto,
+  GradingResultDto,
+  MarkRevisionKind,
   Paginated,
   PromptVersionDto,
   PromptVersionInput,
@@ -38,21 +42,6 @@ export interface ExamFilters {
   batchId?: number | null;
   courseId?: number | null;
   q?: string;
-}
-
-export interface AiGradingRecord {
-  id: number;
-  gradingJobId: number | null;
-  status: 'success' | 'error';
-  model: string | null;
-  marks: number | null;
-  feedback: string | null;
-  confidence: number | null;
-  rawOutput: string | null;
-  usedVision: boolean;
-  error: string | null;
-  promptVersionId: number | null;
-  createdAt: string;
 }
 
 export interface PromptVersionList {
@@ -100,7 +89,10 @@ export const examsApi = {
   evaluate: (id: number, answerId: number, b: EvaluateAnswerInput) =>
     api.put<EvaluationDto>(`${E}/${id}/evaluations/${answerId}`, b),
   aiHistory: (id: number, answerId: number) =>
-    api.get<AiGradingRecord[]>(`${E}/${id}/evaluations/${answerId}/ai-history`),
+    api.get<GradingResultDto[]>(`${E}/${id}/evaluations/${answerId}/ai-history`),
+  answerHistory: (id: number, answerId: number) =>
+    api.get<AnswerHistoryDto>(`${E}/${id}/evaluations/${answerId}/history`),
+  aiStatus: () => api.get<AiAvailabilityDto>(`${E}/ai-status`),
   gradingJobs: (id: number) => api.get<GradingJobDto[]>(`${E}/${id}/grading-jobs`),
   startGrading: (id: number, regrade = false) =>
     api.post<GradingJobDto>(`${E}/${id}/grading-jobs`, { regrade }),
@@ -178,6 +170,17 @@ export const EVAL_STATUS_COLORS: Record<EvaluationStatus, string> = {
   ai_suggested: 'tertiary',
   reviewed: 'primary',
   finalized: 'success',
+};
+
+export const REVISION_LABELS: Record<MarkRevisionKind, string> = {
+  ai_suggestion: 'AI suggestion',
+  ai_final: 'AI marks (final)',
+  teacher_mark: 'Teacher marks',
+  teacher_accept: 'Teacher accepted AI',
+  teacher_override: 'Teacher override',
+  correction: 'Result correction',
+  published: 'Results published',
+  unpublished: 'Results unpublished',
 };
 
 export const formatDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString() : '—');

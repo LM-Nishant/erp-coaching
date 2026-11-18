@@ -1,5 +1,5 @@
 import type { Component } from 'vue';
-import type { RouteRecordRaw } from 'vue-router';
+import type { RouteLocationNormalized, RouteLocationRaw, RouteRecordRaw } from 'vue-router';
 import type { ParentChildDto, PermissionKey } from '@erp/shared';
 
 export interface MenuItem {
@@ -34,12 +34,25 @@ export interface AppModule {
    * revoked by an administrator or account deactivated. `null` = unknown user, remove everything. See core/session.ts.
    */
   wipeUserData?: (userId: number | null) => Promise<void>;
+  /**
+   * Run after the login and permission checks of every signed-in navigation. Return `true` to
+   * continue or a location to redirect to (e.g. a suspended institute goes to billing).
+   */
+  navigationGuards?: AppNavigationGuard[];
 }
+
+export type AppNavigationGuard = (
+  to: RouteLocationNormalized,
+) => true | RouteLocationRaw | Promise<true | RouteLocationRaw>;
 
 /** Known dashboard slots and the props each passes to its widgets. */
 export interface WidgetSlotProps {
   /** Parent home (`/parent-home`): one linked child at a time, switched by the parent. */
   'parent-home': { child: ParentChildDto };
+  /** Home dashboard (`/home`) of institute users, every role; widgets scope data to the signed-in user. */
+  home: Record<string, never>;
+  /** Home dashboard (`/home`) of the platform super admin (not while impersonating). */
+  'platform-home': Record<string, never>;
 }
 export type WidgetSlot = keyof WidgetSlotProps;
 
@@ -79,6 +92,7 @@ export const toolbarItems: Component[] = appModules.flatMap((m) => m.toolbarItem
 export async function wipeUserData(userId: number | null) {
   await Promise.all(appModules.map((m) => m.wipeUserData?.(userId).catch(() => undefined)));
 }
+export const navigationGuards: AppNavigationGuard[] = appModules.flatMap((m) => m.navigationGuards ?? []);
 
 const allWidgets: DashboardWidget[] = appModules.flatMap((m) => m.widgets ?? []);
 

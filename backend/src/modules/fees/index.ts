@@ -3,6 +3,7 @@ import { associateFeeModels, initFeeModels } from './models';
 import { feesRoutes } from './fees.routes';
 import { registerFeesIntegrations } from './integrations';
 import { registerFeeNotificationEvents } from './notifications';
+import { COURSE_ENROLMENT_JOB, courseEnrolmentJob } from './course-enrolment';
 import {
   FEES_INSTITUTE_SWEEP_JOB,
   FEES_SWEEP_JOB,
@@ -42,6 +43,7 @@ export default defineModule({
     },
   ],
   jobs: {
+    [COURSE_ENROLMENT_JOB]: courseEnrolmentJob,
     [FEES_SWEEP_JOB]: () => runFeesSweep(),
     [FEES_INSTITUTE_SWEEP_JOB]: async () => {
       await runInstituteSweep();

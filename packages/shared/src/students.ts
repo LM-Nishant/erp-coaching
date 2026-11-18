@@ -278,6 +278,10 @@ export interface ApplicationDto {
   email: string | null;
   courseId: number | null;
   batchId: number | null;
+  /** Set on list rows. */
+  courseName?: string | null;
+  /** Set on list rows. */
+  batchName?: string | null;
   status: ApplicationStatus;
   waitlistPosition: number | null;
   formData: Record<string, unknown> | null;

@@ -195,6 +195,9 @@ export function examRoutes(api: Router) {
     res.json(await grading.activatePromptVersion(pv));
   });
 
+  // AI grading availability (provider, plan, remaining monthly quota) for the evaluation screens.
+  r.get('/ai-status', can('approve'), async (_req, res) => res.json(await grading.gradingAiStatus()));
+
   // ------------------------------------------------ staff: exams
   r.get('/', can('view'), async (req, res) => res.json(await exams.listExams(parse(examQuery, req.query))));
   r.post('/', can('create'), async (req, res) => {
@@ -286,6 +289,10 @@ export function examRoutes(api: Router) {
   r.get('/:id/evaluations/:answerId/ai-history', can('approve'), async (req, res) => {
     const p = parse(answerParams, req.params);
     res.json(await grading.aiHistory(p.id, p.answerId));
+  });
+  r.get('/:id/evaluations/:answerId/history', can('approve'), async (req, res) => {
+    const p = parse(answerParams, req.params);
+    res.json(await grading.answerHistory(p.id, p.answerId));
   });
   r.get('/:id/grading-jobs', can('approve'), async (req, res) => {
     res.json(await grading.listGradingJobs(parse(idParam, req.params).id));

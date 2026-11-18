@@ -10,11 +10,13 @@ import {
 } from 'sequelize';
 import type {
   AmountMode,
+  CourseBatchIssue,
   FeeAccountStatus,
   FeeAdjustmentStatus,
   FeeAdjustmentType,
   FeeApprovalStatus,
   FeeComponentLine,
+  FeeCourseEnrolmentStatus,
   FeeInstalmentStatus,
   FeePaymentMode,
   FeePaymentStatus,
@@ -236,6 +238,8 @@ export class PaymentGatewayConfig extends Model<
   declare keyHint: string | null;
   declare sandbox: CreationOptional<boolean>;
   declare webhookKey: string;
+  /** Uses the platform's global gateway credentials (super admin fallback), not the institute's. */
+  declare platformManaged: CreationOptional<boolean>;
   declare createdAt: Stamps['createdAt'];
   declare updatedAt: Stamps['updatedAt'];
 }
@@ -380,6 +384,32 @@ export class FeeEntitlement extends Model<
   declare revokedAt: Date | null;
   declare createdAt: Stamps['createdAt'];
   declare updatedAt: Stamps['updatedAt'];
+}
+
+export class FeeCourseEnrolment extends Model<
+  InferAttributes<FeeCourseEnrolment>,
+  InferCreationAttributes<FeeCourseEnrolment>
+> {
+  declare id: Base['id'];
+  declare instituteId: number;
+  declare branchId: number;
+  declare accountId: number;
+  declare studentId: number;
+  declare studentUserId: number | null;
+  declare courseId: number;
+  declare requestedBatchId: number | null;
+  declare batchId: number | null;
+  declare applicationId: number | null;
+  declare status: FeeCourseEnrolmentStatus;
+  declare addedToBatch: CreationOptional<boolean>;
+  declare reason: CourseBatchIssue | null;
+  declare enrolledAt: Date | null;
+  declare revokedAt: Date | null;
+  declare notifiedAt: CreationOptional<Date | null>;
+  declare assignedByUserId: CreationOptional<number | null>;
+  declare createdAt: Stamps['createdAt'];
+  declare updatedAt: Stamps['updatedAt'];
+  declare student?: NonAttribute<Student>;
 }
 
 export class FeeWebhookEvent extends Model<
@@ -544,6 +574,7 @@ export function initFeeModels(sequelize: Sequelize) {
     keyHint: S(20),
     sandbox: B(true),
     webhookKey: S(64, false),
+    platformManaged: B(false),
   });
   init(BankAccount, sequelize, 'bank_accounts', {
     branchId: OPT_FK(),
@@ -639,6 +670,23 @@ export function initFeeModels(sequelize: Sequelize) {
     grantedAt: DT(false),
     revokedAt: DT(),
   });
+  init(FeeCourseEnrolment, sequelize, 'fee_course_enrolments', {
+    branchId: FK(),
+    accountId: FK(),
+    studentId: FK(),
+    studentUserId: OPT_FK(),
+    courseId: FK(),
+    requestedBatchId: OPT_FK(),
+    batchId: OPT_FK(),
+    applicationId: OPT_FK(),
+    status: S(20, false),
+    addedToBatch: B(false),
+    reason: S(30),
+    enrolledAt: DT(),
+    revokedAt: DT(),
+    notifiedAt: DT(),
+    assignedByUserId: OPT_FK(),
+  });
   init(FeeWebhookEvent, sequelize, 'fee_webhook_events', {
     gateway: S(20, false),
     eventKey: S(160, false),
@@ -685,5 +733,6 @@ export function associateFeeModels() {
   FeeInstalment.belongsTo(FeeAccount, { foreignKey: 'accountId', as: 'account' });
   FeePayment.belongsTo(Student, { foreignKey: 'studentId', as: 'student' });
   FeePayment.belongsTo(FeeReceipt, { foreignKey: 'receiptId', as: 'receipt', constraints: false });
+  FeeCourseEnrolment.belongsTo(Student, { foreignKey: 'studentId', as: 'student' });
   FinanceEntry.belongsTo(FinanceCategory, { foreignKey: 'categoryId', as: 'category' });
 }
