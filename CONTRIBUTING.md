@@ -53,6 +53,10 @@ The module loader picks up the folder automatically, and the migrator picks up `
   - The `branchId` in a body is allowed, but must be checked with `repo.assertBranchAllowed()`.
 - **Bypasses.** `{ tenantBypass: true }` is only for super-admin platform code or system jobs, and must come with a comment.
 - **Not-found behaviour.** A record from another institute must result in **404**.
+- **Institute export and deletion.** Registered tenant models are exported and purged automatically by `tenant-data`.
+  - A table with `institute_id` that is not a registered model (raw-SQL counters, platform bookkeeping) must be listed in `UNREGISTERED_INSTITUTE_TABLES` in `tenant-data/catalog.ts`; otherwise `test/tenant-data.test.ts` fails.
+  - Pass `registerTenantModel(Model, { retainOnInstituteDeletion: true })` only for rows the operator must legally keep, such as SaaS invoices. Their `institute_id` FK must be `ON DELETE SET NULL`.
+  - Columns named like `password`, `secret`, `token`, `*_hash` or `*_encrypted` are never exported. Add any other secret column to `SENSITIVE_COLUMNS` in the same file.
 
 ### 4. Permissions (RBAC)
 
@@ -119,6 +123,7 @@ Every `/api` request passes the app-wide `apiRateLimit`, so authenticated routes
 - Error shape is always `{ error: { code, message, details? } }`. List endpoints return `{ items, total, page, pageSize }`.
 - Call `audit({ action: 'students.create', entityType: 'Student', entityId, after })` for every create, update, delete, approve or publish of business data. Include `before` for updates and deletes.
 - Check plan limits with `assertWithinLimit(instituteId, 'maxStudents', currentCount)` before creating limited entities.
+- **Raw SQL dates.** In `sequelize.query(sql, { replacements })`, Sequelize formats a `Date` in the server's local time and ignores the `timezone: '+00:00'` option. Pass UTC strings such as `'2026-01-01 00:00:00'`, or use model queries, which convert correctly.
 
 ### 6. Use platform services; never call vendors directly
 
@@ -200,6 +205,10 @@ Current wiring:
 | website → students (direct call)                  | `self-registration.routes.ts`  | self-registration honours `ref`/`courseId` (body or query) and records `recordReferralConversion({ kind: 'signup' })`; failures never block registration                                                     |
 | admissions → website (direct calls)               | `admissions/api.ts`            | website enquiries use `createEnquiry`, `activeForm`, `validateCustomFields`                                                                                                                                  |
 | fees, attendance, exams, lms → parent-portal      | `<module>/parent-portal.ts`    | `registerParentPortalProvider`: dues/overdue/recent payments (30), month attendance % (20), latest **published** results (40), pending homework (50)                                                         |
+| platform → subscriptions, fees, messaging         | `platform/integrations.ts`     | `setSaasGatewayResolver` (SaaS payments), `setPlatformFeesGatewayProvider` (fee gateway fallback), `setDefaultMessagingResolver` (notification provider fallback). Institute settings keep precedence        |
+| students, hr → subscriptions                      | `<module>/integrations.ts`     | `registerUsageCounter('students' \| 'teachers')`: billable seats for usage snapshots, counted with the same rule as their plan-limit checks                                                                  |
+| students → branches                               | `students/integrations.ts`     | `registerBranchClosureGuard`: a branch with active or suspended students can't be closed until they are transferred                                                                                          |
+| subscriptions → every tenant request              | `subscriptions/index.ts`       | `addTenantRequestGuard('subscription-access')`: 402 `SUBSCRIPTION_RESTRICTED` / `SUBSCRIPTION_SUSPENDED` once the grace period ends (see ARCHITECTURE.md)                                                    |
 
 Identity note: academics rosters and grievances key students by **login user id**; students/guardians use `students.id` (`students.user_id` is nullable — siblings sharing a mobile have no login). Use `getStudentUserId`, `getLinkedStudentUsers`, `getGuardianUserIdsForStudentUsers` from `guardians/guardian-access` to convert.
 
@@ -301,6 +310,7 @@ export default defineAppModule({
   - Route paths are prefixed with the module id.
   - Always lazy-load pages.
   - Set `meta.permission` (or `meta.superAdmin` for platform screens).
+  - A suspended institute can only open routes with `meta.allowWhenSuspended: true`, such as sign-in, Subscription & billing and data export. Set it only when every API call the page makes is still allowed while suspended.
 - **Pages.** Wrap every page in `<AppPage title="…">`, which provides the header, menu button and pull-to-refresh.
 - **UI.** Use Ionic components so the app works on web, Android and iOS.
 - **Permissions.** Hide actions with `v-can="'students.create'"`, or use `auth.can('students.create')` in script.

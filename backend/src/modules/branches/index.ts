@@ -10,7 +10,8 @@ export default defineModule({
     {
       module: 'branches',
       label: 'Branches',
-      actions: ['view', 'create', 'edit', 'delete'],
+      // `configure`: close and re-activate branches (institute admins; not branch admins).
+      actions: ['view', 'create', 'edit', 'delete', 'configure'],
       grants: { 'branch-admin': ['view', 'edit'], accountant: ['view'], teacher: ['view'] },
     },
   ],

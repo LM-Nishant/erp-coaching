@@ -31,6 +31,12 @@ export function setSessionExpiredHandler(fn: () => void) {
   onSessionExpired = fn;
 }
 
+/** Called on every 402 (subscription restricted or suspended); the subscriptions module refreshes its banner. */
+let onPaymentRequired: ((e: ApiError) => void) | null = null;
+export function setPaymentRequiredHandler(fn: ((e: ApiError) => void) | null) {
+  onPaymentRequired = fn;
+}
+
 let refreshing: Promise<boolean> | null = null;
 
 /** Single-flight refresh: concurrent 401s share one refresh call (refresh tokens rotate). */
@@ -103,7 +109,14 @@ async function request<T>(method: string, path: string, opts: RequestOptions = {
     : await res.text();
   if (!res.ok) {
     const err = (data as ApiErrorBody)?.error;
-    throw new ApiError(res.status, err?.code ?? 'HTTP_ERROR', err?.message ?? res.statusText, err?.details);
+    const error = new ApiError(
+      res.status,
+      err?.code ?? 'HTTP_ERROR',
+      err?.message ?? res.statusText,
+      err?.details,
+    );
+    if (res.status === 402) onPaymentRequired?.(error);
+    throw error;
   }
   return data as T;
 }

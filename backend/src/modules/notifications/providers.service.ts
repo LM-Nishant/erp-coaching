@@ -8,7 +8,7 @@ import {
 import { decryptSecret, encryptSecret, maskSecret } from '../../infrastructure/crypto';
 import {
   createMessagingProvider,
-  getMessagingProvider,
+  getDefaultMessagingProvider,
   type MessagingProvider,
 } from '../../infrastructure/messaging';
 import { getContext } from '../../shared/context';
@@ -114,12 +114,15 @@ export interface ResolvedProvider {
   retryBaseDelaySeconds: number;
 }
 
-/** Institute provider for the channel when configured and active; otherwise the platform default. */
+/**
+ * Institute provider for the channel when configured and active; otherwise the platform default
+ * (the super admin's global provider, else the built-in console provider).
+ */
 export async function resolveProvider(channel: ExternalChannel): Promise<ResolvedProvider> {
   const row = await providerRepo.findOne({ where: { channel, isActive: true } });
   if (!row) {
     return {
-      provider: getMessagingProvider(channel),
+      provider: await getDefaultMessagingProvider(channel),
       retryMaxAttempts: DEFAULT_RETRY.maxAttempts,
       retryBaseDelaySeconds: DEFAULT_RETRY.baseDelaySeconds,
     };

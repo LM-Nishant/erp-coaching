@@ -33,7 +33,7 @@ backend/src/
     audit/               audit() service + AuditEvent model
     errors.ts utilities/ (zod parse, pagination)
   modules/                               # business modules, one folder each
-    authentication users permissions institutes branches subscriptions files ai audit
+    authentication users permissions institutes branches subscriptions platform tenant-data files ai audit
 ```
 
 ### Module loading
@@ -98,6 +98,7 @@ Deployment, TLS, backups and scaling are covered in [docs/deployment.md](docs/de
 - **Branch scope.** A user's allowed branches are either `user_branches`, or all branches when they hold an institute-wide role. The `X-Branch-Id` header narrows to one active branch and is validated against the allowed list.
 - **`TenantRepository`** adds `instituteId` (and branch constraints) to every query, and overwrites `instituteId` on create. A row from another institute surfaces as **404**, never 403, so ids aren't leaked.
 - **`registerTenantModel()` safety net.** It installs Sequelize hooks that **throw** on any find, count, bulk update or bulk destroy against a tenant model without an `instituteId` condition. Platform code must explicitly pass `{ tenantBypass: true }`.
+- **Tenant model registry.** `listTenantModels()` enumerates every registered model, so institute export and deletion (`tenant-data`) cover each module's tables without extra wiring. Tables with an `institute_id` column that are not registered models are listed in `UNREGISTERED_INSTITUTE_TABLES` (`tenant-data/catalog.ts`). `test/tenant-data.test.ts` fails when a table is in neither.
 - **Tests.** `backend/test/tenancy.test.ts` proves cross-tenant reads and writes and branch-restricted access are blocked.
 
 ## RBAC
@@ -138,7 +139,7 @@ Deployment, TLS, backups and scaling are covered in [docs/deployment.md](docs/de
 ## Files
 
 - Uploads go to `POST /api/files` (multipart `file`, `module`, optional `branchId`). Size limit is `MAX_UPLOAD_MB`, plus the plan storage quota.
-- Bytes are stored by the active `StorageAdapter`. That is `local` (under `backend/storage/`) today; an `s3` stub covers S3/R2 later.
+- Bytes are stored by the active `StorageAdapter`. The super admin picks the driver under Integrations → Storage. `local` (under `backend/storage/`) is implemented; the S3/R2 adapter is a stub for later.
 - Metadata goes to `files`.
 - Downloads use `GET /api/files/:id/url`, which returns a signed URL that is HMAC-signed and expires after `SIGNED_URL_TTL_SECONDS`. That URL is served by `/api/files/signed/:token`, which supports Range requests for video. Files are never served from a public static directory.
 - **Serving policy** (`shared/utilities/file-response.ts`). Uploads are served from the API origin with a type the client declared, so the type isn't trusted:
@@ -154,7 +155,53 @@ Deployment, TLS, backups and scaling are covered in [docs/deployment.md](docs/de
 - **Defaults.** Env `AI_BASE_URL`, `AI_MODEL` and `AI_API_KEY` apply until a super admin saves settings.
 - **Key handling.** The API returns only `keyHint` (for example `AQ….Sf9Q`) and `keySource` (`database | env | none`). An empty key on save keeps the existing one; `DELETE /api/admin/ai/settings/key` removes it.
 - **Test connection.** `POST /api/admin/ai/settings/test` makes a tiny chat-completions call with the unsaved form values, falling back to the stored key.
-- **Usage metering.** Every `aiChat()` call writes `ai_usage` (institute, user, feature, tokens, latency, status). The quota comes from the plan's `aiTokensMonthly` limit.
+- **Usage metering.** Every `aiChat()` call writes `ai_usage` (institute, user, feature, tokens, latency, status). The quota is the effective `aiTokensMonthly` limit (see SaaS billing → Limits).
+
+## SaaS billing (`subscriptions`)
+
+- **Lifecycle.** A subscription goes trial → active → grace → restricted (read-only) → suspended. The access state is computed from the subscription dates and the super admin's billing policy (`/api/admin/billing/settings/policy`: grace days, trial grace days, the after-grace mode, days until suspension, renewal lead days and invoice due days).
+- **Sweep.** The hourly `subscriptions.billing-sweep` job does four things:
+  - issues renewal invoices `renewalLeadDays` before expiry;
+  - stores daily usage snapshots (students, branches, teachers, storage, AI tokens) and invoices overage at plan pricing;
+  - syncs stored statuses;
+  - notifies institute admins once per state and term.
+- **Plan changes and add-ons.**
+  - Upgrades are invoiced prorated and applied once paid.
+  - Downgrades are scheduled for the end of the period.
+  - Add-ons cover extra students, branches, teachers, storage, AI credits and modules. Recurring packs are prorated to the period end. AI credits count only in the month they were bought.
+- **Limits.** `getPlanLimits()` returns the plan limits plus the super admin's overrides, active add-ons and the plan's overage allowance. `assertWithinLimit` and the AI quota both enforce these limits.
+- **Invoices.**
+  - Numbering is `SAAS/<financial year>/<6 digits>` from a global counter; numbers are never reused.
+  - GST uses the operator profile (`/api/admin/billing/settings/profile`: GSTIN, address, state). Supply within one state is taxed CGST + SGST, otherwise IGST.
+  - PDFs are shared through short-lived signed `/api/subscriptions/public/documents/:token` links.
+- **Payments.**
+  - Payments go through the `infrastructure/payment-gateways` adapters with the super admin's gateway.
+  - Webhooks arrive at `POST /api/subscriptions/public/webhooks/:gateway`. They are signature-verified and idempotent per gateway event id.
+  - Super admins record manual payments and adjustments and issue credit notes.
+- **Enforcement.** `subscriptionAccessGuard` is registered with `addTenantRequestGuard` and answers **402**:
+  - `SUBSCRIPTION_RESTRICTED` for writes while restricted;
+  - `SUBSCRIPTION_SUSPENDED` while suspended, for everything except `/api/auth`, `/api/subscription` and `/api/tenant-data`.
+  - Super admins, including while impersonating, are never blocked.
+- **Reports.** `subscriptions/api.ts` exports `revenueByMonth`, `subscriptionsByState`, `subscriptionsByPlan`, `saasBillingKpis` and `usageSummary` for the SaaS-wide dashboard.
+
+## Global integrations (`platform`)
+
+- **Storage of settings.** `platform_integrations` holds the super admin's payment gateways, notification providers (SMS, WhatsApp, email, push) and file storage. Secrets are AES-256-GCM encrypted with `ENCRYPTION_KEY`, as AI keys are, and the API returns only hints.
+- **Precedence.** Institute settings come first. An institute's own fee gateway or notification provider is used when it has one; the global configuration is the fallback (`setPlatformFeesGatewayProvider`, `setDefaultMessagingResolver`). SaaS subscription payments always use the global gateways (`setSaasGatewayResolver`). The wiring lives in `platform/integrations.ts`.
+- **Storage driver.** The chosen storage driver is applied to each API and worker process with `setStorage()` and refreshed every 60 seconds.
+
+## Institute data (`tenant-data`)
+
+- **Export.**
+  - Institute admins (`tenant-data.export`) or super admins queue the `tenant-data.export` job.
+  - It builds one zip with every tenant table as JSON and CSV plus the institute's files. Credentials, tokens and hashes are never exported.
+  - Downloads use a signed link valid for 10 minutes. The archive is deleted after 7 days.
+- **Deletion.**
+  1. An institute admin requests it (`tenant-data.delete`) and confirms with the institute code.
+  2. A super admin approves it with a grace period (30 days by default). Approval deactivates the institute.
+  3. Once the grace period ends, `tenant-data.sweep` queues `tenant-data.purge`. The purge deletes every tenant row and the institute's stored files. It is idempotent and can be retried.
+
+  Rows registered with `retainOnInstituteDeletion` (the operator's SaaS invoices, payments and credit notes) are kept with `institute_id` set to NULL. Every step is audited. An institute reactivated during the grace period is never deleted.
 
 ## Frontend app
 
@@ -172,4 +219,8 @@ app/src/
 - **API client** (`core/api.ts`): adds the Bearer token and `X-Branch-Id`. On a 401 it refreshes once (single-flight) and retries. If the refresh fails, the session is cleared.
 - **Branding**: after institute selection, `applyBranding()` sets the Ionic `--ion-color-primary/secondary` variants and the document title from the institute's settings. The logo is shown in the menu header.
 - **Menu**: built from every module's `menu` items, filtered by `permission`, `superAdmin` and `planModule` (whether the institute's plan includes the module).
+- **Subscription state**:
+  - The subscriptions module adds a toolbar chip for the trial, grace, restricted and suspended states.
+  - Through its `navigationGuards` entry, a suspended institute can only open routes with `meta.allowWhenSuspended`.
+  - `setPaymentRequiredHandler()` in `core/api.ts` hands it every 402, so the state refreshes as soon as the API starts refusing.
 - **Native apps**: the same build runs in Capacitor (`app/android`, `app/ios`). Preferences hold tokens; Device provides the device id.
