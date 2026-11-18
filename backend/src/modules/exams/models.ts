@@ -30,7 +30,7 @@ const pk = { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: 
 const uint = (allowNull = true) => ({ type: DataTypes.INTEGER.UNSIGNED, allowNull });
 const bool = (defaultValue = false) => ({ type: DataTypes.BOOLEAN, allowNull: false, defaultValue });
 const ts = { createdAt: DataTypes.DATE, updatedAt: DataTypes.DATE };
-const counter = { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 };
+const counter = () => ({ type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 });
 const costUsd = (name: string) => ({
   type: DataTypes.DECIMAL(12, 6),
   allowNull: false,
@@ -450,8 +450,8 @@ export function initExamModels(sequelize: Sequelize) {
       error: DataTypes.STRING(1000),
       provider: DataTypes.STRING(30),
       model: DataTypes.STRING(150),
-      totalTokens: counter,
-      imageCount: counter,
+      totalTokens: counter(),
+      imageCount: counter(),
       estimatedCostUsd: costUsd('estimatedCostUsd'),
       requestedByUserId: uint(),
       startedAt: DataTypes.DATE,
@@ -474,10 +474,10 @@ export function initExamModels(sequelize: Sequelize) {
       feedback: DataTypes.TEXT,
       confidence: { ...decimal('confidence', true), type: DataTypes.DECIMAL(4, 3) },
       rawOutput: DataTypes.TEXT,
-      promptTokens: counter,
-      completionTokens: counter,
-      totalTokens: counter,
-      imageCount: counter,
+      promptTokens: counter(),
+      completionTokens: counter(),
+      totalTokens: counter(),
+      imageCount: counter(),
       estimatedCostUsd: costUsd('estimatedCostUsd'),
       latencyMs: uint(),
       aiUsageId: uint(),
