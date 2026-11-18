@@ -8,7 +8,13 @@ import type { CheckoutOrderDto, CourseQuoteDto, PaymentGatewayKey } from '@erp/s
 import { config } from '../../infrastructure/config';
 import { requireTenantContext } from '../../shared/context';
 import { Conflict, NotFound } from '../../shared/errors';
-import { Batch, Course, batchAvailability, batchUnavailableError, openBatchesForCourse } from '../academics/api';
+import {
+  Batch,
+  Course,
+  batchAvailability,
+  batchUnavailableError,
+  openBatchesForCourse,
+} from '../academics/api';
 import { Student } from '../students/models';
 import { isModuleEnabled } from '../subscriptions/subscription.service';
 import { validateCoupon } from '../website/api';
@@ -236,6 +242,8 @@ export async function startCoursePurchase(input: {
   const { instituteId } = requireTenantContext();
   const batchId = input.batchId ?? null;
   const target = await purchaseTarget(input.studentId, input.courseId, batchId);
+  if (target.account && target.account.balance <= 0)
+    throw Conflict('This course is already paid for', 'ALREADY_PAID');
   await applyCheckoutBatch(target, batchId);
   let account = target.account;
   if (!account) {

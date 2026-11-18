@@ -144,13 +144,17 @@ export async function reconcileCourseEnrolment(
         assignedByUserId: assign ? (userId ?? null) : null,
         ...(status === 'awaiting_batch' && before !== 'awaiting_batch' ? { notifiedAt: new Date() } : {}),
       };
+      // A replay that still finds no batch changes nothing worth another audit entry.
+      const unchanged =
+        row?.status === status && row.batchId === values.batchId && row.reason === values.reason;
       const saved = row
         ? await row.update(values, { transaction })
         : await FeeCourseEnrolment.create({ instituteId, accountId: account.id, ...values }, { transaction });
-      afterCommit(transaction, saved, assign ? 'assign' : status, {
-        before,
-        notifyAdmins: status === 'awaiting_batch' && before !== 'awaiting_batch',
-      });
+      if (!unchanged)
+        afterCommit(transaction, saved, assign ? 'assign' : status, {
+          before,
+          notifyAdmins: status === 'awaiting_batch' && before !== 'awaiting_batch',
+        });
       return saved;
     }),
   );
@@ -218,7 +222,10 @@ export async function courseEnrolmentDtos(rows: FeeCourseEnrolment[]): Promise<C
       where: { instituteId, id: { [Op.in]: ids((r) => r.studentId) } },
       attributes: ['id', 'name', 'admissionNumber'],
     }),
-    Course.findAll({ where: { instituteId, id: { [Op.in]: ids((r) => r.courseId) } }, attributes: ['id', 'name'] }),
+    Course.findAll({
+      where: { instituteId, id: { [Op.in]: ids((r) => r.courseId) } },
+      attributes: ['id', 'name'],
+    }),
     batchIds.length
       ? Batch.findAll({ where: { instituteId, id: { [Op.in]: batchIds } }, attributes: ['id', 'name'] })
       : [],
