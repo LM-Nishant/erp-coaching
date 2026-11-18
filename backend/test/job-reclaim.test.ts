@@ -41,6 +41,14 @@ describe('job queue: reclaiming jobs left running by a stopped worker', () => {
     admin = (await login(USERS.apexAdmin)).accessToken;
     registerJobHandler(JOB, async (_payload, job) => {
       ran.push(job.id);
+      // Simulates this worker stalling past its lease: the job is reclaimed and claimed by another worker.
+      if (job.payload.hijack) {
+        await Job.update(
+          { status: 'running', attempts: job.attempts + 1, lockedAt: new Date() },
+          { where: { id: job.id } },
+        );
+        if (job.payload.hijack === 'fail') throw new Error('late failure');
+      }
       // Long enough for a heartbeat when the test shortens the lease.
       if (job.payload.slow) await new Promise((r) => setTimeout(r, 1200));
     });
@@ -126,6 +134,21 @@ describe('job queue: reclaiming jobs left running by a stopped worker', () => {
       jobQueueSettings.leaseMs = 10 * 60_000;
     }
   });
+
+  it.each(['complete', 'fail'] as const)(
+    "a worker that lost its lease can't overwrite the new attempt (%s)",
+    async (hijack) => {
+      const job = await enqueueJob(JOB, { hijack }, { instituteId: null, maxAttempts: 1 });
+      jobIds.push(job.id);
+      await processDueJobs();
+      await job.reload();
+      // Still owned by the second claim: neither marked completed nor failed by the stale worker.
+      expect(job).toMatchObject({ status: 'running', attempts: 2 });
+      expect(job.lockedAt).not.toBeNull();
+      expect(failed.some((f) => f.id === job.id)).toBe(false);
+      await job.update({ status: 'completed', lockedAt: null });
+    },
+  );
 
   describe('report exports', () => {
     /** A queued export and its job; the template comes from a real (synchronous) export. */

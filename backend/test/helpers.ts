@@ -24,7 +24,11 @@ export const USERS = {
 };
 
 /** Same device per user across the run, so only the very first login registers a device. */
-export const stableDevice = (mobile: string) => ({ uid: `test-device-${mobile}`, platform: 'web' as const });
+export type TestDevice = { uid: string; platform: 'web' | 'android' | 'ios' };
+export const stableDevice = (mobile: string): TestDevice => ({
+  uid: `test-device-${mobile}`,
+  platform: 'web',
+});
 export const newDevice = (platform: 'web' | 'android' | 'ios' = 'web') => ({
   uid: `test-${crypto.randomUUID()}`,
   platform,
@@ -37,7 +41,10 @@ export function lastOtpFor(mobile: string): string {
 }
 
 /** Logs in with password, completing the new-device OTP step if required. */
-export async function login(user: { mobile: string; password: string }, device = stableDevice(user.mobile)) {
+export async function login(
+  user: { mobile: string; password: string },
+  device: TestDevice = stableDevice(user.mobile),
+) {
   const a = await getApp();
   let res = await request(a)
     .post('/api/auth/login')

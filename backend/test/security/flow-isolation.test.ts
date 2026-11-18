@@ -30,7 +30,7 @@ let A: Tenant;
 let B: Tenant;
 const invoiceIds: number[] = [];
 
-const query = <T>(sql: string, replacements: unknown[] = []) =>
+const query = <T extends object>(sql: string, replacements: unknown[] = []) =>
   getSequelize().query<T>(sql, { replacements, type: QueryTypes.SELECT });
 
 async function call(method: 'get' | 'post' | 'put' | 'delete', path: string, token: string, body?: object) {
@@ -47,7 +47,7 @@ async function createInstitute(label: string): Promise<Tenant> {
   const res = await call('post', '/api/admin/institutes', sa, {
     name: `Flow Isolation ${label}`,
     slug,
-    planId: plan.id,
+    planId: plan!.id,
     state: 'Karnataka',
     admin: { name: `Admin ${label}`, mobile: adminMobile, password: PASSWORD },
   });

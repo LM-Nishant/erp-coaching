@@ -1,4 +1,4 @@
-import { Op, type Transaction } from 'sequelize';
+import { Op, type InferAttributes, type Transaction } from 'sequelize';
 import { Job } from './job.model';
 import { getContext, runWithContext } from '../../shared/context';
 import { logger } from '../logger';
@@ -104,10 +104,19 @@ async function claimNext(): Promise<Job | null> {
 
 async function execute(job: Job): Promise<void> {
   const handler = handlers.get(job.name);
+  // Fencing: every write is conditional on this claim still owning the job. If the lease was
+  // reclaimed (and possibly claimed again), this worker's late writes must not touch the new attempt.
+  const owned = { id: job.id, status: 'running' as const, attempts: job.attempts };
+  const writeOwned = async (values: Partial<InferAttributes<Job>>): Promise<boolean> => {
+    const [count] = await Job.update(values, { where: owned });
+    if (count === 0)
+      logger.warn({ job: job.name, id: job.id, attempt: job.attempts }, 'Job lease lost; result discarded');
+    return count > 0;
+  };
   // Heartbeat: keep the lease while the handler runs so long jobs (transcodes) are not reclaimed.
   const heartbeat = setInterval(
     () => {
-      Job.update({ lockedAt: new Date() }, { where: { id: job.id, status: 'running' } }).catch((err) =>
+      Job.update({ lockedAt: new Date() }, { where: owned }).catch((err) =>
         logger.warn({ err, job: job.name, id: job.id }, 'Job heartbeat failed'),
       );
     },
@@ -120,17 +129,18 @@ async function execute(job: Job): Promise<void> {
       { system: true, instituteId: job.instituteId ?? undefined, allowedBranchIds: null },
       () => handler(job.payload, job),
     );
-    await job.update({ status: 'completed', completedAt: new Date(), lockedAt: null });
+    await writeOwned({ status: 'completed', completedAt: new Date(), lockedAt: null });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const retry = job.attempts < job.maxAttempts;
     const backoffMs = Math.min(2 ** job.attempts * 1000, 15 * 60 * 1000);
-    await job.update({
+    const stillOwned = await writeOwned({
       status: retry ? 'pending' : 'failed',
       lastError: message.slice(0, 4000),
       lockedAt: null,
       runAt: retry ? new Date(Date.now() + backoffMs) : job.runAt,
     });
+    if (!stillOwned) return;
     logger.warn({ job: job.name, id: job.id, attempt: job.attempts, retry }, `Job failed: ${message}`);
     if (!retry) {
       captureError(err, { source: 'job', job: job.name, jobId: job.id, instituteId: job.instituteId });
