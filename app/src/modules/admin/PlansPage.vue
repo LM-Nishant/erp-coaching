@@ -86,6 +86,7 @@
                 label-placement="stacked"
               />
             </ion-item>
+            <p class="muted hint">Module keys: {{ PLAN_MODULE_KEYS.join(', ') }}</p>
             <ion-item><ion-toggle v-model="form.isActive">Active</ion-toggle></ion-item>
 
             <ion-list-header>Add-on packs</ion-list-header>
@@ -212,6 +213,7 @@ import {
   ADDON_LABELS,
   METERED_METRICS,
   METRIC_LABELS,
+  PLAN_MODULE_KEYS,
   type AddonKind,
   type MeteredMetric,
   type PlanAddonPrice,

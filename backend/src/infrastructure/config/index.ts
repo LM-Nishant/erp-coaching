@@ -24,6 +24,16 @@ const schema = z.object({
     .default(
       'http://localhost:5173,http://localhost:8100,capacitor://localhost,http://localhost,https://localhost',
     ),
+  /**
+   * Public origin of the web app (no trailing slash). Links into the app (website "Register"/"Buy"
+   * buttons, course checkout) start here. Required in production; elsewhere it falls back to the first
+   * http(s) `CORS_ORIGINS` entry.
+   */
+  PUBLIC_WEB_URL: z
+    .string()
+    .url()
+    .refine((v) => /^https?:\/\//.test(v), 'must be an http(s) URL')
+    .optional(),
   LOG_LEVEL: z.string().default(isProd ? 'info' : 'debug'),
   /** Reported by /api/ready and attached to tracked errors (e.g. the git SHA or image tag). */
   APP_VERSION: z.string().default('dev'),
@@ -111,6 +121,15 @@ if (isProd && parsed.data.DEV_OUTBOX_FILE) throw new Error('DEV_OUTBOX_FILE must
 if (parsed.data.ERROR_TRACKING_PROVIDER === 'webhook' && !parsed.data.ERROR_TRACKING_WEBHOOK_URL)
   throw new Error('ERROR_TRACKING_WEBHOOK_URL is required when ERROR_TRACKING_PROVIDER=webhook');
 
+const corsOrigins = parsed.data.CORS_ORIGINS.split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+if (isProd && !parsed.data.PUBLIC_WEB_URL)
+  throw new Error('PUBLIC_WEB_URL is required in production (the public origin of the web app)');
+const fallbackWebUrl = corsOrigins.find((o) => /^https?:\/\//.test(o)) ?? 'http://localhost:5173';
+if (!parsed.data.PUBLIC_WEB_URL && parsed.data.NODE_ENV === 'development')
+  console.warn(`PUBLIC_WEB_URL is not set; links into the web app use ${fallbackWebUrl}`);
+
 export const config = {
   ...parsed.data,
   isProd,
@@ -119,9 +138,8 @@ export const config = {
   devOutboxFile: parsed.data.DEV_OUTBOX_FILE
     ? path.resolve(__dirname, '../../..', parsed.data.DEV_OUTBOX_FILE)
     : null,
-  corsOrigins: parsed.data.CORS_ORIGINS.split(',')
-    .map((s) => s.trim())
-    .filter(Boolean),
+  corsOrigins,
+  publicWebUrl: (parsed.data.PUBLIC_WEB_URL ?? fallbackWebUrl).replace(/\/+$/, ''),
 };
 
 export type AppConfig = typeof config;

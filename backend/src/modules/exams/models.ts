@@ -285,6 +285,7 @@ export class ExamResultCorrection extends Model<
   declare correctedBy?: NonAttribute<User | null>;
 }
 
+/** Students' marks history: tenant data, exported and purged with the institute. */
 export class ExamMarkRevision extends Model<
   InferAttributes<ExamMarkRevision>,
   InferCreationAttributes<ExamMarkRevision>

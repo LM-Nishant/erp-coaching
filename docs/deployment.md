@@ -155,6 +155,7 @@ Format rules:
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ERP_REGISTRY`, `ERP_IMAGE_TAG`                                                                                                                                          | Image names are `${ERP_REGISTRY}erp-api:${ERP_IMAGE_TAG}`, and likewise for `erp-web` and `erp-backup`. The tag is the release. It is reported as `version` by `/api/ready` and in every log line and error event |
 | `SERVER_NAME`, `PUBLIC_URL`                                                                                                                                              | Host name and origin of the app and API. `PUBLIC_URL` is compiled into the web image, so changing it means rebuilding `erp-web`. If `HTTPS_PORT` isn't 443, include the port (`https://app.example.com:8443`)     |
+| `PUBLIC_WEB_URL`                                                                                                                                                         | Origin of the web app in links the API builds (institute website buttons, course checkout). Blank: `PUBLIC_URL`                                                                                                   |
 | `SITES_DOMAIN`                                                                                                                                                           | Optional parent domain of the institute subdomains (`<subdomain>.sites.example.com`)                                                                                                                              |
 | `HTTP_PORT`, `HTTPS_PORT`                                                                                                                                                | Published ports, 80 and 443 by default                                                                                                                                                                            |
 | `CORS_EXTRA_ORIGINS`                                                                                                                                                     | Allowed origins after `PUBLIC_URL`, for the Capacitor apps ([mobile apps](#mobile-apps-and-cors))                                                                                                                 |
@@ -180,6 +181,8 @@ The compose file sets the following for the API itself, overriding any value in 
 - `TRUST_PROXY=1`;
 - `STORAGE_DRIVER=local` and `STORAGE_LOCAL_ROOT=/var/lib/erp/storage`;
 - `API_PUBLIC_URL=$PUBLIC_URL`;
+- `PUBLIC_WEB_URL=$PUBLIC_WEB_URL`, or `$PUBLIC_URL` when blank (also for `migrate`: the API refuses to start in
+  production without it);
 - `CORS_ORIGINS=$PUBLIC_URL,$CORS_EXTRA_ORIGINS`.
 
 The image sets `NODE_ENV=production` and `APP_VERSION`.
@@ -522,7 +525,7 @@ This release only ships development adapters for the external integrations:
    - `docker compose run --rm migrate node dist/infrastructure/database/cli.js migrate:status` lists no pending
      migrations;
    - the logs show no errors (`docker compose logs --since 10m api web`).
-7. Requeue jobs that the restart interrupted ([background jobs](#background-jobs)).
+7. Check that the restart's interrupted jobs were requeued ([background jobs](#background-jobs)).
 
 If `migrate` fails, `up` exits non-zero and the api stays down. Read `docker compose logs migrate`, then fix forward or
 follow the [migration rollback plan](#migration-rollback-plan).
@@ -726,9 +729,15 @@ then marked `failed`.
 Several workers can run at once safely: a job is claimed with `SELECT … FOR UPDATE SKIP LOCKED`, so only one worker
 takes it.
 
-On shutdown the api stops polling but doesn't wait for running jobs. A job that was running during a deploy, restart or
-crash stays `running` forever: nothing recovers it automatically. After every restart, look for stale jobs and requeue
-them:
+On shutdown the api stops polling but doesn't wait for running jobs. Interrupted jobs are recovered automatically: a
+running job refreshes its `locked_at` every few minutes, and every worker checks for `running` jobs whose lock is more
+than 10 minutes old, when it starts and then every minute. Such a job lost its worker during a deploy, restart or crash,
+so it is requeued, which counts as an attempt, or marked `failed` if it was on its last attempt. A failed report export
+job marks its export `failed` too, so the user sees an error instead of an export stuck at "running". The log line
+`Reclaimed jobs left running by a stopped worker` reports each recovery.
+
+Recovery needs a running worker. If `JOBS_WORKER_ENABLED=false` on every api, or a job looks stuck anyway, check and
+requeue stale jobs by hand:
 
 ```sql
 SELECT id, name, attempts, max_attempts, locked_at FROM jobs
@@ -739,8 +748,8 @@ UPDATE jobs SET status = 'pending', locked_at = NULL, run_at = UTC_TIMESTAMP()
 SELECT id, name, attempts, last_error, updated_at FROM jobs WHERE status = 'failed' ORDER BY id DESC LIMIT 20;
 ```
 
-Run these in `docker compose exec mysql mysql -uroot -p erp_coaching`. Keep the two-hour threshold above the
-longest transcode.
+Run these in `docker compose exec mysql mysql -uroot -p erp_coaching`. Running jobs keep their lock fresh, so a
+`locked_at` more than two hours old means the job's worker is gone.
 
 ### Web app security headers
 
@@ -791,10 +800,17 @@ VITE_API_URL=https://app.example.com npm run cap:sync -w app
 
 Then build and sign them in Android Studio or Xcode (`npm run cap:android` or `npm run cap:ios`).
 
+CI builds both apps on every pull request without signing (the `android` and `ios` jobs in
+`.github/workflows/ci.yml`): `assembleDebug`, which also checks that `POST_NOTIFICATIONS` (declared by
+firebase-messaging) is in the merged manifest, and an `iphonesimulator` build pinned to the committed
+`app/ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`. After changing a Capacitor
+plugin, run `npx cap sync ios` and `xcodebuild -resolvePackageDependencies -project App.xcodeproj -scheme App` in
+`app/ios/App` and commit the updated `Package.resolved`.
+
 The API, including the live-class Socket.IO endpoint, accepts these origins, in this order:
 
-1. `PUBLIC_URL`, which must come first: the API builds links into the web app from the first origin, for example
-   on institute websites and in course checkout links.
+1. `PUBLIC_URL`. Links into the web app (institute websites, course checkout) use `PUBLIC_WEB_URL` instead,
+   which defaults to `PUBLIC_URL`.
 2. `CORS_EXTRA_ORIGINS`, which defaults to:
    - `capacitor://localhost` (iOS);
    - `https://localhost` (Android; `app/capacitor.config.ts` sets `androidScheme: 'https'`);

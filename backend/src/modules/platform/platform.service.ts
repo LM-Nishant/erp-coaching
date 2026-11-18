@@ -33,6 +33,11 @@ import {
 } from '../../infrastructure/storage';
 import type { InferCreationAttributes } from 'sequelize';
 import { BadRequest, Conflict, NotFound } from '../../shared/errors';
+import {
+  MESSAGING_DESTINATION_FIELDS,
+  assertStoredSecretReusable,
+  changedDestinationFields,
+} from '../../shared/utilities/secret-reuse';
 import { PlatformIntegration, type IntegrationKind } from './models';
 
 export const MESSAGING_CHANNELS = [
@@ -326,6 +331,12 @@ function mergeGateway(gateway: PaymentGatewayName, input: Partial<PlatformGatewa
     sandbox: input.sandbox ?? saved.sandbox,
     merchantId: input.merchantId === undefined ? saved.merchantId : input.merchantId?.trim() || null,
   };
+  // Sandbox and live are different gateway endpoints: switching needs the secret key again.
+  assertStoredSecretReusable(
+    !input.secretKey?.trim() && !!e?.secrets.secretKey,
+    changedDestinationFields(saved, settings, ['sandbox']),
+    'secret key',
+  );
   const secrets: Secrets = {
     secretKey: input.secretKey?.trim() || e?.secrets.secretKey || '',
     webhookSecret: input.webhookSecret?.trim() || e?.secrets.webhookSecret || '',
@@ -451,10 +462,20 @@ function mergeMessaging(
     throw BadRequest(`${kind.label} does not support ${channel}`);
   const e = snapshot.get(keyOf('messaging', channel));
   const previous = e && e.row.provider === input.provider ? e.secrets : {};
+  const providerFields = PROVIDER_FIELDS[input.provider as MessagingProviderKind];
+  assertStoredSecretReusable(
+    providerFields.some((f) => f.secret && !(input.settings[f.key] ?? '').trim() && previous[f.key]),
+    changedDestinationFields(
+      e?.row.settings ?? {},
+      input.settings,
+      MESSAGING_DESTINATION_FIELDS[input.provider] ?? [],
+    ),
+    'provider secrets',
+  );
   const fields: Record<string, string> = {};
   const secrets: Secrets = {};
   const missing: string[] = [];
-  for (const f of PROVIDER_FIELDS[input.provider as MessagingProviderKind]) {
+  for (const f of providerFields) {
     const value = (input.settings[f.key] ?? '').trim();
     if (f.secret) {
       const v = value || previous[f.key] || '';
@@ -638,6 +659,17 @@ function mergeStorage(input: Partial<PlatformStorageInput>) {
           endpoint: pick(input.endpoint, saved.endpoint),
           accessKeyId: pick(input.accessKeyId, saved.accessKeyId),
         };
+  // The stored secret only goes to the driver, endpoint and bucket it was saved for.
+  if (driver !== 'local')
+    assertStoredSecretReusable(
+      !input.secretAccessKey?.trim() && !!e?.secrets.secretAccessKey,
+      changedDestinationFields({ ...saved, driver: e?.row.provider }, { ...settings, driver }, [
+        'driver',
+        'endpoint',
+        'bucket',
+      ]),
+      'secret access key',
+    );
   const secrets: Secrets =
     driver === 'local'
       ? {}

@@ -4,12 +4,47 @@ import { Institute } from '../src/modules/institutes/institute.model';
 import { Enquiry } from '../src/modules/admissions/models';
 import { redeemCoupon, releaseCoupon, setCheckoutHandoff, validateCoupon } from '../src/modules/website/api';
 import { asInstitute } from '../src/modules/website/site.service';
-import { USERS, bearer, getApp, login } from './helpers';
+import { USERS, bearer, getApp, idWatermarks, login, purgeCreatedSince, snapshotRows } from './helpers';
 
 const PUB = '/api/public/sites';
 const run = Date.now().toString(36);
 let seq = 0;
 const mobile = () => `934${String(Date.now() % 10000).padStart(4, '0')}${String(seq++).padStart(3, '0')}`;
+
+/** Rows the suite creates (enquiries and applications from public forms and checkout), purged afterwards. */
+const CREATED_TABLES = [
+  'admission_applications',
+  'enquiries',
+  'website_referral_codes',
+  'website_coupons',
+  'website_announcements',
+  'website_page_versions',
+  'website_pages',
+  'website_sites',
+  'students',
+  'users',
+  'batches',
+  'courses',
+  'notification_messages',
+  'jobs',
+] as const;
+let watermarks: Record<string, number>;
+let restoreSites: () => Promise<void>;
+let restorePages: () => Promise<void>;
+
+beforeAll(async () => {
+  await getApp();
+  watermarks = await idWatermarks(CREATED_TABLES);
+  // The suite edits, publishes and restores the existing sites and home pages (domains included).
+  restoreSites = await snapshotRows('website_sites', '1 = 1');
+  restorePages = await snapshotRows('website_pages', '1 = 1');
+});
+
+afterAll(async () => {
+  await purgeCreatedSince(watermarks);
+  await restorePages();
+  await restoreSites();
+});
 
 describe('website builder & online admissions', () => {
   let apex: string;

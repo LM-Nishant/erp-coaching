@@ -1,6 +1,6 @@
 import { Op, type Transaction } from 'sequelize';
 import { requireTenantContext } from '../../shared/context';
-import { Student } from '../students/models';
+import { Student } from '../students/api';
 import { queueCourseEnrolment } from './course-enrolment';
 import { FeeAccount, FeeEntitlement, type FeeInstalment } from './models';
 import { getFeeSettings } from './settings.service';

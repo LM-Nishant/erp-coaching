@@ -13,6 +13,11 @@ import {
 } from '../../infrastructure/messaging';
 import { getContext } from '../../shared/context';
 import { BadRequest } from '../../shared/errors';
+import {
+  MESSAGING_DESTINATION_FIELDS,
+  assertStoredSecretReusable,
+  changedDestinationFields,
+} from '../../shared/utilities/secret-reuse';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { NotificationProvider } from './models';
 
@@ -69,7 +74,10 @@ export interface ProviderInput {
   retryBaseDelaySeconds?: number;
 }
 
-/** Saves a channel's provider. Blank secret fields keep the stored value (same provider only). */
+/**
+ * Saves a channel's provider. Blank secret fields keep the stored value (same provider and
+ * destination only: 400 SECRET_REQUIRED when e.g. the SMTP host changes).
+ */
 export async function saveProvider(channel: ExternalChannel, input: ProviderInput) {
   const kind = MESSAGING_PROVIDER_KINDS[input.provider];
   if (!(kind.channels as readonly string[]).includes(channel))
@@ -77,6 +85,18 @@ export async function saveProvider(channel: ExternalChannel, input: ProviderInpu
 
   const existing = await providerRepo.findOne({ where: { channel } });
   const previousSecrets = existing && existing.provider === input.provider ? readSecrets(existing) : {};
+  // Kept secrets only go to the server they were saved for (e.g. the SMTP host).
+  assertStoredSecretReusable(
+    PROVIDER_FIELDS[input.provider].some(
+      (f) => f.secret && !(input.settings[f.key] ?? '').trim() && previousSecrets[f.key],
+    ),
+    changedDestinationFields(
+      existing?.settings ?? {},
+      input.settings,
+      MESSAGING_DESTINATION_FIELDS[input.provider] ?? [],
+    ),
+    'provider secrets',
+  );
   const settings: Record<string, string> = {};
   const secrets: Record<string, string> = {};
   const missing: string[] = [];

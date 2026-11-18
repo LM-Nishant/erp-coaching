@@ -113,7 +113,7 @@ export default defineAppModule({
       title: 'Offline lectures',
       path: '/lms/offline',
       icon: cloudDownloadOutline,
-      permission: 'lms-assignments.create',
+      permission: 'lms.view',
       planModule: 'lms',
       order: 43,
     },

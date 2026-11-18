@@ -5,7 +5,7 @@
  */
 import { Op } from 'sequelize';
 import type { CheckoutOrderDto, CourseQuoteDto, PaymentGatewayKey } from '@erp/shared';
-import { config } from '../../infrastructure/config';
+import { webAppBaseUrl } from '../../shared/public-urls';
 import { requireTenantContext } from '../../shared/context';
 import { Conflict, NotFound } from '../../shared/errors';
 import {
@@ -15,7 +15,7 @@ import {
   batchUnavailableError,
   openBatchesForCourse,
 } from '../academics/api';
-import { Student } from '../students/models';
+import { Student } from '../students/api';
 import { isModuleEnabled } from '../subscriptions/subscription.service';
 import { validateCoupon } from '../website/api';
 import { FeeAccount, FeeCourseEnrolment, FeePayment, FeeStructure } from './models';
@@ -82,7 +82,7 @@ export async function courseCheckoutUrl(input: {
 }): Promise<{ url: string } | null> {
   if (!(await feesGatesCourse(input.instituteId, input.courseId))) return null;
   if (!(await enabledGateways()).length) return null;
-  const base = (input.appUrl ?? config.corsOrigins[0] ?? config.API_PUBLIC_URL).replace(/\/$/, '');
+  const base = webAppBaseUrl(input.appUrl);
   const url = new URL(`${base}/my-fees/buy/${input.courseId}`);
   if (input.batchId) url.searchParams.set('batchId', String(input.batchId));
   if (input.couponCode) url.searchParams.set('coupon', input.couponCode);

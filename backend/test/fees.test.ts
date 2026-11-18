@@ -1,6 +1,17 @@
 import request from 'supertest';
-import { beforeAll, describe, expect, it } from 'vitest';
-import { DEMO_PASSWORD, USERS, bearer, getApp, lastOtpFor, login, newDevice } from './helpers';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  DEMO_PASSWORD,
+  USERS,
+  bearer,
+  getApp,
+  idWatermarks,
+  lastOtpFor,
+  login,
+  newDevice,
+  purgeCreatedSince,
+  snapshotRows,
+} from './helpers';
 import { signMockWebhook, MOCK_SIGNATURE_HEADER } from '../src/infrastructure/payment-gateways/mock.gateway';
 import { runWithContext } from '../src/shared/context';
 import { hasCourseEntitlement } from '../src/modules/fees/api';
@@ -25,6 +36,51 @@ async function otpLogin(m: string) {
   expect(res.body.status).toBe('authenticated');
   return res.body.accessToken as string;
 }
+
+/**
+ * Everything the suites below create, purged afterwards in this order (dependants go with them).
+ * Whole ledger journals go first, so the institute's ledger stays balanced; course purchases also
+ * leave admitted applications and batch-enrolment queue rows (`fee_course_enrolments`).
+ */
+const CREATED_TABLES = [
+  'fee_ledger_entries',
+  'fee_webhook_events',
+  'fee_payments',
+  'fee_course_enrolments',
+  'fee_accounts',
+  'admission_applications',
+  'enquiries',
+  'finance_entries',
+  'finance_categories',
+  'website_coupons',
+  'website_referral_codes',
+  'lms_resources',
+  'students',
+  'users',
+  'fee_structures',
+  'batches',
+  'courses',
+  'payment_gateway_configs',
+  'fee_settings',
+  'notification_messages',
+  'jobs',
+] as const;
+let watermarks: Record<string, number>;
+let restoreGateways: () => Promise<void>;
+let restoreFeeSettings: () => Promise<void>;
+
+beforeAll(async () => {
+  await getApp();
+  watermarks = await idWatermarks(CREATED_TABLES);
+  restoreGateways = await snapshotRows('payment_gateway_configs', 'institute_id = 1');
+  restoreFeeSettings = await snapshotRows('fee_settings', 'institute_id = 1');
+});
+
+afterAll(async () => {
+  await purgeCreatedSince(watermarks);
+  await restoreGateways();
+  await restoreFeeSettings();
+});
 
 describe('fees, payments & accounting', () => {
   let app: Awaited<ReturnType<typeof getApp>>;
@@ -158,6 +214,50 @@ describe('fees, payments & accounting', () => {
           .send({ studentId: student.id, structureId })
       ).status,
     ).toBeGreaterThanOrEqual(400);
+  });
+
+  it('revokes the course entitlement when its fee account is cancelled', async () => {
+    const course = await request(app)
+      .post('/api/academics/courses')
+      .set(bearer(admin))
+      .send({ name: `Fees Free ${run}`, code: `FF-${run}` });
+    expect(course.status).toBe(201);
+    const free = await request(app)
+      .post('/api/fees/structures')
+      .set(bearer(admin))
+      .send({
+        name: 'Scholarship',
+        courseId: course.body.id,
+        components: [{ name: 'Tuition', amount: 100_000 }],
+        instalmentPlan: { type: 'one_time' },
+      });
+    expect(free.status, JSON.stringify(free.body)).toBe(201);
+    const holder = await newStudent('Scholar');
+    const created = await request(app)
+      .post('/api/fees/accounts')
+      .set(bearer(admin))
+      .send({ studentId: holder.id, structureId: free.body.id, firstDueDate: '2030-01-10' });
+    expect(created.status).toBe(201);
+    const entitled = () =>
+      runWithContext({ system: true, instituteId: 1, allowedBranchIds: null }, () =>
+        hasCourseEntitlement(holder.userId, course.body.id),
+      );
+    expect(await entitled()).toBe(false);
+    // A full scholarship leaves nothing to pay, so the course is unlocked…
+    const waiver = await request(app)
+      .post(`/api/fees/accounts/${created.body.id}/adjustments`)
+      .set(bearer(admin))
+      .send({ type: 'discount', mode: 'percent', value: 100, reason: 'Scholarship' });
+    expect(waiver.status, JSON.stringify(waiver.body)).toBe(201);
+    expect(await entitled()).toBe(true);
+    const cancelled = await request(app)
+      .post(`/api/fees/accounts/${created.body.id}/cancel`)
+      .set(bearer(admin))
+      .send({ reason: 'Scholarship withdrawn' });
+    expect(cancelled.status).toBe(200);
+    expect(cancelled.body.status).toBe('cancelled');
+    // …and locked again once the account is cancelled.
+    expect(await entitled()).toBe(false);
   });
 
   it('applies discounts, with maker-checker approval for accountants', async () => {

@@ -10,7 +10,7 @@ import { getSequelize } from '../../infrastructure/database/sequelize';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { requireTenantContext } from '../../shared/context';
-import { Student } from '../students/models';
+import { Student } from '../students/api';
 import { Batch, BatchStudent, Course } from '../academics/api';
 import { FeeAccount, FeeAdjustment, FeeConcessionRule, FeeInstalment, FeeStructure } from './models';
 import { buildSchedule, findStructureFor, structureRepo } from './structures.service';
@@ -561,7 +561,7 @@ export async function cancelAccount(id: number, reason?: string) {
   if (account.paid > 0 || account.advance > 0)
     throw Conflict('Refund or reallocate payments before cancelling this account', 'ACCOUNT_HAS_PAYMENTS');
   await getSequelize().transaction(async (transaction) => {
-    const { account: a } = await lockAccount(id, transaction);
+    const { account: a, instalments } = await lockAccount(id, transaction);
     const outstanding = a.net - a.paid;
     if (outstanding > 0)
       await postJournal(
@@ -580,6 +580,9 @@ export async function cancelAccount(id: number, reason?: string) {
         transaction,
       );
     await a.update({ status: 'cancelled' }, { transaction });
+    // A cancelled account no longer pays for its course: revoke the entitlement (and, for an online
+    // purchase, queue taking the student back out of the batch it enrolled them in).
+    await evaluateEntitlement(a, instalments, transaction);
   });
   await auditFee({
     action: 'fees.account.cancel',

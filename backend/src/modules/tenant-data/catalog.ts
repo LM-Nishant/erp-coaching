@@ -16,7 +16,9 @@ export interface TableRule {
  * or tables written with raw SQL). Every such table must be listed here; a test fails otherwise.
  */
 export const UNREGISTERED_INSTITUTE_TABLES: Readonly<Record<string, TableRule>> = {
-  ai_usage: { export: true, purge: true, reason: 'AI usage ledger' },
+  // Per-user AI calls with tokens and estimated provider cost (#19). The institute's copy, so it is
+  // exported and purged; what the platform billed for AI lives on the retained SaaS invoices.
+  ai_usage: { export: true, purge: true, reason: 'AI usage ledger (tokens and estimated cost)' },
   audit_events: { export: true, purge: true, reason: "The institute's audit trail" },
   fee_sequences: { export: true, purge: true, reason: 'Receipt numbering counters' },
   grievance_counters: { export: true, purge: true, reason: 'Ticket numbering counters' },
@@ -32,13 +34,21 @@ export const UNREGISTERED_INSTITUTE_TABLES: Readonly<Record<string, TableRule>> 
 };
 
 /** Registered tenant tables that are not part of the export archive. */
-export const EXPORT_EXCLUDED_TABLES: ReadonlySet<string> = new Set(['data_exports']);
+export const EXPORT_EXCLUDED_TABLES: ReadonlySet<string> = new Set([
+  'data_exports',
+  // Download links for generated report files that expire after 24 hours; `report.exported` audit
+  // events (exported) already record who exported what.
+  'report_exports',
+]);
 
 /** Secrets, credentials and hashes are never exported. */
 const SENSITIVE_COLUMN = /(^|_)(password|secret|token)(_|$)|_(encrypted|hash)$/i;
 const SENSITIVE_COLUMNS: ReadonlySet<string> = new Set([
   'payment_gateway_configs.webhook_key',
   'lms_offline_licenses.content_key', // encrypted offline-playback DRM key
+  // Biometric unlock verifier (#17). `devices` is per user (no institute_id) and the `_hash` rule
+  // already matches; listed so a rename can never leak it.
+  'devices.unlock_key_hash',
 ]);
 
 export const isSensitiveColumn = (table: string, column: string) =>

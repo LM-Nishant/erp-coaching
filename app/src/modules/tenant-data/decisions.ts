@@ -18,7 +18,8 @@ async function ask(opts: {
   const alert = await alertController.create({
     header: opts.header,
     message: opts.message,
-    inputs: opts.inputs,
+    // An explicit `inputs: undefined` overrides Ionic's default and breaks the alert's rendering.
+    inputs: opts.inputs ?? [],
     buttons: [
       { text: 'Back', role: 'cancel' },
       {

@@ -3,6 +3,7 @@ import type { Express } from 'express';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Op } from 'sequelize';
 import { crc32, deflateSync } from 'node:zlib';
+import { PLAN_MODULE_KEYS } from '@erp/shared';
 import {
   DEMO_PASSWORD,
   USERS,
@@ -1251,6 +1252,39 @@ describe('AI grading end to end with the mock provider', () => {
         mine.reduce((n, r) => n + Number(r.estimatedCostUsd ?? 0), 0),
         6,
       );
+    }
+  });
+
+  it('shows institute admins their AI quota, usage and cost, only while AI is in the plan', async () => {
+    await setLimits({ aiTokensMonthly: 5_000_000 });
+    try {
+      const summary = (await request(app).get('/api/ai/usage').set(bearer(admin))).body;
+      expect(summary).toMatchObject({ monthlyLimit: 5_000_000, available: true });
+      expect(summary.remainingTokens).toBe(5_000_000 - summary.tokensUsed);
+
+      const history = await request(app).get('/api/ai/usage/history?days=30').set(bearer(admin));
+      expect(history.status).toBe(200);
+      // Only this institute's usage: one row, for institute 1.
+      expect(history.body.byInstitute).toHaveLength(1);
+      const own = history.body.byInstitute[0];
+      expect(own.instituteId).toBe(1);
+      expect(own.calls).toBeGreaterThanOrEqual(8);
+      expect(own.estimatedCostUsd).toBeGreaterThan(0);
+      const sum = (k: 'calls' | 'totalTokens') =>
+        history.body.byProvider.reduce((n: number, p: Record<string, number>) => n + p[k], 0);
+      expect(sum('calls')).toBe(own.calls);
+      expect(sum('totalTokens')).toBe(own.totalTokens);
+      const platformWide = (await request(app).get('/api/admin/ai/usage?days=30').set(bearer(sa))).body;
+      expect(platformWide.byInstitute.find((i: { instituteId: number }) => i.instituteId === 1).calls).toBe(
+        own.calls,
+      );
+
+      expect((await request(app).get('/api/ai/usage/history').set(bearer(teacher))).status).toBe(403);
+      await setLimits({ enabledModules: PLAN_MODULE_KEYS.filter((k) => k !== 'ai') });
+      const disabled = await request(app).get('/api/ai/usage/history').set(bearer(admin));
+      expect([disabled.status, disabled.body.error.code]).toEqual([403, 'MODULE_DISABLED']);
+    } finally {
+      await setLimits(null);
     }
   });
 });

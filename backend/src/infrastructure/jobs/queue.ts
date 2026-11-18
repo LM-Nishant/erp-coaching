@@ -6,13 +6,54 @@ import { captureError } from '../error-tracking';
 import { getSequelize } from '../database/sequelize';
 
 export type JobHandler<P = Record<string, unknown>> = (payload: P, job: Job) => Promise<void>;
+/** Called once a job has failed for good (attempts exhausted, or its worker died on the last attempt). */
+export type JobFailureHandler = (job: Job, error: string) => Promise<void>;
 
 const handlers = new Map<string, JobHandler>();
+const failureHandlers = new Map<string, JobFailureHandler[]>();
 let timer: NodeJS.Timeout | null = null;
+let reclaimTimer: NodeJS.Timeout | null = null;
+
+/**
+ * Crash recovery. A running job refreshes `locked_at` every `leaseMs / 3`; a `running` job whose
+ * lock is older than `leaseMs` lost its worker (crash, restart, deploy) and is reclaimed: requeued
+ * if it has attempts left, otherwise failed. Reclaim runs when the worker starts and every
+ * `reclaimIntervalMs`.
+ */
+export const jobQueueSettings = { leaseMs: 10 * 60_000, reclaimIntervalMs: 60_000 };
+
+export const RECLAIMED_ERROR = 'Worker stopped while the job was running (lease expired)';
 
 export function registerJobHandler(name: string, handler: JobHandler): void {
   if (handlers.has(name)) throw new Error(`Job handler already registered: ${name}`);
   handlers.set(name, handler);
+}
+
+/**
+ * Registers cleanup for a job that will not run again, for example marking the record it was
+ * producing as failed. Handlers must be idempotent; their errors are logged, not rethrown.
+ */
+export function registerJobFailureHandler(name: string, handler: JobFailureHandler): () => void {
+  const list = failureHandlers.get(name) ?? [];
+  list.push(handler);
+  failureHandlers.set(name, list);
+  return () => {
+    const i = list.indexOf(handler);
+    if (i >= 0) list.splice(i, 1);
+  };
+}
+
+async function onJobFailed(job: Job, error: string): Promise<void> {
+  for (const handler of failureHandlers.get(job.name) ?? []) {
+    try {
+      await runWithContext(
+        { system: true, instituteId: job.instituteId ?? undefined, allowedBranchIds: null },
+        () => handler(job, error),
+      );
+    } catch (err) {
+      logger.error({ err, job: job.name, id: job.id }, 'Job failure handler failed');
+    }
+  }
 }
 
 /**
@@ -63,6 +104,16 @@ async function claimNext(): Promise<Job | null> {
 
 async function execute(job: Job): Promise<void> {
   const handler = handlers.get(job.name);
+  // Heartbeat: keep the lease while the handler runs so long jobs (transcodes) are not reclaimed.
+  const heartbeat = setInterval(
+    () => {
+      Job.update({ lockedAt: new Date() }, { where: { id: job.id, status: 'running' } }).catch((err) =>
+        logger.warn({ err, job: job.name, id: job.id }, 'Job heartbeat failed'),
+      );
+    },
+    Math.max(1000, Math.floor(jobQueueSettings.leaseMs / 3)),
+  );
+  heartbeat.unref();
   try {
     if (!handler) throw new Error(`No handler registered for job ${job.name}`);
     await runWithContext(
@@ -81,9 +132,54 @@ async function execute(job: Job): Promise<void> {
       runAt: retry ? new Date(Date.now() + backoffMs) : job.runAt,
     });
     logger.warn({ job: job.name, id: job.id, attempt: job.attempts, retry }, `Job failed: ${message}`);
-    if (!retry)
+    if (!retry) {
       captureError(err, { source: 'job', job: job.name, jobId: job.id, instituteId: job.instituteId });
+      await onJobFailed(job, message);
+    }
+  } finally {
+    clearInterval(heartbeat);
   }
+}
+
+/**
+ * Recovers jobs left `running` by a worker that stopped (see `jobQueueSettings`). Returns how many
+ * were requeued and failed.
+ */
+export async function reclaimStaleJobs(now = new Date()): Promise<{ requeued: number; failed: number }> {
+  const cutoff = new Date(now.getTime() - jobQueueSettings.leaseMs);
+  const failed: Job[] = [];
+  let requeued = 0;
+  await getSequelize().transaction(async (transaction) => {
+    const stale = await Job.findAll({
+      where: {
+        status: 'running',
+        [Op.or]: [{ lockedAt: { [Op.lt]: cutoff } }, { lockedAt: null }],
+      },
+      order: [['id', 'ASC']],
+      limit: 500,
+      lock: transaction.LOCK.UPDATE,
+      skipLocked: true,
+      transaction,
+    });
+    for (const job of stale) {
+      const retry = job.attempts < job.maxAttempts;
+      await job.update(
+        {
+          status: retry ? 'pending' : 'failed',
+          lockedAt: null,
+          lastError: RECLAIMED_ERROR,
+          runAt: retry ? now : job.runAt,
+        },
+        { transaction },
+      );
+      if (retry) requeued++;
+      else failed.push(job);
+    }
+  });
+  for (const job of failed) await onJobFailed(job, RECLAIMED_ERROR);
+  if (requeued || failed.length)
+    logger.warn({ requeued, failed: failed.length }, 'Reclaimed jobs left running by a stopped worker');
+  return { requeued, failed: failed.length };
 }
 
 /** Processes due jobs until none remain (or `max` reached). Used by the worker and tests. */
@@ -100,6 +196,11 @@ export async function processDueJobs(max = 50): Promise<number> {
 
 export function startJobWorker(intervalMs: number): void {
   if (timer) return;
+  const reclaim = () =>
+    reclaimStaleJobs().catch((err) => logger.error({ err }, 'Reclaiming stale jobs failed'));
+  void reclaim();
+  reclaimTimer = setInterval(reclaim, jobQueueSettings.reclaimIntervalMs);
+  reclaimTimer.unref();
   let busy = false;
   timer = setInterval(async () => {
     if (busy) return;
@@ -118,5 +219,7 @@ export function startJobWorker(intervalMs: number): void {
 
 export function stopJobWorker(): void {
   if (timer) clearInterval(timer);
+  if (reclaimTimer) clearInterval(reclaimTimer);
   timer = null;
+  reclaimTimer = null;
 }

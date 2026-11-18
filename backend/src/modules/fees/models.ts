@@ -29,7 +29,7 @@ import type {
   PaymentGatewayKey,
 } from '@erp/shared';
 import { registerTenantModel } from '../../shared/tenancy/tenant-model';
-import { Student } from '../students/models';
+import { Student } from '../students/api';
 
 const PK = () => ({ type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true });
 const FK = () => ({ type: DataTypes.INTEGER.UNSIGNED, allowNull: false });
@@ -386,6 +386,7 @@ export class FeeEntitlement extends Model<
   declare updatedAt: Stamps['updatedAt'];
 }
 
+/** Course-purchase enrolment queue; tenant data, exported and purged with the institute. */
 export class FeeCourseEnrolment extends Model<
   InferAttributes<FeeCourseEnrolment>,
   InferCreationAttributes<FeeCourseEnrolment>

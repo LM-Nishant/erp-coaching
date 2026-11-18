@@ -168,18 +168,21 @@ async function request<T>(method: string, path: string, opts: RequestOptions = {
   const data = res.headers.get('content-type')?.includes('application/json')
     ? await res.json()
     : await res.text();
-  if (!res.ok) {
-    const err = (data as ApiErrorBody)?.error;
-    const error = new ApiError(
-      res.status,
-      err?.code ?? 'HTTP_ERROR',
-      err?.message ?? res.statusText,
-      err?.details,
-    );
-    if (res.status === 402) onPaymentRequired?.(error);
-    throw error;
-  }
+  if (!res.ok) throw failure(res, data as ApiErrorBody);
   return data as T;
+}
+
+/** The error for a failed response; a 402 (subscription restricted or suspended) also notifies the handler. */
+function failure(res: Response, body: ApiErrorBody | null): ApiError {
+  const err = body?.error;
+  const error = new ApiError(
+    res.status,
+    err?.code ?? 'HTTP_ERROR',
+    err?.message ?? res.statusText,
+    err?.details,
+  );
+  if (res.status === 402) onPaymentRequired?.(error);
+  return error;
 }
 
 export const api = {
@@ -202,7 +205,7 @@ export const api = {
     return request<T>('POST', '/files', { body: form });
   },
   /** Authenticated download of an endpoint that responds with a file attachment. */
-  download: (path: string, query?: Query) => download(path, query),
+  download: (path: string, query?: Query, opts?: RequestOptions) => download(path, query, opts),
 };
 
 export interface DownloadedFile {
@@ -211,19 +214,23 @@ export interface DownloadedFile {
   fileName: string | null;
 }
 
-async function download(path: string, query?: Query): Promise<DownloadedFile> {
+/**
+ * Same session handling as JSON requests (`send`: token refresh, 401 `SESSION_IDLE` / `SESSION_REVOKED` end the
+ * session) and the same 402 handling (`failure`).
+ */
+async function download(path: string, query?: Query, opts: RequestOptions = {}): Promise<DownloadedFile> {
   let res: Response;
   try {
-    res = await send('GET', path, { query, headers: { Accept: '*/*' } });
-  } catch {
+    res = await send('GET', path, { ...opts, query, headers: { Accept: '*/*', ...opts.headers } });
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') throw e;
     throw new ApiError(0, 'NETWORK_ERROR', `Cannot reach the server at ${API_URL}`);
   }
   if (!res.ok) {
     const data = res.headers.get('content-type')?.includes('application/json')
-      ? ((await res.json()) as ApiErrorBody)
+      ? ((await res.json().catch(() => null)) as ApiErrorBody | null)
       : null;
-    const err = data?.error;
-    throw new ApiError(res.status, err?.code ?? 'HTTP_ERROR', err?.message ?? res.statusText, err?.details);
+    throw failure(res, data);
   }
   const fileName = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? null;
   return { blob: await res.blob(), fileName };

@@ -4,4 +4,9 @@
  *   import { setSaasBillingStatsProvider } from '../reports/api';
  *   setSaasBillingStatsProvider(async (period) => ({ source: 'billing', ... }));
  */
-export { setSaasBillingStatsProvider, type SaasBillingStatsProvider, type SaasPeriod } from './saas';
+export {
+  setPlatformBrandProvider,
+  setSaasBillingStatsProvider,
+  type SaasBillingStatsProvider,
+  type SaasPeriod,
+} from './saas';

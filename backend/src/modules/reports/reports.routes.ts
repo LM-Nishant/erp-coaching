@@ -16,7 +16,7 @@ import { SCREEN_ROW_LIMIT, availableReports, catalogItem, prepareReport, runRepo
 import { createExport, downloadExport, getExport, listExports } from './exports.service';
 import { createExportSchema, reportFiltersSchema } from './filters';
 import { renderReport } from './render';
-import { saasDashboard, saasExportDocument } from './saas';
+import { platformBrand, saasDashboard, saasExportDocument } from './saas';
 import { reportFilterOptions } from './scope';
 
 const M = 'reports';
@@ -88,7 +88,9 @@ export function reportsRoutes(api: Router) {
   admin.get('/institutes/export', async (req, res) => {
     const { format, ...filters } = parse(saasExportQuery, req.query);
     const dash = await saasDashboard(filters, { tableLimit: SAAS_EXPORT_LIMIT });
-    const rendered = renderReport(saasExportDocument(dash), format, { instituteName: 'Coaching ERP' });
+    const rendered = renderReport(saasExportDocument(dash), format, {
+      instituteName: await platformBrand(),
+    });
     await audit({
       action: 'report.saas_exported',
       entityType: 'report',

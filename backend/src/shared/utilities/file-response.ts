@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import { config } from '../../infrastructure/config';
 
 /**
  * Uploaded files are served from the API origin with a client-declared type, so the type can't be
@@ -7,6 +8,28 @@ import type { Response } from 'express';
  * download of opaque bytes, which `nosniff` stops from being used as a script or stylesheet.
  */
 const SANDBOX_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox";
+
+/**
+ * The app embeds stored documents (LMS PDFs, text) in an <iframe> from its own origin: the web dev server,
+ * the Capacitor webviews (capacitor://localhost, https://localhost) or a separate web host. helmet's
+ * `frame-ancestors 'self'` / `X-Frame-Options: SAMEORIGIN` would block those, so file responses allow the
+ * app's origins (`CORS_ORIGINS` + `PUBLIC_WEB_URL`) as frame ancestors instead.
+ */
+export function fileFrameAncestors(): string {
+  const origins = [...new Set([...config.corsOrigins, config.publicWebUrl])].filter((o) =>
+    /^[a-z][a-z0-9+.-]*:\/\/[^\s;,'"]+$/i.test(o),
+  );
+  return ["frame-ancestors 'self'", ...origins].join(' ');
+}
+
+/** `csp` with its frame-ancestors directive replaced by {@link fileFrameAncestors}. */
+export function withFileFrameAncestors(csp: string): string {
+  const directives = csp
+    .split(';')
+    .map((d) => d.trim())
+    .filter((d) => d && !/^frame-ancestors\b/i.test(d));
+  return [...directives, fileFrameAncestors()].join('; ');
+}
 
 /** Never stored: executables and documents that run script when opened in a browser. */
 const BLOCKED_UPLOAD =
@@ -71,6 +94,9 @@ export function setFileResponseHeaders(
     'Content-Disposition',
     contentDisposition(policy.inline ? 'inline' : 'attachment', file.originalName),
   );
-  if (policy.sandbox) res.setHeader('Content-Security-Policy', SANDBOX_CSP);
+  const csp = policy.sandbox ? SANDBOX_CSP : String(res.getHeader('Content-Security-Policy') ?? '');
+  res.setHeader('Content-Security-Policy', withFileFrameAncestors(csp));
+  // Superseded by frame-ancestors; helmet's SAMEORIGIN would still block older webviews.
+  res.removeHeader('X-Frame-Options');
   return policy;
 }

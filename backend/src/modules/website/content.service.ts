@@ -5,6 +5,7 @@
 import { Op, type WhereOptions } from 'sequelize';
 import type { FormFieldDef, WebsiteBlock } from '@erp/shared';
 import { requireTenantContext } from '../../shared/context';
+import { instituteToday } from '../../shared/timezone';
 import { isModuleEnabled } from '../subscriptions/subscription.service';
 import { Batch, BatchStudent, Course } from '../academics/api';
 import { Branch } from '../branches/branch.model';
@@ -89,7 +90,7 @@ async function listBatches(s: {
   if (s.courseId) where.courseId = s.courseId;
   if (s.branchId) where.branchId = s.branchId;
   if (s.upcomingOnly !== false) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = await instituteToday(instituteId);
     where[Op.or] = [{ endDate: null }, { endDate: { [Op.gte]: today } }];
   }
   const batches = await Batch.findAll({

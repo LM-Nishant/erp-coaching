@@ -29,6 +29,10 @@ import {
 } from '../src/modules/reports/exports.service';
 import { ReportExport } from '../src/modules/reports/models';
 import { getActiveSubscription } from '../src/modules/subscriptions/subscription.service';
+import { saasBillingKpis } from '../src/modules/subscriptions/api';
+import { getBillingProfile } from '../src/modules/subscriptions/billing-settings';
+import { saasBillingStatsProvider } from '../src/modules/subscriptions/integrations';
+import { SubscriptionPayment } from '../src/modules/subscriptions/models';
 import {
   DEMO_PASSWORD,
   USERS,
@@ -265,7 +269,7 @@ describe('reports & analytics', () => {
 
   afterAll(async () => {
     exportLimits.sync = 2000;
-    setSaasBillingStatsProvider(null);
+    setSaasBillingStatsProvider(saasBillingStatsProvider);
     const sequelize = getSequelize();
     const select = async (sql: string, replacements: unknown[] = []) =>
       ((await sequelize.query(sql, { replacements }))[0] as { id: number }[]).map((r) => r.id);
@@ -744,12 +748,15 @@ describe('reports & analytics', () => {
       const res = await saas();
       expect(res.status, JSON.stringify(res.body)).toBe(200);
       expect(res.body.period).toMatchObject({ from: range.from, to: range.to });
-      expect(res.body.revenue).toMatchObject({ source: 'subscriptions', currency: 'INR' });
+      expect(res.body.revenue).toMatchObject({ source: 'billing', currency: 'INR' });
       expect(res.body.institutes.total).toBeGreaterThanOrEqual(2);
       const apex = res.body.institutesTable.find((r: { id: number }) => r.id === 1);
       expect(apex).toMatchObject({ name: (await Institute.findByPk(1))!.name });
       expect(apex.students).toBeGreaterThanOrEqual(4);
       expect(apex.branches).toBeGreaterThanOrEqual(2);
+      // The platform dashboard's user card counts the same institute users (no super admins).
+      const platformCards = await request(app).get('/api/admin/dashboard').set(bearer(t.sa));
+      expect(platformCards.body.users).toBe(res.body.users.total);
     });
 
     it('uses the billing stats provider and falls back when it fails', async () => {
@@ -780,8 +787,38 @@ describe('reports & analytics', () => {
         expect(fallback.status).toBe(200);
         expect(fallback.body.revenue.source).toBe('subscriptions');
       } finally {
-        setSaasBillingStatsProvider(null);
+        setSaasBillingStatsProvider(saasBillingStatsProvider);
       }
+    });
+
+    it('reports SaaS billing figures (invoices, payments, MRR) from the billing module', async () => {
+      const res = await saas();
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const revenue = res.body.revenue as SaasBillingStatsDto;
+      const kpis = await saasBillingKpis();
+      const paid = await SubscriptionPayment.findAll({
+        where: { status: 'success' },
+        tenantBypass: true,
+      } as object);
+      const start = new Date(`${addDays(range.from, -1)}T18:30:00Z`).getTime(); // IST midnight
+      const end = new Date(`${range.to}T18:30:00Z`).getTime();
+      const collected = paid
+        .filter((p) => p.paidAt && p.paidAt.getTime() >= start && p.paidAt.getTime() < end)
+        .reduce((n, p) => n + p.amountPaise, 0);
+      expect(revenue).toMatchObject({
+        source: 'billing',
+        mrrPaise: kpis.mrrPaise,
+        arrPaise: kpis.mrrPaise * 12,
+        outstandingPaise: kpis.receivablePaise,
+        revenueInPeriodPaise: collected,
+      });
+      expect(revenue.paidSubscriptions).toBe(revenue.byPlan.reduce((n, p) => n + p.subscriptions, 0));
+      expect(revenue.billing).toMatchObject({
+        openInvoices: kpis.openInvoices,
+        overduePaise: kpis.overduePaise,
+      });
+      expect(revenue.billing!.revenueByMonth.at(-1)!.month).toBe(`${range.to.slice(0, 7)}-01`);
+      expect(revenue.billing!.byState.map((s) => s.state)).toContain('none');
     });
 
     it('exports the institutes table and audits it', async () => {
@@ -794,6 +831,14 @@ describe('reports & analytics', () => {
       const body = res.body as Buffer;
       expect([...body.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
       expect(body.toString('utf8')).toContain((await Institute.findByPk(1))!.name);
+      // The header carries the platform brand (SaaS billing legal name), not a hard-coded name.
+      const pdf = await binary(
+        `/api/admin/reports/institutes/export?format=pdf&from=${range.from}&to=${range.to}`,
+      ).set(bearer(t.sa));
+      expect(pdf.status).toBe(200);
+      expect((pdf.body as Buffer).toString('latin1')).toContain(
+        `/Author (${(await getBillingProfile()).legalName})`,
+      );
       const audit = await AuditEvent.findOne({
         where: { action: 'report.saas_exported' },
         order: [['id', 'DESC']],

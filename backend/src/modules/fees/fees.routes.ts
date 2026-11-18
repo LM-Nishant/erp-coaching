@@ -15,7 +15,7 @@ import { requireModule, requirePermission } from '../../shared/middleware/author
 import { webhookRateLimit } from '../../shared/middleware/security';
 import { hasPermission, requireTenantContext } from '../../shared/context';
 import { BadRequest, Conflict, NotFound } from '../../shared/errors';
-import { Student } from '../students/models';
+import { Student } from '../students/api';
 import { linkedStudentIds } from '../guardians/guardian-access';
 import {
   FeeAccount,

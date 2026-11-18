@@ -5,7 +5,7 @@ import { logger } from '../../infrastructure/logger';
 import { requireTenantContext, runWithContext } from '../../shared/context';
 import { todayIn } from '../../shared/timezone';
 import { isModuleEnabled } from '../subscriptions/subscription.service';
-import { Student } from '../students/models';
+import { Student } from '../students/api';
 import { FeeAccount, FeeInstalment } from './models';
 import { applyLateFee } from './accounts.service';
 import { getFeeSettings } from './settings.service';

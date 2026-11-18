@@ -25,6 +25,7 @@ import {
 } from '../../infrastructure/ai-providers/openai-compatible.client';
 import { countImages, mockChatCompletion } from '../../infrastructure/ai-providers/mock.client';
 import { AppError } from '../../shared/errors';
+import { assertStoredSecretReusable, changedDestinationFields } from '../../shared/utilities/secret-reuse';
 import { getContext } from '../../shared/context';
 import { getInstituteTimezone, todayIn, zonedDateTimeToUtc } from '../../shared/timezone';
 import { getPlanLimits } from '../subscriptions/subscription.service';
@@ -56,7 +57,11 @@ export async function getConnection(): Promise<StoredConnection> {
   const row = await AiSetting.findOne({ where: { scope: SCOPE } });
   const baseUrl = row?.baseUrl ?? config.AI_BASE_URL;
   const dbKey = row?.apiKeyEncrypted ? decryptSecret(row.apiKeyEncrypted) : null;
-  const apiKey = dbKey ?? config.AI_API_KEY ?? null;
+  // The env key belongs to the env base URL: it is never sent to a URL saved in the settings.
+  const envKey = changedDestinationFields({ baseUrl }, { baseUrl: config.AI_BASE_URL }, ['baseUrl']).length
+    ? null
+    : config.AI_API_KEY;
+  const apiKey = dbKey ?? envKey ?? null;
   return {
     provider: row?.provider ?? inferProvider(baseUrl),
     baseUrl,
@@ -64,7 +69,7 @@ export async function getConnection(): Promise<StoredConnection> {
     apiKey: apiKey || null,
     jsonMode: row?.jsonMode ?? true,
     timeoutMs: config.AI_TIMEOUT_MS,
-    keySource: dbKey ? 'database' : config.AI_API_KEY ? 'env' : 'none',
+    keySource: dbKey ? 'database' : envKey ? 'env' : 'none',
     inputUsdPer1M: row?.inputUsdPer1M ?? null,
     outputUsdPer1M: row?.outputUsdPer1M ?? null,
   };
@@ -194,17 +199,41 @@ function assertProviderAllowed(provider: AiProviderId | undefined) {
   }
 }
 
-/** Empty/omitted apiKey keeps the stored key; omitted prices keep the stored overrides. */
+/**
+ * The stored key, when it may be sent to `next` (the provider and base URL it was saved for), else
+ * null. Throws 400 SECRET_REQUIRED when `next` needs a key and the destination changed: the stored
+ * key must never follow the form to another provider or URL.
+ */
+function reusableKey(current: StoredConnection, next: { provider: AiProviderId; baseUrl: string }) {
+  if (!current.apiKey) return null;
+  const changed = changedDestinationFields(current, next, ['provider', 'baseUrl']);
+  if (!changed.length) return current.apiKey;
+  if (needsKey(next.provider)) assertStoredSecretReusable(true, changed, 'API key');
+  return null;
+}
+
+/**
+ * Empty/omitted apiKey keeps the stored key, as long as the provider and base URL are unchanged
+ * (see `reusableKey`); omitted prices keep the stored overrides.
+ */
 export async function updateSettings(input: AiSettingsUpdate, userId: number | null): Promise<AiSettingsDto> {
   assertProviderAllowed(input.provider);
   const existing = await AiSetting.findOne({ where: { scope: SCOPE } });
+  const newKey = input.apiKey?.trim();
+  const baseUrl = input.baseUrl.trim().replace(/\/+$/, '');
+  // A key-less provider (Ollama) at a new URL must not be sent the stored key: drop it.
+  const dropKey =
+    !newKey &&
+    input.provider !== 'mock' &&
+    !!existing?.apiKeyEncrypted &&
+    !reusableKey(await getConnection(), { provider: input.provider, baseUrl });
   const values = {
     provider: input.provider,
-    baseUrl: input.baseUrl.trim().replace(/\/+$/, ''),
+    baseUrl,
     model: input.model.trim(),
     jsonMode: input.jsonMode,
     updatedBy: userId,
-    ...(input.apiKey && input.apiKey.trim() ? { apiKeyEncrypted: encryptSecret(input.apiKey.trim()) } : {}),
+    ...(newKey ? { apiKeyEncrypted: encryptSecret(newKey) } : dropKey ? { apiKeyEncrypted: null } : {}),
     ...(input.inputUsdPer1M !== undefined ? { inputUsdPer1M: input.inputUsdPer1M } : {}),
     ...(input.outputUsdPer1M !== undefined ? { outputUsdPer1M: input.outputUsdPer1M } : {}),
   };
@@ -413,15 +442,20 @@ export interface AiProviderErrorDetails {
   usageId: number;
 }
 
-/** Test a (possibly unsaved) configuration. Falls back to the stored key when `apiKey` is empty. */
+/**
+ * Test a (possibly unsaved) configuration. Falls back to the stored key when `apiKey` is empty, but
+ * only for the provider and base URL it was saved for (400 SECRET_REQUIRED otherwise).
+ */
 export async function testConnection(input: Partial<AiSettingsUpdate>): Promise<AiTestResult> {
   const started = Date.now();
   const current = await getConnection();
+  const provider = input.provider ?? current.provider;
+  const baseUrl = (input.baseUrl ?? current.baseUrl).trim();
   const conn: ProviderConnection = {
-    provider: input.provider ?? current.provider,
-    baseUrl: (input.baseUrl ?? current.baseUrl).trim(),
+    provider,
+    baseUrl,
     model: (input.model ?? current.model).trim(),
-    apiKey: input.apiKey?.trim() || current.apiKey,
+    apiKey: input.apiKey?.trim() || reusableKey(current, { provider, baseUrl }),
     timeoutMs: Math.min(config.AI_TIMEOUT_MS, 20000),
   };
   if (conn.provider === 'mock' && !isMockAllowed()) {
