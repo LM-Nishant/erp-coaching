@@ -392,6 +392,9 @@ export interface EvaluationDto {
   aiMarks: number | null;
   aiFeedback: string | null;
   aiConfidence: number | null;
+  /** Provider/model of the AI result behind `aiMarks` (`mock` = offline mock provider). */
+  aiProvider: string | null;
+  aiModel: string | null;
   teacherMarks: number | null;
   teacherFeedback: string | null;
   finalMarks: number | null;
@@ -436,8 +439,95 @@ export interface GradingJobDto {
   failed: number;
   error: string | null;
   promptVersionId: number | null;
+  /** Provider/model of the job's AI calls (null until the first call). */
+  provider: string | null;
+  model: string | null;
+  totalTokens: number;
+  imageCount: number;
+  estimatedCostUsd: number;
   createdAt: string;
   finishedAt: string | null;
+}
+
+/** One AI grading call for an answer: raw output plus usage, kept for audit. */
+export interface GradingResultDto {
+  id: number;
+  gradingJobId: number | null;
+  status: 'success' | 'error';
+  provider: string | null;
+  model: string | null;
+  marks: number | null;
+  feedback: string | null;
+  confidence: number | null;
+  rawOutput: string | null;
+  usedVision: boolean;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  imageCount: number;
+  estimatedCostUsd: number;
+  latencyMs: number | null;
+  error: string | null;
+  promptVersionId: number | null;
+  createdAt: string;
+}
+
+/**
+ * Append-only marks trail. Answer-level kinds record each AI result and teacher edit; `published`
+ * and `unpublished` are attempt-level snapshots (`answerId` null) of the marks students saw.
+ */
+export const MARK_REVISION_KINDS = [
+  'ai_suggestion',
+  'ai_final',
+  'teacher_mark',
+  'teacher_accept',
+  'teacher_override',
+  'correction',
+  'published',
+  'unpublished',
+] as const;
+export type MarkRevisionKind = (typeof MARK_REVISION_KINDS)[number];
+export type MarkRevisionSource = 'ai' | 'teacher' | 'system';
+
+export interface MarkRevisionDto {
+  id: number;
+  attemptId: number;
+  answerId: number | null;
+  kind: MarkRevisionKind;
+  source: MarkRevisionSource;
+  /** For `published` snapshots: the answer's published marks (attempt total in `attemptTotal`). */
+  marks: number | null;
+  previousMarks: number | null;
+  feedback: string | null;
+  gradingResultId: number | null;
+  correctionId: number | null;
+  actorName: string | null;
+  /** Provider/model/confidence for AI rows, reason for corrections, totals for snapshots. */
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+/** Full history of one descriptive answer: submission → AI output → teacher edits → published marks. */
+export interface AnswerHistoryDto {
+  answerId: number;
+  attemptId: number;
+  examQuestionId: number;
+  maxMarks: number;
+  /** The original submission, never modified after submit. */
+  submission: { responseText: string | null; pages: AnswerPageDto[]; submittedAt: string | null };
+  current: {
+    status: EvaluationStatus | null;
+    aiMarks: number | null;
+    teacherMarks: number | null;
+    finalMarks: number | null;
+    /** Marks counted in the result now (latest correction › final marks › auto score). */
+    effectiveMarks: number | null;
+  };
+  aiResults: GradingResultDto[];
+  revisions: MarkRevisionDto[];
+  corrections: ResultCorrectionDto[];
+  /** Marks of this answer at the most recent publish, if results were ever published. */
+  published: { at: string; marks: number | null; attemptTotal: number | null } | null;
 }
 
 export interface PromptVersionDto {

@@ -1,9 +1,13 @@
 import { Op, type WhereOptions } from 'sequelize';
 import type {
+  AiAvailabilityDto,
+  AnswerHistoryDto,
   EvaluateAnswerInput,
   EvaluationDto,
   EvaluationStatus,
   GradingJobDto,
+  GradingResultDto,
+  MarkRevisionKind,
   PromptVersionDto,
   PromptVersionInput,
 } from '@erp/shared';
@@ -16,7 +20,7 @@ import { getStorage } from '../../infrastructure/storage';
 import { logger } from '../../infrastructure/logger';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import type { ChatMessage } from '../../infrastructure/ai-providers/openai-compatible.client';
-import { aiChat, assertAiQuota } from '../ai/ai.service';
+import { aiChat, assertAiQuota, getAiAvailability } from '../ai/ai.service';
 import { FileObject } from '../files/file.model';
 import { User } from '../users/user.model';
 import { extractJson } from '../question-bank/api';
@@ -35,11 +39,14 @@ import { attemptRepo, examRepo, examTenantRepo, me } from './exams.service';
 import {
   answerRepo,
   closeOverdueAttempts,
+  correctionRepo,
+  effectiveMarks,
   pageDto,
   recomputeAttempt,
   setOnAttemptFinalized,
 } from './attempts.service';
 import { round2 } from './scoring';
+import { actorInclude, correctionDto, recordRevision, revisionDto, revisionRepo } from './revisions';
 
 export const GRADE_JOB = 'exams.grade';
 export const GRADING_FEATURE = 'exams.grading';
@@ -178,6 +185,8 @@ function evaluationDto(a: ExamAnswer): EvaluationDto {
     aiMarks: ev.aiMarks,
     aiFeedback: ev.aiFeedback,
     aiConfidence: ev.aiResult?.confidence ?? null,
+    aiProvider: ev.aiResult?.provider ?? null,
+    aiModel: ev.aiResult?.model ?? null,
     teacherMarks: ev.teacherMarks,
     teacherFeedback: ev.teacherFeedback,
     finalMarks: ev.finalMarks,
@@ -240,14 +249,40 @@ export async function evaluateAnswer(
   const marks = input.acceptAi ? ev.aiMarks! : (input.marks ?? 0);
   if (marks < 0 || marks > max) throw BadRequest(`Marks must be between 0 and ${max}`);
   const before = { teacherMarks: ev.teacherMarks, finalMarks: ev.finalMarks, status: ev.status };
-  await ev.update({
-    teacherMarks: round2(marks),
-    teacherFeedback:
-      input.feedback !== undefined ? input.feedback : input.acceptAi ? ev.aiFeedback : ev.teacherFeedback,
-    evaluatedByUserId: me(),
-    evaluatedAt: new Date(),
-    finalMarks: round2(marks),
-    status: 'finalized',
+  const feedback =
+    input.feedback !== undefined ? input.feedback : input.acceptAi ? ev.aiFeedback : ev.teacherFeedback;
+  const kind: MarkRevisionKind = input.acceptAi
+    ? 'teacher_accept'
+    : ev.aiMarks != null
+      ? 'teacher_override'
+      : 'teacher_mark';
+  await getSequelize().transaction(async (transaction) => {
+    await ev.update(
+      {
+        teacherMarks: round2(marks),
+        teacherFeedback: feedback,
+        evaluatedByUserId: me(),
+        evaluatedAt: new Date(),
+        finalMarks: round2(marks),
+        status: 'finalized',
+      },
+      { transaction },
+    );
+    await recordRevision(
+      {
+        examId,
+        attemptId: answer.attemptId,
+        answerId,
+        kind,
+        source: 'teacher',
+        marks: round2(marks),
+        previousMarks: before.finalMarks ?? ev.aiMarks,
+        feedback,
+        gradingResultId: ev.aiResultId,
+        metadata: { aiMarks: ev.aiMarks, previousStatus: before.status },
+      },
+      { transaction },
+    );
   });
   await recomputeAttempt(answer.attemptId);
   await audit({
@@ -279,9 +314,19 @@ function jobDto(j: GradingJob): GradingJobDto {
     failed: j.failed,
     error: j.error,
     promptVersionId: j.promptVersionId,
+    provider: j.provider ?? null,
+    model: j.model ?? null,
+    totalTokens: j.totalTokens ?? 0,
+    imageCount: j.imageCount ?? 0,
+    estimatedCostUsd: j.estimatedCostUsd ?? 0,
     createdAt: j.createdAt.toISOString(),
     finishedAt: j.finishedAt?.toISOString() ?? null,
   };
+}
+
+/** Whether AI grading can run now for the current institute (plan, provider, quota) and what remains. */
+export async function gradingAiStatus(): Promise<AiAvailabilityDto> {
+  return getAiAvailability(requireTenantContext().instituteId);
 }
 
 export async function listGradingJobs(examId: number): Promise<GradingJobDto[]> {
@@ -419,7 +464,9 @@ async function buildMessages(answer: ExamAnswer, eq: ExamQuestion, systemPrompt:
   return { messages, usedVision: images.length > 0 };
 }
 
-/** Job handler. Stores raw AI output separately and applies it per the exam's evaluation mode. */
+const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
+
+/** Job handler. Stores raw AI output and usage separately and applies it per the exam's evaluation mode. */
 export async function runGradingJob(payload: { gradingJobId: number; answerIds: number[] }) {
   const job = await jobRepo.findOne({ where: { id: payload.gradingJobId } });
   if (!job || job.status === 'completed') return;
@@ -432,6 +479,18 @@ export async function runGradingJob(payload: { gradingJobId: number; answerIds: 
   const touched = new Set<number>();
   let processed = 0;
   let failed = 0;
+  const usage = {
+    totalTokens: job.totalTokens ?? 0,
+    imageCount: job.imageCount ?? 0,
+    costUsd: job.estimatedCostUsd ?? 0,
+  };
+  const progress = () => ({
+    processed,
+    failed,
+    totalTokens: usage.totalTokens,
+    imageCount: usage.imageCount,
+    estimatedCostUsd: round6(usage.costUsd),
+  });
   for (const answerId of payload.answerIds) {
     const answer = await answerRepo.findOne({
       where: { id: answerId },
@@ -448,6 +507,7 @@ export async function runGradingJob(payload: { gradingJobId: number; answerIds: 
     }
     const eq = answer.examQuestion!;
     let usedVision = false;
+    const startedAt = Date.now();
     try {
       const built = await buildMessages(answer, eq, prompt);
       usedVision = built.usedVision;
@@ -458,6 +518,11 @@ export async function runGradingJob(payload: { gradingJobId: number; answerIds: 
         temperature: 0,
         messages: built.messages,
       });
+      usage.totalTokens += res.usage.totalTokens;
+      usage.imageCount += res.imageCount;
+      usage.costUsd += res.estimatedCostUsd;
+      if (job.provider !== res.provider || job.model !== res.model)
+        await job.update({ provider: res.provider, model: res.model });
       let out: GradingOutput | null = null;
       let parseError: string | null = null;
       try {
@@ -470,12 +535,19 @@ export async function runGradingJob(payload: { gradingJobId: number; answerIds: 
         answerId,
         promptVersionId: job.promptVersionId,
         status: out ? 'success' : 'error',
+        provider: res.provider,
         model: res.model,
         marks: out?.marks ?? null,
         feedback: out?.feedback ?? null,
         confidence: out?.confidence ?? null,
         rawOutput: res.content.slice(0, 60000),
+        promptTokens: res.usage.promptTokens,
+        completionTokens: res.usage.completionTokens,
         totalTokens: res.usage.totalTokens,
+        imageCount: res.imageCount,
+        estimatedCostUsd: res.estimatedCostUsd,
+        latencyMs: Date.now() - startedAt,
+        aiUsageId: res.usageId,
         usedVision,
         error: parseError,
       });
@@ -483,12 +555,34 @@ export async function runGradingJob(payload: { gradingJobId: number; answerIds: 
         failed++;
       } else {
         const aiOnly = exam.evaluationMode === 'ai_only';
+        const previousAi = ev.aiMarks;
         await ev.update({
           aiResultId: result.id,
           aiMarks: out.marks,
           aiFeedback: out.feedback,
           status: aiOnly ? 'finalized' : 'ai_suggested',
           finalMarks: aiOnly ? out.marks : null,
+        });
+        await recordRevision({
+          examId: exam.id,
+          attemptId: answer.attemptId,
+          answerId,
+          kind: aiOnly ? 'ai_final' : 'ai_suggestion',
+          source: 'ai',
+          marks: out.marks,
+          previousMarks: previousAi,
+          feedback: out.feedback,
+          gradingResultId: result.id,
+          actorUserId: null,
+          metadata: {
+            provider: res.provider,
+            model: res.model,
+            mock: res.mock,
+            confidence: out.confidence,
+            gradingJobId: job.id,
+            promptVersionId: job.promptVersionId,
+            requestedByUserId: job.requestedByUserId,
+          },
         });
         touched.add(answer.attemptId);
       }
@@ -504,6 +598,7 @@ export async function runGradingJob(payload: { gradingJobId: number; answerIds: 
         feedback: null,
         confidence: null,
         rawOutput: null,
+        latencyMs: Date.now() - startedAt,
         usedVision,
         error: String(e.message).slice(0, 1000),
       });
@@ -515,19 +610,24 @@ export async function runGradingJob(payload: { gradingJobId: number; answerIds: 
       ) {
         processed++;
         await job.update({
-          processed,
-          failed,
+          ...progress(),
           status: 'failed',
           error: e.message.slice(0, 1000),
           finishedAt: new Date(),
         });
         for (const id of touched) await recomputeAttempt(id);
         logger.warn({ gradingJobId: job.id, code: e.code }, 'AI grading stopped');
+        await audit({
+          action: 'exam.ai_grading_stopped',
+          entityType: 'grading_job',
+          entityId: job.id,
+          metadata: { examId: exam.id, code: e.code, ...progress() },
+        });
         return;
       }
     }
     processed++;
-    await job.update({ processed, failed });
+    await job.update(progress());
   }
   for (const id of touched) await recomputeAttempt(id);
   await job.update({
@@ -539,26 +639,110 @@ export async function runGradingJob(payload: { gradingJobId: number; answerIds: 
     action: 'exam.ai_grading_completed',
     entityType: 'grading_job',
     entityId: job.id,
-    metadata: { examId: exam.id, processed, failed },
+    metadata: { examId: exam.id, ...progress(), provider: job.provider, model: job.model },
   });
 }
 
-/** Raw AI history of one answer (for audit/review). */
-export async function aiHistory(examId: number, answerId: number) {
-  await loadEvaluation(examId, answerId);
-  const rows = await resultRepo.findAll({ where: { answerId }, order: [['id', 'DESC']] });
-  return rows.map((r) => ({
+function gradingResultDto(r: GradingResult): GradingResultDto {
+  return {
     id: r.id,
     gradingJobId: r.gradingJobId,
     status: r.status,
+    provider: r.provider ?? null,
     model: r.model,
     marks: r.marks,
     feedback: r.feedback,
     confidence: r.confidence,
     rawOutput: r.rawOutput,
     usedVision: r.usedVision,
+    promptTokens: r.promptTokens ?? 0,
+    completionTokens: r.completionTokens ?? 0,
+    totalTokens: r.totalTokens ?? 0,
+    imageCount: r.imageCount ?? 0,
+    estimatedCostUsd: r.estimatedCostUsd ?? 0,
+    latencyMs: r.latencyMs ?? null,
     error: r.error,
     promptVersionId: r.promptVersionId,
     createdAt: r.createdAt.toISOString(),
-  }));
+  };
+}
+
+/** Raw AI history of one answer (for audit/review), newest first. */
+export async function aiHistory(examId: number, answerId: number): Promise<GradingResultDto[]> {
+  await loadEvaluation(examId, answerId);
+  const rows = await resultRepo.findAll({ where: { answerId }, order: [['id', 'DESC']] });
+  return rows.map(gradingResultDto);
+}
+
+/**
+ * Everything that happened to one answer, oldest first: the untouched submission, every AI call
+ * (with usage), every teacher edit/correction and the marks students saw at each publish.
+ */
+export async function answerHistory(examId: number, answerId: number): Promise<AnswerHistoryDto> {
+  const exam = await staffExam(examId);
+  const a = await answerRepo.findOne({
+    where: { id: answerId },
+    include: [
+      { model: ExamAttempt, as: 'attempt' },
+      { model: ExamQuestion, as: 'examQuestion' },
+      { model: ExamAnswerPage, as: 'pages', include: [{ model: FileObject, as: 'file' }] },
+      { model: ExamEvaluation, as: 'evaluation' },
+    ],
+  });
+  if (!a || a.attempt!.examId !== exam.id) throw NotFound('Answer');
+  if (a.attempt!.status === 'in_progress') throw Conflict('The attempt is still in progress', 'ATTEMPT_OPEN');
+  const results = await resultRepo.findAll({ where: { answerId }, order: [['id', 'ASC']] });
+  const revisions = await revisionRepo.findAll({
+    where: { attemptId: a.attemptId, [Op.or]: [{ answerId }, { answerId: null }] },
+    include: [actorInclude],
+    order: [['id', 'ASC']],
+  });
+  const corrections = await correctionRepo.findAll({
+    where: { answerId },
+    include: [{ model: User, as: 'correctedBy', attributes: ['id', 'name'] }],
+    order: [['id', 'ASC']],
+  });
+  const current = (await effectiveMarks([answerId])).get(answerId) ?? null;
+  const ev = a.evaluation ?? null;
+  const trail = revisions.map((r) => {
+    const dto = revisionDto(r);
+    if (r.answerId !== null) return dto;
+    // Attempt-level snapshot: expose this answer's marks and the attempt totals only.
+    const meta = (r.metadata ?? {}) as { answers?: Record<string, number | null> } & Record<string, unknown>;
+    const { answers, ...totals } = meta;
+    return {
+      ...dto,
+      marks: answers?.[String(answerId)] ?? null,
+      metadata: { ...totals, attemptTotal: r.marks },
+    };
+  });
+  const lastPublish = [...trail].reverse().find((r) => r.kind === 'published');
+  return {
+    answerId: a.id,
+    attemptId: a.attemptId,
+    examQuestionId: a.examQuestionId,
+    maxMarks: a.examQuestion!.marks,
+    submission: {
+      responseText: a.response?.text ?? null,
+      pages: [...(a.pages ?? [])].sort((x, y) => x.pageNo - y.pageNo).map(pageDto),
+      submittedAt: a.attempt!.submittedAt?.toISOString() ?? null,
+    },
+    current: {
+      status: ev?.status ?? null,
+      aiMarks: ev?.aiMarks ?? null,
+      teacherMarks: ev?.teacherMarks ?? null,
+      finalMarks: ev?.finalMarks ?? null,
+      effectiveMarks: current,
+    },
+    aiResults: results.map(gradingResultDto),
+    revisions: trail,
+    corrections: corrections.map(correctionDto),
+    published: lastPublish
+      ? {
+          at: lastPublish.createdAt,
+          marks: lastPublish.marks,
+          attemptTotal: (lastPublish.metadata?.attemptTotal as number | null | undefined) ?? null,
+        }
+      : null,
+  };
 }

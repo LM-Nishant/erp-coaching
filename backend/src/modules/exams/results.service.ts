@@ -4,7 +4,6 @@ import type {
   ChildResultListItem,
   ExamAnalyticsDto,
   QuestionResultDto,
-  ResultCorrectionDto,
   ResultCorrectionInput,
   ResultDto,
   TopicStat,
@@ -17,15 +16,7 @@ import { User } from '../users/user.model';
 import { getLinkedStudentUsers } from '../guardians/guardian-access';
 import { guardiansOfStudentUsers, notify } from '../notifications/api';
 import { toCsv } from '../question-bank/spreadsheet';
-import {
-  ExamAnswer,
-  ExamAnswerPage,
-  ExamAttempt,
-  ExamEvaluation,
-  ExamQuestion,
-  ExamResultCorrection,
-  Exam,
-} from './models';
+import { ExamAnswer, ExamAnswerPage, ExamAttempt, ExamEvaluation, ExamQuestion, Exam } from './models';
 import {
   attemptRepo,
   eligibleStudentUserIds,
@@ -50,6 +41,7 @@ import {
 import { signedUrlFor } from '../files/files.service';
 import { rankScores, round2 } from './scoring';
 import { SimplePdf } from './pdf';
+import { correctionDto, recordRevision, recordRevisions } from './revisions';
 
 // ---------------------------------------------------------------- DTOs
 
@@ -69,18 +61,6 @@ function summaryDto(a: ExamAttempt): AttemptSummaryDto {
     pendingEvaluations: a.pendingEvaluations,
     rank: a.rank,
     percentile: a.percentile,
-  };
-}
-
-function correctionDto(c: ExamResultCorrection): ResultCorrectionDto {
-  return {
-    id: c.id,
-    answerId: c.answerId,
-    beforeMarks: c.beforeMarks,
-    afterMarks: c.afterMarks,
-    reason: c.reason,
-    correctedByName: c.correctedBy?.name ?? null,
-    createdAt: c.createdAt.toISOString(),
   };
 }
 
@@ -354,6 +334,41 @@ async function rankExam(exam: Exam) {
   return attempts;
 }
 
+/** Attempt-level snapshot of the marks students see (or stop seeing), kept in the marks trail. */
+async function snapshotPublishedMarks(
+  exam: Exam,
+  attempts: ExamAttempt[],
+  kind: 'published' | 'unpublished',
+) {
+  const answers = attempts.length
+    ? await answerRepo.findAll({
+        where: { attemptId: attempts.map((a) => a.id) },
+        attributes: ['id', 'attemptId'],
+      })
+    : [];
+  const marks = await effectiveMarks(answers.map((a) => a.id));
+  await recordRevisions(
+    attempts.map((a) => ({
+      examId: exam.id,
+      attemptId: a.id,
+      answerId: null,
+      kind,
+      source: 'system' as const,
+      marks: a.totalScore,
+      metadata: {
+        maxScore: a.maxScore,
+        objectiveScore: a.objectiveScore,
+        descriptiveScore: a.descriptiveScore,
+        rank: a.rank,
+        percentile: a.percentile,
+        answers: Object.fromEntries(
+          answers.filter((x) => x.attemptId === a.id).map((x) => [String(x.id), marks.get(x.id) ?? null]),
+        ),
+      },
+    })),
+  );
+}
+
 export async function publishResults(examId: number) {
   const exam = await examRepo.findById(examId);
   if (exam.status !== 'scheduled')
@@ -370,6 +385,7 @@ export async function publishResults(examId: number) {
     });
   const attempts = await rankExam(exam);
   await exam.update({ resultsPublishedAt: new Date(), resultsPublishedBy: me() });
+  await snapshotPublishedMarks(exam, attempts, 'published');
   await audit({
     action: 'exam.results_published',
     entityType: 'exam',
@@ -404,6 +420,8 @@ export async function unpublishResults(examId: number) {
   const exam = await examRepo.findById(examId);
   if (!exam.resultsPublishedAt) throw Conflict('Results are not published', 'RESULTS_NOT_PUBLISHED');
   await exam.update({ resultsPublishedAt: null, resultsPublishedBy: null });
+  const attempts = await attemptRepo.findAll({ where: { examId, status: { [Op.ne]: 'in_progress' } } });
+  await snapshotPublishedMarks(exam, attempts, 'unpublished');
   await audit({ action: 'exam.results_unpublished', entityType: 'exam', entityId: examId });
   return examDto(await loadExamForDto(examId));
 }
@@ -433,6 +451,17 @@ export async function correctResult(examId: number, input: ResultCorrectionInput
     afterMarks: round2(input.marks),
     reason: input.reason,
     correctedByUserId: me(),
+  });
+  await recordRevision({
+    examId,
+    attemptId: answer.attemptId,
+    answerId: answer.id,
+    kind: 'correction',
+    source: 'teacher',
+    marks: c.afterMarks,
+    previousMarks: before,
+    correctionId: c.id,
+    metadata: { reason: input.reason, afterPublish: !!exam.resultsPublishedAt },
   });
   await recomputeAttempt(answer.attemptId);
   if (exam.resultsPublishedAt) await rankExam(exam);

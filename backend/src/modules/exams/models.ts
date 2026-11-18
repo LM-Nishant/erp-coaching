@@ -15,6 +15,8 @@ import type {
   EvaluationStatus,
   ExamStatus,
   GradingJobStatus,
+  MarkRevisionKind,
+  MarkRevisionSource,
   QuestionOption,
   QuestionType,
 } from '@erp/shared';
@@ -28,6 +30,15 @@ const pk = { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: 
 const uint = (allowNull = true) => ({ type: DataTypes.INTEGER.UNSIGNED, allowNull });
 const bool = (defaultValue = false) => ({ type: DataTypes.BOOLEAN, allowNull: false, defaultValue });
 const ts = { createdAt: DataTypes.DATE, updatedAt: DataTypes.DATE };
+const counter = { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 };
+const costUsd = (name: string) => ({
+  type: DataTypes.DECIMAL(12, 6),
+  allowNull: false,
+  defaultValue: 0,
+  get(this: Model) {
+    return Number(this.getDataValue(name) ?? 0);
+  },
+});
 
 /** Frozen copy of a bank question taken when it is added to an exam. */
 export interface QuestionSnapshot {
@@ -194,6 +205,11 @@ export class GradingJob extends Model<InferAttributes<GradingJob>, InferCreation
   declare processed: CreationOptional<number>;
   declare failed: CreationOptional<number>;
   declare error: string | null;
+  declare provider: CreationOptional<string | null>;
+  declare model: CreationOptional<string | null>;
+  declare totalTokens: CreationOptional<number>;
+  declare imageCount: CreationOptional<number>;
+  declare estimatedCostUsd: CreationOptional<number>;
   declare requestedByUserId: number | null;
   declare startedAt: Date | null;
   declare finishedAt: Date | null;
@@ -211,12 +227,19 @@ export class GradingResult extends Model<
   declare answerId: number;
   declare promptVersionId: number | null;
   declare status: 'success' | 'error';
+  declare provider: CreationOptional<string | null>;
   declare model: string | null;
   declare marks: number | null;
   declare feedback: string | null;
   declare confidence: number | null;
   declare rawOutput: string | null;
+  declare promptTokens: CreationOptional<number>;
+  declare completionTokens: CreationOptional<number>;
   declare totalTokens: CreationOptional<number>;
+  declare imageCount: CreationOptional<number>;
+  declare estimatedCostUsd: CreationOptional<number>;
+  declare latencyMs: CreationOptional<number | null>;
+  declare aiUsageId: CreationOptional<number | null>;
   declare usedVision: CreationOptional<boolean>;
   declare error: string | null;
   declare createdAt: CreationOptional<Date>;
@@ -260,6 +283,29 @@ export class ExamResultCorrection extends Model<
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
   declare correctedBy?: NonAttribute<User | null>;
+}
+
+export class ExamMarkRevision extends Model<
+  InferAttributes<ExamMarkRevision>,
+  InferCreationAttributes<ExamMarkRevision>
+> {
+  declare id: CreationOptional<number>;
+  declare instituteId: number;
+  declare examId: number;
+  declare attemptId: number;
+  declare answerId: number | null;
+  declare kind: MarkRevisionKind;
+  declare source: MarkRevisionSource;
+  declare marks: number | null;
+  declare previousMarks: number | null;
+  declare feedback: string | null;
+  declare gradingResultId: number | null;
+  declare correctionId: number | null;
+  declare actorUserId: number | null;
+  declare metadata: Record<string, unknown> | null;
+  declare createdAt: CreationOptional<Date>;
+  declare updatedAt: CreationOptional<Date>;
+  declare actor?: NonAttribute<User | null>;
 }
 
 export function initExamModels(sequelize: Sequelize) {
@@ -402,6 +448,11 @@ export function initExamModels(sequelize: Sequelize) {
       processed: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
       failed: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
       error: DataTypes.STRING(1000),
+      provider: DataTypes.STRING(30),
+      model: DataTypes.STRING(150),
+      totalTokens: counter,
+      imageCount: counter,
+      estimatedCostUsd: costUsd('estimatedCostUsd'),
       requestedByUserId: uint(),
       startedAt: DataTypes.DATE,
       finishedAt: DataTypes.DATE,
@@ -417,12 +468,19 @@ export function initExamModels(sequelize: Sequelize) {
       answerId: uint(false),
       promptVersionId: uint(),
       status: { type: DataTypes.STRING(10), allowNull: false },
+      provider: DataTypes.STRING(30),
       model: DataTypes.STRING(150),
       marks: decimal('marks', true),
       feedback: DataTypes.TEXT,
       confidence: { ...decimal('confidence', true), type: DataTypes.DECIMAL(4, 3) },
       rawOutput: DataTypes.TEXT,
-      totalTokens: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
+      promptTokens: counter,
+      completionTokens: counter,
+      totalTokens: counter,
+      imageCount: counter,
+      estimatedCostUsd: costUsd('estimatedCostUsd'),
+      latencyMs: uint(),
+      aiUsageId: uint(),
       usedVision: bool(),
       error: DataTypes.STRING(1000),
       ...ts,
@@ -461,6 +519,26 @@ export function initExamModels(sequelize: Sequelize) {
     },
     opts('exam_result_corrections'),
   );
+  ExamMarkRevision.init(
+    {
+      id: pk,
+      instituteId: uint(false),
+      examId: uint(false),
+      attemptId: uint(false),
+      answerId: uint(),
+      kind: { type: DataTypes.STRING(20), allowNull: false },
+      source: { type: DataTypes.STRING(10), allowNull: false },
+      marks: decimal('marks', true),
+      previousMarks: decimal('previousMarks', true),
+      feedback: DataTypes.TEXT,
+      gradingResultId: uint(),
+      correctionId: uint(),
+      actorUserId: uint(),
+      metadata: DataTypes.JSON,
+      ...ts,
+    },
+    opts('exam_mark_revisions'),
+  );
   for (const m of [
     PromptVersion,
     Exam,
@@ -473,6 +551,7 @@ export function initExamModels(sequelize: Sequelize) {
     GradingResult,
     ExamEvaluation,
     ExamResultCorrection,
+    ExamMarkRevision,
   ])
     registerTenantModel(m as never);
 }
@@ -493,4 +572,5 @@ export function associateExamModels() {
   ExamEvaluation.belongsTo(GradingResult, { as: 'aiResult', foreignKey: 'aiResultId' });
   ExamEvaluation.belongsTo(User, { as: 'evaluator', foreignKey: 'evaluatedByUserId' });
   ExamResultCorrection.belongsTo(User, { as: 'correctedBy', foreignKey: 'correctedByUserId' });
+  ExamMarkRevision.belongsTo(User, { as: 'actor', foreignKey: 'actorUserId' });
 }

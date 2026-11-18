@@ -51,6 +51,8 @@ const schema = z.object({
   AI_MODEL: z.string().default('gpt-4o-mini'),
   AI_API_KEY: z.string().default(''),
   AI_TIMEOUT_MS: z.coerce.number().default(60000),
+  // Dev/test only: use the built-in mock provider while no API key is configured. Ignored in production.
+  AI_MOCK_FALLBACK: bool(true),
 
   SMS_PROVIDER: z.enum(['console']).default('console'),
   WHATSAPP_PROVIDER: z.enum(['console']).default('console'),

@@ -21,6 +21,7 @@ import { loadReusableQuestions, questionDtos, Question } from '../question-bank/
 import { batchMembersOf, notify } from '../notifications/api';
 import { Exam, ExamAttempt, ExamQuestion, ExamSection, PromptVersion, type QuestionSnapshot } from './models';
 import { round2 } from './scoring';
+import { assertAiPlanEnabled } from '../ai/ai.service';
 
 export const MODULE = 'exams';
 export const REMINDER_JOB = 'exams.reminder';
@@ -218,6 +219,9 @@ function assertWindow(startAt: Date, endAt: Date, durationMinutes: number) {
 async function assertEvaluationMode(mode: string | undefined, promptVersionId?: number | null) {
   if (mode === 'ai_only' && !hasPermission(`${MODULE}.configure`))
     throw Forbidden('AI-only evaluation requires the exams.configure permission', 'AI_ONLY_FORBIDDEN');
+  // Provider/quota problems surface when grading is queued; a plan without AI can't pick AI modes at all.
+  if (mode === 'ai_assist' || mode === 'ai_only')
+    await assertAiPlanEnabled(requireTenantContext().instituteId);
   if (promptVersionId) {
     const pv = await promptRepo.findById(promptVersionId);
     if (pv.feature !== 'exams.grading') throw BadRequest('Prompt version is not for exam grading');
