@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from '@ionic/vue-router';
 import type { RouteLocationNormalized, RouteRecordRaw } from 'vue-router';
 import type { PermissionKey } from '@erp/shared';
-import { appModules } from '@/core/modules';
+import { appModules, navigationGuards } from '@/core/modules';
 import { useAuthStore } from '@/stores/auth';
 
 declare module 'vue-router' {
@@ -12,6 +12,8 @@ declare module 'vue-router' {
     permission?: PermissionKey;
     /** Platform super-admin page (not while impersonating). */
     superAdmin?: boolean;
+    /** Stays reachable while the institute's subscription is suspended (billing, data export). */
+    allowWhenSuspended?: boolean;
   }
 }
 
@@ -42,5 +44,9 @@ router.beforeEach(async (to: RouteLocationNormalized) => {
   if (auth.needsInstitute && to.name !== 'select-institute') return { name: 'select-institute' };
   if (to.meta.superAdmin && !auth.isPlatformAdmin) return '/home';
   if (to.meta.permission && !auth.can(to.meta.permission)) return { name: 'forbidden' };
+  for (const guard of navigationGuards) {
+    const result = await guard(to);
+    if (result !== true) return result;
+  }
   return true;
 });

@@ -1,5 +1,5 @@
 import type { Component } from 'vue';
-import type { RouteRecordRaw } from 'vue-router';
+import type { RouteLocationNormalized, RouteLocationRaw, RouteRecordRaw } from 'vue-router';
 import type { ParentChildDto, PermissionKey } from '@erp/shared';
 
 export interface MenuItem {
@@ -29,7 +29,16 @@ export interface AppModule {
   toolbarItems?: Component[];
   /** Cards contributed to shared dashboards (see CONTRIBUTING "Dashboard widgets"). */
   widgets?: DashboardWidget[];
+  /**
+   * Run after the login and permission checks of every signed-in navigation. Return `true` to
+   * continue or a location to redirect to (e.g. a suspended institute goes to billing).
+   */
+  navigationGuards?: AppNavigationGuard[];
 }
+
+export type AppNavigationGuard = (
+  to: RouteLocationNormalized,
+) => true | RouteLocationRaw | Promise<true | RouteLocationRaw>;
 
 /** Known dashboard slots and the props each passes to its widgets. */
 export interface WidgetSlotProps {
@@ -69,6 +78,8 @@ export const appModules: AppModule[] = Object.values(
 ).map((m) => m.default);
 
 export const toolbarItems: Component[] = appModules.flatMap((m) => m.toolbarItems ?? []);
+
+export const navigationGuards: AppNavigationGuard[] = appModules.flatMap((m) => m.navigationGuards ?? []);
 
 const allWidgets: DashboardWidget[] = appModules.flatMap((m) => m.widgets ?? []);
 

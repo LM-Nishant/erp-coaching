@@ -400,7 +400,7 @@ export async function startCheckout(
       amountPaise: amount,
       currency: 'INR',
       customer: opts.customer,
-      callbackUrl: `/subscription/billing?invoice=${inv.id}`,
+      callbackUrl: `/subscription?invoice=${inv.id}`,
       metadata: { invoiceNumber: inv.number, instituteId: String(instituteId) },
     });
     await payment.update({ gatewayOrderId: order.gatewayOrderId, checkoutPayload: order.checkout });
