@@ -1,6 +1,7 @@
 import { QueryTypes, type Transaction } from 'sequelize';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { requireTenantContext } from '../../shared/context';
+import { getInstituteTimezone, todayIn } from '../../shared/timezone';
 import { Institute } from '../institutes/institute.model';
 import { Branch } from '../branches/branch.model';
 import { financialYear } from './util';
@@ -14,7 +15,10 @@ export interface FeeNumberTarget {
   width: number;
 }
 
-/** Renders every token except `{SEQ}`. A missing `{SEQ}` is appended so numbers stay unique. */
+/**
+ * Renders every token except `{SEQ}`. A missing `{SEQ}` is appended so numbers stay unique.
+ * Date tokens use the institute's calendar day at `now`.
+ */
 export async function resolveFeeNumberTarget(
   kind: FeeSequenceKind,
   format: string,
@@ -22,18 +26,20 @@ export async function resolveFeeNumberTarget(
   now = new Date(),
 ): Promise<FeeNumberTarget> {
   const { instituteId } = requireTenantContext();
-  const [inst, branch] = await Promise.all([
+  const [inst, branch, tz] = await Promise.all([
     Institute.findByPk(instituteId, { attributes: ['slug'] }),
     branchId ? Branch.findOne({ where: { instituteId, id: branchId }, attributes: ['code'] }) : null,
+    getInstituteTimezone(instituteId),
   ]);
-  const yyyy = String(now.getFullYear());
+  const day = todayIn(tz, now);
+  const yyyy = day.slice(0, 4);
   let width = 0;
   let fmt = format.includes('{SEQ') ? format : `${format}{SEQ}`;
   fmt = fmt
-    .replace(/\{FY\}/g, financialYear(now))
+    .replace(/\{FY\}/g, financialYear(day))
     .replace(/\{YYYY\}/g, yyyy)
     .replace(/\{YY\}/g, yyyy.slice(2))
-    .replace(/\{MM\}/g, String(now.getMonth() + 1).padStart(2, '0'))
+    .replace(/\{MM\}/g, day.slice(5, 7))
     .replace(/\{INST\}/g, (inst?.slug ?? 'INST').toUpperCase())
     .replace(/\{BRANCH\}/g, branch?.code ?? 'BR')
     .replace(/\{SEQ(?::(\d{1,2}))?\}/, (_m, w?: string) => {

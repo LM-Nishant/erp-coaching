@@ -286,7 +286,7 @@ export function batchRoutes(r: Router) {
     });
     if (!row) throw NotFound('Enrollment');
     const before = row.toJSON();
-    await row.update({ status: 'left', leftOn: today() });
+    await row.update({ status: 'left', leftOn: await today() });
     await audit({
       action: 'batch.student_removed',
       entityType: 'BatchStudent',
@@ -355,7 +355,7 @@ export function batchRoutes(r: Router) {
       throw Conflict(`Target batch capacity ${to.capacity} exceeded`, 'BATCH_FULL');
 
     const { userId } = getContext();
-    const day = today();
+    const day = await today();
     await getSequelize().transaction(async (transaction) => {
       for (const e of moving) {
         await e.update({ status: 'promoted', leftOn: day }, { transaction });

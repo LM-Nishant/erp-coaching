@@ -1,12 +1,10 @@
 import { audit } from '../../shared/audit/audit.service';
+import { instituteToday } from '../../shared/timezone';
 export const isoDate = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Today in the server's local date (YYYY-MM-DD). */
-export function today(now = new Date()): string {
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+/** Today (YYYY-MM-DD) in the current tenant institute's timezone. */
+export function today(): Promise<string> {
+  return instituteToday();
 }
 
 export function addMonths(date: string, months: number): string {
@@ -27,9 +25,10 @@ export function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
 
-/** Indian financial year label, e.g. `2026-27` for dates between 1 Apr 2026 and 31 Mar 2027. */
-export function financialYear(now = new Date()): string {
-  const y = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+/** Indian financial year label of a YYYY-MM-DD date, e.g. `2026-27` for 1 Apr 2026 – 31 Mar 2027. */
+export function financialYear(date: string): string {
+  const [year, month] = date.split('-').map(Number);
+  const y = month >= 4 ? year : year - 1;
   return `${y}-${String((y + 1) % 100).padStart(2, '0')}`;
 }
 

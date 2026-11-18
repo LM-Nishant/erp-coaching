@@ -29,11 +29,5 @@ export function monthBounds(year: number, month: number) {
 export const maxDate = (a: string, b: string) => (a > b ? a : b);
 export const minDate = (a: string, b: string) => (a < b ? a : b);
 
-/** Today's date in server-local time. */
-export function today(now = new Date()): string {
-  const off = now.getTimezoneOffset() * 60000;
-  return new Date(now.getTime() - off).toISOString().slice(0, 10);
-}
-
 export const isoDate = /^\d{4}-\d{2}-\d{2}$/;
 export const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;

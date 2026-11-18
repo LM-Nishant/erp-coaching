@@ -7,6 +7,7 @@ import { guardiansOfStudentUsers, notify } from '../notifications/api';
 import { getContext, hasPermission, requireTenantContext } from '../../shared/context';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../shared/errors';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
+import { instituteToday } from '../../shared/timezone';
 import { Role, UserRole } from '../permissions/models';
 import { User } from '../users/user.model';
 import { Branch } from '../branches/branch.model';
@@ -63,8 +64,9 @@ export function assertTimeRange(start: string, end: string) {
   if (toMinutes(end) <= toMinutes(start)) throw BadRequest('End time must be after start time');
 }
 
-export function today(): string {
-  return new Date().toISOString().slice(0, 10);
+/** Today (YYYY-MM-DD) in the current tenant institute's timezone. */
+export function today(): Promise<string> {
+  return instituteToday();
 }
 
 /** Inclusive list of YYYY-MM-DD dates between two dates (UTC arithmetic, no TZ drift). */
@@ -409,6 +411,7 @@ export async function enrollStudentsInBatch(
   studentUserIds: number[],
   opts: { joinedOn?: string; branchId?: number; transaction?: Transaction } = {},
 ): Promise<{ enrolled: number[]; skipped: number[] }> {
+  const joinedOn = opts.joinedOn ?? (await today());
   const run = async (transaction: Transaction) => {
     const batch = await repos.batches.findById(batchId, { transaction, lock: transaction.LOCK.UPDATE });
     if (batch.status === 'cancelled' || batch.status === 'completed')
@@ -431,7 +434,7 @@ export async function enrollStudentsInBatch(
       throw Conflict(`Batch capacity ${batch.capacity} exceeded (${already.size} enrolled)`, 'BATCH_FULL');
     for (const studentUserId of toAdd)
       await repos.batchStudents.create(
-        { batchId, studentUserId, joinedOn: opts.joinedOn ?? today(), leftOn: null, promotedFromId: null },
+        { batchId, studentUserId, joinedOn, leftOn: null, promotedFromId: null },
         { transaction },
       );
     return { enrolled: toAdd, skipped: unique.filter((s) => already.has(s)) };

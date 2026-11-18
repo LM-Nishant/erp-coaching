@@ -24,7 +24,7 @@ export const adjustmentRepo = new TenantRepository(FeeAdjustment, { entity: 'Fee
 
 const REDUCING: FeeAdjustmentType[] = ['discount', 'concession', 'scholarship', 'waiver'];
 
-export function instalmentDto(i: FeeInstalment, now = today()): FeeInstalmentDto {
+export function instalmentDto(i: FeeInstalment, now: string): FeeInstalmentDto {
   return {
     id: i.id,
     seq: i.seq,
@@ -56,7 +56,11 @@ export function adjustmentDto(a: FeeAdjustment): FeeAdjustmentDto {
   };
 }
 
-export function accountDto(a: FeeAccount, extra: { adjustments?: FeeAdjustment[] } = {}): FeeAccountDto {
+export function accountDto(
+  a: FeeAccount,
+  asOf: string,
+  extra: { adjustments?: FeeAdjustment[] } = {},
+): FeeAccountDto {
   return {
     id: a.id,
     branchId: a.branchId,
@@ -78,7 +82,7 @@ export function accountDto(a: FeeAccount, extra: { adjustments?: FeeAdjustment[]
     balance: a.balance,
     status: a.status,
     source: a.source,
-    instalments: a.instalments?.sort((x, y) => x.seq - y.seq).map((i) => instalmentDto(i)),
+    instalments: a.instalments?.sort((x, y) => x.seq - y.seq).map((i) => instalmentDto(i, asOf)),
     adjustments: extra.adjustments?.map(adjustmentDto),
     createdAt: a.createdAt.toISOString(),
   };
@@ -197,7 +201,7 @@ export async function generateAccount(
   const plan = input.firstDueDate
     ? { ...structure.instalmentPlan, firstDueDate: input.firstDueDate }
     : structure.instalmentPlan;
-  const schedule = buildSchedule(structure.total, plan);
+  const schedule = buildSchedule(structure.total, plan, await today());
   const taxableGross = structure.components.filter((c) => c.taxable).reduce((s, c) => s + c.amount, 0);
   try {
     return await withLockRetry(() =>
@@ -424,7 +428,7 @@ export async function decideAdjustment(id: number, approve: boolean) {
             accountId: account.id,
             seq,
             label: fresh.reason?.slice(0, 100) || 'Additional charge',
-            dueDate: today(),
+            dueDate: await today(),
             amount: fresh.amount,
           },
           { transaction },
@@ -488,7 +492,7 @@ export async function reduceInstalments(
 }
 
 /** Applies the configured late fee to one overdue instalment (idempotent per day for per_day). */
-export async function applyLateFee(instalmentId: number, asOf = today()): Promise<number> {
+export async function applyLateFee(instalmentId: number, asOf: string): Promise<number> {
   const settings = await getFeeSettings();
   const cfg = settings.lateFee;
   if (cfg.type === 'none') return 0;
