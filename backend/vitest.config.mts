@@ -34,6 +34,8 @@ const testEnv = {
   DB_NAME: process.env.TEST_DB_NAME ?? fileEnv.TEST_DB_NAME ?? 'erp_coaching_test',
   RATE_LIMIT_ENABLED: 'false',
   JOBS_WORKER_ENABLED: 'false',
+  // Suites rely on sessions not expiring; mobile-security.test.ts sets institute timeouts itself.
+  SESSION_IDLE_TIMEOUT_MINUTES: '0',
   STORAGE_LOCAL_ROOT: './tmp/test-storage',
   AI_API_KEY: '',
 };

@@ -41,6 +41,8 @@ const schema = z.object({
   OTP_TTL_SECONDS: z.coerce.number().default(300),
   OTP_MAX_ATTEMPTS: z.coerce.number().default(5),
   MAX_ACTIVE_DEVICES: z.coerce.number().default(2),
+  /** Default inactivity timeout (minutes, 0 = off) for sessions without an institute setting. */
+  SESSION_IDLE_TIMEOUT_MINUTES: z.coerce.number().int().min(0).max(1440).default(0),
 
   STORAGE_DRIVER: z.enum(['local', 's3', 'r2']).default('local'),
   STORAGE_LOCAL_ROOT: z.string().default('./storage'),

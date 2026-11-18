@@ -23,7 +23,7 @@ import { BadRequest, Conflict, Forbidden, NotFound } from '../../shared/errors';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { audit } from '../../shared/audit/audit.service';
 import { Batch, BatchStudent, Chapter, Course, CourseSubject, Subject, Topic } from '../academics/api';
-import { Device } from '../authentication/models';
+import { Device } from '../authentication/api';
 import { FileObject } from '../files/file.model';
 import { fileRepo, signedUrlFor } from '../files/files.service';
 import { UserRole } from '../permissions/models';
@@ -844,9 +844,10 @@ export async function issueOfflineLicense(id: number): Promise<LmsOfflineLicense
 }
 
 /**
- * Licences of this device. Licences whose content is no longer accessible are revoked here, so the
- * app deletes the copies on its next sync. The key is returned again for still-valid licences
- * (needed to decrypt for playback after an app restart; the app never stores it on disk).
+ * Licences of this device. Licences whose content is no longer accessible (entitlement ended,
+ * resource unpublished or no longer offline-enabled) are revoked here, so the app deletes the copies
+ * on its next sync. The key is returned again for still-valid licences; the app keeps it in secure
+ * storage (Keychain / Android Keystore) so copies play without a connection until `expiresAt`.
  */
 export async function listOfflineLicenses(): Promise<
   (LmsOfflineLicenseSummary & { contentKey: string | null })[]
@@ -877,6 +878,22 @@ export async function listOfflineLicenses(): Promise<
     });
   }
   return out;
+}
+
+/**
+ * System (device revocation listener): revokes every offline licence of a device in all institutes.
+ * The app deletes the copies when it next connects (the revoked session is rejected) and refuses to
+ * play them offline after `expiresAt`.
+ */
+export async function revokeDeviceOfflineLicenses(userId: number, deviceId: number, at: Date) {
+  await LmsOfflineLicense.update(
+    { revokedAt: at },
+    {
+      where: { userId, deviceId, revokedAt: null },
+      // Devices are platform-wide: the licences may belong to several institutes.
+      tenantBypass: true,
+    } as Parameters<typeof LmsOfflineLicense.update>[1],
+  );
 }
 
 export async function revokeOfflineLicense(id: number) {

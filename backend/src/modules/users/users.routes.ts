@@ -1,18 +1,20 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import { Op } from 'sequelize';
+import { Op, type WhereOptions } from 'sequelize';
 import { z } from 'zod';
+import type { DeviceUserDto } from '@erp/shared';
 import { parse } from '../../shared/utilities/validation';
 import { idParam, paginated, paginationSchema, toLimitOffset } from '../../shared/utilities/pagination';
 import { authenticate } from '../../shared/middleware/authenticate';
 import { requirePermission } from '../../shared/middleware/authorize';
-import { requireTenantContext } from '../../shared/context';
+import { requireTenantContext, type TenantContext } from '../../shared/context';
 import { BadRequest, Forbidden, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { Branch } from '../branches/branch.model';
 import { Role, UserBranch, UserRole } from '../permissions/models';
-import { Device } from '../authentication/models';
+import { resolveAccess } from '../permissions/access.service';
+import { Device, listUserDevices, revokeDevice } from '../authentication/api';
 import { User } from './user.model';
 
 const assignmentSchema = z.object({
@@ -79,6 +81,80 @@ async function memberOrThrow(userId: number) {
   });
   if (!roles.length) throw NotFound('User');
   return roles;
+}
+
+const isPlatformAdmin = (ctx: TenantContext) => !!ctx.isSuperAdmin && !ctx.impersonatorId;
+
+/**
+ * A member whose sign-in devices the requester may manage (spec 4.18): anyone in the institute for
+ * institute-wide admins; for branch-scoped admins only members whose access is limited to branches
+ * they share. Super admin accounts are managed by the platform only. Anyone else → 404.
+ */
+async function manageableMember(userId: number) {
+  const ctx = requireTenantContext();
+  await memberOrThrow(userId);
+  const user = await User.findByPk(userId);
+  if (!user || (user.isSuperAdmin && !isPlatformAdmin(ctx))) throw NotFound('User');
+  if (ctx.allowedBranchIds !== null) {
+    const allowed = ctx.allowedBranchIds;
+    const target = await resolveAccess(userId, ctx.instituteId);
+    if (!target.allowedBranchIds?.some((b) => allowed.includes(b))) throw NotFound('User');
+  }
+  return user;
+}
+
+/** Ids of members limited to the requester's branches, or null when the requester is institute-wide. */
+async function branchMemberIds(ctx: TenantContext): Promise<number[] | null> {
+  if (ctx.allowedBranchIds === null) return null;
+  const { instituteId, allowedBranchIds: branchId } = ctx;
+  const [roles, branches, instituteWide] = await Promise.all([
+    UserRole.findAll({ where: { instituteId, branchId }, attributes: ['userId'] }),
+    UserBranch.findAll({ where: { instituteId, branchId }, attributes: ['userId'] }),
+    UserRole.findAll({ where: { instituteId, branchId: null }, attributes: ['userId'] }),
+  ]);
+  const excluded = new Set(instituteWide.map((r) => r.userId));
+  return [...new Set([...roles, ...branches].map((r) => r.userId))].filter((id) => !excluded.has(id));
+}
+
+/** Device management search: members the requester may manage, with their active device count. */
+async function searchDeviceUsers(search?: string): Promise<DeviceUserDto[]> {
+  const ctx = requireTenantContext();
+  const ids = await branchMemberIds(ctx);
+  if (ids && !ids.length) return [];
+  const where: WhereOptions[] = [];
+  if (ids) where.push({ id: ids });
+  if (!isPlatformAdmin(ctx)) where.push({ isSuperAdmin: false });
+  if (search)
+    where.push({
+      [Op.or]: [
+        { name: { [Op.like]: `%${search}%` } },
+        { mobile: { [Op.like]: `%${search}%` } },
+        { email: { [Op.like]: `%${search}%` } },
+      ],
+    });
+  const users = await User.findAll({
+    where: { [Op.and]: where },
+    include: [
+      { model: UserRole, as: 'roleAssignments', where: { instituteId: ctx.instituteId }, attributes: [] },
+    ],
+    order: [['name', 'ASC']],
+    limit: 50,
+    subQuery: false,
+  });
+  if (!users.length) return [];
+  const unique = [...new Map(users.map((u) => [u.id, u])).values()];
+  const devices = await Device.findAll({
+    where: { userId: unique.map((u) => u.id), status: 'active' },
+    attributes: ['userId'],
+  });
+  return unique.map((u) => ({
+    id: u.id,
+    name: u.name,
+    mobile: u.mobile,
+    email: u.email,
+    status: u.status,
+    activeDevices: devices.filter((d) => d.userId === u.id).length,
+  }));
 }
 
 export function userRoutes(api: Router) {
@@ -166,6 +242,11 @@ export function userRoutes(api: Router) {
     res.status(201).json(user.toPublic());
   });
 
+  r.get('/devices', requirePermission('users', 'view'), async (req, res) => {
+    const q = parse(z.object({ search: z.string().trim().max(100).optional() }), req.query);
+    res.json(await searchDeviceUsers(q.search || undefined));
+  });
+
   r.get('/:id', requirePermission('users', 'view'), async (req, res) => {
     const { id } = parse(idParam, req.params);
     const roles = await memberOrThrow(id);
@@ -215,17 +296,20 @@ export function userRoutes(api: Router) {
 
   r.get('/:id/devices', requirePermission('users', 'view'), async (req, res) => {
     const { id } = parse(idParam, req.params);
-    await memberOrThrow(id);
-    const devices = await Device.findAll({ where: { userId: id }, order: [['lastSeenAt', 'DESC']] });
-    res.json(
-      devices.map((d) => ({
-        id: d.id,
-        name: d.name,
-        platform: d.platform,
-        status: d.status,
-        lastSeenAt: d.lastSeenAt,
-      })),
+    await manageableMember(id);
+    res.json(await listUserDevices(id));
+  });
+
+  // Revoking signs the device out at once (tokens), wipes its offline downloads and biometric
+  // unlock, notifies the user and is audited (see authentication/devices.service).
+  r.delete('/:id/devices/:deviceId', requirePermission('users', 'edit'), async (req, res) => {
+    const p = parse(
+      z.object({ id: z.coerce.number().int().positive(), deviceId: z.coerce.number().int().positive() }),
+      req.params,
     );
+    await manageableMember(p.id);
+    await revokeDevice(p.deviceId, p.id, req.ctx.userId!);
+    res.status(204).end();
   });
 
   api.use('/users', r);

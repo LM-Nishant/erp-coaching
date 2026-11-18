@@ -20,6 +20,9 @@ export class Device extends Model<InferAttributes<Device>, InferCreationAttribut
   declare lastIp: string | null;
   declare revokedAt: Date | null;
   declare revokedBy: number | null;
+  /** SHA-256 of the biometric unlock secret kept in the app's secure storage (null = not set up). */
+  declare unlockKeyHash: CreationOptional<string | null>;
+  declare unlockEnrolledAt: CreationOptional<Date | null>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -89,6 +92,8 @@ export function initAuthModels(sequelize: Sequelize) {
       lastIp: DataTypes.STRING(64),
       revokedAt: DataTypes.DATE,
       revokedBy: uint(true),
+      unlockKeyHash: DataTypes.STRING(64),
+      unlockEnrolledAt: DataTypes.DATE,
       ...ts,
     },
     { sequelize, tableName: 'devices' },

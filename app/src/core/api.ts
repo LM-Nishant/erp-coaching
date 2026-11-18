@@ -23,29 +23,56 @@ export interface RequestOptions {
   signal?: AbortSignal;
   /** Extra request headers (e.g. `Idempotency-Key`). */
   headers?: Record<string, string>;
+  /** Automatic poll, not a user action: does not keep the session alive (inactivity logout). */
+  background?: boolean;
 }
 
-/** Called when the session can no longer be refreshed (router redirects to login). */
-let onSessionExpired: (() => void) | null = null;
-export function setSessionExpiredHandler(fn: () => void) {
-  onSessionExpired = fn;
+/** 401 codes a token refresh cannot fix: inactivity timeout, revoked device, deactivated account. */
+const SESSION_END_CODES = new Set(['SESSION_IDLE', 'SESSION_REVOKED', 'ACCOUNT_INACTIVE']);
+
+type SessionEndedHandler = (code: string) => void | Promise<void>;
+/** Called with the API's error code once the session is over (main.ts locks the app or goes to login). */
+let onSessionEnded: SessionEndedHandler | null = null;
+export function setSessionExpiredHandler(fn: SessionEndedHandler) {
+  onSessionEnded = fn;
 }
 
-let refreshing: Promise<boolean> | null = null;
+let ending: Promise<void> | null = null;
+/** Concurrent 401s end the session once. */
+function sessionEnded(code: string) {
+  ending ??= (async () => {
+    if (onSessionEnded) await onSessionEnded(code);
+    else await saveSession(null);
+  })()
+    .catch(() => undefined)
+    .finally(() => (ending = null));
+  return ending;
+}
+
+async function errorCode(res: Response): Promise<string | undefined> {
+  if (!res.headers.get('content-type')?.includes('application/json')) return undefined;
+  try {
+    return ((await res.clone().json()) as ApiErrorBody)?.error?.code;
+  } catch {
+    return undefined;
+  }
+}
+
+let refreshing: Promise<{ ok: boolean; code?: string }> | null = null;
 
 /** Single-flight refresh: concurrent 401s share one refresh call (refresh tokens rotate). */
-async function refreshAccessToken(): Promise<boolean> {
+async function refreshAccessToken(): Promise<{ ok: boolean; code?: string }> {
   refreshing ??= (async () => {
     const session = await loadSession();
-    if (!session?.refreshToken || session.impersonator) return false;
+    if (!session?.refreshToken || session.impersonator) return { ok: false };
     const res = await fetch(`${API_URL}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken: session.refreshToken }),
     });
-    if (!res.ok) return false;
+    if (!res.ok) return { ok: false, code: await errorCode(res) };
     await updateTokens((await res.json()) as AuthTokens);
-    return true;
+    return { ok: true };
   })().finally(() => {
     refreshing = null;
   });
@@ -64,6 +91,7 @@ async function send(method: string, path: string, opts: RequestOptions, retried 
   const headers: Record<string, string> = { Accept: 'application/json', ...opts.headers };
   const isForm = opts.body instanceof FormData;
   if (opts.body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
+  if (opts.background) headers['X-Background-Request'] = '1';
   if (!opts.anonymous) {
     const session = await loadSession();
     if (session?.accessToken) headers.Authorization = `Bearer ${session.accessToken}`;
@@ -75,17 +103,20 @@ async function send(method: string, path: string, opts: RequestOptions, retried 
     signal: opts.signal,
     body: opts.body === undefined ? undefined : isForm ? (opts.body as FormData) : JSON.stringify(opts.body),
   });
-  if (res.status === 401 && !opts.anonymous && !retried) {
-    if (await refreshAccessToken()) return send(method, path, opts, true);
+  if (res.status !== 401 || opts.anonymous) return res;
+  let code = await errorCode(res);
+  if (!retried && !SESSION_END_CODES.has(code ?? '')) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed.ok) return send(method, path, opts, true);
     const session = await loadSession();
     if (session?.impersonator) {
-      // Impersonation token expired: fall back to the super admin session.
+      // Impersonation token expired: fall back to the super admin session (refreshed if needed).
       await saveSession({ ...session.impersonator, impersonator: null, branchId: null });
-      return send(method, path, opts, true);
+      return send(method, path, opts);
     }
-    await saveSession(null);
-    onSessionExpired?.();
+    code = refreshed.code ?? code;
   }
+  void sessionEnded(code ?? 'UNAUTHORIZED');
   return res;
 }
 

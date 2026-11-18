@@ -1,29 +1,68 @@
+import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
-import type { AuthTokens } from '@erp/shared';
+import type { AuthTokens, MeDto } from '@erp/shared';
+import { SecureKey, secureGet, secureGetJson, secureRemove, secureSet, secureSetJson } from './secure-storage';
 
-/** Session persisted on the device (Capacitor Preferences → localStorage on web, native storage on iOS/Android). */
+/**
+ * Session persisted on the device: secure storage in the mobile app (iOS Keychain / Android Keystore), localStorage on
+ * the web (see core/secure-storage.ts).
+ */
 export interface StoredSession {
   accessToken: string;
   refreshToken: string | null;
   branchId?: number | null;
+  /** Signed-in user (the super admin while impersonating). Tags offline content and the biometric credential. */
+  userId?: number | null;
   /** Original super-admin session while impersonating. */
   impersonator?: { accessToken: string; refreshToken: string | null } | null;
 }
 
-const KEY = 'erp.session';
-let cache: StoredSession | null | undefined;
+/** Key used by app versions that kept the session in plain preferences. */
+const LEGACY_KEY = 'erp.session';
 
-export async function loadSession(): Promise<StoredSession | null> {
-  if (cache !== undefined) return cache;
-  const { value } = await Preferences.get({ key: KEY });
-  cache = value ? (JSON.parse(value) as StoredSession) : null;
-  return cache;
+let cache: StoredSession | null | undefined;
+let loading: Promise<StoredSession | null> | null = null;
+let writes: Promise<unknown> = Promise.resolve();
+
+async function read(): Promise<StoredSession | null> {
+  let raw = await secureGet(SecureKey.session);
+  if (!raw && Capacitor.isNativePlatform()) {
+    const legacy = (await Preferences.get({ key: LEGACY_KEY })).value;
+    if (legacy) {
+      await secureSet(SecureKey.session, legacy);
+      await Preferences.remove({ key: LEGACY_KEY });
+      raw = legacy;
+    }
+  }
+  try {
+    return raw ? (JSON.parse(raw) as StoredSession) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function loadSession(): Promise<StoredSession | null> {
+  if (cache !== undefined) return Promise.resolve(cache);
+  loading ??= read()
+    .then((s) => {
+      if (cache === undefined) cache = s;
+      return cache;
+    })
+    .finally(() => (loading = null));
+  return loading;
+}
+
+/** Writes are queued so the stored value always matches the last call (e.g. a refresh racing a sign-out). */
+function persist(task: () => Promise<unknown>) {
+  writes = writes.catch(() => undefined).then(task);
+  return writes;
 }
 
 export async function saveSession(session: StoredSession | null) {
   cache = session;
-  if (session) await Preferences.set({ key: KEY, value: JSON.stringify(session) });
-  else await Preferences.remove({ key: KEY });
+  await persist(() =>
+    session ? secureSet(SecureKey.session, JSON.stringify(session)) : secureRemove(SecureKey.session),
+  );
 }
 
 export async function updateTokens(
@@ -36,3 +75,9 @@ export async function updateTokens(
     refreshToken: tokens.refreshToken ?? current.refreshToken,
   });
 }
+
+/** Last `/auth/me` response: lets the app start offline (offline lectures) and show who is signed in on the lock screen. */
+export const loadProfile = () => secureGetJson<MeDto>(SecureKey.profile);
+
+export const saveProfile = (me: MeDto | null) =>
+  persist(() => (me ? secureSetJson(SecureKey.profile, me) : secureRemove(SecureKey.profile)));
