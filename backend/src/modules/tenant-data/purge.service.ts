@@ -167,8 +167,11 @@ async function removeUsers(
   const refs = userReferenceColumns(fks, new Set(instituteTables));
   for (const part of chunk(ids, 1000)) {
     for (const f of refs) {
+      // The institute's own rows are gone, so a non-null institute_id is another institute's row.
+      // Platform rows (institute_id NULL, e.g. the deletion audit trail) do not keep an account.
       const rows = await sequelize.query<{ u: number }>(
-        `SELECT DISTINCT ${ident(f.column)} AS u FROM ${ident(f.table)} WHERE ${ident(f.column)} IN (:ids)`,
+        `SELECT DISTINCT ${ident(f.column)} AS u FROM ${ident(f.table)}
+          WHERE ${ident(f.column)} IN (:ids) AND institute_id IS NOT NULL`,
         { type: QueryTypes.SELECT, replacements: { ids: part } },
       );
       for (const r of rows) stillMembers.add(Number(r.u));
