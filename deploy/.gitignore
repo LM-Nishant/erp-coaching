@@ -1,0 +1,10 @@
+# Runtime state of the compose stack: never commit certificates, secrets, env files or backups.
+/.env
+/certs/
+/acme-webroot/
+/backups/
+/secrets/
+/.smoke*/
+# Host-specific additions (docs/deployment.md): Compose merges docker-compose.override.yml automatically.
+/docker-compose.override.yml
+/local/

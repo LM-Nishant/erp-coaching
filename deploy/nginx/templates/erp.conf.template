@@ -1,0 +1,184 @@
+# ERP servers. Rendered by the nginx image entrypoint (envsubst) into /etc/nginx/erp/erp.conf. Only the
+# ${UPPER_CASE} variables listed in NGINX_ENVSUBST_FILTER are substituted (values are derived and
+# validated by /docker-entrypoint.d/18-erp-config.envsh); nginx's own $variables are left untouched.
+
+# ------------------------------------------------------------------ logging: JSON lines on stdout
+# Request id: reuse a well-formed incoming X-Request-Id (same rule as the API), else nginx's own.
+# It is forwarded to the API, which logs it and echoes it in the X-Request-Id response header.
+map $http_x_request_id $erp_request_id {
+    default $request_id;
+    "~^[A-Za-z0-9_.:-]{1,64}$" $http_x_request_id;
+}
+
+# Logged path: no query string, and the bearer tokens of signed-file, HLS and webhook URLs redacted.
+map $request_uri $erp_path {
+    default $request_uri;
+    "~^(?<erp_path_only>[^?]*)" $erp_path_only;
+}
+map $erp_path $erp_log_path {
+    default $erp_path;
+    "~^(?<erp_lp_head>/api/(?:files/signed|lms/public/hls|fees/public/webhooks/[^/]+)/)[^/]+(?<erp_lp_tail>.*)$" "${erp_lp_head}[redacted]${erp_lp_tail}";
+}
+
+log_format erp_json escape=json
+    '{"time":"$time_iso8601","source":"nginx","requestId":"$erp_request_id",'
+    '"remoteAddr":"$remote_addr","host":"$host","method":"$request_method","path":"$erp_log_path",'
+    '"protocol":"$server_protocol","status":$status,"bytesSent":$body_bytes_sent,'
+    '"requestTime":$request_time,"upstreamStatus":"$upstream_status",'
+    '"upstreamTime":"$upstream_response_time","tls":"$ssl_protocol","userAgent":"$http_user_agent"}';
+access_log /var/log/nginx/access.log erp_json;
+
+# ------------------------------------------------------------------ upstream
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    "" "";
+}
+
+# Docker's embedded DNS; the api address is re-resolved when its container is recreated.
+resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+resolver_timeout 5s;
+
+upstream erp_api {
+    zone erp_api 64k;
+    server ${API_UPSTREAM} resolve;
+    keepalive 32;
+}
+
+proxy_connect_timeout 5s;
+proxy_send_timeout 120s;
+proxy_read_timeout 120s;
+
+# ------------------------------------------------------------------ TLS (Mozilla "intermediate")
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+ssl_prefer_server_ciphers off;
+ssl_session_cache shared:ERP_SSL:10m;
+ssl_session_timeout 1d;
+ssl_session_tickets off;
+http2 on;
+
+# ------------------------------------------------------------------ port 80: ACME + redirect to https
+server {
+    listen 80 default_server;
+    server_name _;
+
+    # HTTP-01 challenges for every host name (platform host and institute custom domains).
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/acme;
+        default_type text/plain;
+        try_files $uri =404;
+    }
+
+    location = /nginx-health {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location / {
+        return 301 https://$host${HTTPS_PORT_SUFFIX}$request_uri;
+    }
+}
+
+# ------------------------------------------------------------------ platform host: SPA + API
+server {
+    listen 443 ssl;
+    server_name ${SERVER_NAME};
+    # ssl_certificate/ssl_certificate_key of the platform host, written by erp-certs.
+    include /etc/nginx/erp-generated/platform-cert.conf;
+
+    client_max_body_size ${CLIENT_MAX_BODY_SIZE};
+    client_body_timeout 120s;
+
+    # Live classes: Socket.IO (namespace /live), WebSocket upgrade and long-polling fallback.
+    location ^~ /api/live-classes/socket.io/ {
+        include /etc/nginx/erp/snippets/proxy-headers.conf;
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_pass http://erp_api;
+    }
+
+    # Media and file downloads: unbuffered, so large files and Range requests stream straight through.
+    location ~ ^/api/(?:files/signed/|lms/public/hls/|public/institutes/[^/]+/logo$|public/sites/[^/]+/media/) {
+        include /etc/nginx/erp/snippets/proxy-headers.conf;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+        proxy_pass http://erp_api;
+        error_page 502 504 = @api_unavailable;
+    }
+
+    # REST API. No add_header here: the API's own (helmet) security headers pass through unchanged.
+    location /api/ {
+        include /etc/nginx/erp/snippets/proxy-headers.conf;
+        proxy_pass http://erp_api;
+        error_page 502 504 = @api_unavailable;
+    }
+
+    # Only nginx's own gateway errors land here (proxy_intercept_errors is off): API responses,
+    # including a 503 from /api/ready, are passed through.
+    location @api_unavailable {
+        default_type application/json;
+        add_header Retry-After 10 always;
+        return 503 '{"error":{"code":"SERVICE_UNAVAILABLE","message":"The service is temporarily unavailable, please retry."}}';
+    }
+
+    # Single-page app.
+    root /usr/share/nginx/html;
+
+    location = /index.html {
+        include /etc/nginx/erp/snippets/spa.conf;
+        add_header Cache-Control "no-cache";
+    }
+
+    # Content-hashed build output: cache for a year. Missing files are a 404, never index.html.
+    location /assets/ {
+        include /etc/nginx/erp/snippets/spa.conf;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }
+
+    location / {
+        include /etc/nginx/erp/snippets/spa.conf;
+        add_header Cache-Control "no-cache";
+        try_files $uri /index.html;
+    }
+}
+
+# ------------------------------------------------------------------ institute websites
+# Every other host name: institute custom domains and *.SITES_DOMAIN subdomains. The API resolves the
+# institute from the Host header (/api/public/sites/_host/...). The certificate is picked per SNI name
+# from site-certs.map (written by erp-certs); unknown names get the platform certificate.
+map $ssl_server_name $erp_site_cert {
+    hostnames;
+    include /etc/nginx/erp-generated/site-certs.map;
+}
+
+server {
+    listen 443 ssl default_server;
+    server_name ${SITES_SERVER_NAME};
+
+    ssl_certificate $erp_site_cert/fullchain.pem;
+    ssl_certificate_key $erp_site_cert/privkey.pem;
+    ssl_certificate_cache max=1000 inactive=20s valid=1m;
+
+    # Public sites only accept small form posts.
+    client_max_body_size 1m;
+
+    # The API's HSTS header has includeSubDomains, which on an institute's apex domain (example.com) would
+    # force HTTPS onto all of the institute's other subdomains: send HSTS for the requested host only.
+    proxy_hide_header Strict-Transport-Security;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    location ^~ /media/ {
+        include /etc/nginx/erp/snippets/proxy-headers.conf;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+        proxy_pass http://erp_api/api/public/sites/_host$request_uri;
+    }
+
+    location / {
+        include /etc/nginx/erp/snippets/proxy-headers.conf;
+        proxy_pass http://erp_api/api/public/sites/_host$request_uri;
+    }
+}

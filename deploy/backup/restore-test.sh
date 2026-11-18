@@ -1,20 +1,27 @@
 #!/usr/bin/env bash
-# Automated backup -> restore round trip. Creates (or uses) a source database and media directory, runs
-# backup.sh, restores into a different scratch database and directory with restore.sh and verifies that
-# tables, schema, exact row counts, CHECKSUM TABLE values, AUTO_INCREMENT counters, migration/seeder
-# history and per-file media checksums all match. Also checks that a tampered backup fails verification,
-# that non-empty targets are refused without --force, and that retention pruning keeps the newest backup.
+# Automated backup -> restore round trip. Creates (or uses, or restores from a backup) a source database
+# and media directory, runs backup.sh, restores into a different scratch database and directory with
+# restore.sh and verifies that tables, schema, exact row counts, CHECKSUM TABLE values, AUTO_INCREMENT
+# counters, migration/seeder history and per-file media checksums all match. Also checks that a tampered
+# backup fails verification, that non-empty targets are refused without --force, and that retention
+# pruning keeps the newest backup.
 # Scratch databases and files are always removed (unless --keep); exits non-zero on any mismatch.
 #
 # Usage: restore-test.sh [--source-db NAME] [--source-dir DIR] [--keep]
+#        restore-test.sh --from-backup <backup-dir | latest> [--keep]
 #   --source-db NAME   back up this existing database instead of creating and seeding a scratch one
-#                      (only read, never modified or dropped)
+#                      (only read, never modified or dropped; nothing may write to it during the test,
+#                      so use --from-backup rather than a live production database)
 #   --source-dir DIR   back up this existing media directory instead of generating sample files
+#   --from-backup B    restore drill: first restore backup B (a backup.sh directory, or "latest" = the
+#                      newest backup of DB_NAME in BACKUP_DIR) into a scratch database and directory, then
+#                      use those as the source; logs how long that restore took
 #   --keep             keep the scratch databases and work dir for inspection
 #
 # Environment:
 #   DB_HOST, DB_PORT, DB_USER, DB_PASSWORD or DB_PASSWORD_FILE, DB_SSL_MODE, DB_SSL_CA, MYSQL_BIN_DIR
 #                                     as for backup.sh; the user needs CREATE/DROP on PREFIX_* databases
+#   DB_NAME, BACKUP_DIR               only used to find "--from-backup latest", as for restore.sh
 #   RESTORE_TEST_PREFIX (erp_restore_test)  name prefix of the scratch databases
 #   RESTORE_TEST_WORK_DIR             scratch directory (must not exist yet; default: a unique directory
 #                                     under BACKUP_TMPDIR, TMPDIR or /tmp); removed afterwards
@@ -31,6 +38,7 @@ usage() { sed -n '/^set -euo/q; 2,$ s/^# \{0,1\}//p' "${BASH_SOURCE[0]}"; }
 
 SOURCE_DB=''
 SOURCE_DIR=''
+FROM_BACKUP=''
 KEEP=0
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -42,6 +50,11 @@ while [[ $# -gt 0 ]]; do
     --source-dir)
       [[ $# -ge 2 ]] || die '--source-dir needs a value'
       SOURCE_DIR=$2
+      shift
+      ;;
+    --from-backup)
+      [[ $# -ge 2 ]] || die '--from-backup needs a value'
+      FROM_BACKUP=$2
       shift
       ;;
     --keep) KEEP=1 ;;
@@ -68,6 +81,15 @@ BACKEND_DIR=${BACKEND_DIR:-$SCRIPT_DIR/../../backend}
 if [[ -n "$SOURCE_DIR" ]]; then
   [[ -d "$SOURCE_DIR" ]] || die "--source-dir does not exist: $SOURCE_DIR"
   SOURCE_DIR=$(cd "$SOURCE_DIR" && pwd)
+fi
+if [[ -n "$FROM_BACKUP" ]]; then
+  [[ -z "$SOURCE_DB" && -z "$SOURCE_DIR" ]] || die '--from-backup cannot be combined with --source-db or --source-dir'
+  if [[ "$FROM_BACKUP" == latest ]]; then
+    FROM_BACKUP=$(latest_backup "${BACKUP_DIR:-./backups}" "$DB_NAME")
+    [[ -n "$FROM_BACKUP" ]] || die "no backup of $DB_NAME found in ${BACKUP_DIR:-./backups}"
+  fi
+  [[ -d "$FROM_BACKUP" ]] || die "backup directory not found: $FROM_BACKUP"
+  FROM_BACKUP=$(cd "$FROM_BACKUP" && pwd)
 fi
 
 if command -v sha256sum >/dev/null 2>&1; then
@@ -115,6 +137,7 @@ log "MySQL $(sql 'SELECT VERSION()') at $DB_HOST:$DB_PORT; client: $("$MYSQL" --
 
 run_cli() {
   local mode=${RESTORE_TEST_CLI:-auto} tsx=''
+  [[ -d "$BACKEND_DIR" ]] || die "backend not found at $BACKEND_DIR (set BACKEND_DIR or pass --source-db)"
   for tsx in "$BACKEND_DIR/node_modules/.bin/tsx" "$BACKEND_DIR/../node_modules/.bin/tsx" ''; do
     [[ -z "$tsx" || -x "$tsx" ]] && break
   done
@@ -197,9 +220,13 @@ snapshot_db() { # db outdir
       ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME
     WHERE k.TABLE_SCHEMA = '$db' AND k.REFERENCED_TABLE_NAME IS NOT NULL
     ORDER BY k.TABLE_NAME, k.CONSTRAINT_NAME, k.ORDINAL_POSITION" >"$out/foreign-keys.tsv"
+  # A never-used counter can read NULL on the source but 1 on the restored copy (same next id).
   sql "SET SESSION information_schema_stats_expiry = 0;
-    SELECT TABLE_NAME, IFNULL(AUTO_INCREMENT, '') FROM information_schema.TABLES
-    WHERE TABLE_SCHEMA = '$db' AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME" >"$out/auto-increment.tsv"
+    SELECT t.TABLE_NAME, IFNULL(t.AUTO_INCREMENT, 1) FROM information_schema.TABLES t
+    WHERE t.TABLE_SCHEMA = '$db' AND t.TABLE_TYPE = 'BASE TABLE' AND EXISTS (
+      SELECT 1 FROM information_schema.COLUMNS c WHERE c.TABLE_SCHEMA = t.TABLE_SCHEMA
+        AND c.TABLE_NAME = t.TABLE_NAME AND c.EXTRA LIKE '%auto_increment%')
+    ORDER BY t.TABLE_NAME" >"$out/auto-increment.tsv"
   sql "SELECT TABLE_NAME FROM information_schema.TABLES
     WHERE TABLE_SCHEMA = '$db' AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME" >"$TEST_DIR/table-names.txt"
   while IFS= read -r t; do
@@ -222,10 +249,21 @@ snapshot_db() { # db outdir
   fi
 }
 
+# macOS bsdtar extracts non-ASCII names in decomposed form (NFD) and APFS treats both forms as the
+# same file, so names are compared in composed form there. GNU tar on Linux keeps the exact bytes.
+normalize_names() {
+  if [[ "$(uname -s)" == Darwin ]] && command -v iconv >/dev/null 2>&1; then
+    iconv -f UTF-8-MAC -t UTF-8
+  else
+    cat
+  fi
+}
+
 snapshot_media() { # dir outdir
   mkdir -p "$2"
-  (cd "$1" && find . -type f -print0 | sort -z | xargs -0 -r "${SHA_CMD[@]}") >"$2/media-files.sha256"
-  (cd "$1" && find . -type d | sort) >"$2/media-dirs.txt"
+  (cd "$1" && find . -type f -print0 | xargs -0 -r "${SHA_CMD[@]}") | normalize_names | sort -k 2 \
+    >"$2/media-files.sha256"
+  (cd "$1" && find . -type d) | normalize_names | sort >"$2/media-dirs.txt"
 }
 
 compare_snapshots() { # label src dst
@@ -253,14 +291,25 @@ expect_exit() { # expected-code description command...
 }
 
 # 1. Source database and media.
-if [[ -n "$SOURCE_DB" ]]; then
+MEDIA_SRC=${SOURCE_DIR:-$TEST_DIR/media-src}
+DRILL_SECONDS=''
+if [[ -n "$FROM_BACKUP" ]]; then
+  db_exists "$SRC_DB" && die "scratch database $SRC_DB already exists"
+  CREATED_DBS+=("$SRC_DB")
+  log "restore drill: restoring $FROM_BACKUP into $SRC_DB and $MEDIA_SRC"
+  SECONDS=0
+  bash "$SCRIPT_DIR/restore.sh" --target-db "$SRC_DB" --target-dir "$MEDIA_SRC" "$FROM_BACKUP"
+  DRILL_SECONDS=$SECONDS
+  log "restore drill: restored ${FROM_BACKUP##*/} in ${DRILL_SECONDS}s"
+  # A --no-media backup has no media archive.
+  mkdir -p "$MEDIA_SRC"
+elif [[ -n "$SOURCE_DB" ]]; then
   db_exists "$SRC_DB" || die "source database $SRC_DB does not exist"
   log "using existing source database $SRC_DB (read-only)"
 else
   create_source_db
 fi
-MEDIA_SRC=${SOURCE_DIR:-$TEST_DIR/media-src}
-if [[ -z "$SOURCE_DIR" ]]; then create_sample_media "$MEDIA_SRC"; fi
+if [[ -z "$SOURCE_DIR" && -z "$FROM_BACKUP" ]]; then create_sample_media "$MEDIA_SRC"; fi
 MEDIA_DST=$TEST_DIR/media-restored
 BACKUPS=$TEST_DIR/backups
 snapshot_db "$SRC_DB" "$TEST_DIR/snap-src"
@@ -293,6 +342,8 @@ compare_snapshots 'first restore' "$TEST_DIR/snap-src" "$TEST_DIR/snap-dst"
 # 5. Non-empty targets are refused without --force (exit 3).
 expect_exit 3 'non-empty target database is refused' \
   bash "$SCRIPT_DIR/restore.sh" --db-only --target-db "$DST_DB" "$BACKUP"
+# The media of a DB-only drill source is empty; the directory must not be for this check.
+if [[ -z "$(ls -A "$MEDIA_DST")" ]]; then printf 'existing\n' >"$MEDIA_DST/existing-file.txt"; fi
 expect_exit 3 'non-empty target directory is refused' \
   bash "$SCRIPT_DIR/restore.sh" --media-only --target-dir "$MEDIA_DST" "$BACKUP"
 
@@ -317,5 +368,5 @@ ROWS=0
 while IFS=$'\t' read -r _ count; do ROWS=$((ROWS + count)); done <"$TEST_DIR/snap-src/row-counts.tsv"
 MEDIA_COUNT=$(grep -c . "$TEST_DIR/snap-src/media-files.sha256" || true)
 MIGRATION_COUNT=$(grep -c . "$TEST_DIR/snap-src/migrations.tsv" || true)
-log "compared $TABLES tables, $ROWS rows, $MIGRATION_COUNT migrations, $MEDIA_COUNT media files; backup ${BACKUP_SECONDS}s, restore ${RESTORE_SECONDS}s"
+log "compared $TABLES tables, $ROWS rows, $MIGRATION_COUNT migrations, $MEDIA_COUNT media files;${DRILL_SECONDS:+ drill restore ${DRILL_SECONDS}s,} backup ${BACKUP_SECONDS}s, restore ${RESTORE_SECONDS}s"
 if ((FAILURES > 0)); then die "$FAILURES check(s) failed"; fi
