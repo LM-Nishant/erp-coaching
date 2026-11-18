@@ -51,7 +51,8 @@ const OPEN_STATUSES = ['pending', 'waitlisted', 'approved'] as const;
 export function purchaseBatchError(issue: PurchaseBatchIssue): AppError {
   if (issue === 'no_login')
     return BadRequest('The student has no login of their own yet, so they cannot be enrolled in a batch');
-  if (issue === 'no_open_batch') return Conflict('No open batch of the course has free seats', 'NO_OPEN_BATCH');
+  if (issue === 'no_open_batch')
+    return Conflict('No open batch of the course has free seats', 'NO_OPEN_BATCH');
   return batchUnavailableError(issue);
 }
 
@@ -132,7 +133,12 @@ export async function admitForCoursePurchase(
     else {
       // Locks each batch row, so a seat found here is still free when the student is enrolled.
       const tryBatch = async (id: number) => {
-        const { reason } = await batchAvailability(id, { courseId, branchId, studentUserId: userId, transaction });
+        const { reason } = await batchAvailability(id, {
+          courseId,
+          branchId,
+          studentUserId: userId,
+          transaction,
+        });
         if (reason) {
           if (!fallback) throw purchaseBatchError(reason);
           return { reason, added: false };

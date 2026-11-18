@@ -497,7 +497,10 @@ export async function batchAvailability(
     (OPEN_BATCH_STATUSES as readonly string[]).includes(batch.status) &&
     (!batch.endDate || batch.endDate >= (await today()));
   if (!isOpen) return { batch, reason: 'closed', seatsLeft: 0 };
-  const seatsLeft = Math.max(0, batch.capacity - ((await activeSeatCounts([batch.id], transaction)).get(batch.id) ?? 0));
+  const seatsLeft = Math.max(
+    0,
+    batch.capacity - ((await activeSeatCounts([batch.id], transaction)).get(batch.id) ?? 0),
+  );
   if (seatsLeft > 0) return { batch, reason: null, seatsLeft };
   if (opts.studentUserId) {
     const mine = await repos.batchStudents.findOne({
