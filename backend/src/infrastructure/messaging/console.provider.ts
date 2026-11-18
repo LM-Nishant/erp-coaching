@@ -13,7 +13,7 @@ export interface SentRecord extends OutboundMessage {
 /** In-memory outbox shared by all console providers (handy for dev and tests). */
 export const consoleOutbox: SentRecord[] = [];
 
-/** Development provider: logs messages instead of sending them. */
+/** Development provider: logs messages instead of sending them (metadata only in production). */
 export class ConsoleMessagingProvider implements MessagingProvider {
   readonly name = 'console';
   constructor(
@@ -26,6 +26,15 @@ export class ConsoleMessagingProvider implements MessagingProvider {
     if (this.opts.failPattern && message.to.includes(this.opts.failPattern)) {
       throw new Error(`Mock ${this.channel} delivery failure for ${message.to}`);
     }
+    const providerMessageId = crypto.randomUUID();
+    if (config.isProd) {
+      // Bodies carry login OTPs and personal data, and nothing reaches the recipient: keep metadata only.
+      logger.info(
+        { channel: this.channel, to: maskRecipient(message.to), providerMessageId },
+        'console messaging provider: message not delivered',
+      );
+      return { providerMessageId, status: 'sent' };
+    }
     const record: SentRecord = { ...message, channel: this.channel, sentAt: new Date() };
     consoleOutbox.push(record);
     if (consoleOutbox.length > 500) consoleOutbox.shift();
@@ -33,8 +42,14 @@ export class ConsoleMessagingProvider implements MessagingProvider {
     logger.info(
       `[${this.channel.toUpperCase()} → ${message.to}] ${message.subject ? message.subject + ': ' : ''}${message.body}`,
     );
-    return { providerMessageId: crypto.randomUUID(), status: 'sent' };
+    return { providerMessageId, status: 'sent' };
   }
+}
+
+function maskRecipient(to: string) {
+  const at = to.lastIndexOf('@');
+  if (at > 0) return `***${to.slice(at)}`;
+  return to.length > 4 ? `***${to.slice(-4)}` : '***';
 }
 
 /** DEV_OUTBOX_FILE (never in production): lets browser E2E tests read OTPs and notifications. */

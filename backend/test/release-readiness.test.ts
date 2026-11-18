@@ -10,7 +10,9 @@ import {
   WebhookErrorTracker,
   type TrackedError,
 } from '../src/infrastructure/error-tracking';
-import { redactUrl } from '../src/infrastructure/logger';
+import { logger, redactUrl } from '../src/infrastructure/logger';
+import { consoleOutbox } from '../src/infrastructure/messaging';
+import { ConsoleMessagingProvider } from '../src/infrastructure/messaging/console.provider';
 import { runWithContext } from '../src/shared/context';
 import { NotFound } from '../src/shared/errors';
 import { resolveRequestId } from '../src/shared/middleware/context';
@@ -102,6 +104,30 @@ describe('request ids and log redaction', () => {
       '/api/x?page=2&token=[redacted]&OTP=[redacted]&code=[redacted]',
     );
     expect(redactUrl('/api/students?page=2')).toBe('/api/students?page=2');
+  });
+
+  it('never logs or keeps message bodies such as OTPs from the console provider in production', async () => {
+    const sms = new ConsoleMessagingProvider('sms');
+    const message = { to: '9454999999', body: '482913 is your verification code.', data: { otp: '482913' } };
+    const info = vi.spyOn(logger, 'info');
+    const kept = consoleOutbox.length;
+    const wasProd = config.isProd;
+    try {
+      Object.assign(config, { isProd: true });
+      await expect(sms.send(message)).resolves.toMatchObject({ status: 'sent' });
+      await sms.send({ ...message, to: 'parent@example.com', subject: 'Result for Asha' });
+    } finally {
+      Object.assign(config, { isProd: wasProd });
+    }
+    const logged = JSON.stringify(info.mock.calls);
+    expect(logged).toContain('***9999');
+    expect(logged).toContain('***@example.com');
+    for (const secret of ['482913', '9454999999', 'parent@', 'Asha']) expect(logged).not.toContain(secret);
+    expect(consoleOutbox.length).toBe(kept);
+
+    await sms.send(message);
+    expect(consoleOutbox.at(-1)).toMatchObject({ to: '9454999999', body: message.body });
+    expect(JSON.stringify(info.mock.calls)).toContain('482913');
   });
 });
 
