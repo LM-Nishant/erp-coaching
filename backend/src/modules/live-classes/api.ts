@@ -24,3 +24,6 @@ export {
   type LiveEntitlementProvider,
   type LiveEntitlementQuery,
 } from './entitlements';
+
+/** Read-only report queries (reports module, spec §4.17); callers pass a validated `ReportScope`. */
+export { liveClassReport } from './reporting';

@@ -22,3 +22,6 @@ export {
 } from './entitlements';
 export { setVideoTranscoder, type VideoTranscoder } from './transcoder';
 export { LmsResource, LmsAssignment, LmsSubmission, LmsProgress } from './models';
+
+/** Read-only report queries (reports module, spec §4.17); callers pass a validated `ReportScope`. */
+export { lmsEngagementReport } from './reporting';
