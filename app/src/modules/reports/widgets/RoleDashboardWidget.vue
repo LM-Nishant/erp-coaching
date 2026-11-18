@@ -1,10 +1,17 @@
 <template>
   <div class="role-dashboard">
-    <ion-segment v-model="preset" scrollable>
-      <ion-segment-button v-for="p in PRESETS" :key="p.value" :value="p.value">
-        <ion-label>{{ p.label }}</ion-label>
-      </ion-segment-button>
-    </ion-segment>
+    <div class="presets" role="radiogroup" aria-label="Period">
+      <ion-chip
+        v-for="p in PRESETS"
+        :key="p.value"
+        role="radio"
+        :aria-checked="preset === p.value"
+        :color="preset === p.value ? 'primary' : 'medium'"
+        :outline="preset !== p.value"
+        @click="preset = p.value"
+        >{{ p.label }}</ion-chip
+      >
+    </div>
     <ion-progress-bar v-if="loading" type="indeterminate" />
     <p v-if="error" class="muted">{{ error }}</p>
 
@@ -35,7 +42,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue';
-import { IonButton, IonLabel, IonProgressBar, IonSegment, IonSegmentButton } from '@ionic/vue';
+import { IonButton, IonChip, IonProgressBar } from '@ionic/vue';
 import type { ReportDatePreset, ReportKey, RoleDashboardDto } from '@erp/shared';
 import { errorMessage } from '@/core/api';
 import { reportsApi } from '../api';
@@ -85,6 +92,13 @@ onMounted(() => Promise.all([load(), loadTitles()]));
 </script>
 
 <style scoped>
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+}
+.presets ion-chip {
+  margin: 0 8px 8px 0;
+}
 .context {
   margin: 12px 0 0;
   font-size: 14px;

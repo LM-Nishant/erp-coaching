@@ -30,6 +30,12 @@ defineProps<{ metrics: Metric[]; timezone: string }>();
   margin: 0;
   height: 100%;
 }
+@media (max-width: 576px) {
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+}
 .label {
   font-size: 12px;
   text-transform: uppercase;

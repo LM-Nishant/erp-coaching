@@ -42,7 +42,7 @@ export function platformHeadline(d: SaasDashboardDto): Metric[] {
     },
     {
       key: 'users',
-      label: 'Users',
+      label: 'Institute users',
       value: d.users.total,
       type: 'number',
       hint: `${count(d.users.active)} active · ${count(d.users.newInPeriod)} new`,
