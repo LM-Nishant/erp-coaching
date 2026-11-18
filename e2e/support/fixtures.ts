@@ -1,7 +1,8 @@
 /**
  * Playwright fixtures for the workflow specs:
  * - `http`: an APIRequestContext for setup calls (see Api/Session in ./api).
- * - `superAdmin`: the seeded platform admin, signed in once per worker (creates the institutes).
+ * - `superAdmin`: the seeded platform admin, signed in for each test (creates the institutes). Always
+ *   the same device, so it never needs an OTP or uses up the device limit.
  * - `openAs(session, path)`: a new browser context already signed in as `session` (same device as the
  *   API login, injected the way the app stores it), or anonymous with `null`.
  */
@@ -39,11 +40,11 @@ export function signedInState(session: Session): BrowserContextOptions['storageS
 }
 
 type TestFixtures = {
+  superAdmin: Session;
   openAs: (session: Session | null, path?: string) => Promise<Page>;
 };
 type WorkerFixtures = {
   http: APIRequestContext;
-  superAdmin: Session;
 };
 
 export const test = base.extend<TestFixtures, WorkerFixtures>({
@@ -55,18 +56,16 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     },
     { scope: 'worker' },
   ],
-  superAdmin: [
-    async ({ http }, use) => {
-      await use(
-        await loginWithPassword(http, SUPER_ADMIN, {
-          uid: 'e2e-super-admin-device',
-          name: 'E2E super admin',
-          platform: 'web',
-        }),
-      );
-    },
-    { scope: 'worker' },
-  ],
+  // Test-scoped: access tokens are short-lived (15 min), which a long run would outlast.
+  superAdmin: async ({ http }, use) => {
+    await use(
+      await loginWithPassword(http, SUPER_ADMIN, {
+        uid: 'e2e-super-admin-device',
+        name: 'E2E super admin',
+        platform: 'web',
+      }),
+    );
+  },
   openAs: async ({ browser }, use) => {
     const contexts: BrowserContext[] = [];
     await use(async (session, path = '/home') => {

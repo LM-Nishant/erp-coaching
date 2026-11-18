@@ -356,10 +356,14 @@ export async function generateSessions(input: { from: string; to: string; batchI
 
 /* ------------------------------------------------------------- access checks */
 
-/** Staff with `academics.edit`, the (substituted) teacher, or a student ever enrolled in the batch. */
+/** Staff with `academics.edit` in its branch, the (substituted) teacher, or a student ever enrolled in the batch. */
 export async function canAccessClassSession(session: ClassSession): Promise<boolean> {
-  if (hasPermission('academics.edit')) return true;
-  const { userId } = getContext();
+  const { userId, allowedBranchIds } = getContext();
+  if (
+    hasPermission('academics.edit') &&
+    (allowedBranchIds == null || allowedBranchIds.includes(session.branchId))
+  )
+    return true;
   if (!userId) return false;
   if (session.teacherUserId === userId || session.originalTeacherUserId === userId) return true;
   return (await repos.batchStudents.count({ batchId: session.batchId, studentUserId: userId })) > 0;

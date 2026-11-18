@@ -32,6 +32,7 @@ type Method = 'get' | 'post' | 'put' | 'patch' | 'delete';
 type Who = Actor | string | null;
 
 export async function query<T extends object>(sql: string, replacements?: unknown): Promise<T[]> {
+  await getApp();
   return getSequelize().query<T>(sql, {
     type: QueryTypes.SELECT,
     replacements: replacements as Record<string, unknown> | unknown[] | undefined,
@@ -100,6 +101,7 @@ export async function signIn(label: string, mobile: string, password?: string): 
 }
 
 export async function createSuperAdmin(mobile: string): Promise<Actor> {
+  await getApp(); // initialises the models
   await User.create({
     name: 'Isolation Super Admin',
     mobile,
@@ -193,9 +195,10 @@ export async function purgeInstitutes(instituteIds: number[], mobilePrefix: stri
  * Records every model row of another institute that is loaded while serving a request bound to an
  * institute. A handler that fetches a foreign row and only then answers 403/404/409 still reveals
  * that the row exists (and usually means the lookup was not tenant-scoped), so the crawlers treat
- * any such load as a failure regardless of the HTTP status.
+ * any such load as a failure regardless of the HTTP status. `includeSystem` also checks system
+ * contexts bound to an institute (public website requests run that way).
  */
-export function installTenantProbe() {
+export function installTenantProbe(opts: { includeSystem?: boolean } = {}) {
   const violations: string[] = [];
   let label = '';
   const check = (value: unknown, depth: number, ctxInstitute: number) => {
@@ -221,7 +224,7 @@ export function installTenantProbe() {
   };
   const hook = (result: unknown) => {
     const ctx = getContext();
-    if (!label || !ctx.instituteId || ctx.isSuperAdmin || ctx.system) return;
+    if (!label || !ctx.instituteId || ctx.isSuperAdmin || (ctx.system && !opts.includeSystem)) return;
     check(result, 0, ctx.instituteId);
   };
   getSequelize().addHook('afterFind', 'tenant-isolation-probe', hook);

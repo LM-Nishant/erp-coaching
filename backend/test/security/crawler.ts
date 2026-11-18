@@ -47,6 +47,9 @@ export interface Target {
 
 export type Resolution = { target: Target; reason?: never } | { target?: never; reason: string };
 
+/** Reason given for records that belong to no branch (the branch crawl does not apply). */
+export const NO_BRANCH = 'has no branch (directly or via its parent)';
+
 /** `/api/hr/employees/:id/contracts/:childId`, `childId` → `hr/employees/*\/contracts`. */
 export function segmentKey(path: string, param: string): string {
   const segs = path.replace(/^\/api\//, '').split('/');
@@ -68,7 +71,8 @@ export async function tableFor(route: RouteInfo, param: string): Promise<string 
   const tables = await tableNames();
   const segs = key.split('/');
   const literal = snake(segs[segs.length - 1] ?? '');
-  const parent = segs.length >= 3 && segs[segs.length - 2] === '*' ? singular(snake(segs[segs.length - 3])) : null;
+  const parent =
+    segs.length >= 3 && segs[segs.length - 2] === '*' ? singular(snake(segs[segs.length - 3])) : null;
   const prefixes = TABLE_PREFIXES[route.module] ?? [singular(snake(route.module))];
   const candidates = [
     ...(parent ? [`${parent}_${literal}`, ...prefixes.map((p) => `${p}_${parent}_${literal}`)] : []),
@@ -156,7 +160,19 @@ function fill(path: string, values: Record<string, unknown>): string {
  * params from that record's foreign keys (or runs the route's `PARAM_SQL`). Returns why not when
  * that is impossible, so the coverage report can say exactly what to add.
  */
-export async function resolveTarget(route: RouteInfo, scope: Scope): Promise<Resolution> {
+export interface ResolveOptions {
+  /**
+   * Called when the scope has no row for the route; creates one (see victim-data.ts) and returns
+   * null, or returns why it could not. `need` lists nullable foreign keys the URL is built from.
+   */
+  synthesize?: (table: string, scope: Scope, need: string[]) => Promise<string | null>;
+}
+
+export async function resolveTarget(
+  route: RouteInfo,
+  scope: Scope,
+  opts: ResolveOptions = {},
+): Promise<Resolution> {
   const params = routeParams(route.path);
   const values: Record<string, unknown> = {};
   for (const p of params) {
@@ -176,11 +192,24 @@ export async function resolveTarget(route: RouteInfo, scope: Scope): Promise<Res
       const v = scope.ownerColumns?.[value];
       if (v !== undefined) conds.push(`q.\`${column}\` = ${Number(v)}`);
     }
-    const [row] = await query<Record<string, unknown>>(
-      `SELECT * FROM (${custom.sql}) q ${conds.length ? `WHERE ${conds.join(' AND ')}` : ''} LIMIT 1`,
-      { v: scope.instituteId, b: scope.branchId ?? null },
-    );
-    if (!row) return { reason: `PARAM_SQL['${sqlKey}'] found no row — create one in victim-data.ts` };
+    const find = async () =>
+      (
+        await query<Record<string, unknown>>(
+          `SELECT * FROM (${custom.sql}) q ${conds.length ? `WHERE ${conds.join(' AND ')}` : ''} LIMIT 1`,
+          { v: scope.instituteId, b: scope.branchId ?? null },
+        )
+      )[0];
+    let row = await find();
+    if (!row && opts.synthesize) {
+      const failed = await opts.synthesize(custom.table, scope, []);
+      if (failed) return { reason: failed };
+      row = await find();
+    }
+    if (!row) {
+      return {
+        reason: `PARAM_SQL['${sqlKey}'] found no row — add SYNTHESIS_HINTS or seed it in victim-data.ts`,
+      };
+    }
     return {
       target: {
         url: fill(route.path, { ...row, ...values }),
@@ -210,11 +239,23 @@ export async function resolveTarget(route: RouteInfo, scope: Scope): Promise<Res
   }
   const role = USER_ROLE_HINTS[last] ?? USER_ROLE_HINTS[segmentKey(route.path, last)];
   const first = parents[0];
-  const row = await pickRow(table, scope, {
-    role,
-    parent: first?.column ? { table: first.table, column: first.column } : undefined,
-  });
-  if (row === 'no-branch') return { reason: `${table} has no branch (directly or via its parent)` };
+  const pick = () =>
+    pickRow(table, scope, {
+      role,
+      parent: first?.column ? { table: first.table, column: first.column } : undefined,
+    });
+  let row = await pick();
+  if (row === 'no-branch') return { reason: NO_BRANCH };
+  if (!row && opts.synthesize) {
+    const failed = await opts.synthesize(
+      table,
+      scope,
+      parents.map((p) => p.column as string),
+    );
+    if (failed) return { reason: failed };
+    row = await pick();
+  }
+  if (row === 'no-branch') return { reason: NO_BRANCH };
   if (!row) {
     const where = scope.branchId ? 'branch 2 of the victim institute' : 'the victim institute';
     return { reason: `no ${table} row in ${where} — create one in victim-data.ts` };

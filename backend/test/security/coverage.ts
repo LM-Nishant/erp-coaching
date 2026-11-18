@@ -150,15 +150,15 @@ export const PARAM_SQL: Record<string, ParamSql> = {
   },
   'public/sites/*/p': {
     table: 'website_pages',
-    sql: `SELECT slug AS page FROM website_pages WHERE institute_id = :v AND status = 'published'`,
+    sql: `SELECT slug AS page FROM website_pages WHERE institute_id = :v AND published_version_id IS NOT NULL`,
   },
   'public/sites/*/pages': {
     table: 'website_pages',
-    sql: `SELECT slug AS page FROM website_pages WHERE institute_id = :v AND status = 'published'`,
+    sql: `SELECT slug AS page FROM website_pages WHERE institute_id = :v AND published_version_id IS NOT NULL`,
   },
   'public/sites/*/forms': {
     table: 'website_pages',
-    sql: `SELECT slug AS page FROM website_pages WHERE institute_id = :v AND status = 'published'`,
+    sql: `SELECT slug AS page FROM website_pages WHERE institute_id = :v AND published_version_id IS NOT NULL`,
   },
   'public/sites/*/r': {
     table: 'website_referral_codes',
@@ -196,6 +196,12 @@ export const PORTAL_SHARED: Record<string, string> = {
   'POST /api/fees/me/courses/:id/checkout': 'course catalogue is institute-wide',
 };
 
+/**
+ * Record routes whose record is deliberately shared by every branch even though it has a branch
+ * (so the branch crawl skips them), with the reason.
+ */
+export const BRANCH_SHARED: Record<string, string> = {};
+
 /** Authenticated routes that need no permission (self-service for any signed-in user). */
 export const SELF_SERVICE_ROUTES: Record<string, string> = {
   'GET /api/auth/me': 'own profile',
@@ -222,6 +228,12 @@ export const PUBLIC_OUTSIDE_PUBLIC_PREFIX: Record<string, string> = {
   'POST /api/auth/logout': 'refresh token is the credential',
   'GET /api/files/signed/:token': 'signed URL is the credential',
 };
+
+/**
+ * Column values for rows the synthesizer creates (victim-data.ts), per table, where the schema
+ * alone does not produce a record its owner can read (e.g. a page must be `published` to be public).
+ */
+export const SYNTHESIS_HINTS: Record<string, Record<string, string | number | null>> = {};
 
 /**
  * GET routes whose owner (positive control) cannot return 2xx for a valid record, with the

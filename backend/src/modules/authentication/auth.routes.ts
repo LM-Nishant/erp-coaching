@@ -7,6 +7,7 @@ import { authRateLimit, tokenRateLimit } from '../../shared/middleware/security'
 import { BadRequest, NotFound } from '../../shared/errors';
 import { idParam } from '../../shared/utilities/pagination';
 import { UserRole } from '../permissions/models';
+import { assertMemberInBranchScope } from '../permissions/access.service';
 import { Device } from './models';
 import * as auth from './auth.service';
 
@@ -128,6 +129,7 @@ export function authRoutes(api: Router) {
           where: { instituteId: req.ctx.instituteId!, userId: p.userId },
         });
         if (!member) throw NotFound('User');
+        await assertMemberInBranchScope(p.userId, 'manage');
       }
       await auth.revokeDevice(p.deviceId, p.userId, req.ctx.userId!);
       res.status(204).end();

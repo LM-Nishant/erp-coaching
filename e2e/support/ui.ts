@@ -3,6 +3,7 @@
  * overlays (toasts, alerts, action sheets, modals) outside the page, so scope accordingly.
  */
 import { expect, type Locator, type Page } from '@playwright/test';
+import { outboxMark, waitForOtp } from './outbox';
 
 /** The page currently shown by the app's router outlet. */
 export function activePage(page: Page): Locator {
@@ -41,4 +42,31 @@ export async function confirmAlert(page: Page, button: string): Promise<void> {
   const alert = alertDialog(page);
   await alert.getByRole('button', { name: button, exact: true }).click();
   await expect(alert).toBeHidden();
+}
+
+/**
+ * Opens an `ion-select` with `interface="popover"` and picks an option by its label. Pass the
+ * select itself, e.g. `page.locator('ion-select').filter({ hasText: 'Teacher' })`.
+ */
+export async function chooseOption(select: Locator, option: string | RegExp): Promise<void> {
+  await select.click();
+  const popover = select.page().locator('ion-popover:not(.overlay-hidden)').last();
+  await popover.getByRole('radio', { name: option }).click();
+  await expect(popover).toBeHidden();
+}
+
+/**
+ * Signs in on the login page with a mobile OTP (read from the outbox), as a user would on a
+ * phone. Use it on a page that is at /login (e.g. after being redirected there from a deep link);
+ * it resolves once the app has navigated away from /login.
+ */
+export async function signInWithOtp(page: Page, mobile: string): Promise<void> {
+  await selectSegment(page, 'Mobile OTP');
+  await page.getByLabel('Mobile number').fill(mobile);
+  const since = outboxMark();
+  await page.getByRole('button', { name: 'Send OTP' }).click();
+  await expect(page.getByText('Enter the 6-digit code sent to')).toBeVisible();
+  await page.getByLabel('OTP').fill(await waitForOtp(mobile, since));
+  await page.getByRole('button', { name: 'Verify' }).click();
+  await expect(page).not.toHaveURL(/\/login/);
 }

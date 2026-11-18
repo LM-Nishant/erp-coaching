@@ -40,9 +40,7 @@ describe('route registry', () => {
 
   it('platform routes require a super admin', async () => {
     const routes = await allRoutes();
-    expect(
-      routes.filter((r) => r.path.startsWith('/api/admin/') && !r.superAdmin).map(routeKey),
-    ).toEqual([]);
+    expect(routes.filter((r) => r.path.startsWith('/api/admin/') && !r.superAdmin).map(routeKey)).toEqual([]);
     expect(routes.filter((r) => r.superAdmin && !r.authenticated).map(routeKey)).toEqual([]);
   });
 
@@ -67,7 +65,13 @@ describe('route registry', () => {
 
   it('allow-lists and exceptions only name existing routes', async () => {
     const keys = new Set((await allRoutes()).map(routeKey));
-    const lists = { SELF_SERVICE_ROUTES, PUBLIC_OUTSIDE_PUBLIC_PREFIX, PORTAL_SHARED, OWNER_STATUS, KNOWN_UNCOVERED };
+    const lists = {
+      SELF_SERVICE_ROUTES,
+      PUBLIC_OUTSIDE_PUBLIC_PREFIX,
+      PORTAL_SHARED,
+      OWNER_STATUS,
+      KNOWN_UNCOVERED,
+    };
     const stale = Object.entries(lists).flatMap(([name, list]) =>
       Object.keys(list)
         .filter((k) => !keys.has(k))

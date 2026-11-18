@@ -12,6 +12,7 @@ import { audit } from '../../shared/audit/audit.service';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { Branch } from '../branches/branch.model';
 import { Role, UserBranch, UserRole } from '../permissions/models';
+import { assertMemberInBranchScope, memberVisibilityWhere } from '../permissions/access.service';
 import { Device } from '../authentication/models';
 import { User } from './user.model';
 
@@ -71,13 +72,14 @@ async function replaceAssignments(userId: number, input: z.infer<typeof assignme
   });
 }
 
-async function memberOrThrow(userId: number) {
+async function memberOrThrow(userId: number, mode: 'read' | 'manage' = 'read') {
   const { instituteId } = requireTenantContext();
   const roles = await UserRole.findAll({
     where: { instituteId, userId },
     include: [{ model: Role, as: 'role' }],
   });
   if (!roles.length) throw NotFound('User');
+  await assertMemberInBranchScope(userId, mode);
   return roles;
 }
 
@@ -88,7 +90,7 @@ export function userRoutes(api: Router) {
   r.get('/', requirePermission('users', 'view'), async (req, res) => {
     const q = parse(paginationSchema.extend({ role: z.string().optional() }), req.query);
     const { instituteId } = requireTenantContext();
-    const userWhere = q.search
+    const search = q.search
       ? {
           [Op.or]: [
             { name: { [Op.like]: `%${q.search}%` } },
@@ -97,6 +99,8 @@ export function userRoutes(api: Router) {
           ],
         }
       : undefined;
+    const visible = memberVisibilityWhere();
+    const userWhere = search && visible ? { [Op.and]: [search, visible] } : (search ?? visible);
     const { rows, count } = await User.findAndCountAll({
       where: userWhere,
       include: [
@@ -189,7 +193,7 @@ export function userRoutes(api: Router) {
   r.put('/:id/roles', requirePermission('users', 'edit'), async (req, res) => {
     const { id } = parse(idParam, req.params);
     const body = parse(assignmentSchema, req.body);
-    const before = await memberOrThrow(id);
+    const before = await memberOrThrow(id, 'manage');
     if (id === req.ctx.userId) throw Forbidden('You cannot change your own roles');
     await validateAssignment(body);
     await replaceAssignments(id, body);
@@ -204,7 +208,7 @@ export function userRoutes(api: Router) {
 
   r.delete('/:id', requirePermission('users', 'delete'), async (req, res) => {
     const { id } = parse(idParam, req.params);
-    await memberOrThrow(id);
+    await memberOrThrow(id, 'manage');
     if (id === req.ctx.userId) throw Forbidden('You cannot remove yourself');
     const { instituteId } = requireTenantContext();
     await UserRole.destroy({ where: { instituteId, userId: id } });

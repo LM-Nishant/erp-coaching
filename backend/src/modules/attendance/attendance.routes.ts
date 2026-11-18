@@ -402,6 +402,7 @@ function deviceRoutes(r: Router) {
   /** Manual upload of a device export (same payload as the device push). */
   r.post('/devices/:id/events', requirePermission('attendance', 'edit'), async (req, res) => {
     const device = await deviceRepo.findById(pid(req));
+    deviceRepo.assertRowWritable(device);
     const punches = await parseDevicePayload(req.body?.punches ?? req.body);
     if (punches.length > 1000) throw BadRequest('At most 1000 punches per upload');
     const result = await ingestPunches(device, punches);

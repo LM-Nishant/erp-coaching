@@ -1,6 +1,6 @@
 /**
  * Fast API builders for isolated test data: each spec creates its own institute (as the super
- * admin) and the people, batches, … it needs, with unique mobiles (945…) and slugs, so specs never
+ * admin) and the people, batches, … it needs, with unique mobiles (9459…) and slugs, so specs never
  * depend on each other or on the seeded demo institutes, and also work against a reused database.
  */
 import type { APIRequestContext } from '@playwright/test';
@@ -16,9 +16,16 @@ function stamp(): number {
   return lastStamp;
 }
 
-/** A 10-digit mobile in the 945… range reserved for generated E2E users. */
+let lastMobile = 0;
+/**
+ * A 10-digit mobile in the 9459… range reserved for generated E2E users. The 6-digit suffix is a
+ * per-process counter that starts from the clock in tenths of a second (it wraps after ~28 hours),
+ * so it never repeats within a process, and later runs or restarted workers against a reused
+ * database start beyond the numbers already used (tests create far fewer than 10 users a second).
+ */
 export function uniqueMobile(): string {
-  return `945${String(stamp() % 10_000_000).padStart(7, '0')}`;
+  lastMobile = Math.max(lastMobile + 1, Math.floor(Date.now() / 100));
+  return `9459${String(lastMobile % 1_000_000).padStart(6, '0')}`;
 }
 
 /** Short unique lowercase token for slugs, codes and names. */
@@ -154,7 +161,11 @@ export async function createBatch(
     status: 'active',
   });
   const courseName = `${options.label} course ${code}`;
-  const course = await api.post<{ id: number }>('/academics/courses', { name: courseName, code: `C-${code}` });
+  const course = await api.post<{ id: number }>('/academics/courses', {
+    name: courseName,
+    code: `C-${code}`,
+    branchIds: [institute.branchId],
+  });
   const batchName = `${options.label} batch ${code}`;
   const batch = await api.post<{ id: number }>('/academics/batches', {
     branchId: institute.branchId,
