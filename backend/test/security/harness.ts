@@ -95,12 +95,12 @@ export async function ok(who: Who, method: string, url: string, body?: unknown):
 }
 
 /** Uploads one file (multipart field `file`, plus form `fields`) as `who`; throws unless 2xx. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function upload(
   who: Actor,
   url: string,
   file: { name: string; type: string; data: Buffer },
   fields: Record<string, string> = {},
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any> {
   let req = request(await getApp())
     .post(url)
