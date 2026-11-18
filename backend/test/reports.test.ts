@@ -3,6 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   REPORT_KEYS,
   REPORT_MAX_RANGE_DAYS,
+  type ReportCatalogItemDto,
+  type ReportFilterOptionsDto,
   type ReportMetricDto,
   type RoleDashboardDto,
   type SaasBillingStatsDto,
@@ -408,6 +410,41 @@ describe('reports & analytics', () => {
     expect((await code(t.s1, 'attendance', { branchId: ids.qa }))[0]).toBe(400);
     expect(await code(t.s1, 'payroll')).toEqual([403, 'REPORT_FORBIDDEN']);
     expect(await code(t.parent, 'capacity')).toEqual([403, 'REPORT_FORBIDDEN']);
+  });
+
+  it('opens every report a role may see, with each filter it is offered', async () => {
+    const audiences = {
+      admin: 'management',
+      branchAdmin: 'management',
+      accountant: 'finance',
+      teacherA: 'teacher',
+      s1: 'student',
+      parent: 'parent',
+    };
+    const pick = (options: { id: number }[], preferred: number) =>
+      (options.find((o) => o.id === preferred) ?? options[0])?.id;
+    for (const [role, audience] of Object.entries(audiences)) {
+      const options = (await get(t[role], '/filters')).body as ReportFilterOptionsDto;
+      const offered = {
+        branchId: pick(options.branches, ids.qa),
+        courseId: pick(options.courses, ids.course),
+        batchId: pick(options.batches, ids.batchA),
+      };
+      const items = (await get(t[role], '/catalog')).body as ReportCatalogItemDto[];
+      expect(items.length, role).toBeGreaterThan(0);
+      for (const item of items) {
+        const queries: Record<string, number>[] = [{}];
+        if (item.filters.includes('branch') && offered.branchId) queries.push({ branchId: offered.branchId });
+        if (item.filters.includes('course') && offered.courseId) queries.push({ courseId: offered.courseId });
+        if (item.filters.includes('batch') && offered.batchId) queries.push({ batchId: offered.batchId });
+        for (const query of queries) {
+          const res = await get(t[role], `/${item.key}`, { ...range, ...query });
+          const what = `${role} ${item.key} ${JSON.stringify(query)}`;
+          expect(res.status, `${what}: ${JSON.stringify(res.body)}`).toBe(200);
+          expect(res.body.scope.audience, what).toBe(audience);
+        }
+      }
+    }
   });
 
   it('reports fee collections and dues per branch, institute-wide and for families', async () => {
