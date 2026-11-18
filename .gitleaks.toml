@@ -1,0 +1,8 @@
+# Secret scanning (CI job "Secret scan" and `gitleaks git .` locally). Extends the default rules.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Obviously fake keys used by tests (for example the AI settings key-hint test)"
+regexTarget = "secret"
+regexes = ['''^sk-test-[A-Za-z0-9_-]*$''']
