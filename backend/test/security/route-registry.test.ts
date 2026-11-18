@@ -1,0 +1,78 @@
+import { describe, expect, it } from 'vitest';
+import { discoverModules } from '../../src/infrastructure/module-loader';
+import { describeRoutes, type RouteInfo } from '../../src/infrastructure/route-registry';
+import {
+  KNOWN_UNCOVERED,
+  OWNER_STATUS,
+  PORTAL_SHARED,
+  PUBLIC_OUTSIDE_PUBLIC_PREFIX,
+  SELF_SERVICE_ROUTES,
+} from './coverage';
+import { routeKey } from './crawler';
+
+/**
+ * Structural checks on the route registry: every route is guarded the way ARCHITECTURE.md says,
+ * so a new route without authentication, a permission or a rate limit fails here before review.
+ */
+let cache: RouteInfo[] | undefined;
+const allRoutes = async () => (cache ??= describeRoutes(await discoverModules()));
+
+const ANONYMOUS_LIMITERS = new Set(['auth', 'token', 'media', 'webhook', 'public-form', 'device']);
+
+describe('route registry', () => {
+  it('lists every module route with its guards', async () => {
+    const routes = await allRoutes();
+    expect(routes.length).toBeGreaterThan(100);
+    expect(routes.filter((r) => r.module === 'unknown').map(routeKey)).toEqual([]);
+    const keys = routes.map(routeKey);
+    expect(keys.filter((k, i) => keys.indexOf(k) !== i)).toEqual([]);
+    expect(routes.every((r) => r.path.startsWith('/api/') && r.path !== '/api/')).toBe(true);
+  });
+
+  it('public routes live under /api/public unless allow-listed', async () => {
+    const routes = await allRoutes();
+    const offenders = routes
+      .filter((r) => !r.authenticated && !/\/public(\/|$)/.test(r.path))
+      .map(routeKey)
+      .filter((k) => !PUBLIC_OUTSIDE_PUBLIC_PREFIX[k]);
+    expect(offenders, 'public route outside /api/public — move it or add authenticate').toEqual([]);
+  });
+
+  it('platform routes require a super admin', async () => {
+    const routes = await allRoutes();
+    expect(
+      routes.filter((r) => r.path.startsWith('/api/admin/') && !r.superAdmin).map(routeKey),
+    ).toEqual([]);
+    expect(routes.filter((r) => r.superAdmin && !r.authenticated).map(routeKey)).toEqual([]);
+  });
+
+  it('authenticated institute routes require a permission unless self-service', async () => {
+    const routes = await allRoutes();
+    const offenders = routes
+      .filter((r) => r.authenticated && !r.superAdmin && !r.permissions.length)
+      .map(routeKey)
+      .filter((k) => !SELF_SERVICE_ROUTES[k]);
+    expect(offenders, 'add requirePermission(...) or list it in SELF_SERVICE_ROUTES').toEqual([]);
+  });
+
+  it('every route is rate limited, and anonymous writes have a dedicated limiter', async () => {
+    const routes = await allRoutes();
+    expect(routes.filter((r) => !r.rateLimits.includes('api')).map(routeKey)).toEqual([]);
+    const offenders = routes
+      .filter((r) => !r.authenticated && r.method !== 'GET')
+      .filter((r) => !r.rateLimits.some((l) => ANONYMOUS_LIMITERS.has(l)))
+      .map(routeKey);
+    expect(offenders, 'use publicFormRateLimit (or another dedicated limiter)').toEqual([]);
+  });
+
+  it('allow-lists and exceptions only name existing routes', async () => {
+    const keys = new Set((await allRoutes()).map(routeKey));
+    const lists = { SELF_SERVICE_ROUTES, PUBLIC_OUTSIDE_PUBLIC_PREFIX, PORTAL_SHARED, OWNER_STATUS, KNOWN_UNCOVERED };
+    const stale = Object.entries(lists).flatMap(([name, list]) =>
+      Object.keys(list)
+        .filter((k) => !keys.has(k))
+        .map((k) => `${name}['${k}']`),
+    );
+    expect(stale, 'remove entries for routes that no longer exist').toEqual([]);
+  });
+});

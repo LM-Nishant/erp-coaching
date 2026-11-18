@@ -28,13 +28,15 @@ class FileOrderSequencer extends BaseSequencer {
 const fileEnv =
   dotenv.config({ path: path.resolve(__dirname, '.env'), quiet: true, processEnv: {} }).parsed ?? {};
 
-// Tests run against a real MySQL database (dropped & recreated on every run).
+// Tests run against a real MySQL database (dropped & recreated on every run). Storage is per
+// database too, so runs against different TEST_DB_NAMEs never wipe each other's files.
+const dbName = process.env.TEST_DB_NAME ?? fileEnv.TEST_DB_NAME ?? 'erp_coaching_test';
 const testEnv = {
   NODE_ENV: 'test',
-  DB_NAME: process.env.TEST_DB_NAME ?? fileEnv.TEST_DB_NAME ?? 'erp_coaching_test',
+  DB_NAME: dbName,
   RATE_LIMIT_ENABLED: 'false',
   JOBS_WORKER_ENABLED: 'false',
-  STORAGE_LOCAL_ROOT: './tmp/test-storage',
+  STORAGE_LOCAL_ROOT: `./tmp/test-storage/${dbName}`,
   AI_API_KEY: '',
 };
 Object.assign(process.env, testEnv);

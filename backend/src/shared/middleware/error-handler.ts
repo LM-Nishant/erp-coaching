@@ -1,4 +1,4 @@
-import type { ErrorRequestHandler, RequestHandler } from 'express';
+import type { ErrorRequestHandler, Request, RequestHandler } from 'express';
 import { MulterError } from 'multer';
 import {
   UniqueConstraintError,
@@ -6,7 +6,8 @@ import {
   ForeignKeyConstraintError,
 } from 'sequelize';
 import { AppError } from '../errors';
-import { logger } from '../../infrastructure/logger';
+import { logger, redactUrl } from '../../infrastructure/logger';
+import { captureError } from '../../infrastructure/error-tracking';
 
 export const notFoundHandler: RequestHandler = (req, res) => {
   res
@@ -40,6 +41,16 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     e = new AppError(413, 'PAYLOAD_TOO_LARGE', 'Request body too large');
   else e = new AppError(500, 'INTERNAL_ERROR', 'Something went wrong');
 
-  if (e.status >= 500) logger.error({ err, path: req.path }, 'Unhandled error');
+  if (e.status >= 500) {
+    const route = routePattern(req);
+    logger.error({ err, method: req.method, route, path: redactUrl(req.path) }, 'Unhandled error');
+    captureError(err, { method: req.method, route: route ?? 'unmatched', status: e.status });
+  }
   res.status(e.status).json({ error: { code: e.code, message: e.message, details: e.details } });
 };
+
+/** `/api/files/signed/:token` rather than the URL, so reports never carry tokens or ids. */
+function routePattern(req: Request): string | undefined {
+  const path = (req.route as { path?: unknown } | undefined)?.path;
+  return typeof path === 'string' ? `${req.baseUrl}${path}` : undefined;
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@erp/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser end-to-end tests (Playwright) for the critical workflows in spec section 7",
+  "scripts": {
+    "test": "playwright test",
+    "typecheck": "tsc --noEmit",
+    "install:browsers": "playwright install chromium",
+    "serve:api": "tsx scripts/start-api.ts",
+    "serve:web": "tsx scripts/start-web.ts",
+    "report": "playwright show-report playwright-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1"
+  }
+}
