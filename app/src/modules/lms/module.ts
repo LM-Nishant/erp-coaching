@@ -126,4 +126,6 @@ export default defineAppModule({
       order: 44,
     },
   ],
+  // device revoked or account deactivated: the user's downloaded lectures go with it
+  wipeUserData: async (userId) => (await import('./offline-store')).wipeOffline(userId),
 });

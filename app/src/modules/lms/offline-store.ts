@@ -1,25 +1,44 @@
 import { Capacitor } from '@capacitor/core';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
+import { sessionEndSettled } from '@/core/api';
+import { SecureKey, secureGetJson, secureSetJson } from '@/core/secure-storage';
+import { useAuthStore } from '@/stores/auth';
 import { lmsApi } from './api';
 
 /**
- * Encrypted offline lectures (mobile app only).
+ * Encrypted offline lectures (mobile app only, spec 4.18).
  *
  * - Files live in the app-private data directory (`Directory.Data`), never in shared storage, and the app offers no
  *   share/export action.
- * - Every 4 MB block is encrypted with AES-256-GCM using the per-licence key issued by the server, so copying the
- *   files off a rooted device yields ciphertext only.
- * - Each copy carries the licence expiry; expired or server-revoked copies are deleted on every sync and are never
- *   played. The web build never downloads videos.
+ * - Every 4 MB block is encrypted with AES-256-GCM using the per-licence key issued by the server. The keys are kept in
+ *   secure storage (Keychain / Android Keystore), apart from the files, so copying the files off a device yields
+ *   ciphertext only.
+ * - A copy belongs to the user and institute that saved it: other accounts signed in on the same device neither see nor
+ *   delete it.
+ * - Each copy carries its licence expiry (licence hours, capped by the learner's access). Expired copies are deleted
+ *   and never played.
+ * - When online, a copy is checked with the server before it plays (server time, so the device clock does not matter).
+ *   Licences the server revoked (access ended, lecture unpublished or no longer offline-enabled, device revoked) delete
+ *   the copy. A revoked device or deactivated account also wipes the user's copies as soon as the app hears of it
+ *   (`wipeOffline`, run from core/session.ts).
+ * - Offline, expiry relies on the device clock. If the clock reads earlier than a time the app has already seen,
+ *   copies do not open until a check with the server succeeds.
+ * - The web build never downloads videos.
  */
 
 const ROOT = 'lms-offline';
 const INDEX = `${ROOT}/index.json`;
 const BLOCK = 4 * 1024 * 1024;
+const SYNC_WAIT_MS = 5000;
+/** Clock corrections smaller than this are not treated as the clock being set back. */
+const CLOCK_SLACK_MS = 10 * 60_000;
 
 export interface OfflineItem {
   licenseId: number;
   resourceId: number;
+  /** Owner. `null`: saved before copies had owners; adopted by the next account that opens the store. */
+  userId: number | null;
+  instituteId: number | null;
   title: string;
   mimeType: string;
   sizeBytes: number;
@@ -27,8 +46,24 @@ export interface OfflineItem {
   expiresAt: string;
   watermark: string;
   savedAt: string;
-  /** Base64 AES key, kept only inside the app sandbox. */
-  key: string;
+}
+
+/** Index rows written by older app versions also carry the key. */
+type IndexRow = Omit<OfflineItem, 'userId' | 'instituteId'> &
+  Partial<Pick<OfflineItem, 'userId' | 'instituteId'>> & { key?: string };
+
+interface KeyRing {
+  /** Base64 AES key per licence id. */
+  keys: Record<string, string>;
+  /** Latest device clock reading seen (ms, updated at most once a minute). */
+  seenAt: number;
+}
+
+interface Store {
+  items: OfflineItem[];
+  ring: KeyRing;
+  /** The device clock reads earlier than a time already seen: offline expiry cannot be trusted. */
+  clockSetBack: boolean;
 }
 
 export const offlineSupported = () => Capacitor.isNativePlatform();
@@ -42,26 +77,34 @@ function bytesToB64(bytes: Uint8Array) {
 const importKey = (b64: string) =>
   crypto.subtle.importKey('raw', b64ToBytes(b64), 'AES-GCM', false, ['encrypt', 'decrypt']);
 
-async function readIndex(): Promise<OfflineItem[]> {
+function owner() {
+  const me = useAuthStore().me;
+  return me?.institute ? { userId: me.user.id, instituteId: me.institute.id } : null;
+}
+type Owner = NonNullable<ReturnType<typeof owner>>;
+const owns = (o: Owner | null, i: OfflineItem) =>
+  !!o && i.userId === o.userId && i.instituteId === o.instituteId;
+
+let queue: Promise<unknown> = Promise.resolve();
+/** Index and key updates run one at a time: a sync can overlap a download or a wipe. */
+function exclusive<T>(fn: () => Promise<T>): Promise<T> {
+  const run = queue.then(fn, fn);
+  queue = run.catch(() => undefined);
+  return run;
+}
+
+async function readIndex(): Promise<IndexRow[]> {
   try {
     const { data } = await Filesystem.readFile({
       path: INDEX,
       directory: Directory.Data,
       encoding: Encoding.UTF8,
     });
-    return JSON.parse(data as string) as OfflineItem[];
+    return JSON.parse(data as string) as IndexRow[];
   } catch {
     return [];
   }
 }
-const writeIndex = (items: OfflineItem[]) =>
-  Filesystem.writeFile({
-    path: INDEX,
-    directory: Directory.Data,
-    encoding: Encoding.UTF8,
-    data: JSON.stringify(items),
-    recursive: true,
-  });
 
 async function removeFiles(licenseId: number) {
   await Filesystem.rmdir({ path: `${ROOT}/${licenseId}`, directory: Directory.Data, recursive: true }).catch(
@@ -69,33 +112,85 @@ async function removeFiles(licenseId: number) {
   );
 }
 
-const isExpired = (i: OfflineItem) => new Date(i.expiresAt).getTime() <= Date.now();
-
-/** Valid copies only; expired ones are purged locally even when the device is offline. */
-export async function listOffline(): Promise<OfflineItem[]> {
-  if (!offlineSupported()) return [];
-  const items = await readIndex();
-  const keep = items.filter((i) => !isExpired(i));
-  if (keep.length !== items.length) {
-    for (const i of items.filter(isExpired)) await removeFiles(i.licenseId);
-    await writeIndex(keep);
-  }
-  return keep;
+async function save(s: Store) {
+  await secureSetJson(SecureKey.offlineKeys, s.ring);
+  await Filesystem.writeFile({
+    path: INDEX,
+    directory: Directory.Data,
+    encoding: Encoding.UTF8,
+    data: JSON.stringify(s.items),
+    recursive: true,
+  });
 }
 
-/** Reconciles with the server: revoked licences (access lost, unpublished…) are deleted from the device. */
+/** Deletes copies (files and keys) matching `drop`; returns whether any was deleted. */
+async function purge(s: Store, drop: (i: OfflineItem) => boolean) {
+  const gone = s.items.filter(drop);
+  for (const i of gone) {
+    await removeFiles(i.licenseId);
+    delete s.ring.keys[i.licenseId];
+  }
+  s.items = s.items.filter((i) => !gone.includes(i));
+  return gone.length > 0;
+}
+
+const isExpired = (i: OfflineItem, now: number) => new Date(i.expiresAt).getTime() <= now;
+
+/**
+ * Loads the index and key ring, migrating copies saved by older versions (key moved to secure storage, adopted by the
+ * signed-in account), and deletes expired copies of every account.
+ */
+async function load(): Promise<Store> {
+  const rows = await readIndex();
+  const ring = (await secureGetJson<KeyRing>(SecureKey.offlineKeys)) ?? { keys: {}, seenAt: 0 };
+  const now = Date.now();
+  const clockSetBack = now < ring.seenAt - CLOCK_SLACK_MS;
+  let dirty = now - ring.seenAt > 60_000;
+  if (dirty) ring.seenAt = now;
+  const me = owner();
+  const items = rows.map(({ key, ...row }): OfflineItem => {
+    if (key) {
+      ring.keys[row.licenseId] ??= key;
+      dirty = true;
+    }
+    if (row.userId == null && me) {
+      dirty = true;
+      return { ...row, ...me };
+    }
+    return { ...row, userId: row.userId ?? null, instituteId: row.instituteId ?? null };
+  });
+  const s: Store = { items, ring, clockSetBack };
+  if ((await purge(s, (i) => isExpired(i, now))) || dirty) await save(s);
+  return s;
+}
+
+/** The signed-in account's valid copies. */
+export async function listOffline(): Promise<OfflineItem[]> {
+  if (!offlineSupported()) return [];
+  const me = owner();
+  return exclusive(async () => (await load()).items.filter((i) => owns(me, i)));
+}
+
+/** Reconciles the signed-in account's copies with the server: copies whose licence is no longer valid are deleted. */
 export async function syncOffline() {
   if (!offlineSupported()) return;
+  const me = owner();
+  if (!me) return;
   const server = await lmsApi.offlineLicenses();
   const valid = new Map(server.filter((l) => l.contentKey && !l.revokedAt).map((l) => [l.id, l]));
-  const items = await readIndex();
-  const keep: OfflineItem[] = [];
-  for (const i of items) {
-    const s = valid.get(i.licenseId);
-    if (!s || isExpired(i)) await removeFiles(i.licenseId);
-    else keep.push({ ...i, expiresAt: s.expiresAt });
-  }
-  await writeIndex(keep);
+  await exclusive(async () => {
+    const s = await load();
+    await purge(s, (i) => owns(me, i) && !valid.has(i.licenseId));
+    for (const i of s.items) {
+      const lic = owns(me, i) ? valid.get(i.licenseId) : undefined;
+      if (!lic) continue;
+      i.expiresAt = lic.expiresAt;
+      // e.g. the Keystore entry was lost: the server hands the key out again while the licence is valid
+      s.ring.keys[i.licenseId] ??= lic.contentKey!;
+    }
+    await purge(s, (i) => isExpired(i, Date.now()));
+    await save(s);
+  });
 }
 
 export async function isSavedOffline(resourceId: number) {
@@ -105,14 +200,11 @@ export async function isSavedOffline(resourceId: number) {
 /** Downloads a lecture into the sandbox, encrypting each block before it touches the disk. */
 export async function saveOffline(resourceId: number, onProgress: (done: number, total: number) => void) {
   if (!offlineSupported()) throw new Error('Offline downloads are available in the mobile app only');
+  const me = owner();
+  if (!me) throw new Error('Sign in to save lectures offline');
   const lic = await lmsApi.offlineLicense(resourceId);
   const key = await importKey(lic.contentKey);
-  const res = await fetch(lic.downloadUrl);
-  if (!res.ok || !res.body) throw new Error('Download failed');
-  const reader = res.body.getReader();
-  let buffer = new Uint8Array(0);
   let block = 0;
-  let done = 0;
   const flush = async (bytes: Uint8Array) => {
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const enc = new Uint8Array(
@@ -129,6 +221,11 @@ export async function saveOffline(resourceId: number, onProgress: (done: number,
     });
   };
   try {
+    const res = await fetch(lic.downloadUrl);
+    if (!res.ok || !res.body) throw new Error('Download failed');
+    const reader = res.body.getReader();
+    let buffer = new Uint8Array(0);
+    let done = 0;
     for (;;) {
       const { value, done: end } = await reader.read();
       if (value) {
@@ -148,37 +245,88 @@ export async function saveOffline(resourceId: number, onProgress: (done: number,
     if (buffer.length) await flush(buffer);
   } catch (e) {
     await removeFiles(lic.id);
+    // free the licence: it counts towards the learner's offline limit until it expires
+    await lmsApi.revokeOffline(lic.id).catch(() => undefined);
     throw e;
   }
-  const items = (await readIndex()).filter((i) => i.resourceId !== resourceId);
-  for (const old of (await readIndex()).filter((i) => i.resourceId === resourceId))
-    await removeFiles(old.licenseId);
-  items.push({
-    licenseId: lic.id,
-    resourceId,
-    title: lic.title,
-    mimeType: lic.mimeType,
-    sizeBytes: lic.sizeBytes,
-    blocks: block,
-    expiresAt: lic.expiresAt,
-    watermark: lic.watermark.text,
-    savedAt: new Date().toISOString(),
-    key: lic.contentKey,
+  await exclusive(async () => {
+    const s = await load();
+    // the server revoked the previous licence of this lecture when it issued this one
+    await purge(s, (i) => owns(me, i) && i.resourceId === resourceId);
+    s.items.push({
+      licenseId: lic.id,
+      resourceId,
+      ...me,
+      title: lic.title,
+      mimeType: lic.mimeType,
+      sizeBytes: lic.sizeBytes,
+      blocks: block,
+      expiresAt: lic.expiresAt,
+      watermark: lic.watermark.text,
+      savedAt: new Date().toISOString(),
+    });
+    s.ring.keys[lic.id] = lic.contentKey;
+    await save(s);
   });
-  await writeIndex(items);
 }
 
 export async function removeOffline(item: OfflineItem) {
-  await removeFiles(item.licenseId);
-  await writeIndex((await readIndex()).filter((i) => i.licenseId !== item.licenseId));
+  await exclusive(async () => {
+    const s = await load();
+    await purge(s, (i) => i.licenseId === item.licenseId);
+    await save(s);
+  });
   await lmsApi.revokeOffline(item.licenseId).catch(() => undefined);
 }
 
-/** Decrypts an offline copy into an in-memory object URL (revoke it when the player closes). */
+/**
+ * Deletes a user's copies in every institute (`null`: every copy on the device). Run when the user's access ends on this
+ * device: device revoked or account deactivated. Copies not yet adopted by an account (older app versions) go too.
+ */
+export async function wipeOffline(userId: number | null) {
+  if (!offlineSupported()) return;
+  await exclusive(async () => {
+    const s = await load();
+    await purge(s, (i) => userId === null || i.userId === userId || i.userId === null);
+    await save(s);
+  });
+}
+
+/**
+ * Decrypts a copy into an in-memory object URL (revoke it when the player closes). When online the licence is checked
+ * with the server first, so a copy whose access ended is not played.
+ */
 export async function openOffline(resourceId: number): Promise<{ url: string; item: OfflineItem }> {
-  const item = (await listOffline()).find((i) => i.resourceId === resourceId);
-  if (!item) throw new Error('This lecture is not saved offline or its offline access has expired');
-  const key = await importKey(item.key);
+  let checked = false;
+  if (navigator.onLine && !useAuthStore().offline) {
+    // Bounded: a captive portal or a very slow network must not keep a downloaded lecture from playing.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    checked = await Promise.race([
+      syncOffline().then(
+        () => true,
+        () => false,
+      ),
+      new Promise<boolean>((r) => (timer = setTimeout(() => r(false), SYNC_WAIT_MS))),
+    ]);
+    clearTimeout(timer);
+    // The sync may have found the device revoked: its copies are wiped before anything is played.
+    await sessionEndSettled();
+  }
+  const me = owner();
+  const found = await exclusive(async () => {
+    const s = await load();
+    if (s.clockSetBack && !checked)
+      throw new Error(
+        "Your device's clock has been set back. Connect to the internet to watch offline lectures",
+      );
+    const item = s.items.find((i) => owns(me, i) && i.resourceId === resourceId);
+    return item && { item, key: s.ring.keys[item.licenseId] };
+  });
+  if (!found) throw new Error('This lecture is not saved offline or its offline access has expired');
+  if (!found.key)
+    throw new Error('This offline copy can no longer be opened. Connect to the internet and save it again');
+  const { item } = found;
+  const key = await importKey(found.key);
   const parts: ArrayBuffer[] = [];
   for (let n = 0; n < item.blocks; n++) {
     const { data } = await Filesystem.readFile({
