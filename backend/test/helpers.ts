@@ -24,7 +24,11 @@ export const USERS = {
 };
 
 /** Same device per user across the run, so only the very first login registers a device. */
-export const stableDevice = (mobile: string) => ({ uid: `test-device-${mobile}`, platform: 'web' as const });
+export type TestDevice = { uid: string; platform: 'web' | 'android' | 'ios' };
+export const stableDevice = (mobile: string): TestDevice => ({
+  uid: `test-device-${mobile}`,
+  platform: 'web',
+});
 export const newDevice = (platform: 'web' | 'android' | 'ios' = 'web') => ({
   uid: `test-${crypto.randomUUID()}`,
   platform,
@@ -37,7 +41,10 @@ export function lastOtpFor(mobile: string): string {
 }
 
 /** Logs in with password, completing the new-device OTP step if required. */
-export async function login(user: { mobile: string; password: string }, device = stableDevice(user.mobile)) {
+export async function login(
+  user: { mobile: string; password: string },
+  device: TestDevice = stableDevice(user.mobile),
+) {
   const a = await getApp();
   let res = await request(a)
     .post('/api/auth/login')
@@ -135,4 +142,51 @@ export async function purgeAcademicFixtures(f: {
   await purgeRows('batches', f.batchIds ?? []);
   await purgeRows('courses', f.courseIds ?? []);
   await purgeRows('academic_sessions', f.sessionIds ?? []);
+}
+
+/** The highest id in each table now; `purgeCreatedSince` later removes the rows a suite added. */
+export async function idWatermarks(tables: readonly string[]): Promise<Record<string, number>> {
+  const marks: Record<string, number> = {};
+  for (const table of tables) {
+    const [rows] = await getSequelize().query(`SELECT COALESCE(MAX(id), 0) AS id FROM \`${table}\``);
+    marks[table] = Number((rows as { id: number }[])[0].id);
+  }
+  return marks;
+}
+
+/**
+ * Purges (with dependants, see `purgeRows`) every row created after `idWatermarks`, table by table in
+ * the order given there. Test files run one at a time, so these are exactly the suite's own rows.
+ */
+export async function purgeCreatedSince(marks: Record<string, number>): Promise<void> {
+  for (const [table, mark] of Object.entries(marks)) {
+    const [rows] = await getSequelize().query(`SELECT id FROM \`${table}\` WHERE id > ?`, {
+      replacements: [mark],
+    });
+    await purgeRows(
+      table,
+      (rows as { id: number }[]).map((r) => r.id),
+    );
+  }
+}
+
+/** Saves the matching rows; the returned function writes every column back (rows deleted since stay deleted). */
+export async function snapshotRows(table: string, where: string, replacements: unknown[] = []) {
+  const sequelize = getSequelize();
+  const [rows] = await sequelize.query(`SELECT * FROM \`${table}\` WHERE ${where}`, { replacements });
+  return async () => {
+    for (const row of rows as Record<string, unknown>[]) {
+      const cols = Object.keys(row).filter((c) => c !== 'id');
+      const values = cols.map((c) => {
+        const v = row[c];
+        return v !== null && typeof v === 'object' && !(v instanceof Date) && !Buffer.isBuffer(v)
+          ? JSON.stringify(v)
+          : v;
+      });
+      await sequelize.query(
+        `UPDATE \`${table}\` SET ${cols.map((c) => `\`${c}\` = ?`).join(', ')} WHERE id = ?`,
+        { replacements: [...values, row.id] },
+      );
+    }
+  };
 }

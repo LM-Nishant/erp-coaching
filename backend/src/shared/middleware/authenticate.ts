@@ -33,6 +33,10 @@ export function addTenantRequestGuard(name: string, guard: TenantRequestGuard): 
  *
  * Also enforces the institute's inactivity timeout (401 `SESSION_IDLE`) and records activity on the
  * device (`lastSeenAt`), except for background polls sent with `X-Background-Request: 1`.
+ *
+ * Order matters: the session checks (401 `SESSION_REVOKED`, `SESSION_IDLE`) run before the tenant request guards
+ * (e.g. 402 `SUBSCRIPTION_SUSPENDED`), so a revoked or idle device signs out even while the subscription is
+ * suspended. The live-class socket handshake runs this too, with a request without URL or method.
  */
 export const authenticate: RequestHandler = async (req, _res, next) => {
   const header = req.header('authorization');

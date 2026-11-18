@@ -22,7 +22,7 @@ import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { Batch, Course, openBatchesForCourse } from '../academics/api';
 import { admitForCoursePurchase, releaseCoursePurchaseBatch } from '../admissions/api';
 import { notify } from '../notifications/api';
-import { Student } from '../students/models';
+import { Student } from '../students/api';
 import { FeeAccount, FeeCourseEnrolment, FeeEntitlement } from './models';
 import { auditFee, withLockRetry } from './util';
 

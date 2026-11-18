@@ -64,7 +64,8 @@ export function instituteAdminRoutes(api: Router) {
       raw: true,
     });
     const [users, branches] = await Promise.all([
-      User.count(),
+      // Institute users only, like the SaaS dashboard: super admins are platform staff.
+      User.count({ where: { isSuperAdmin: false } }),
       Branch.count({ tenantBypass: true } as object),
     ]);
     res.json({ institutesByStatus: byStatus, users, branches });

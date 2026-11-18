@@ -2,6 +2,7 @@
  * Reports & analytics DTOs (spec §4.17 role dashboards and reports, §4.1 SaaS dashboard).
  * Money values are integer paise; percentages are 0–100 with one decimal.
  */
+import type { RevenuePointDto, SubscriptionAccessState } from './billing';
 
 export const REPORT_KEYS = [
   'fee-collections',
@@ -239,6 +240,26 @@ export interface SaasBillingStatsDto {
   outstandingPaise: number | null;
   paidSubscriptions: number;
   byPlan: { planId: number; planName: string; subscriptions: number; mrrPaise: number }[];
+  /** Billing detail; only present when `source` is `billing`. */
+  billing?: SaasBillingDetailDto;
+}
+
+/** Invoice-level SaaS billing detail from the billing module. */
+export interface SaasBillingDetailDto {
+  /** Per month of the period (billing timezone): invoiced, collected and credited. */
+  revenueByMonth: RevenuePointDto[];
+  /** Institutes per subscription access state. */
+  byState: { state: SubscriptionAccessState; count: number }[];
+  openInvoices: number;
+  overduePaise: number;
+  /** Latest usage snapshots (hourly billing sweep) on or before the period end, summed. */
+  usage: {
+    snapshotDate: string | null;
+    institutes: number;
+    students: number;
+    storageMb: number;
+    aiTokensMonth: number;
+  };
 }
 
 export interface SaasInstituteRowDto {

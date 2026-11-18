@@ -27,8 +27,10 @@ import { setRealtimeBridge } from './realtime-bridge';
  * Socket.IO signalling + classroom interaction for live classes.
  *
  * - Auth: the handshake carries the normal access token (`auth.token`) and optional `auth.branchId`;
- *   it goes through the same `authenticate` checks as REST (device, membership, branch), plus the
- *   `live-classes.view` permission and the plan's module switch.
+ *   it goes through the same `authenticate` checks as REST (revoked / idle device → 401 first, membership,
+ *   branch, then the tenant request guards: a suspended subscription → 402, a read-only one may join since the
+ *   handshake counts as a read), plus the `live-classes.view` permission and the plan's module switch. Sockets of
+ *   a device are dropped when it is revoked (`disconnectDeviceSockets`, from integrations.ts).
  * - Every event handler runs inside the socket's request context, so tenant-scoped repositories work.
  * - Room state that does not need persistence (hands, speakers, whiteboard, screen share) is kept in
  *   memory on this node. Run a single node, or add `@socket.io/redis-adapter` + sticky sessions and
@@ -165,6 +167,20 @@ export function attachLiveSockets(server: HttpServer): Server {
     onlineUserIds: (inst, id) => [...(rooms.get(key(inst, id))?.members.keys() ?? [])],
   });
   return io;
+}
+
+/** Disconnects this node's live-class sockets opened from a device (it was revoked). Returns how many. */
+export function disconnectDeviceSockets(deviceId: number): number {
+  const nsp = getLiveNamespace();
+  if (!nsp) return 0;
+  let count = 0;
+  for (const raw of nsp.sockets.values()) {
+    const socket = raw as unknown as LiveSocket;
+    if (socket.data?.ctx?.deviceId !== deviceId) continue;
+    socket.disconnect(true);
+    count++;
+  }
+  return count;
 }
 
 /** Closes the Socket.IO server (tests / graceful shutdown). */

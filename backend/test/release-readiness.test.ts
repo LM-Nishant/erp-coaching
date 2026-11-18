@@ -266,6 +266,29 @@ describe('served uploads', () => {
     expect(contentDisposition('inline', '')).toBe(`inline; filename="download"; filename*=UTF-8''download`);
   });
 
+  it('lets the app frame stored PDFs and read download file names cross-origin', async () => {
+    const pdf = await upload(
+      tenant.admin,
+      '/api/files',
+      { name: 'notes.pdf', type: 'application/pdf', data: Buffer.from('%PDF-1.4\n%%EOF\n') },
+      { module: 'general' },
+    );
+    const res = await request(await getApp())
+      .get(new URL(pdf.url).pathname)
+      .set('Origin', 'capacitor://localhost');
+    expect(res.status).toBe(200);
+    expect(res.headers['x-frame-options']).toBeUndefined();
+    const ancestors = String(res.headers['content-security-policy'])
+      .split(';')
+      .map((d) => d.trim())
+      .filter((d) => d.startsWith('frame-ancestors'));
+    expect(ancestors).toHaveLength(1);
+    for (const origin of ["'self'", 'capacitor://localhost', 'https://localhost', config.publicWebUrl])
+      expect(ancestors[0].split(' ')).toContain(origin);
+    expect(res.headers['access-control-expose-headers']).toContain('Content-Disposition');
+    expect(res.headers['content-disposition']).toMatch(/^inline; filename="notes.pdf"/);
+  });
+
   it('serves uploads with safe headers through short-lived signed URLs', async () => {
     const svg = await upload(
       tenant.admin,

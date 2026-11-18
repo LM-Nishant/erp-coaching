@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, sessionEndSettled, setSessionExpiredHandler } from './api';
+import { api, sessionEndSettled, setPaymentRequiredHandler, setSessionExpiredHandler } from './api';
 import { loadSession, saveSession } from './token-storage';
 
 type Route = (req: { path: string; token: string | null; headers: Record<string, string> }) => Response;
@@ -126,5 +126,54 @@ describe('api session handling', () => {
     await sessionEndSettled();
     expect(onEnded).toHaveBeenCalledExactlyOnceWith('SESSION_REVOKED');
     expect(calls.map((c) => c.token)).toEqual(['imp']);
+  });
+});
+
+describe('api.download session and subscription handling', () => {
+  const file = () => new Response('a,b\n', { headers: { 'content-type': 'text/csv' } });
+  afterEach(() => setPaymentRequiredHandler(null));
+
+  it('refreshes an expired token and retries the download like JSON requests', async () => {
+    serve(({ path, token }) => {
+      if (path === '/auth/refresh') return json(200, { accessToken: 'a2', refreshToken: 'r2' });
+      return token === 'a2' ? file() : unauthorized('TOKEN_EXPIRED');
+    });
+    const res = await api.download('/reports/x/export');
+
+    expect(await res.blob.text()).toBe('a,b\n');
+    expect(calls.map((c) => [c.path, c.token])).toEqual([
+      ['/reports/x/export', 'a1'],
+      ['/auth/refresh', null],
+      ['/reports/x/export', 'a2'],
+    ]);
+    expect(onEnded).not.toHaveBeenCalled();
+  });
+
+  it.each(['SESSION_REVOKED', 'SESSION_IDLE'])(
+    'ends the session without a refresh on 401 %s',
+    async (code) => {
+      serve(() => unauthorized(code));
+      await expect(api.download('/reports/x/export')).rejects.toMatchObject({ status: 401, code });
+      await sessionEndSettled();
+
+      expect(onEnded).toHaveBeenCalledExactlyOnceWith(code);
+      expect(calls.some((c) => c.path === '/auth/refresh')).toBe(false);
+      expect(await loadSession()).toBeNull();
+    },
+  );
+
+  it('reports a 402 to the payment-required handler, for downloads and JSON requests alike', async () => {
+    const onPayment = vi.fn();
+    setPaymentRequiredHandler(onPayment);
+    serve(() => json(402, { error: { code: 'SUBSCRIPTION_SUSPENDED', message: 'Suspended' } }));
+
+    await expect(api.download('/reports/x/export')).rejects.toMatchObject({
+      status: 402,
+      code: 'SUBSCRIPTION_SUSPENDED',
+    });
+    await expect(api.get('/students')).rejects.toMatchObject({ status: 402 });
+    expect(onPayment).toHaveBeenCalledTimes(2);
+    expect(onPayment.mock.calls[0]![0]).toMatchObject({ code: 'SUBSCRIPTION_SUSPENDED' });
+    expect(await loadSession()).toMatchObject({ accessToken: 'a1' });
   });
 });

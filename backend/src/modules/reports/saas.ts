@@ -37,6 +37,24 @@ export function setSaasBillingStatsProvider(provider: SaasBillingStatsProvider |
   billingProvider = provider;
 }
 
+const DEFAULT_PLATFORM_BRAND = 'Coaching ERP';
+let brandProvider: (() => Promise<string>) | null = null;
+
+/** Lets the billing module supply the platform brand shown on SaaS exports (its billing legal name). */
+export function setPlatformBrandProvider(provider: (() => Promise<string>) | null): void {
+  brandProvider = provider;
+}
+
+/** Platform brand for SaaS export headers. */
+export async function platformBrand(): Promise<string> {
+  try {
+    return (await brandProvider?.())?.trim() || DEFAULT_PLATFORM_BRAND;
+  } catch (err) {
+    logger.warn({ err }, 'Platform brand provider failed; using the default brand');
+    return DEFAULT_PLATFORM_BRAND;
+  }
+}
+
 const PAID_STATUSES = ['active', 'past_due'];
 const LIVE_STATUSES = ['trial', 'active', 'past_due'];
 const INSTITUTE_TABLE_LIMIT = 1000;
@@ -385,6 +403,22 @@ export function saasExportDocument(dash: SaasDashboardDto): ReportDocument {
         rows: dash.subscriptions.byStatus.map((s) => ({ status: s.status, count: s.count })),
         totalRows: dash.subscriptions.byStatus.length,
       },
+      ...(revenue.billing
+        ? [
+            {
+              key: 'revenueByMonth',
+              title: 'Revenue by month',
+              columns: [
+                { key: 'month', label: 'Month', type: 'text' as const },
+                { key: 'invoicedPaise', label: 'Invoiced', type: 'money' as const },
+                { key: 'collectedPaise', label: 'Collected', type: 'money' as const },
+                { key: 'creditedPaise', label: 'Credited', type: 'money' as const },
+              ],
+              rows: revenue.billing.revenueByMonth.map((m) => ({ ...m, month: m.month.slice(0, 7) })),
+              totalRows: revenue.billing.revenueByMonth.length,
+            },
+          ]
+        : []),
       {
         key: 'ai',
         title: 'AI usage by feature',
@@ -400,7 +434,11 @@ export function saasExportDocument(dash: SaasDashboardDto): ReportDocument {
     notes: [
       estimated
         ? 'Recurring revenue is estimated from current subscriptions and plan prices; yearly plans count as one twelfth per month. Revenue and outstanding invoices are not tracked yet.'
-        : 'Revenue figures come from SaaS billing (invoices and payments).',
+        : `Revenue figures come from SaaS billing (invoices and payments)${
+            revenue.billing
+              ? `; ${revenue.billing.openInvoices} open invoice(s), of which ${(revenue.billing.overduePaise / 100).toFixed(2)} INR is overdue`
+              : ''
+          }.`,
       `Subscriptions ending within 30 days: ${dash.subscriptions.endingSoon}.`,
     ],
   };

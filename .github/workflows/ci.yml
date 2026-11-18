@@ -220,3 +220,68 @@ jobs:
         run: |
           mysqldump --version
           deploy/backup/restore-test.sh
+
+  android:
+    name: Android build (assembleDebug)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # Capacitor 8 compiles with Java 21 (capacitor.build.gradle) and needs compileSdk 36.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - run: npm ci
+      - run: npm run build -w @erp/shared && npm run build -w app
+      - run: npx cap sync android
+        working-directory: app
+      - run: ./gradlew --no-daemon assembleDebug
+        working-directory: app/android
+      # POST_NOTIFICATIONS (Android 13+) is not declared by the app itself; it must arrive through
+      # firebase-messaging (pulled in by @capacitor/push-notifications) during manifest merging.
+      - name: Check merged manifest declares POST_NOTIFICATIONS
+        working-directory: app/android/app/build/intermediates
+        run: |
+          manifests=$(find . -path '*merged_manifest*' -path '*debug*' -name AndroidManifest.xml)
+          test -n "$manifests" || { echo "::error::No merged debug manifest found"; exit 1; }
+          echo "$manifests"
+          grep -l 'android.permission.POST_NOTIFICATIONS' $manifests \
+            || { echo "::error::POST_NOTIFICATIONS missing from the merged manifest"; exit 1; }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-debug-apk
+          path: app/android/app/build/outputs/apk/debug/*.apk
+          retention-days: 7
+
+  ios:
+    name: iOS build (unsigned, simulator)
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @erp/shared && npm run build -w app
+      - run: npx cap sync ios
+        working-directory: app
+      # Package.resolved is committed; fail if `cap sync` or resolution would change any tracked file.
+      - name: Resolve Swift packages
+        working-directory: app/ios/App
+        run: |
+          xcodebuild -resolvePackageDependencies -project App.xcodeproj -scheme App -onlyUsePackageVersionsFromResolvedFile
+          git diff --exit-code -- . || { echo "::error::cap sync / package resolution changed tracked iOS files"; exit 1; }
+      - name: xcodebuild (CODE_SIGNING_ALLOWED=NO)
+        working-directory: app/ios/App
+        run: >-
+          xcodebuild -project App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator' -onlyUsePackageVersionsFromResolvedFile
+          CODE_SIGNING_ALLOWED=NO build

@@ -2,6 +2,7 @@ import { Op } from 'sequelize';
 import { z } from 'zod';
 import type { WebsiteSiteDto } from '@erp/shared';
 import { config } from '../../infrastructure/config';
+import { webAppBaseUrl } from '../../shared/public-urls';
 import { getContext, requireTenantContext, runWithContext } from '../../shared/context';
 import { BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { Branch } from '../branches/branch.model';
@@ -98,7 +99,7 @@ export function siteBaseUrl(site: WebsiteSite, inst: Pick<Institute, 'slug'>) {
 
 /** App URL used for the online admission (self-registration) link. */
 export function appBaseUrl(site: WebsiteSite) {
-  return (site.appUrl ?? config.corsOrigins[0] ?? config.API_PUBLIC_URL).replace(/\/$/, '');
+  return webAppBaseUrl(site.appUrl);
 }
 
 export function admissionUrl(site: WebsiteSite, inst: Pick<Institute, 'slug'>, ref?: string | null) {

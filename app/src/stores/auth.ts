@@ -49,6 +49,7 @@ export function sessionEndReason(code: string): SessionEndReason {
 }
 
 const isNetworkError = (e: unknown) => e instanceof ApiError && e.code === 'NETWORK_ERROR';
+const isServerError = (e: unknown) => e instanceof ApiError && e.status >= 500;
 
 let restoring: Promise<void> | null = null;
 /** Secret read during an offline biometric unlock; exchanged for a session once the network is back. */
@@ -108,11 +109,11 @@ export const useAuthStore = defineStore('auth', {
       try {
         await this.fetchMe();
       } catch (e) {
-        if (isNetworkError(e)) {
-          // Keep the session: downloaded lectures work offline in the app, and it resumes once online.
+        // Only a 401 ends the session, and the API layer already handed it to the session-ended handler. Network
+        // errors and server errors (5xx, maintenance…) keep the stored session: downloaded lectures work offline in
+        // the app, and it resumes once the server answers again.
+        if (isNetworkError(e) || isServerError(e)) {
           if (!session.impersonator) await this.startOffline(session.userId ?? null);
-        } else if (!(e instanceof ApiError && e.status === 401)) {
-          await this.clear();
         }
       }
       // A 401, or the idle monitor (closed for longer than the timeout), may have ended the session: wait for the

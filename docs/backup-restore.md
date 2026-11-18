@@ -315,7 +315,8 @@ calls for the pre-upgrade backup. Everything written after the backup is lost.
    ```
 
 6. Requeue the jobs that were running when the backup was taken. No worker is running now, so all of them are stale
-   ([background jobs](deployment.md#background-jobs)):
+   ([background jobs](deployment.md#background-jobs)). The api would reclaim them by itself, but it fails any job that
+   was on its last attempt, so requeue them all now:
 
    ```sh
    docker compose exec mysql mysql -uroot -p erp_coaching -e \

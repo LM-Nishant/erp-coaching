@@ -8,7 +8,7 @@
           <ion-col v-for="s in platform.institutesByStatus" :key="s.status" size="6" size-md="3">
             <StatCard :label="`${s.status} institutes`" :value="s.count" />
           </ion-col>
-          <ion-col size="6" size-md="3"><StatCard label="Users" :value="platform.users" /></ion-col>
+          <ion-col size="6" size-md="3"><StatCard label="Institute users" :value="platform.users" /></ion-col>
           <ion-col size="6" size-md="3"><StatCard label="Branches" :value="platform.branches" /></ion-col>
         </ion-row>
       </ion-grid>

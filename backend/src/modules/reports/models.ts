@@ -58,6 +58,7 @@ export class ReportExport extends Model<
       },
       { sequelize, tableName: 'report_exports' },
     );
-    registerTenantModel(ReportExport);
+    // Short-lived download records: purged with the institute and left out of its data export.
+    registerTenantModel(ReportExport, { retainOnInstituteDeletion: false });
   }
 }

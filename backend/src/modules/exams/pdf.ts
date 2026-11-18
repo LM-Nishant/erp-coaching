@@ -2,20 +2,18 @@
  * Minimal dependency-free PDF writer (A4, Helvetica, WinAnsi text) for scorecards.
  * Supports headings, text lines and simple column tables with automatic page breaks.
  */
+import { fitHelvetica, wrapHelvetica } from '../../shared/pdf-metrics';
+
 const PAGE_W = 595;
 const PAGE_H = 842;
 const MARGIN = 48;
 
-function esc(s: string): string {
-  return s
-    .replace(/[^\x20-\x7e\xa0-\xff]/g, '?')
-    .replace(/\\/g, '\\\\')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)');
-}
+/** Characters the WinAnsi-encoded Helvetica fonts can show; others become `?`. */
+const latin1 = (s: string) => s.replace(/[^\x20-\x7e\xa0-\xff]/g, '?');
 
-/** Rough Helvetica width estimate used for truncation/wrapping. */
-const charWidth = (size: number) => size * 0.5;
+function esc(s: string): string {
+  return latin1(s).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+}
 
 export class SimplePdf {
   private pages: string[][] = [[]];
@@ -40,11 +38,11 @@ export class SimplePdf {
 
   text(s: string, opts: { size?: number; bold?: boolean; gap?: number } = {}) {
     const size = opts.size ?? 10;
-    const maxChars = Math.floor((PAGE_W - 2 * MARGIN) / charWidth(size));
-    for (const line of wrap(s, maxChars)) {
+    const bold = !!opts.bold;
+    for (const line of wrapHelvetica(latin1(s), PAGE_W - 2 * MARGIN, size, bold)) {
       this.ensure(size + 4);
       this.y -= size + 4;
-      this.textAt(MARGIN, this.y, line, size, !!opts.bold);
+      this.textAt(MARGIN, this.y, line, size, bold);
     }
     this.y -= opts.gap ?? 0;
   }
@@ -71,8 +69,7 @@ export class SimplePdf {
       let x = MARGIN;
       cells.forEach((c, i) => {
         const w = usable * widths[i];
-        const max = Math.max(1, Math.floor((w - 4) / charWidth(size)));
-        this.textAt(x, this.y, c.length > max ? `${c.slice(0, max - 1)}~` : c, size, bold);
+        this.textAt(x, this.y, fitHelvetica(latin1(c), w - 4, size, bold), size, bold);
         x += w;
       });
     };
@@ -115,20 +112,4 @@ export class SimplePdf {
     out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
     return Buffer.from(out, 'latin1');
   }
-}
-
-function wrap(s: string, max: number): string[] {
-  const out: string[] = [];
-  for (const para of s.split(/\r?\n/)) {
-    let line = '';
-    for (const word of para.split(/\s+/)) {
-      if (!word) continue;
-      if ((line ? line.length + 1 : 0) + word.length > max) {
-        if (line) out.push(line);
-        line = word.length > max ? word.slice(0, max) : word;
-      } else line = line ? `${line} ${word}` : word;
-    }
-    out.push(line);
-  }
-  return out;
 }

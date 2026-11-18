@@ -4,6 +4,7 @@ import { associateSubscriptionModels, initSubscriptionModels } from './models';
 import { subscriptionRoutes } from './subscriptions.routes';
 import { subscriptionAccessGuard } from './access-guard';
 import { registerBillingNotificationEvents } from './notifications';
+import { registerSubscriptionIntegrations } from './integrations';
 import { BILLING_SWEEP_JOB, billingSweepJob, scheduleBillingSweep } from './sweep.service';
 
 export default defineModule({
@@ -21,6 +22,7 @@ export default defineModule({
   jobs: { [BILLING_SWEEP_JOB]: billingSweepJob },
   onReady: async () => {
     registerBillingNotificationEvents();
+    registerSubscriptionIntegrations();
     addTenantRequestGuard('subscription-access', subscriptionAccessGuard);
     await scheduleBillingSweep();
   },

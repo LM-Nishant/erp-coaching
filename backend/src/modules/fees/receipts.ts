@@ -9,7 +9,7 @@ import { getInstituteTimezone, nowInZone } from '../../shared/timezone';
 import { saveUploadedFile, signedUrlFor } from '../files/files.service';
 import { FileObject } from '../files/file.model';
 import { Institute } from '../institutes/institute.model';
-import { Student } from '../students/models';
+import { Student } from '../students/api';
 import { FeeAccount, FeePayment, FeeReceipt } from './models';
 import { renderPdf, type PdfLine, type PdfText } from './pdf';
 import { getFeeSettings } from './settings.service';

@@ -108,3 +108,28 @@ export function memberVisibilityWhere(): WhereOptions | undefined {
     },
   };
 }
+
+/**
+ * `User` filter matching {@link assertMemberInBranchScope} manage access: visible members whose every assignment
+ * lies inside the requester's branches. Undefined when unrestricted.
+ */
+export function memberManageWhere(): WhereOptions | undefined {
+  const { instituteId, allowedBranchIds } = requireTenantContext();
+  const visible = memberVisibilityWhere();
+  if (allowedBranchIds === null || !visible) return undefined;
+  const branches = allowedBranchIds.length ? allowedBranchIds.map((b) => Number(b)).join(',') : 'NULL';
+  const inst = Number(instituteId);
+  return {
+    [Op.and]: [
+      visible,
+      {
+        id: {
+          [Op.notIn]: literal(
+            `(SELECT user_id FROM user_roles WHERE institute_id = ${inst} AND (branch_id IS NULL OR branch_id NOT IN (${branches}))` +
+              ` UNION SELECT user_id FROM user_branches WHERE institute_id = ${inst} AND branch_id NOT IN (${branches}))`,
+          ),
+        },
+      },
+    ],
+  };
+}

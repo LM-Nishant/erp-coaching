@@ -55,7 +55,7 @@ import {
 } from '@ionic/vue';
 import { desktopOutline, phonePortraitOutline } from 'ionicons/icons';
 import type { DeviceDto } from '@erp/shared';
-import { api } from '@/core/api';
+import { api, ApiError } from '@/core/api';
 import { toast, toastError } from '@/core/toast';
 
 /**
@@ -70,6 +70,14 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; changed: [] }>();
 
 const devices = ref<DeviceDto[]>([]);
+
+/** The member left the caller's branch scope (403) or is gone (404): close and let the list refresh. */
+function outOfScope(e: unknown) {
+  if (!(e instanceof ApiError) || (e.status !== 403 && e.status !== 404)) return false;
+  emit('changed');
+  emit('close');
+  return true;
+}
 const loaded = ref(false);
 const busy = ref(false);
 
@@ -88,6 +96,7 @@ async function load() {
     loaded.value = true;
   } catch (e) {
     await toastError(e);
+    outOfScope(e);
   }
 }
 
@@ -112,6 +121,7 @@ async function revoke(d: DeviceDto) {
     await load();
   } catch (e) {
     await toastError(e);
+    outOfScope(e);
   } finally {
     busy.value = false;
   }

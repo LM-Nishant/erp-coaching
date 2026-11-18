@@ -1,7 +1,7 @@
 import express, { Router } from 'express';
 import { Op, col, fn } from 'sequelize';
 import { z } from 'zod';
-import { ADDON_KINDS, METERED_METRICS, type SubscriptionAccessState } from '@erp/shared';
+import { ADDON_KINDS, METERED_METRICS, PLAN_MODULE_KEYS, type SubscriptionAccessState } from '@erp/shared';
 import { parse } from '../../shared/utilities/validation';
 import { idParam, paginationSchema } from '../../shared/utilities/pagination';
 import { authenticate } from '../../shared/middleware/authenticate';
@@ -77,7 +77,11 @@ const limitsSchema = z.object({
   maxTeachers: z.number().int().min(0).nullable(),
   storageMb: z.number().int().min(0).nullable(),
   aiTokensMonthly: z.number().int().min(0).nullable(),
-  enabledModules: z.array(z.string()).nullable(),
+  enabledModules: z
+    .array(z.enum(PLAN_MODULE_KEYS))
+    .max(PLAN_MODULE_KEYS.length)
+    .transform((keys) => [...new Set(keys)])
+    .nullable(),
 });
 
 const moduleKey = z

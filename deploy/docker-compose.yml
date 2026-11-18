@@ -77,7 +77,10 @@ services:
     command: ['node', 'dist/infrastructure/database/cli.js', 'migrate']
     restart: 'no'
     env_file: *app-env-file
-    environment: *db-env
+    environment:
+      <<: *db-env
+      # Required in production by the config loader (see the api service).
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-${PUBLIC_URL:?set PUBLIC_URL in deploy/.env}}
     depends_on:
       mysql:
         condition: service_healthy
@@ -101,8 +104,9 @@ services:
       STORAGE_LOCAL_ROOT: /var/lib/erp/storage
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-100}
       API_PUBLIC_URL: ${PUBLIC_URL:?set PUBLIC_URL in deploy/.env}
-      # The web origin must come first (the API builds links into the web app from it, e.g. on institute
-      # websites); then the Capacitor app origins (iOS capacitor://localhost, Android https://localhost /
+      # Links into the web app (institute website buttons, course checkout); defaults to PUBLIC_URL.
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-${PUBLIC_URL}}
+      # The web origin, then the Capacitor app origins (iOS capacitor://localhost, Android https://localhost /
       # http://localhost).
       CORS_ORIGINS: ${PUBLIC_URL},${CORS_EXTRA_ORIGINS:-capacitor://localhost,https://localhost,http://localhost}
     volumes:

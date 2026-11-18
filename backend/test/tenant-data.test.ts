@@ -261,6 +261,15 @@ describe('tenant table catalogue', () => {
       'subscription_invoices',
       'subscription_payments',
     ]);
+    // Final-wave tables: tenant/personal data is purged; transient report downloads are not exported.
+    const rule = (table: string) => {
+      const t = plan.find((p) => p.table === table);
+      return t && { export: t.export, purge: t.purge };
+    };
+    expect(rule('exam_mark_revisions')).toEqual({ export: true, purge: true });
+    expect(rule('fee_course_enrolments')).toEqual({ export: true, purge: true });
+    expect(rule('ai_usage')).toEqual({ export: true, purge: true });
+    expect(rule('report_exports')).toEqual({ export: false, purge: true });
   });
 
   it('never exports credentials', () => {
@@ -269,6 +278,7 @@ describe('tenant table catalogue', () => {
     expect(isSensitiveColumn('notification_providers', 'secrets_encrypted')).toBe(true);
     expect(isSensitiveColumn('payment_gateway_configs', 'webhook_key')).toBe(true);
     expect(isSensitiveColumn('lms_offline_licenses', 'content_key')).toBe(true);
+    expect(isSensitiveColumn('devices', 'unlock_key_hash')).toBe(true);
     expect(isSensitiveColumn('users', 'mobile')).toBe(false);
     expect(isSensitiveColumn('fee_receipts', 'tokenized')).toBe(false);
   });

@@ -9,6 +9,7 @@ import { requireTenantContext } from '../../shared/context';
 import { audit } from '../../shared/audit/audit.service';
 import { AiUsage } from './models';
 import {
+  assertAiPlanEnabled,
   getSettingsDto,
   getUsageSummary,
   removeStoredKey,
@@ -125,5 +126,37 @@ export function aiRoutes(api: Router) {
   /** Current-month usage, remaining quota and provider status for the institute. */
   api.get('/ai/usage', authenticate, requirePermission('ai', 'view'), async (_req, res) => {
     res.json(await getUsageSummary(requireTenantContext().instituteId));
+  });
+
+  /** The institute's own calls, tokens and cost over the last `days`, overall and per provider/model. */
+  api.get('/ai/usage/history', authenticate, requirePermission('ai', 'view'), async (req, res) => {
+    const { instituteId } = requireTenantContext();
+    await assertAiPlanEnabled(instituteId);
+    const q = parse(z.object({ days: z.coerce.number().int().min(1).max(365).default(30) }), req.query);
+    const since = new Date(Date.now() - q.days * 86400000);
+    const where = { instituteId, createdAt: { [Op.gte]: since } };
+    const [totals, providers] = (await Promise.all([
+      AiUsage.findAll({ attributes: [...usageColumns], where, raw: true }),
+      AiUsage.findAll({
+        attributes: ['provider', 'model', ...usageColumns],
+        where,
+        group: ['provider', 'model'],
+        order: [
+          ['provider', 'ASC'],
+          ['model', 'ASC'],
+        ],
+        raw: true,
+      }),
+    ])) as unknown as Record<string, unknown>[][];
+    const body: AiAdminUsageDto = {
+      since: since.toISOString(),
+      byInstitute: [{ instituteId, ...usageRow(totals[0] ?? {}) }],
+      byProvider: providers.map((r) => ({
+        provider: String(r.provider),
+        model: String(r.model),
+        ...usageRow(r),
+      })),
+    };
+    res.json(body);
   });
 }

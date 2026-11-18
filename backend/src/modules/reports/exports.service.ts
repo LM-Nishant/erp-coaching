@@ -179,6 +179,24 @@ export async function createExport(
   return { queued, dto: exportDto(exp) };
 }
 
+/**
+ * The export job will not run again (attempts exhausted, or its worker died on the last attempt and
+ * the queue reclaimed it): fail the export instead of leaving it queued/running forever.
+ */
+export async function failExportJob(job: Job, error: string): Promise<void> {
+  if (!job.instituteId) return;
+  await ReportExport.update(
+    { status: 'failed', error: error.slice(0, 500), completedAt: new Date() },
+    {
+      where: {
+        id: Number(job.payload.exportId),
+        instituteId: job.instituteId,
+        status: { [Op.in]: ['queued', 'running'] },
+      },
+    },
+  );
+}
+
 /** Background export: re-runs the stored (access-checked) request with the larger row limit. */
 export async function runExportJob(payload: Record<string, unknown>, job: Job): Promise<void> {
   const { instituteId } = requireTenantContext();

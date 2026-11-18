@@ -11,6 +11,7 @@ import { enqueueJob } from '../../infrastructure/jobs/queue';
 import { Job } from '../../infrastructure/jobs/job.model';
 import { logger } from '../../infrastructure/logger';
 import { requireTenantContext, runWithContext } from '../../shared/context';
+import { getInstituteTimezone, instituteToday, todayIn } from '../../shared/timezone';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { audit } from '../../shared/audit/audit.service';
 import { BadRequest, Forbidden } from '../../shared/errors';
@@ -91,17 +92,13 @@ const addDays = (date: string, n: number) => {
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 };
-const today = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
 
 export async function childTimetable(
   studentId: number,
   q: { from?: string; to?: string },
 ): Promise<ParentTimetableDto> {
   const child = await myChild(studentId);
-  const from = q.from ?? today();
+  const from = q.from ?? (await instituteToday());
   const to = q.to ?? addDays(from, 6);
   if (to < from) throw BadRequest('to must be on or after from');
   if ((Date.parse(to) - Date.parse(from)) / 86_400_000 > MAX_TIMETABLE_DAYS)
@@ -190,9 +187,10 @@ export const periodRange = (period: string): ParentReportPeriod => {
   return { period, from: `${period}-01`, to: `${period}-${String(last).padStart(2, '0')}` };
 };
 
-export const previousPeriod = (now = new Date()) => {
-  const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+/** `YYYY-MM` of the month before the current one, on the institute's wall clock (`tz`). */
+export const previousPeriod = (tz: string, now = new Date()) => {
+  const [y, m] = todayIn(tz, now).split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
 };
 
 function reportDto(r: ParentMonthlyReport): ParentMonthlyReportDto {
@@ -244,8 +242,9 @@ export async function listReports(q: {
 /** Staff trigger; the work runs in the background job. */
 export async function requestGeneration(input: { period?: string; studentIds?: number[] }) {
   const { instituteId, allowedBranchIds } = requireTenantContext();
-  const period = input.period ?? previousPeriod();
-  if (period > today().slice(0, 7)) throw BadRequest('The period cannot be in the future');
+  const tz = await getInstituteTimezone(instituteId);
+  const period = input.period ?? previousPeriod(tz);
+  if (period > todayIn(tz).slice(0, 7)) throw BadRequest('The period cannot be in the future');
   if (allowedBranchIds !== null) {
     // Branch-limited staff may only generate for students of their branches.
     if (!input.studentIds?.length) throw Forbidden('Pick students of your branches', 'BRANCH_FORBIDDEN');
@@ -271,7 +270,7 @@ export async function requestGeneration(input: { period?: string; studentIds?: n
  */
 export async function runMonthlyReport(payload: { period?: string; studentIds?: number[] | null }) {
   const { instituteId } = requireTenantContext();
-  const period = payload.period ?? previousPeriod();
+  const period = payload.period ?? previousPeriod(await getInstituteTimezone(instituteId));
   const range = periodRange(period);
   const linkWhere: Record<string, unknown> = { instituteId, status: 'active' };
   if (payload.studentIds?.length) linkWhere.studentId = { [Op.in]: payload.studentIds };
@@ -311,12 +310,12 @@ export async function runMonthlyReport(payload: { period?: string; studentIds?: 
  */
 export async function runMonthlySweep() {
   try {
-    const period = previousPeriod();
     // System job across institutes: each one is then handled in its own tenant context.
     const institutes = await Institute.findAll({ where: { status: 'active' }, attributes: ['id'] });
     for (const inst of institutes) {
       await runWithContext({ system: true, instituteId: inst.id, allowedBranchIds: null }, async () => {
         if (!(await isModuleEnabled(inst.id, MODULE))) return;
+        const period = previousPeriod(await getInstituteTimezone(inst.id));
         const done = await ParentMonthlyReport.count({ where: { instituteId: inst.id, period } });
         const queued = await Job.count({
           where: {

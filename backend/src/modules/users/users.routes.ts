@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import { Op, type WhereOptions } from 'sequelize';
+import { literal, Op, type WhereOptions } from 'sequelize';
 import { z } from 'zod';
 import type { DeviceUserDto } from '@erp/shared';
 import { parse } from '../../shared/utilities/validation';
@@ -13,7 +13,11 @@ import { audit } from '../../shared/audit/audit.service';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { Branch } from '../branches/branch.model';
 import { Role, UserBranch, UserRole } from '../permissions/models';
-import { assertMemberInBranchScope, memberVisibilityWhere } from '../permissions/access.service';
+import {
+  assertMemberInBranchScope,
+  memberManageWhere,
+  memberVisibilityWhere,
+} from '../permissions/access.service';
 import { Device, listUserDevices, revokeDevice } from '../authentication/api';
 import { User } from './user.model';
 
@@ -99,26 +103,22 @@ async function manageableMember(userId: number) {
   return user;
 }
 
-/** Ids of members limited to the requester's branches, or null when the requester is institute-wide. */
-async function branchMemberIds(ctx: TenantContext): Promise<number[] | null> {
-  if (ctx.allowedBranchIds === null) return null;
-  const { instituteId, allowedBranchIds: branchId } = ctx;
-  const [roles, branches, instituteWide] = await Promise.all([
-    UserRole.findAll({ where: { instituteId, branchId }, attributes: ['userId'] }),
-    UserBranch.findAll({ where: { instituteId, branchId }, attributes: ['userId'] }),
-    UserRole.findAll({ where: { instituteId, branchId: null }, attributes: ['userId'] }),
-  ]);
-  const excluded = new Set(instituteWide.map((r) => r.userId));
-  return [...new Set([...roles, ...branches].map((r) => r.userId))].filter((id) => !excluded.has(id));
-}
-
-/** Device management search: members the requester may manage, with their active device count. */
+/**
+ * Device management search: members whose devices the requester may manage (the `manage` branch rule of
+ * `assertMemberInBranchScope`, so every result opens in `GET /users/:id/devices`), with their active device count.
+ * Filters with subqueries rather than a role join, so members with several roles count once towards the limit.
+ */
 async function searchDeviceUsers(search?: string): Promise<DeviceUserDto[]> {
   const ctx = requireTenantContext();
-  const ids = await branchMemberIds(ctx);
-  if (ids && !ids.length) return [];
-  const where: WhereOptions[] = [];
-  if (ids) where.push({ id: ids });
+  const where: WhereOptions[] = [
+    {
+      id: {
+        [Op.in]: literal(`(SELECT user_id FROM user_roles WHERE institute_id = ${Number(ctx.instituteId)})`),
+      },
+    },
+  ];
+  const manageable = memberManageWhere();
+  if (manageable) where.push(manageable);
   if (!isPlatformAdmin(ctx)) where.push({ isSuperAdmin: false });
   if (search)
     where.push({
@@ -130,20 +130,18 @@ async function searchDeviceUsers(search?: string): Promise<DeviceUserDto[]> {
     });
   const users = await User.findAll({
     where: { [Op.and]: where },
-    include: [
-      { model: UserRole, as: 'roleAssignments', where: { instituteId: ctx.instituteId }, attributes: [] },
+    order: [
+      ['name', 'ASC'],
+      ['id', 'ASC'],
     ],
-    order: [['name', 'ASC']],
     limit: 50,
-    subQuery: false,
   });
   if (!users.length) return [];
-  const unique = [...new Map(users.map((u) => [u.id, u])).values()];
   const devices = await Device.findAll({
-    where: { userId: unique.map((u) => u.id), status: 'active' },
+    where: { userId: users.map((u) => u.id), status: 'active' },
     attributes: ['userId'],
   });
-  return unique.map((u) => ({
+  return users.map((u) => ({
     id: u.id,
     name: u.name,
     mobile: u.mobile,

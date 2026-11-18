@@ -21,7 +21,7 @@ export function createApp(modules: ModuleDefinition[]) {
     cors({
       origin: config.corsOrigins,
       credentials: true,
-      exposedHeaders: ['X-Request-Id', 'Content-Range', 'Accept-Ranges'],
+      exposedHeaders: ['X-Request-Id', 'Content-Range', 'Accept-Ranges', 'Content-Disposition'],
     }),
   );
   app.use(

@@ -78,7 +78,12 @@ website's media. They never use the uploader's MIME type as is (`shared/utilitie
 | anything else                    | `application/octet-stream` attachment                  |
 | HTML, XHTML and executable types | rejected on upload (400)                               |
 
-All of them send `nosniff` and an RFC 6266 `Content-Disposition` with the original file name.
+All of them send `nosniff` and an RFC 6266 `Content-Disposition` with the original file name (exposed to the
+app through CORS, so downloads keep their names). The app shows stored PDFs in an `<iframe>` from its own origin
+(web dev server, `capacitor://localhost`, `https://localhost`), so file responses replace `frame-ancestors 'self'`
+with `'self'` plus `CORS_ORIGINS` and `PUBLIC_WEB_URL`, and drop `X-Frame-Options`. Generated PDFs (fee receipts,
+SaaS invoices, payslips, scorecards) are opened in a new tab through signed links or downloaded as blobs, never
+framed.
 
 ### Rate limiting
 
