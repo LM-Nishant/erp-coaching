@@ -183,7 +183,8 @@ export async function createExport(
 export async function runExportJob(payload: Record<string, unknown>, job: Job): Promise<void> {
   const { instituteId } = requireTenantContext();
   const exp = await ReportExport.findOne({ where: { id: Number(payload.exportId), instituteId } });
-  if (!exp || exp.status === 'ready' || exp.status === 'expired') return;
+  // Ready, failed and expired exports are final; `running` resumes after a crashed attempt.
+  if (!exp || (exp.status !== 'queued' && exp.status !== 'running')) return;
   const def = REPORT_DEFINITIONS.get(exp.reportKey);
   try {
     if (!def) throw new Error(`Unknown report ${exp.reportKey}`);
