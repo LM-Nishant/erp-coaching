@@ -508,6 +508,7 @@ export type DataExportStatus = 'pending' | 'running' | 'ready' | 'failed' | 'exp
 
 export interface DataExportDto {
   id: number;
+  instituteId: number;
   status: DataExportStatus;
   includeMedia: boolean;
   requestedBy: number | null;
@@ -523,8 +524,31 @@ export interface DataExportDto {
   createdAt: string;
 }
 
+/** Short-lived signed download link for a ready export archive. */
+export interface DataExportLinkDto {
+  url: string;
+  expiresAt: string;
+}
+
+/**
+ * pending → approved (institute deactivated, grace period) → purging → completed | failed.
+ * pending/approved can be rejected or cancelled; cancelling an approved request reactivates the institute.
+ */
 export type DeletionRequestStatus =
-  'pending' | 'approved' | 'rejected' | 'cancelled' | 'completed' | 'failed';
+  'pending' | 'approved' | 'rejected' | 'cancelled' | 'purging' | 'completed' | 'failed';
+
+export interface DeletionSummaryDto {
+  /** Rows deleted per table. */
+  tables: Record<string, number>;
+  /** Storage objects removed. */
+  files: number;
+  /** User accounts deleted (members of no other institute). */
+  users: number;
+  /** User accounts that other data still references, anonymised instead of deleted. */
+  anonymizedUsers: number;
+  /** Tables kept for the operator's records (e.g. SaaS invoices), detached from the institute. */
+  retainedTables: string[];
+}
 
 export interface DeletionRequestDto {
   id: number;
@@ -541,8 +565,7 @@ export interface DeletionRequestDto {
   /** Permanent deletion runs after this time (approval + grace period). */
   scheduledFor: string | null;
   completedAt: string | null;
-  /** Rows deleted per table and files removed. */
-  summary: { tables: Record<string, number>; files: number; users: number } | null;
+  summary: DeletionSummaryDto | null;
   error: string | null;
   createdAt: string;
 }

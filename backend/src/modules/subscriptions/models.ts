@@ -476,10 +476,11 @@ export function initSubscriptionModels(sequelize: Sequelize) {
   registerTenantModel(Subscription);
   registerTenantModel(SubscriptionAddon);
   registerTenantModel(SubscriptionUsage);
-  // Retained billing records: guarded like tenant data (platform code passes `tenantBypass`).
-  registerTenantModel(SubscriptionInvoice);
-  registerTenantModel(SubscriptionPayment);
-  registerTenantModel(SubscriptionCreditNote);
+  // The operator's billing records: guarded like tenant data (platform code passes `tenantBypass`)
+  // and kept, detached from the institute, when it is permanently deleted.
+  registerTenantModel(SubscriptionInvoice, { retainOnInstituteDeletion: true });
+  registerTenantModel(SubscriptionPayment, { retainOnInstituteDeletion: true });
+  registerTenantModel(SubscriptionCreditNote, { retainOnInstituteDeletion: true });
 }
 
 export function associateSubscriptionModels() {

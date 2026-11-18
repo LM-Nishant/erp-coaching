@@ -39,4 +39,7 @@ export class S3CompatibleStorage implements StorageAdapter {
   delete(): Promise<void> {
     return this.fail();
   }
+  deletePrefix(): Promise<number> {
+    return this.fail();
+  }
 }
