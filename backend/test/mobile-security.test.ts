@@ -243,7 +243,8 @@ describe('mobile & device security (spec 4.18)', () => {
 
     expect((await api('get', `/users/${u.student.id}/devices`, branchAdmin.accessToken)).status).toBe(200);
     expect((await api('get', `/users/${u.teacher.id}/devices`, branchAdmin.accessToken)).status).toBe(404);
-    expect((await api('get', `/users/${u.admin.id}/devices`, branchAdmin.accessToken)).status).toBe(404);
+    // An institute-wide admin is visible to a branch admin but not theirs to manage (as with role changes).
+    expect((await api('get', `/users/${u.admin.id}/devices`, branchAdmin.accessToken)).status).toBe(403);
     const teacherDevice = (await deviceOf(teacher.device))!;
     expect(
       (await api('delete', `/users/${u.teacher.id}/devices/${teacherDevice.id}`, branchAdmin.accessToken))
