@@ -73,6 +73,25 @@
           /></ion-item>
         </ion-list>
       </ion-card>
+
+      <ion-card>
+        <ion-card-header><ion-card-title>Security</ion-card-title></ion-card-header>
+        <ion-list>
+          <ion-item>
+            <ion-select
+              v-model="form.idleTimeoutMinutes"
+              label="Sign out after inactivity"
+              label-placement="stacked"
+              interface="popover"
+              helper-text="Web and mobile app. The app locks instead when the user has turned on biometric unlock."
+            >
+              <ion-select-option v-for="m in idleChoices" :key="m" :value="m">{{
+                idleLabel(m)
+              }}</ion-select-option>
+            </ion-select>
+          </ion-item>
+        </ion-list>
+      </ion-card>
       <ion-button expand="block" type="submit" :disabled="saving" class="ion-margin">Save</ion-button>
     </form>
   </AppPage>
@@ -93,7 +112,7 @@ import {
   IonSelectOption,
   IonTextarea,
 } from '@ionic/vue';
-import { DEFAULT_INSTITUTE_TIMEZONE } from '@erp/shared';
+import { DEFAULT_INSTITUTE_TIMEZONE, IDLE_TIMEOUT_CHOICES } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import { api } from '@/core/api';
 import { applyBranding } from '@/core/branding';
@@ -112,6 +131,8 @@ interface InstituteProfile {
   contactEmail: string | null;
   contactPhone: string | null;
   timezone: string;
+  /** 0 = never. */
+  idleTimeoutMinutes: number;
   branding: { logoUrl: string | null };
 }
 type Form = Omit<InstituteProfile, 'branding'>;
@@ -124,6 +145,13 @@ const uploading = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
 const supported = (Intl as { supportedValuesOf?: (key: 'timeZone') => string[] }).supportedValuesOf;
 const timezones = ref<string[]>(supported?.('timeZone') ?? [DEFAULT_INSTITUTE_TIMEZONE, 'UTC']);
+const idleChoices = ref<number[]>([...IDLE_TIMEOUT_CHOICES]);
+
+function idleLabel(minutes: number) {
+  if (!minutes) return 'Never';
+  if (minutes % 60) return `${minutes} minutes`;
+  return minutes === 60 ? '1 hour' : `${minutes / 60} hours`;
+}
 
 async function load() {
   const p = await api.get<InstituteProfile>('/institute');
@@ -136,6 +164,9 @@ async function load() {
     timezone: rest.timezone ?? DEFAULT_INSTITUTE_TIMEZONE,
   };
   if (!timezones.value.includes(form.value.timezone)) timezones.value.unshift(form.value.timezone);
+  // a value set through the API outside the usual choices
+  if (!idleChoices.value.includes(form.value.idleTimeoutMinutes))
+    idleChoices.value = [...idleChoices.value, form.value.idleTimeoutMinutes].sort((a, b) => a - b);
 }
 
 function preview() {

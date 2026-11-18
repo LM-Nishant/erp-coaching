@@ -11,10 +11,12 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
+import { onIonViewDidEnter, onIonViewWillLeave } from '@ionic/vue';
 import QRCode from 'qrcode';
 import type { QrTokenDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import { errorMessage } from '@/core/api';
+import { useSessionHold } from '@/core/idle';
 import { attendanceApi } from './api';
 
 const route = useRoute();
@@ -24,6 +26,11 @@ const qr = ref<QrTokenDto | null>(null);
 const remaining = ref(0);
 const error = ref('');
 let timer: ReturnType<typeof setInterval> | undefined;
+// A projected check-in screen nobody touches: inactivity logout must not end it mid-class.
+const visible = ref(false);
+useSessionHold(visible);
+onIonViewDidEnter(() => (visible.value = true));
+onIonViewWillLeave(() => (visible.value = false));
 
 async function refresh() {
   try {

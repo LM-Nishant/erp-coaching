@@ -5,6 +5,7 @@ import type {
   InstituteStatus,
   Paginated,
   PlanLimits,
+  PlatformUserDto,
 } from '@erp/shared';
 import { api } from '@/core/api';
 
@@ -72,6 +73,8 @@ export const adminApi = {
   saveAiSettings: (b: AiSettingsUpdate) => api.put<AiSettingsDto>('/admin/ai/settings', b),
   removeAiKey: () => api.delete<AiSettingsDto>('/admin/ai/settings/key'),
   testAi: (b: Partial<AiSettingsUpdate>) => api.post<AiTestResult>('/admin/ai/settings/test', b),
+  /** Users matching a name, mobile or email (3+ characters); devices via `/admin/users/:id/devices`. */
+  users: (search: string) => api.get<PlatformUserDto[]>('/admin/users', { search }),
   audit: (q: { page?: number; action?: string }) =>
     api.get<Paginated<AuditEventRow>>('/admin/audit-events', q),
 };
