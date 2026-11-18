@@ -254,7 +254,10 @@ async function actions(a: ApplicationDto) {
   if (canApprove) {
     if (a.status !== 'approved')
       buttons.push({ text: 'Approve', handler: () => act(() => admissionsApi.approve(a.id), 'Approved') });
-    buttons.push({ text: 'Admit as student', handler: () => void admit(a) });
+    buttons.push({
+      text: a.studentId ? 'Confirm admission' : 'Admit as student',
+      handler: () => void admit(a),
+    });
     if (a.status === 'pending')
       buttons.push({
         text: 'Move to waiting list',

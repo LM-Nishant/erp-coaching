@@ -12,6 +12,7 @@ import { requireTenantContext } from '../../shared/context';
 import { BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
 import { User } from '../users/user.model';
+import { Student } from '../students/models';
 import {
   createStudent,
   findDuplicates,
@@ -305,7 +306,13 @@ export function admissionRoutes(api: Router) {
     const { id } = parse(idParam, req.params);
     const { allowDuplicate, ...extra } = parse(convertBody, req.body);
     const enquiry = await enquiryRepo.findById(id);
-    if (enquiry.studentId) throw Conflict('Enquiry is already converted', 'ALREADY_CONVERTED');
+    if (enquiry.studentId)
+      throw Conflict(
+        enquiry.status === 'converted'
+          ? 'Enquiry is already converted'
+          : 'This enquiry already has a student record; admit its application instead',
+        'ALREADY_CONVERTED',
+      );
     const student = await createStudent(
       {
         ...extra,
@@ -571,26 +578,60 @@ export function admissionRoutes(api: Router) {
     res.json(toApplicationDto(await decide(id, 'withdrawn', remarks)));
   });
 
+  /**
+   * Admits the student an application is already linked to (a self-registration for a course):
+   * no new student record. Re-checked under a row lock so two admins can't admit it twice.
+   */
+  async function admitLinkedStudent(found: AdmissionApplication) {
+    const { instituteId, id } = found;
+    const student = await Student.findOne({ where: { instituteId, id: found.studentId! } });
+    if (!student) throw NotFound('Student');
+    const application = await getSequelize().transaction(async (transaction) => {
+      const a = await AdmissionApplication.findOne({
+        where: { instituteId, id },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (!a) throw NotFound('Application');
+      open(a);
+      await completeAdmission(a, student, student.branchId, transaction);
+      return a;
+    });
+    return { application, student };
+  }
+
   r.post('/applications/:id/admit', requirePermission('admissions', 'approve'), async (req, res) => {
     const { id } = parse(idParam, req.params);
     const { allowDuplicate, ...extra } = parse(convertBody, req.body ?? {});
-    const a = await applicationRepo.findById(id);
-    open(a);
-    if (a.status === 'pending' && extra.branchId && extra.branchId !== a.branchId)
+    const found = await applicationRepo.findById(id);
+    open(found);
+    if (found.status === 'pending' && extra.branchId && extra.branchId !== found.branchId)
       throw BadRequest('Admit into the branch the application was made for');
-    const student = await createStudent(
-      { ...extra, name: a.name, mobile: a.mobile, email: extra.email ?? a.email, branchId: a.branchId },
-      {
-        source: 'application',
-        allowDuplicate,
-        afterCreate: (s, transaction) => completeAdmission(a, s, s.branchId, transaction),
-      },
-    );
+    const linked = !!found.studentId;
+    const { application: a, student } = linked
+      ? await admitLinkedStudent(found)
+      : {
+          application: found,
+          student: await createStudent(
+            {
+              ...extra,
+              name: found.name,
+              mobile: found.mobile,
+              email: extra.email ?? found.email,
+              branchId: found.branchId,
+            },
+            {
+              source: 'application',
+              allowDuplicate,
+              afterCreate: (s, transaction) => completeAdmission(found, s, s.branchId, transaction),
+            },
+          ),
+        };
     await audit({
       action: 'application.admitted',
       entityType: 'application',
       entityId: id,
-      metadata: { studentId: student.id },
+      metadata: { studentId: student.id, existingStudent: linked },
     });
     await notifyAdmissionConfirmed(a, student);
     await emitAdmissionCompleted({

@@ -12,7 +12,7 @@ import { Institute } from '../institutes/institute.model';
 import { isModuleEnabled } from '../subscriptions/subscription.service';
 import { Branch } from '../branches/branch.model';
 import { User } from '../users/user.model';
-import { activeForm, validateCustomFields } from '../admissions/forms.service';
+import { activeForm, recordSelfRegistrationIntent, validateCustomFields } from '../admissions/api';
 import { guardianInputSchema, linkGuardian } from '../guardians/guardians.service';
 import { recordReferralConversion } from '../website/api';
 import { Student } from './models';
@@ -48,26 +48,42 @@ const firstQuery = (req: Request, key: string) => {
 };
 
 /**
- * Website attribution after a successful registration: counts a referral `signup` and records the
- * course the student came for. Best-effort — it never fails the registration.
+ * Website attribution after a successful registration: counts a referral `signup` and, when the
+ * student registered for a course, records an admissions intent (enquiry + pending application)
+ * for it. Best-effort — it never fails the registration.
  */
 async function recordAttribution(
   instituteId: number,
-  studentId: number,
+  student: Student,
   ref: string | null | undefined,
   courseId: number | null | undefined,
 ) {
   if (!ref && !courseId) return;
-  try {
-    let referral = false;
-    if (ref && (await isModuleEnabled(instituteId, 'website')))
-      referral = await recordReferralConversion({
-        code: ref,
-        kind: 'signup',
-        refType: 'student',
-        refId: studentId,
-      });
-    await audit({
+  const studentId = student.id;
+  const attempt = async <T>(what: string, fn: () => Promise<T>): Promise<T | null> => {
+    try {
+      return await fn();
+    } catch (err) {
+      logger.warn({ err, studentId }, `Recording self-registration ${what} failed`);
+      return null;
+    }
+  };
+  const referral =
+    !!ref &&
+    !!(await attempt('referral', async () =>
+      (await isModuleEnabled(instituteId, 'website'))
+        ? recordReferralConversion({ code: ref, kind: 'signup', refType: 'student', refId: studentId })
+        : false,
+    ));
+  const intent = courseId
+    ? await attempt('course intent', async () =>
+        (await isModuleEnabled(instituteId, 'admissions'))
+          ? recordSelfRegistrationIntent({ student, courseId, referralCode: ref, referralCounted: referral })
+          : null,
+      )
+    : null;
+  await attempt('attribution', () =>
+    audit({
       action: 'student.self_registration_attribution',
       entityType: 'student',
       entityId: studentId,
@@ -75,11 +91,11 @@ async function recordAttribution(
         referralCode: ref ? ref.toUpperCase() : null,
         referralCounted: referral,
         courseId: courseId ?? null,
+        enquiryId: intent?.enquiryId ?? null,
+        applicationId: intent?.applicationId ?? null,
       },
-    });
-  } catch (err) {
-    logger.warn({ err, studentId }, 'Recording self-registration attribution failed');
-  }
+    }),
+  );
 }
 
 async function activeInstitute(slug: string) {
@@ -174,7 +190,7 @@ export function selfRegistrationRoutes(api: Router) {
           },
         },
       );
-      await recordAttribution(inst.id, student.id, body.ref, body.courseId);
+      await recordAttribution(inst.id, student, body.ref, body.courseId);
       const user = student.userId ? await User.findByPk(student.userId) : null;
       return {
         studentId: student.id,

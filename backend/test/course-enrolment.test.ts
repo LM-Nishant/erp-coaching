@@ -6,11 +6,12 @@ import { Job } from '../src/infrastructure/jobs/job.model';
 import { processDueJobs } from '../src/infrastructure/jobs/queue';
 import { MOCK_SIGNATURE_HEADER, signMockWebhook } from '../src/infrastructure/payment-gateways/mock.gateway';
 import { BatchStudent } from '../src/modules/academics/models';
-import { AdmissionApplication } from '../src/modules/admissions/models';
+import { AdmissionApplication, Enquiry } from '../src/modules/admissions/models';
 import { Branch } from '../src/modules/branches/branch.model';
 import { reconcileCourseEnrolment } from '../src/modules/fees/course-enrolment';
 import { FeeAccount, FeeCourseEnrolment, PaymentGatewayConfig } from '../src/modules/fees/models';
 import { NotificationMessage } from '../src/modules/notifications/models';
+import { Student } from '../src/modules/students/models';
 import { AuditEvent } from '../src/shared/audit/audit-event.model';
 import { runWithContext } from '../src/shared/context';
 import {
@@ -223,6 +224,14 @@ describe('online course purchase → admission and batch enrolment', () => {
       'admission_applications',
       applications.map((a) => a.id),
     );
+    const enquiries = await Enquiry.findAll({
+      where: { instituteId: 1, mobile: { [Op.like]: '94402%' } },
+      attributes: ['id'],
+    });
+    await purgeRows(
+      'enquiries',
+      enquiries.map((e) => e.id),
+    );
     await purgeRows('students', created.studentIds);
     await purgeRows('users', created.userIds);
     await purgeRows('fee_structures', created.structureIds);
@@ -366,6 +375,38 @@ describe('online course purchase → admission and batch enrolment', () => {
     expect(applications).toHaveLength(1);
     expect(applications[0]).toMatchObject({ id: appl.body.id, status: 'admitted', batchId: open });
     expect(await activeIn(open, s2)).toBe(1);
+  });
+
+  it('a student who self-registered for the course is admitted on that application when they buy it', async () => {
+    const courseS = await createCourse('S');
+    const batch = await createBatch(courseS, 'S1', { startDate: '2051-05-01' });
+    const m = mobile();
+    const reg = await request(app)
+      .post('/api/public/institutes/apex/register')
+      .send({ name: 'CE Self Registered', mobile: m, branchId, courseId: courseS });
+    expect(reg.status).toBe(201);
+    const st = (await Student.findOne({ where: { instituteId: 1, id: reg.body.studentId } }))!;
+    created.studentIds.push(st.id);
+    created.userIds.push(st.userId!);
+    const s5: Buyer = { id: st.id, userId: st.userId!, name: st.name, mobile: m, token: await otpLogin(m) };
+    const [intent, ...others] = await applicationsOf(s5, courseS);
+    expect(others).toEqual([]);
+    expect(intent).toMatchObject({ status: 'pending', batchId: null });
+
+    await pay(s5, await buy(s5, courseS));
+    expect(await enrolmentOf(s5, courseS)).toMatchObject({
+      status: 'enrolled',
+      batchId: batch,
+      applicationId: intent.id,
+    });
+    const applications = await applicationsOf(s5, courseS);
+    expect(applications).toHaveLength(1);
+    expect(applications[0]).toMatchObject({ id: intent.id, status: 'admitted', batchId: batch });
+    expect(await Enquiry.findOne({ where: { instituteId: 1, id: intent.enquiryId! } })).toMatchObject({
+      status: 'converted',
+      studentId: s5.id,
+    });
+    expect(await activeIn(batch, s5)).toBe(1);
   });
 
   it('falls back to an open batch when the chosen one filled up before the payment landed', async () => {
