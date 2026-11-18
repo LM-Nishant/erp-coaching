@@ -60,14 +60,36 @@ The migrator (umzug) globs two sets of files:
 
 Files are named `YYYYMMDDHHMMSS-description.ts` and run in global timestamp order. History is kept in `SequelizeMeta` and `SequelizeData`.
 
+In production (`NODE_ENV=production`) the seeders create no demo institutes unless `SEED_DEMO_DATA=true`, and refuse to run while `SEED_SUPERADMIN_PASSWORD` is the README default or shorter than 12 characters, or while demo users would get the README password.
+
 ### Request pipeline
 
 ```
-helmet → cors → json → contextMiddleware (request id, ALS) → rate limit
-→ /api router → authenticate (JWT → user, device, institute, branches, roles, permissions into context)
+helmet → cors → json (raw body kept for webhook signatures) → access log (pino-http, request id) → contextMiddleware (ALS)
+→ /api router → apiRateLimit → /api/health, /api/ready | module routers
+→ authenticate (JWT → user, device, institute, branches, roles, permissions into context)
 → requirePermission('module','action') / requireModule('module') → handler (zod parse → service → TenantRepository)
-→ errorHandler → { error: { code, message, details? } }
+→ errorHandler → { error: { code, message, details? } } (5xx also go to the error tracker)
 ```
+
+The route registry (`infrastructure/route-registry.ts`) lists every mounted route with its module, authentication, permissions and rate limiters. The tests in `backend/test/security/` use it to probe every route (see CONTRIBUTING.md › Authorization and tenant-isolation suite).
+
+### Health, logging and error tracking
+
+- **Probes.**
+  - `GET /api/health` is liveness: it answers 200 while the process runs and checks no dependency, so a database outage doesn't get the API restarted.
+  - `GET /api/ready` is readiness: 200 only when the database answers, no migration is pending and storage is writable; 503 with the failed check otherwise. Load balancers and the Compose health check use it, so a release whose migrations haven't run takes no traffic.
+  - Probe requests are not access-logged.
+- **Logs.** pino writes one JSON object per line in production (pretty-printed in development) at `LOG_LEVEL`. Every entry made while handling a request or a job carries `requestId` and, once authenticated, `instituteId` and `userId`.
+  - The request id comes from a client `X-Request-Id` when it is safe (`[\w.:-]{1,64}`), otherwise a new UUID, and is returned in the response header.
+  - Authorization headers, cookies, passwords, API keys, tokens and OTPs are redacted, and so are the secrets in URLs (signed file and stream tokens, webhook keys).
+- **Error tracking.** `ERROR_TRACKING_PROVIDER` (`none` by default) reports 5xx errors, failed jobs, unhandled rejections and startup crashes, with the request, institute and user ids but no request bodies:
+  - `log` writes a structured `error_tracking` entry for log-based alerting;
+  - `webhook` POSTs JSON events to `ERROR_TRACKING_WEBHOOK_URL`.
+
+  A vendor SDK (Sentry, Rollbar…) plugs in as another `ErrorTracker` through `setErrorTracker()` in `infrastructure/error-tracking.ts`.
+
+Deployment, TLS, backups and scaling are covered in [docs/deployment.md](docs/deployment.md) and [docs/backup-restore.md](docs/backup-restore.md); security controls and review findings in [docs/security.md](docs/security.md).
 
 ## Multi-tenancy
 
@@ -119,6 +141,12 @@ helmet → cors → json → contextMiddleware (request id, ALS) → rate limit
 - Bytes are stored by the active `StorageAdapter`. That is `local` (under `backend/storage/`) today; an `s3` stub covers S3/R2 later.
 - Metadata goes to `files`.
 - Downloads use `GET /api/files/:id/url`, which returns a signed URL that is HMAC-signed and expires after `SIGNED_URL_TTL_SECONDS`. That URL is served by `/api/files/signed/:token`, which supports Range requests for video. Files are never served from a public static directory.
+- **Serving policy** (`shared/utilities/file-response.ts`). Uploads are served from the API origin with a type the client declared, so the type isn't trusted:
+  - images, video, audio and PDF are shown inline with their type, and text as `text/plain`; anything else is downloaded as `application/octet-stream`;
+  - every response has `nosniff`, and everything but media and PDF gets a sandbox CSP, so an SVG opened directly can't run script;
+  - HTML, XHTML and executables are refused at upload.
+
+  Call `setFileResponseHeaders()` from that file in any route that streams an upload (logos, website media).
 
 ## AI configuration
 

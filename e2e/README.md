@@ -110,50 +110,12 @@ No `backend/.env` is needed: on CI the DB variables above are enough.
 
 ## CI
 
-The job needs a `mysql:8.4` service on 127.0.0.1:3306, Node 22 and Chromium with its OS
-dependencies. A whole run takes about 2 minutes on an idle machine (about 20 s of database reset
-and server start, then 10–45 s per spec).
-
-```yaml
-e2e:
-  runs-on: ubuntu-latest
-  timeout-minutes: 20
-  services:
-    mysql:
-      image: mysql:8.4
-      env: { MYSQL_ROOT_PASSWORD: root }
-      ports: ['3306:3306']
-      options: >-
-        --health-cmd="mysqladmin ping -h 127.0.0.1 -proot" --health-interval=5s --health-timeout=5s
-        --health-retries=30
-  env:
-    CI: true
-    DB_HOST: 127.0.0.1
-    DB_USER: root
-    DB_PASSWORD: root
-    TEST_DB_NAME: erp_coaching_test
-  steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v4
-      with: { node-version: 22, cache: npm }
-    - run: npm ci
-    - uses: actions/cache@v4
-      with:
-        path: ~/.cache/ms-playwright
-        key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-    - run: npx playwright install --with-deps chromium
-      working-directory: e2e
-    - run: npm run e2e
-    - if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: e2e-results
-        path: |
-          e2e/playwright-report/
-          e2e/test-results/
-          e2e/.tmp/outbox.jsonl
-        retention-days: 14
-```
+The `e2e` job in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs every spec on each
+pull request and push to `main`. It uses a `mysql:8.4` service on 127.0.0.1:3306 (root/root,
+`TEST_DB_NAME=erp_coaching_test`), Node 22 and Chromium with its OS dependencies (cached by the
+lockfile hash), and sets `CI=true`. On failure it uploads the HTML report, `test-results/` (traces
+and screenshots) and the dev outbox as the `e2e-results` artifact. A run takes about 2 minutes on an
+idle machine: about 20 s of database reset and server start, then 10–45 s per spec.
 
 ## Adding a workflow spec
 
@@ -220,8 +182,5 @@ e2e:
 - **Navigating while the app starts signs the user out.** `init()` in `app/src/stores/auth.ts`
   clears the stored session on any error from `/auth/me`, including a request aborted by a
   navigation or a network error. Specs therefore never navigate while a page is still starting.
-- **Root ESLint lints the HTML report.** The root ESLint config doesn't ignore Playwright's
-  outputs. After a failed local run, the HTML report contains the trace viewer's JavaScript and
-  `npm run lint` reports errors in it. Delete `e2e/playwright-report/` before linting.
 - **tsx comes from the backend workspace.** It is not a dependency of this package; npm hoists it
   to the root.
