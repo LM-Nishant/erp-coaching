@@ -185,6 +185,7 @@ Current wiring:
 | website → students (direct call)                  | `self-registration.routes.ts`  | self-registration honours `ref`/`courseId` (body or query) and records `recordReferralConversion({ kind: 'signup' })`; failures never block registration                                                     |
 | admissions → website (direct calls)               | `admissions/api.ts`            | website enquiries use `createEnquiry`, `activeForm`, `validateCustomFields`                                                                                                                                  |
 | fees, attendance, exams, lms → parent-portal      | `<module>/parent-portal.ts`    | `registerParentPortalProvider`: dues/overdue/recent payments (30), month attendance % (20), latest **published** results (40), pending homework (50)                                                         |
+| authentication → LMS, notifications (events)      | `<module>/integrations.ts`     | `onDeviceRevoked` (from `authentication/api`, run in a job without institute context; idempotent): `lms.offline` revokes the device's offline licences, `notifications.push-tokens` drops its push tokens    |
 
 Identity note: academics rosters and grievances key students by **login user id**; students/guardians use `students.id` (`students.user_id` is nullable — siblings sharing a mobile have no login). Use `getStudentUserId`, `getLinkedStudentUsers`, `getGuardianUserIdsForStudentUsers` from `guardians/guardian-access` to convert.
 
@@ -278,8 +279,16 @@ export default defineAppModule({
 - **API calls.**
   - Go through `core/api.ts` only, never raw `fetch` or axios. It handles tokens, refresh and `X-Branch-Id`.
   - Show errors with `errorMessage(e)` and `toast`.
+  - Pass `{ background: true }` for automatic polls (unread counts, status refreshes) so they don't count as activity for the inactivity timeout.
 - **Branding.** Use Ionic colour variables (`var(--ion-color-primary)`) and never hard-code brand colours.
 - **Native APIs.** Use Capacitor plugins and guard them with `Capacitor.isNativePlatform()` when behaviour differs.
+  - iOS builds with Swift Package Manager: a new plugin must ship a `Package.swift` (`npx cap sync` reports any that don't).
+  - Declare every permission a plugin needs: usage strings in `app/ios/App/App/Info.plist`, `<uses-permission>` in `app/android/app/src/main/AndroidManifest.xml`.
+- **Device security** (see ARCHITECTURE.md, "Mobile and device security").
+  - Wrap protected content (lectures, live classes, recordings, exam attempts, question papers) in `<SecureView screen="…">`. Other screens stay unprotected.
+  - A screen that is used without touching it (video playing, live room, exam, projected QR code) calls `useSessionHold(source)` from `core/idle.ts` so inactivity doesn't lock it.
+  - Keep tokens and secrets in `core/secure-storage.ts`, never `Preferences` or `localStorage`.
+  - A module that keeps a user's data on the device implements `wipeUserData(userId)` in its `defineAppModule`. It runs when the device is revoked or the account deactivated.
 - **Dashboard widgets.** Contribute cards to shared dashboards with `widgets` instead of editing the host page (see below).
 - **Shared types.** Request and response DTOs used by both sides go in `packages/shared/src/<module>.ts`, exported from its `index.ts`. That one-line export is the only shared edit expected.
 
