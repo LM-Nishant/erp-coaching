@@ -341,7 +341,7 @@ describe('AI grading end to end with the mock provider', () => {
   let zenith: string;
   let teacher: string;
   let teacherId: number;
-  const students: { token: string; userId: number }[] = [];
+  const students: { token: string; userId: number; studentId: number }[] = [];
   let batchId: number;
   let subjectId: number;
   let topicId: number;
@@ -495,7 +495,7 @@ describe('AI grading end to end with the mock provider', () => {
         .set(bearer(admin))
         .send({ name: `AIG Student ${i + 1}`, mobile: m });
       expect(st.status).toBe(201);
-      students.push({ token: await otpLogin(m), userId: st.body.userId });
+      students.push({ token: await otpLogin(m), userId: st.body.userId, studentId: st.body.id });
     }
 
     const subject = await request(app)
@@ -599,6 +599,11 @@ describe('AI grading end to end with the mock provider', () => {
       usage.map((u) => u.id),
     );
     await Job.destroy({ where: { id: { [Op.gt]: jobWatermark } } });
+    await purgeRows(
+      'students',
+      students.map((s) => s.studentId),
+    );
+    await purgeRows('users', [teacherId, ...students.map((s) => s.userId)]);
   });
 
   it('falls back to the mock provider when no key is configured, except in production', async () => {
