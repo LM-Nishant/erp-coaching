@@ -238,6 +238,8 @@ export class PaymentGatewayConfig extends Model<
   declare keyHint: string | null;
   declare sandbox: CreationOptional<boolean>;
   declare webhookKey: string;
+  /** Uses the platform's global gateway credentials (super admin fallback), not the institute's. */
+  declare platformManaged: CreationOptional<boolean>;
   declare createdAt: Stamps['createdAt'];
   declare updatedAt: Stamps['updatedAt'];
 }
@@ -572,6 +574,7 @@ export function initFeeModels(sequelize: Sequelize) {
     keyHint: S(20),
     sandbox: B(true),
     webhookKey: S(64, false),
+    platformManaged: B(false),
   });
   init(BankAccount, sequelize, 'bank_accounts', {
     branchId: OPT_FK(),

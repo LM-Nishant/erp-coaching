@@ -24,7 +24,11 @@ import { addDays, daysInclusive, eachDate } from './dates';
 export const employeeRepo = new TenantRepository(Employee, { entity: 'Employee', branchScoped: true });
 /** Institute-scoped lookup used only for self-service (ownership is checked by user id). */
 const employeeSelfRepo = new TenantRepository(Employee, { entity: 'Employee' });
-export const shiftRepo = new TenantRepository(Shift, { entity: 'Shift' });
+export const shiftRepo = new TenantRepository(Shift, {
+  entity: 'Shift',
+  branchScoped: true,
+  instituteWideRows: true,
+});
 export const leaveTypeRepo = new TenantRepository(LeaveType, { entity: 'Leave type' });
 export const leaveRepo = new TenantRepository(LeaveApplication, { entity: 'Leave application' });
 export const attendanceRepo = new TenantRepository(StaffAttendance, { entity: 'Attendance' });

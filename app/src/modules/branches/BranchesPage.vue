@@ -18,6 +18,26 @@
         <ion-button slot="end" v-can="'branches.edit'" fill="clear" @click="openEditor(b)"
           ><ion-icon slot="icon-only" :icon="createOutline"
         /></ion-button>
+        <ion-button
+          v-if="b.status === 'active'"
+          slot="end"
+          v-can="'branches.configure'"
+          fill="clear"
+          color="warning"
+          :aria-label="`Close ${b.name}`"
+          @click="closeBranch(b)"
+          ><ion-icon slot="icon-only" :icon="lockClosedOutline"
+        /></ion-button>
+        <ion-button
+          v-else
+          slot="end"
+          v-can="'branches.configure'"
+          fill="clear"
+          color="success"
+          :aria-label="`Re-open ${b.name}`"
+          @click="activateBranch(b)"
+          ><ion-icon slot="icon-only" :icon="lockOpenOutline"
+        /></ion-button>
         <ion-button slot="end" v-can="'branches.delete'" fill="clear" color="danger" @click="remove(b)">
           <ion-icon slot="icon-only" :icon="trashOutline" />
         </ion-button>
@@ -81,7 +101,7 @@ import {
   IonToolbar,
   alertController,
 } from '@ionic/vue';
-import { add, createOutline, trashOutline } from 'ionicons/icons';
+import { add, createOutline, lockClosedOutline, lockOpenOutline, trashOutline } from 'ionicons/icons';
 import AppPage from '@/components/AppPage.vue';
 import { toast, toastError } from '@/core/toast';
 import { branchesApi, type Branch, type BranchInput } from './api';
@@ -129,8 +149,10 @@ async function save() {
     address: blankToNull(form.value.address),
   };
   try {
-    if (editingId.value) await branchesApi.update(editingId.value, body);
-    else await branchesApi.create(body);
+    if (editingId.value) {
+      const { status: _status, ...changes } = body;
+      await branchesApi.update(editingId.value, changes);
+    } else await branchesApi.create(body);
     form.value = null;
     await toast('Branch saved');
     await load();
@@ -154,6 +176,39 @@ async function remove(b: Branch) {
     ],
   });
   await alert.present();
+}
+
+async function closeBranch(b: Branch) {
+  const alert = await alertController.create({
+    header: `Close ${b.name}?`,
+    message:
+      'A closed branch keeps its records but stops counting towards your plan. Transfer its active students first.',
+    inputs: [{ name: 'reason', type: 'text', placeholder: 'Reason (optional)' }],
+    buttons: [
+      { text: 'Cancel', role: 'cancel' },
+      {
+        text: 'Close branch',
+        role: 'destructive',
+        handler: (data: { reason?: string }) =>
+          branchesApi
+            .close(b.id, data.reason?.trim() || undefined)
+            .then(() => toast(`${b.name} closed`))
+            .then(load)
+            .catch(toastError),
+      },
+    ],
+  });
+  await alert.present();
+}
+
+async function activateBranch(b: Branch) {
+  try {
+    await branchesApi.activate(b.id);
+    await toast(`${b.name} re-opened`);
+    await load();
+  } catch (e) {
+    await toastError(e);
+  }
 }
 
 onMounted(load);

@@ -3,7 +3,7 @@ import { Router, type Request } from 'express';
 import { z } from 'zod';
 import type { SelfRegistrationInfo, SelfRegistrationResult } from '@erp/shared';
 import { parse } from '../../shared/utilities/validation';
-import { authRateLimit } from '../../shared/middleware/security';
+import { publicFormRateLimit } from '../../shared/middleware/security';
 import { getContext, runWithContext } from '../../shared/context';
 import { logger } from '../../infrastructure/logger';
 import { audit } from '../../shared/audit/audit.service';
@@ -134,7 +134,7 @@ export function selfRegistrationRoutes(api: Router) {
     res.json(info);
   });
 
-  api.post('/public/institutes/:slug/register', authRateLimit, async (req, res) => {
+  api.post('/public/institutes/:slug/register', publicFormRateLimit, async (req, res) => {
     const inst = await activeInstitute(String(req.params.slug));
     // `ref`/`courseId` may also arrive on the query string (links shared as `?ref=…&courseId=…`).
     const body = parse(registerBody, {

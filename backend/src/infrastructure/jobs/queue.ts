@@ -2,6 +2,7 @@ import { Op, type Transaction } from 'sequelize';
 import { Job } from './job.model';
 import { getContext, runWithContext } from '../../shared/context';
 import { logger } from '../logger';
+import { captureError } from '../error-tracking';
 import { getSequelize } from '../database/sequelize';
 
 export type JobHandler<P = Record<string, unknown>> = (payload: P, job: Job) => Promise<void>;
@@ -80,6 +81,8 @@ async function execute(job: Job): Promise<void> {
       runAt: retry ? new Date(Date.now() + backoffMs) : job.runAt,
     });
     logger.warn({ job: job.name, id: job.id, attempt: job.attempts, retry }, `Job failed: ${message}`);
+    if (!retry)
+      captureError(err, { source: 'job', job: job.name, jobId: job.id, instituteId: job.instituteId });
   }
 }
 

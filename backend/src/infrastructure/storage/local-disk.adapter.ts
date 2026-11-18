@@ -53,4 +53,19 @@ export class LocalDiskStorage implements StorageAdapter {
   async delete(key: string): Promise<void> {
     await fsp.rm(this.resolve(key), { force: true });
   }
+
+  async deletePrefix(prefix: string): Promise<number> {
+    if (!prefix.endsWith('/')) throw new Error(`Storage prefix must end with "/": ${prefix}`);
+    const dir = this.resolve(prefix.slice(0, -1));
+    let count = 0;
+    try {
+      const entries = await fsp.readdir(dir, { recursive: true, withFileTypes: true });
+      count = entries.filter((e) => e.isFile()).length;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+      throw err;
+    }
+    await fsp.rm(dir, { recursive: true, force: true });
+    return count;
+  }
 }

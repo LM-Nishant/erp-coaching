@@ -5,7 +5,21 @@ export interface TenantBypassOption {
   tenantBypass?: boolean;
 }
 
-const TENANT_MODELS = new WeakSet<object>();
+export interface TenantModelOptions {
+  /**
+   * Keep the rows when the institute is permanently deleted (their `institute_id` FK must be
+   * `SET NULL`), e.g. the operator's SaaS invoices that tax law requires it to retain.
+   */
+  retainOnInstituteDeletion?: boolean;
+}
+
+export interface TenantModelEntry {
+  model: ModelStatic<Model>;
+  retainOnInstituteDeletion: boolean;
+}
+
+// Enumerable (not a WeakSet) so institute export and deletion cover every module's tables.
+const TENANT_MODELS = new Map<ModelStatic<Model>, TenantModelEntry>();
 
 function whereHasInstitute(where: WhereOptions | undefined): boolean {
   if (!where || typeof where !== 'object') return false;
@@ -20,8 +34,12 @@ function whereHasInstitute(where: WhereOptions | undefined): boolean {
  * update/bulk destroy without an `instituteId` condition. Use `TenantRepository` in services so
  * the condition is added automatically.
  */
-export function registerTenantModel<M extends Model>(model: ModelStatic<M>): void {
-  TENANT_MODELS.add(model);
+export function registerTenantModel<M extends Model>(
+  model: ModelStatic<M>,
+  options: TenantModelOptions = {},
+): void {
+  const key = model as unknown as ModelStatic<Model>;
+  TENANT_MODELS.set(key, { model: key, retainOnInstituteDeletion: !!options.retainOnInstituteDeletion });
   const guard = (operation: string) => (options: { where?: WhereOptions } & TenantBypassOption) => {
     if (options.tenantBypass) return;
     if (!whereHasInstitute(options.where)) {
@@ -37,5 +55,10 @@ export function registerTenantModel<M extends Model>(model: ModelStatic<M>): voi
 }
 
 export function isTenantModel(model: object): boolean {
-  return TENANT_MODELS.has(model);
+  return TENANT_MODELS.has(model as ModelStatic<Model>);
+}
+
+/** Every registered tenant-owned model (each module's tables), in registration order. */
+export function listTenantModels(): TenantModelEntry[] {
+  return [...TENANT_MODELS.values()];
 }

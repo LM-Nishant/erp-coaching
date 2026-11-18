@@ -3,10 +3,11 @@ import { z } from 'zod';
 import { parse } from '../../shared/utilities/validation';
 import { authenticate } from '../../shared/middleware/authenticate';
 import { requirePermission, requireSuperAdmin } from '../../shared/middleware/authorize';
-import { authRateLimit } from '../../shared/middleware/security';
+import { authRateLimit, tokenRateLimit } from '../../shared/middleware/security';
 import { BadRequest, NotFound } from '../../shared/errors';
 import { idParam } from '../../shared/utilities/pagination';
 import { UserRole } from '../permissions/models';
+import { assertMemberInBranchScope } from '../permissions/access.service';
 import { Device } from './models';
 import * as auth from './auth.service';
 
@@ -48,12 +49,12 @@ export function authRoutes(api: Router) {
     res.json(await auth.verifyOtp(body.challengeId, body.code, body.device));
   });
 
-  r.post('/refresh', authRateLimit, async (req, res) => {
+  r.post('/refresh', tokenRateLimit, async (req, res) => {
     const body = parse(z.object({ refreshToken: z.string().min(20) }), req.body);
     res.json(await auth.refreshTokens(body.refreshToken));
   });
 
-  r.post('/logout', async (req, res) => {
+  r.post('/logout', tokenRateLimit, async (req, res) => {
     const body = parse(z.object({ refreshToken: z.string().min(20) }), req.body);
     await auth.logout(body.refreshToken);
     res.status(204).end();
@@ -128,6 +129,7 @@ export function authRoutes(api: Router) {
           where: { instituteId: req.ctx.instituteId!, userId: p.userId },
         });
         if (!member) throw NotFound('User');
+        await assertMemberInBranchScope(p.userId, 'manage');
       }
       await auth.revokeDevice(p.deviceId, p.userId, req.ctx.userId!);
       res.status(204).end();

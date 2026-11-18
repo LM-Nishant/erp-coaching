@@ -12,6 +12,7 @@ import { parse } from '../../shared/utilities/validation';
 import { idParam, paginated, paginationSchema, toLimitOffset } from '../../shared/utilities/pagination';
 import { authenticate } from '../../shared/middleware/authenticate';
 import { requireModule, requirePermission } from '../../shared/middleware/authorize';
+import { webhookRateLimit } from '../../shared/middleware/security';
 import { hasPermission, requireTenantContext } from '../../shared/context';
 import { BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { Student } from '../students/models';
@@ -318,6 +319,7 @@ function publicRoutes(api: Router) {
   // payload signature is verified before anything is trusted (see processWebhook).
   api.post(
     '/fees/public/webhooks/:gateway/:webhookKey',
+    webhookRateLimit,
     express.raw({ type: () => true, limit: '1mb' }),
     async (req, res) => {
       const { gateway, webhookKey } = parse(

@@ -10,6 +10,7 @@ import { getContext, hasPermission, requireTenantContext } from '../../shared/co
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { Batch, BatchStudent, BatchTeacher, ClassSession, userRef } from './models';
 import { User } from '../users/user.model';
+import { studentRepo } from '../students/students.service';
 import {
   assertBranch,
   assertTeachers,
@@ -299,7 +300,11 @@ export function batchRoutes(r: Router) {
   /** A student's enrollment history across sessions (staff, or the student themself). */
   r.get('/students/:studentUserId/history', can('view'), async (req, res) => {
     const { studentUserId } = parse(z.object({ studentUserId: idNum }), req.params);
-    if (!hasPermission('academics.edit') && getContext().userId !== studentUserId) throw NotFound('Student');
+    const self = getContext().userId === studentUserId;
+    if (!hasPermission('academics.edit') && !self) throw NotFound('Student');
+    // Students of another institute or of a branch the caller cannot see are 404, not an empty history.
+    if (!self && !(await studentRepo.findOne({ where: { userId: studentUserId }, attributes: ['id'] })))
+      throw NotFound('Student');
     const enrollments = await repos.batchStudents.findAll({
       where: { studentUserId },
       include: [

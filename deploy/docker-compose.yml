@@ -1,0 +1,209 @@
+# Production stack: web (nginx: TLS, SPA, reverse proxy, institute websites) -> api (Express, Socket.IO,
+# jobs worker) -> mysql. Runbook: docs/deployment.md. Backups: docs/backup-restore.md.
+#
+#   cd deploy && cp .env.example .env            # fill in; plus secrets/mysql_root_password
+#   docker compose up -d --build --wait           # migrate runs (once) before the api starts
+#   docker compose run --rm migrate node dist/infrastructure/database/cli.js seed   # first deploy only
+#   docker compose --profile ops run --rm backup  # database + media backup into ./backups
+#
+# Images are tagged ${ERP_REGISTRY}erp-api:${ERP_IMAGE_TAG} and ${ERP_REGISTRY}erp-web:${ERP_IMAGE_TAG};
+# roll back by setting ERP_IMAGE_TAG to the previous tag and running `docker compose up -d`.
+name: erp
+
+x-app-env-file: &app-env-file
+  - ${ERP_ENV_FILE:-.env}
+
+# Database settings of the api and migrate services; they take precedence over the env file.
+x-db-env: &db-env
+  DB_HOST: mysql
+  DB_PORT: '3306'
+  DB_NAME: ${DB_NAME:-erp_coaching}
+  DB_USER: ${DB_USER:-erp}
+  DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in deploy/.env}
+
+x-backup-env: &backup-env
+  DB_HOST: mysql
+  DB_PORT: '3306'
+  DB_NAME: ${DB_NAME:-erp_coaching}
+  # root (from the secret file) so that restores and restore tests can create databases.
+  DB_USER: root
+  DB_PASSWORD_FILE: /run/secrets/mysql_root_password
+  STORAGE_DIR: /var/lib/erp/storage
+  BACKUP_DIR: /backups
+  BACKUP_KEEP_COUNT: ${BACKUP_KEEP_COUNT:-14}
+  BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
+  APP_VERSION: ${ERP_IMAGE_TAG:-unknown}
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    command: ['--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci']
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-erp_coaching}
+      MYSQL_USER: ${DB_USER:-erp}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in deploy/.env}
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
+    secrets:
+      - mysql_root_password
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      # TCP ping: fails while the entrypoint's socket-only initialisation server is running.
+      test: ['CMD', 'mysqladmin', 'ping', '--host=127.0.0.1', '--silent']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+
+  # Not used by this release (rate limits and live-class rooms are in memory, the job queue is in MySQL);
+  # reserved for horizontal scaling, see docs/deployment.md. Start with --profile redis.
+  redis:
+    image: redis:8-alpine
+    profiles: [redis]
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # One-shot: applies pending migrations, then exits; the api starts only if it succeeded.
+  migrate:
+    image: ${ERP_REGISTRY:-}erp-api:${ERP_IMAGE_TAG:-latest}
+    command: ['node', 'dist/infrastructure/database/cli.js', 'migrate']
+    restart: 'no'
+    env_file: *app-env-file
+    environment: *db-env
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  api:
+    image: ${ERP_REGISTRY:-}erp-api:${ERP_IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: deploy/api.Dockerfile
+      args:
+        APP_VERSION: ${ERP_IMAGE_TAG:-dev}
+    restart: unless-stopped
+    init: true
+    env_file: *app-env-file
+    environment:
+      <<: *db-env
+      PORT: '4000'
+      # Behind exactly one proxy (nginx): client IPs for rate limiting come from X-Forwarded-For.
+      TRUST_PROXY: '1'
+      STORAGE_DRIVER: local
+      STORAGE_LOCAL_ROOT: /var/lib/erp/storage
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-100}
+      API_PUBLIC_URL: ${PUBLIC_URL:?set PUBLIC_URL in deploy/.env}
+      # The web origin must come first (the API builds links into the web app from it, e.g. on institute
+      # websites); then the Capacitor app origins (iOS capacitor://localhost, Android https://localhost /
+      # http://localhost).
+      CORS_ORIGINS: ${PUBLIC_URL},${CORS_EXTRA_ORIGINS:-capacitor://localhost,https://localhost,http://localhost}
+    volumes:
+      - storage:/var/lib/erp/storage
+      - api-tmp:/srv/erp/backend/tmp
+    depends_on:
+      mysql:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # On SIGTERM the server stops accepting connections and the jobs worker, then exits within 10 s.
+    stop_grace_period: 15s
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4000/api/ready',{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  web:
+    image: ${ERP_REGISTRY:-}erp-web:${ERP_IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+      args:
+        # The app is compiled against its public origin (absolute URL required).
+        VITE_API_URL: ${PUBLIC_URL:?set PUBLIC_URL in deploy/.env}
+        APP_VERSION: ${ERP_IMAGE_TAG:-dev}
+    restart: unless-stopped
+    ports:
+      - '${HTTP_PORT:-80}:80'
+      - '${HTTPS_PORT:-443}:443'
+    environment:
+      SERVER_NAME: ${SERVER_NAME:?set SERVER_NAME in deploy/.env}
+      PUBLIC_URL: ${PUBLIC_URL}
+      SITES_DOMAIN: ${SITES_DOMAIN:-}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-100}
+      SPA_CSP_MODE: ${SPA_CSP_MODE:-report-only}
+      SPA_CSP_REPORT_URI: ${SPA_CSP_REPORT_URI:-}
+      # Lets nginx start with a temporary self-signed certificate before the first real one exists.
+      TLS_SELF_SIGNED_FALLBACK: ${TLS_SELF_SIGNED_FALLBACK:-true}
+    volumes:
+      - ${ERP_CERTS_DIR:-./certs}:/etc/nginx/certs:ro
+      - ${ERP_ACME_DIR:-./acme-webroot}:/var/www/acme:ro
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # docker compose --profile ops run --rm backup [--no-media] [--no-prune]
+  backup:
+    image: ${ERP_REGISTRY:-}erp-backup:${ERP_IMAGE_TAG:-latest}
+    build: ./backup
+    profiles: [ops]
+    restart: 'no'
+    # Arguments given to `run` are passed to backup.sh.
+    entrypoint: ['backup.sh']
+    user: '${BACKUP_UID:-0}:${BACKUP_GID:-0}'
+    environment: *backup-env
+    secrets:
+      - mysql_root_password
+    volumes:
+      - storage:/var/lib/erp/storage:ro
+      - ${BACKUP_HOST_DIR:-./backups}:/backups
+    # The MySQL base image declares a volume here; keep it off disk.
+    tmpfs:
+      - /var/lib/mysql
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  # docker compose --profile ops run --rm restore --target-db erp_coaching --target-dir /var/lib/erp/storage latest
+  # Stop the api first (docker compose stop api); see docs/backup-restore.md.
+  restore:
+    image: ${ERP_REGISTRY:-}erp-backup:${ERP_IMAGE_TAG:-latest}
+    build: ./backup
+    profiles: [ops]
+    restart: 'no'
+    entrypoint: ['restore.sh']
+    command: ['--help']
+    environment: *backup-env
+    secrets:
+      - mysql_root_password
+    volumes:
+      - storage:/var/lib/erp/storage
+      - ${BACKUP_HOST_DIR:-./backups}:/backups
+    tmpfs:
+      - /var/lib/mysql
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+secrets:
+  mysql_root_password:
+    file: ${ERP_SECRETS_DIR:-./secrets}/mysql_root_password
+
+volumes:
+  mysql-data:
+  storage:
+  api-tmp:
+  redis-data:

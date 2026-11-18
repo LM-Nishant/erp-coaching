@@ -31,6 +31,12 @@ export function setSessionExpiredHandler(fn: () => void) {
   onSessionExpired = fn;
 }
 
+/** Called on every 402 (subscription restricted or suspended); the subscriptions module refreshes its banner. */
+let onPaymentRequired: ((e: ApiError) => void) | null = null;
+export function setPaymentRequiredHandler(fn: ((e: ApiError) => void) | null) {
+  onPaymentRequired = fn;
+}
+
 let refreshing: Promise<boolean> | null = null;
 
 /** Single-flight refresh: concurrent 401s share one refresh call (refresh tokens rotate). */
@@ -103,7 +109,14 @@ async function request<T>(method: string, path: string, opts: RequestOptions = {
     : await res.text();
   if (!res.ok) {
     const err = (data as ApiErrorBody)?.error;
-    throw new ApiError(res.status, err?.code ?? 'HTTP_ERROR', err?.message ?? res.statusText, err?.details);
+    const error = new ApiError(
+      res.status,
+      err?.code ?? 'HTTP_ERROR',
+      err?.message ?? res.statusText,
+      err?.details,
+    );
+    if (res.status === 402) onPaymentRequired?.(error);
+    throw error;
   }
   return data as T;
 }
@@ -127,7 +140,33 @@ export const api = {
     form.append('file', file, fields.fileName ?? (file as File).name ?? 'upload');
     return request<T>('POST', '/files', { body: form });
   },
+  /** Authenticated download of an endpoint that responds with a file attachment. */
+  download: (path: string, query?: Query) => download(path, query),
 };
+
+export interface DownloadedFile {
+  blob: Blob;
+  /** From `Content-Disposition` when the browser may read it, otherwise null. */
+  fileName: string | null;
+}
+
+async function download(path: string, query?: Query): Promise<DownloadedFile> {
+  let res: Response;
+  try {
+    res = await send('GET', path, { query, headers: { Accept: '*/*' } });
+  } catch {
+    throw new ApiError(0, 'NETWORK_ERROR', `Cannot reach the server at ${API_URL}`);
+  }
+  if (!res.ok) {
+    const data = res.headers.get('content-type')?.includes('application/json')
+      ? ((await res.json()) as ApiErrorBody)
+      : null;
+    const err = data?.error;
+    throw new ApiError(res.status, err?.code ?? 'HTTP_ERROR', err?.message ?? res.statusText, err?.details);
+  }
+  const fileName = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? null;
+  return { blob: await res.blob(), fileName };
+}
 
 export interface UploadedFile {
   id: number;

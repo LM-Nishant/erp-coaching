@@ -5,22 +5,11 @@ import type {
   AiTestResult,
   InstituteStatus,
   Paginated,
-  PlanLimits,
+  PlanDto,
 } from '@erp/shared';
 import { api } from '@/core/api';
 
-export interface PlanDto {
-  id: number;
-  code: string;
-  name: string;
-  description: string | null;
-  priceMonthlyPaise: number;
-  priceYearlyPaise: number;
-  trialDays: number;
-  limits: PlanLimits;
-  isActive: boolean;
-  activeSubscriptions?: number;
-}
+export type { PlanDto };
 export type PlanInput = Omit<PlanDto, 'id' | 'activeSubscriptions'>;
 
 export interface InstituteRow {
@@ -33,6 +22,24 @@ export interface InstituteRow {
   branding: { logoUrl: string | null; primaryColor: string | null };
   subscription: { status: string; plan: { id: number; name: string } } | null;
 }
+
+/** `GET /admin/institutes/:id` (profile fields used by the edit form). */
+export interface InstituteDetail {
+  id: number;
+  slug: string;
+  name: string;
+  status: InstituteStatus;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  registrationNumber: string | null;
+  gstin: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  primaryColor: string | null;
+  secondaryColor: string | null;
+}
+export type InstituteProfileInput = Partial<Omit<InstituteDetail, 'id' | 'slug' | 'status'>>;
 
 export interface CreateInstituteInput {
   name: string;
@@ -60,6 +67,9 @@ export const adminApi = {
   institutes: (q: { page?: number; search?: string; status?: string }) =>
     api.get<Paginated<InstituteRow>>('/admin/institutes', q),
   createInstitute: (b: CreateInstituteInput) => api.post('/admin/institutes', b),
+  institute: (id: number) => api.get<InstituteDetail>(`/admin/institutes/${id}`),
+  updateInstitute: (id: number, b: InstituteProfileInput) =>
+    api.patch<InstituteDetail>(`/admin/institutes/${id}`, b),
   setStatus: (id: number, status: InstituteStatus, reason?: string) =>
     api.post(`/admin/institutes/${id}/status`, { status, reason }),
   admins: (id: number) =>

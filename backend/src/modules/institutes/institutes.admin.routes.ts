@@ -150,6 +150,7 @@ export function instituteAdminRoutes(api: Router) {
           billingCycle: 'monthly',
           startsAt: new Date(),
           endsAt: plan.trialDays > 0 ? new Date(Date.now() + plan.trialDays * 86400_000) : null,
+          currentPeriodStart: new Date(),
           limitOverrides: null,
         },
         { transaction },

@@ -16,4 +16,6 @@ export interface StorageAdapter {
   getStream(key: string, range?: { start: number; end: number }): Promise<Readable>;
   stat(key: string): Promise<{ size: number } | null>;
   delete(key: string): Promise<void>;
+  /** Deletes every object under `prefix` (e.g. `institutes/7/`); returns how many were removed. */
+  deletePrefix(prefix: string): Promise<number>;
 }

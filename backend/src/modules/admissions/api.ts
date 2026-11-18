@@ -61,3 +61,6 @@ export function createEnquiry(
     opts,
   );
 }
+
+/** Read-only report queries (reports module, spec §4.17); callers pass a validated `ReportScope`. */
+export { admissionFunnelReport } from './reporting';

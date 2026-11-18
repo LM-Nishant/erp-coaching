@@ -24,6 +24,7 @@ import { getInstituteTimezone, instituteToday, zonedDateTimeToUtc } from '../../
 import { AppError, BadRequest, Conflict, Forbidden, NotFound } from '../../shared/errors';
 import { User } from '../users/user.model';
 import { Role, UserRole } from '../permissions/models';
+import { assertMemberInBranchScope } from '../permissions/access.service';
 import { Branch } from '../branches/branch.model';
 import { Student } from '../students/models';
 import { Batch, BatchStudent, BatchTeacher, Subject } from '../academics/api';
@@ -491,9 +492,13 @@ export async function availabilityForParent(
   return computeAvailability(teacherUserId, from, to, { branchId: student.branchId });
 }
 
-/** Availability as seen by the teacher themself or a manager. */
+/** Availability as seen by the teacher themself or a manager of a branch the teacher works in. */
 export async function availabilityForStaff(teacherUserId: number, from: string, to: string) {
-  if (teacherUserId !== me() && !isManager()) throw NotFound('Teacher');
+  if (teacherUserId !== me()) {
+    if (!isManager() || !(await usersWithRole([teacherUserId], 'teacher')).has(teacherUserId))
+      throw NotFound('Teacher');
+    await assertMemberInBranchScope(teacherUserId, 'read');
+  }
   return computeAvailability(teacherUserId, from, to);
 }
 
