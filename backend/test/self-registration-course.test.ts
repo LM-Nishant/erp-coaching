@@ -179,7 +179,9 @@ describe('self-registration for a course → admissions intent', () => {
     expect(application).toMatchObject({
       status: 'pending',
       courseId,
+      courseName,
       batchId: null,
+      batchName: null,
       studentId,
       enquiryId: enquiry.id,
       branchId,
@@ -256,6 +258,7 @@ describe('self-registration for a course → admissions intent', () => {
         studentId,
         enquiryId: enquiry.body.id,
         batchId,
+        batchName: 'SR Batch 1',
       }),
     ]);
     const [linked] = await audits('application.linked', application.body.id);

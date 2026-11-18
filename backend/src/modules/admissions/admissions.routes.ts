@@ -37,6 +37,7 @@ import {
   refreshNextFollowUp,
   scheduleReminder,
   toApplicationDto,
+  withCourseNames,
   toEnquiryDto,
   toFollowUpDto,
 } from './admissions.service';
@@ -462,7 +463,7 @@ export function admissionRoutes(api: Router) {
           : [['id', 'DESC']],
       ...toLimitOffset(q),
     });
-    res.json(paginated(rows.map(toApplicationDto), count, q));
+    res.json(paginated(await withCourseNames(rows.map(toApplicationDto)), count, q));
   });
 
   r.post('/applications', requirePermission('admissions', 'create'), async (req, res) => {

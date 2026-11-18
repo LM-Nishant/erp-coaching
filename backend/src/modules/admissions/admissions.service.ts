@@ -60,6 +60,28 @@ export function toFollowUpDto(f: EnquiryFollowUp): EnquiryFollowUpDto {
   };
 }
 
+/** Adds the course and batch names to application list rows. */
+export async function withCourseNames(dtos: ApplicationDto[]): Promise<ApplicationDto[]> {
+  const { instituteId } = requireTenantContext();
+  const ids = (k: 'courseId' | 'batchId') => [...new Set(dtos.flatMap((d) => (d[k] ? [d[k]] : [])))];
+  const [courseIds, batchIds] = [ids('courseId'), ids('batchId')];
+  const [courses, batches] = await Promise.all([
+    courseIds.length
+      ? Course.findAll({ where: { instituteId, id: courseIds }, attributes: ['id', 'name'] })
+      : [],
+    batchIds.length
+      ? Batch.findAll({ where: { instituteId, id: batchIds }, attributes: ['id', 'name'] })
+      : [],
+  ]);
+  const courseNames = new Map(courses.map((c) => [c.id, c.name]));
+  const batchNames = new Map(batches.map((b) => [b.id, b.name]));
+  return dtos.map((d) => ({
+    ...d,
+    courseName: (d.courseId && courseNames.get(d.courseId)) || null,
+    batchName: (d.batchId && batchNames.get(d.batchId)) || null,
+  }));
+}
+
 export function toApplicationDto(a: AdmissionApplication): ApplicationDto {
   return {
     id: a.id,
