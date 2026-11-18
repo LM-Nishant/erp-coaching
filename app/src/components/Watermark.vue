@@ -22,7 +22,10 @@ const tile = computed(() => {
   const w = Math.max(240, Math.round(Math.max(...lines.map((l) => l.length)) * FONT_PX * 0.6) + 48);
   const h = Math.round(w * 0.55);
   const text = lines
-    .map((l, i) => `<text x="${w / 2}" y="${h / 2 + (i - (lines.length - 1) / 2) * LINE_PX}">${escape(l)}</text>`)
+    .map(
+      (l, i) =>
+        `<text x="${w / 2}" y="${h / 2 + (i - (lines.length - 1) / 2) * LINE_PX}">${escape(l)}</text>`,
+    )
     .join('');
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
@@ -41,7 +44,10 @@ const style = computed(() => ({
 let clock: ReturnType<typeof setInterval> | undefined;
 let drift: ReturnType<typeof setInterval> | undefined;
 const move = () =>
-  (offset.value = { x: Math.round(Math.random() * tile.value.w), y: Math.round(Math.random() * tile.value.h) });
+  (offset.value = {
+    x: Math.round(Math.random() * tile.value.w),
+    y: Math.round(Math.random() * tile.value.h),
+  });
 onMounted(() => {
   move();
   drift = setInterval(move, 6000);

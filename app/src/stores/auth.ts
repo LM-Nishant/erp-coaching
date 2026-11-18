@@ -1,7 +1,14 @@
 import { defineStore } from 'pinia';
 import { Capacitor } from '@capacitor/core';
 import type { AuthTokens, LoginResult, MeDto, PermissionKey } from '@erp/shared';
-import { ApiError, api, sessionEndSettled, sessionEnded, SESSION_END_CODES, type RequestOptions } from '@/core/api';
+import {
+  ApiError,
+  api,
+  sessionEndSettled,
+  sessionEnded,
+  SESSION_END_CODES,
+  type RequestOptions,
+} from '@/core/api';
 import { getDeviceDescriptor } from '@/core/device';
 import { loadProfile, loadSession, patchSession, saveProfile, saveSession } from '@/core/token-storage';
 import { applyBranding } from '@/core/branding';
@@ -103,7 +110,7 @@ export const useAuthStore = defineStore('auth', {
       } catch (e) {
         if (isNetworkError(e)) {
           // Keep the session: downloaded lectures work offline in the app, and it resumes once online.
-          await this.startOffline(session.userId ?? null);
+          if (!session.impersonator) await this.startOffline(session.userId ?? null);
         } else if (!(e instanceof ApiError && e.status === 401)) {
           await this.clear();
         }
@@ -314,7 +321,12 @@ export const useAuthStore = defineStore('auth', {
       const session = await loadSession();
       if (!session?.impersonator) return;
       await api.post('/auth/impersonation/stop').catch(() => undefined);
-      await saveSession({ ...session.impersonator, impersonator: null, branchId: null, userId: session.userId });
+      await saveSession({
+        ...session.impersonator,
+        impersonator: null,
+        branchId: null,
+        userId: session.userId,
+      });
       this.activeBranchId = null;
       await this.fetchMe();
     },

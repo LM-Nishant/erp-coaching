@@ -92,61 +92,63 @@
         </div>
       </ion-card>
 
-      <ion-list v-for="s in exam.sections" :key="s.id">
-        <ion-list-header>
-          <ion-label>
-            <h2>{{ s.title }}</h2>
-            <p v-if="s.instructions">{{ s.instructions }}</p>
-          </ion-label>
-          <template v-if="editable && canEdit">
-            <ion-button size="small" @click="openPicker(s.id)"
-              ><ion-icon slot="start" :icon="add" />Questions</ion-button
-            >
-            <ion-button size="small" fill="clear" @click="renameSection(s)"
-              ><ion-icon slot="icon-only" :icon="createOutline"
-            /></ion-button>
-            <ion-button
-              v-if="exam.sections.length > 1"
-              size="small"
-              fill="clear"
-              color="danger"
-              @click="removeSection(s.id)"
-            >
-              <ion-icon slot="icon-only" :icon="trashOutline" />
-            </ion-button>
-          </template>
-        </ion-list-header>
-        <ion-item v-for="(eq, i) in questionsOf(s.id)" :key="eq.id">
-          <ion-label class="ion-text-wrap">
-            <h3>Q{{ i + 1 }}. {{ eq.question.text }}</h3>
-            <p>
-              {{ QUESTION_TYPE_LABELS[eq.question.type] }} · {{ eq.question.difficulty }} · +{{
-                fmtMarks(eq.marks)
-              }}
-              <span v-if="eq.negativeMarks">/ −{{ fmtMarks(eq.negativeMarks) }}</span>
-              <span v-if="eq.question.chapterName"> · {{ eq.question.chapterName }}</span>
-            </p>
-          </ion-label>
-          <template v-if="editable && canEdit">
-            <ion-button slot="end" fill="clear" size="small" @click="editMarks(eq)">Marks</ion-button>
-            <ion-button
-              slot="end"
-              fill="clear"
-              size="small"
-              title="Re-copy the latest version from the bank"
-              @click="refresh(eq.id)"
-            >
-              <ion-icon slot="icon-only" :icon="refreshOutline" />
-            </ion-button>
-            <ion-button slot="end" fill="clear" size="small" color="danger" @click="removeQuestion(eq.id)">
-              <ion-icon slot="icon-only" :icon="closeOutline" />
-            </ion-button>
-          </template>
-        </ion-item>
-        <ion-item v-if="!questionsOf(s.id).length"
-          ><ion-label class="muted">No questions in this section.</ion-label></ion-item
-        >
-      </ion-list>
+      <SecureView screen="question-paper">
+        <ion-list v-for="s in exam.sections" :key="s.id">
+          <ion-list-header>
+            <ion-label>
+              <h2>{{ s.title }}</h2>
+              <p v-if="s.instructions">{{ s.instructions }}</p>
+            </ion-label>
+            <template v-if="editable && canEdit">
+              <ion-button size="small" @click="openPicker(s.id)"
+                ><ion-icon slot="start" :icon="add" />Questions</ion-button
+              >
+              <ion-button size="small" fill="clear" @click="renameSection(s)"
+                ><ion-icon slot="icon-only" :icon="createOutline"
+              /></ion-button>
+              <ion-button
+                v-if="exam.sections.length > 1"
+                size="small"
+                fill="clear"
+                color="danger"
+                @click="removeSection(s.id)"
+              >
+                <ion-icon slot="icon-only" :icon="trashOutline" />
+              </ion-button>
+            </template>
+          </ion-list-header>
+          <ion-item v-for="(eq, i) in questionsOf(s.id)" :key="eq.id">
+            <ion-label class="ion-text-wrap">
+              <h3>Q{{ i + 1 }}. {{ eq.question.text }}</h3>
+              <p>
+                {{ QUESTION_TYPE_LABELS[eq.question.type] }} · {{ eq.question.difficulty }} · +{{
+                  fmtMarks(eq.marks)
+                }}
+                <span v-if="eq.negativeMarks">/ −{{ fmtMarks(eq.negativeMarks) }}</span>
+                <span v-if="eq.question.chapterName"> · {{ eq.question.chapterName }}</span>
+              </p>
+            </ion-label>
+            <template v-if="editable && canEdit">
+              <ion-button slot="end" fill="clear" size="small" @click="editMarks(eq)">Marks</ion-button>
+              <ion-button
+                slot="end"
+                fill="clear"
+                size="small"
+                title="Re-copy the latest version from the bank"
+                @click="refresh(eq.id)"
+              >
+                <ion-icon slot="icon-only" :icon="refreshOutline" />
+              </ion-button>
+              <ion-button slot="end" fill="clear" size="small" color="danger" @click="removeQuestion(eq.id)">
+                <ion-icon slot="icon-only" :icon="closeOutline" />
+              </ion-button>
+            </template>
+          </ion-item>
+          <ion-item v-if="!questionsOf(s.id).length"
+            ><ion-label class="muted">No questions in this section.</ion-label></ion-item
+          >
+        </ion-list>
+      </SecureView>
       <ion-button v-if="editable && canEdit" fill="outline" expand="block" @click="addSection"
         >Add section</ion-button
       >
@@ -273,6 +275,7 @@ import {
   type QuestionDto,
 } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import SecureView from '@/components/SecureView.vue';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import { questionBankApi } from '@/modules/question-bank/api';

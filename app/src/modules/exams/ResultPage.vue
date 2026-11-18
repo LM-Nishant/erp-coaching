@@ -129,89 +129,98 @@
       </ion-card>
 
       <!-- Per-question review -->
-      <ion-card v-for="(q, i) in r.questions" :key="q.examQuestionId">
-        <ion-card-header>
-          <ion-card-subtitle class="q-sub">
-            <span>
-              Q{{ i + 1 }} · {{ QUESTION_TYPE_LABELS[q.type] }}
-              <template v-if="sectionTitle(q.sectionId)"> · {{ sectionTitle(q.sectionId) }}</template>
-            </span>
-            <ion-badge :color="verdict(q).color">{{ verdict(q).label }}</ion-badge>
-          </ion-card-subtitle>
-          <ion-card-title class="q-marks"
-            >{{ fmtMarks(q.marks) }} / {{ fmtMarks(q.maxMarks) }} marks</ion-card-title
-          >
-        </ion-card-header>
-        <ion-card-content>
-          <p class="pre q-text">{{ q.text }}</p>
-          <p v-if="q.chapterName || q.topicName" class="muted small">
-            {{ [q.chapterName, q.topicName].filter(Boolean).join(' › ') }}
-          </p>
+      <SecureView screen="exam-result">
+        <ion-card v-for="(q, i) in r.questions" :key="q.examQuestionId">
+          <ion-card-header>
+            <ion-card-subtitle class="q-sub">
+              <span>
+                Q{{ i + 1 }} · {{ QUESTION_TYPE_LABELS[q.type] }}
+                <template v-if="sectionTitle(q.sectionId)"> · {{ sectionTitle(q.sectionId) }}</template>
+              </span>
+              <ion-badge :color="verdict(q).color">{{ verdict(q).label }}</ion-badge>
+            </ion-card-subtitle>
+            <ion-card-title class="q-marks"
+              >{{ fmtMarks(q.marks) }} / {{ fmtMarks(q.maxMarks) }} marks</ion-card-title
+            >
+          </ion-card-header>
+          <ion-card-content>
+            <p class="pre q-text">{{ q.text }}</p>
+            <p v-if="q.chapterName || q.topicName" class="muted small">
+              {{ [q.chapterName, q.topicName].filter(Boolean).join(' › ') }}
+            </p>
 
-          <!-- MCQ: show every option with the student's choice and the key -->
-          <ion-list v-if="isMcq(q)" lines="none" class="options">
-            <ion-item v-for="o in q.options" :key="o.key" :class="optionClass(q, o.key)">
-              <ion-icon
-                slot="start"
-                :icon="isKey(q, o.key) ? checkmarkCircle : chosen(q, o.key) ? closeCircle : ellipseOutline"
-              />
-              <ion-label class="ion-text-wrap">
-                <strong>{{ o.key }}.</strong> {{ o.text }}
-                <p v-if="chosen(q, o.key)" class="small">Your answer</p>
-              </ion-label>
-            </ion-item>
-            <p v-if="!responseText(q)" class="muted small">Not answered</p>
-          </ion-list>
-
-          <template v-else>
-            <div class="block">
-              <div class="block-label">{{ viewerMode === 'student' ? 'Your answer' : 'Response' }}</div>
-              <p class="pre">{{ responseText(q) ?? 'Not answered' }}</p>
-            </div>
-            <div v-if="correctText(q)" class="block correct">
-              <div class="block-label">
-                {{ q.type === 'descriptive' ? 'Model answer' : 'Correct answer' }}
-              </div>
-              <p class="pre">{{ correctText(q) }}</p>
-            </div>
-          </template>
-
-          <div v-if="q.pages.length" class="block">
-            <div class="block-label">Handwritten pages</div>
-            <div class="thumbs">
-              <a v-for="p in q.pages" :key="p.id" :href="p.url" target="_blank" rel="noopener" class="thumb">
-                <img
-                  v-if="!broken[p.id]"
-                  :src="p.url"
-                  :alt="`Page ${p.pageNo}`"
-                  @error="broken[p.id] = true"
+            <!-- MCQ: show every option with the student's choice and the key -->
+            <ion-list v-if="isMcq(q)" lines="none" class="options">
+              <ion-item v-for="o in q.options" :key="o.key" :class="optionClass(q, o.key)">
+                <ion-icon
+                  slot="start"
+                  :icon="isKey(q, o.key) ? checkmarkCircle : chosen(q, o.key) ? closeCircle : ellipseOutline"
                 />
-                <ion-icon v-else :icon="documentOutline" class="doc-icon" />
-                <span>Page {{ p.pageNo }}</span>
-              </a>
+                <ion-label class="ion-text-wrap">
+                  <strong>{{ o.key }}.</strong> {{ o.text }}
+                  <p v-if="chosen(q, o.key)" class="small">Your answer</p>
+                </ion-label>
+              </ion-item>
+              <p v-if="!responseText(q)" class="muted small">Not answered</p>
+            </ion-list>
+
+            <template v-else>
+              <div class="block">
+                <div class="block-label">{{ viewerMode === 'student' ? 'Your answer' : 'Response' }}</div>
+                <p class="pre">{{ responseText(q) ?? 'Not answered' }}</p>
+              </div>
+              <div v-if="correctText(q)" class="block correct">
+                <div class="block-label">
+                  {{ q.type === 'descriptive' ? 'Model answer' : 'Correct answer' }}
+                </div>
+                <p class="pre">{{ correctText(q) }}</p>
+              </div>
+            </template>
+
+            <div v-if="q.pages.length" class="block">
+              <div class="block-label">Handwritten pages</div>
+              <div class="thumbs">
+                <a
+                  v-for="p in q.pages"
+                  :key="p.id"
+                  :href="p.url"
+                  target="_blank"
+                  rel="noopener"
+                  class="thumb"
+                >
+                  <img
+                    v-if="!broken[p.id]"
+                    :src="p.url"
+                    :alt="`Page ${p.pageNo}`"
+                    @error="broken[p.id] = true"
+                  />
+                  <ion-icon v-else :icon="documentOutline" class="doc-icon" />
+                  <span>Page {{ p.pageNo }}</span>
+                </a>
+              </div>
             </div>
-          </div>
 
-          <div v-if="q.feedback" class="block feedback">
-            <div class="block-label">Evaluator feedback</div>
-            <p class="pre">{{ q.feedback }}</p>
-          </div>
-          <div v-if="q.explanation" class="block">
-            <div class="block-label">Explanation</div>
-            <p class="pre">{{ q.explanation }}</p>
-          </div>
+            <div v-if="q.feedback" class="block feedback">
+              <div class="block-label">Evaluator feedback</div>
+              <p class="pre">{{ q.feedback }}</p>
+            </div>
+            <div v-if="q.explanation" class="block">
+              <div class="block-label">Explanation</div>
+              <p class="pre">{{ q.explanation }}</p>
+            </div>
 
-          <ion-button
-            v-if="canCorrect(q)"
-            size="small"
-            fill="outline"
-            :disabled="busy"
-            @click="correctMarks(q, i)"
-          >
-            <ion-icon slot="start" :icon="createOutline" />Correct marks
-          </ion-button>
-        </ion-card-content>
-      </ion-card>
+            <ion-button
+              v-if="canCorrect(q)"
+              size="small"
+              fill="outline"
+              :disabled="busy"
+              @click="correctMarks(q, i)"
+            >
+              <ion-icon slot="start" :icon="createOutline" />Correct marks
+            </ion-button>
+          </ion-card-content>
+        </ion-card>
+      </SecureView>
     </template>
   </AppPage>
 </template>
@@ -248,6 +257,7 @@ import {
 } from 'ionicons/icons';
 import { QUESTION_TYPE_LABELS, type QuestionResultDto, type ResultDto, type TopicStat } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import SecureView from '@/components/SecureView.vue';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import { examsApi, fmtMarks, formatDate } from './api';

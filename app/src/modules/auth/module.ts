@@ -5,6 +5,8 @@ export default defineAppModule({
   publicRoutes: [
     { path: '/login', name: 'login', component: () => import('./LoginPage.vue') },
     { path: '/otp', name: 'otp', component: () => import('./OtpPage.vue') },
+    // App locked (inactivity / closed session) with biometric unlock set up.
+    { path: '/unlock', name: 'unlock', component: () => import('./UnlockPage.vue') },
   ],
   routes: [
     {

@@ -30,7 +30,7 @@
           >
         </div>
 
-        <div class="stage">
+        <SecureView class="stage" screen="live-class" :active="!isHost">
           <Whiteboard
             v-if="live.room.whiteboard.visible"
             ref="board"
@@ -55,8 +55,8 @@
             playsinline
             muted
           />
-        </div>
-        <audio v-if="audioStream" ref="audioEl" v-src="audioStream" autoplay />
+          <audio v-if="audioStream" ref="audioEl" v-src="audioStream" autoplay />
+        </SecureView>
         <ion-button v-if="needsUnmute" expand="block" color="warning" @click="unmute"
           >Tap to enable sound</ion-button
         >
@@ -136,7 +136,9 @@ import {
   videocamOff,
 } from 'ionicons/icons';
 import AppPage from '@/components/AppPage.vue';
+import SecureView from '@/components/SecureView.vue';
 import { errorMessage } from '@/core/api';
+import { useSessionHold } from '@/core/idle';
 import { toast, toastError } from '@/core/toast';
 import { liveApi } from './api';
 import RoomPanel from './components/RoomPanel.vue';
@@ -171,6 +173,9 @@ const pipVideo = ref<HTMLVideoElement | null>(null);
 const audioEl = ref<HTMLAudioElement | null>(null);
 const board = ref<InstanceType<typeof Whiteboard> | null>(null);
 let closed = false;
+// Watching or teaching a class is activity: no inactivity lock while in the room.
+const inRoom = ref(true);
+useSessionHold(inRoom);
 
 const title = computed(() => live.value?.room.session?.title ?? 'Live class');
 const isHost = computed(() => live.value?.room.me?.role === 'host');
@@ -289,6 +294,7 @@ async function init() {
 async function cleanup() {
   if (closed) return;
   closed = true;
+  inRoom.value = false;
   const rec = recorder.value;
   teacher.value?.stopScreen().catch(() => {});
   if (rec) await rec.stop().catch(() => {});

@@ -56,7 +56,19 @@
             </ion-label>
           </ion-item>
         </ion-list>
-        <video v-if="playing" :src="playing" controls playsinline class="player" />
+        <SecureView v-if="playing" screen="live-recording">
+          <video
+            :src="playing"
+            controls
+            playsinline
+            disablepictureinpicture
+            controlslist="nodownload noremoteplayback"
+            class="player"
+            @play="videoPlaying = true"
+            @pause="videoPlaying = false"
+            @ended="videoPlaying = false"
+          />
+        </SecureView>
       </template>
 
       <template v-if="report">
@@ -108,11 +120,14 @@ import {
   IonList,
   IonListHeader,
   alertController,
+  onIonViewDidLeave,
   onIonViewWillEnter,
 } from '@ionic/vue';
 import { enterOutline, playCircleOutline, radioOutline } from 'ionicons/icons';
 import type { LiveRecordingDto, LiveSessionDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import SecureView from '@/components/SecureView.vue';
+import { useSessionHold } from '@/core/idle';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import { liveApi, type ParticipationReport } from './api';
@@ -126,6 +141,8 @@ const session = ref<LiveSessionDto | null>(null);
 const recordings = ref<LiveRecordingDto[]>([]);
 const report = ref<ParticipationReport | null>(null);
 const playing = ref<string | null>(null);
+const videoPlaying = ref(false);
+useSessionHold(videoPlaying);
 
 const isHost = computed(() => session.value?.myRole === 'host');
 const isModerator = computed(() => session.value?.myRole === 'host' || session.value?.myRole === 'moderator');
@@ -141,6 +158,11 @@ async function load() {
   }
 }
 onIonViewWillEnter(load);
+// Hidden Ionic pages stay mounted: stop the recording rather than let it play on in the background.
+onIonViewDidLeave(() => {
+  playing.value = null;
+  videoPlaying.value = false;
+});
 
 async function run(fn: () => Promise<unknown>, done?: string) {
   try {
@@ -186,6 +208,7 @@ const remove = async () => {
 
 async function play(recordingId: number) {
   try {
+    videoPlaying.value = false;
     playing.value = (await liveApi.recordingUrl(recordingId)).url;
   } catch (e) {
     await toastError(e);

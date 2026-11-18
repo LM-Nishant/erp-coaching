@@ -1,7 +1,13 @@
 <template>
-  <div ref="root" class="secure-view" @contextmenu="onContextMenu" @dragstart.prevent>
+  <div
+    ref="root"
+    class="secure-view"
+    :class="{ 'secure-view-on': active }"
+    @contextmenu="onContextMenu"
+    @dragstart="onDragStart"
+  >
     <slot />
-    <Watermark v-if="watermark && label" :text="label" />
+    <Watermark v-if="active && watermark && label" :text="label" />
     <div v-if="shielded" class="secure-shield" role="alert">
       <div class="secure-shield-message">
         <ion-icon :icon="eyeOffOutline" />
@@ -28,7 +34,7 @@ const props = withDefaults(
   defineProps<{
     /** Names the screen in capture audit events, e.g. `exam-attempt`. */
     screen: string;
-    /** false turns the protection off, e.g. while no recording is playing. */
+    /** false makes this a plain container, e.g. for the teacher of a live class. */
     active?: boolean;
     /** Watermark identity; defaults to the signed-in user's name and mobile number. */
     text?: string;
@@ -66,9 +72,16 @@ watch(shielded, (hide) => {
   }
 });
 
+const TEXT_FIELDS = 'input, textarea, [contenteditable="true"], ion-input, ion-textarea, ion-searchbar';
+
 function onContextMenu(e: MouseEvent) {
   // No "save image / video" menu; text fields keep theirs (paste).
-  if (!(e.target as Element | null)?.closest('input, textarea, [contenteditable="true"]')) e.preventDefault();
+  if (!props.active) return;
+  if (!(e.target as Element | null)?.closest(TEXT_FIELDS)) e.preventDefault();
+}
+
+function onDragStart(e: DragEvent) {
+  if (props.active) e.preventDefault();
 }
 
 let observer: MutationObserver | undefined;
@@ -86,11 +99,13 @@ onBeforeUnmount(() => observer?.disconnect());
 <style scoped>
 .secure-view {
   position: relative;
+}
+.secure-view-on {
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
-.secure-view :is(input, textarea, [contenteditable='true']) {
+.secure-view-on :is(input, textarea, [contenteditable='true'], ion-input, ion-textarea, ion-searchbar) {
   user-select: text;
   -webkit-user-select: text;
 }

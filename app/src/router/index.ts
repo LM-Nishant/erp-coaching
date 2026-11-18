@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from '@ionic/vue-router';
-import type { RouteLocationNormalized, RouteRecordNormalized, RouteRecordRaw } from 'vue-router';
+import type { RouteLocation, RouteLocationNormalized, RouteRecordNormalized, RouteRecordRaw } from 'vue-router';
 import type { PermissionKey } from '@erp/shared';
 import { appModules } from '@/core/modules';
 import { useAuthStore } from '@/stores/auth';
@@ -16,7 +16,7 @@ declare module 'vue-router' {
      * Works without network in the mobile app. While offline (signed in from the cached profile) only these pages
      * open; a function decides per location (e.g. `?offline=1`).
      */
-    offline?: boolean | ((to: RouteLocationNormalized) => boolean);
+    offline?: boolean | ((to: RouteLocation) => boolean);
   }
 }
 
@@ -36,7 +36,7 @@ const routes: RouteRecordRaw[] = [
 
 export const router = createRouter({ history: createWebHistory(import.meta.env.BASE_URL), routes });
 
-const worksOffline = (to: RouteLocationNormalized) =>
+export const worksOffline = (to: RouteLocation) =>
   typeof to.meta.offline === 'function' ? to.meta.offline(to) : !!to.meta.offline;
 
 /** Landing page in offline mode: the first page without parameters that works offline and the user may open. */
