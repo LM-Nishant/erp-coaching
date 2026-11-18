@@ -7,8 +7,11 @@ import { Capacitor } from '@capacitor/core';
  */
 export async function scanQr(): Promise<string | null> {
   if (!Capacitor.isNativePlatform()) return null;
-  const { CapacitorBarcodeScanner, CapacitorBarcodeScannerAndroidScanningLibrary, CapacitorBarcodeScannerTypeHint } =
-    await import('@capacitor/barcode-scanner');
+  const {
+    CapacitorBarcodeScanner,
+    CapacitorBarcodeScannerAndroidScanningLibrary,
+    CapacitorBarcodeScannerTypeHint,
+  } = await import('@capacitor/barcode-scanner');
   try {
     const { ScanResult } = await CapacitorBarcodeScanner.scanBarcode({
       hint: CapacitorBarcodeScannerTypeHint.QR_CODE,
@@ -22,7 +25,10 @@ export async function scanQr(): Promise<string | null> {
 }
 
 /** The plugin rejects with `OS-PLUG-BARC-0006` (cancelled) / `-0007` (no camera access) on both platforms. */
-const SCAN_ERRORS: Record<number, string> = { 6: 'Scan cancelled', 7: 'Camera permission is required to scan' };
+const SCAN_ERRORS: Record<number, string> = {
+  6: 'Scan cancelled',
+  7: 'Camera permission is required to scan',
+};
 export function scanErrorMessage(code: unknown): string | undefined {
   const n = typeof code === 'string' ? /^OS-PLUG-BARC-(\d+)$/.exec(code)?.[1] : undefined;
   return n ? SCAN_ERRORS[Number(n)] : undefined;

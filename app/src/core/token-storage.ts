@@ -1,7 +1,14 @@
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import type { AuthTokens, MeDto } from '@erp/shared';
-import { SecureKey, secureGet, secureGetJson, secureRemove, secureSet, secureSetJson } from './secure-storage';
+import {
+  SecureKey,
+  secureGet,
+  secureGetJson,
+  secureRemove,
+  secureSet,
+  secureSetJson,
+} from './secure-storage';
 
 /**
  * Session persisted on the device: secure storage in the mobile app (iOS Keychain / Android Keystore), localStorage on
@@ -85,7 +92,10 @@ export const updateTokens = (
   usedRefreshToken: string,
 ) =>
   patchSession(
-    { accessToken: tokens.accessToken, ...(tokens.refreshToken ? { refreshToken: tokens.refreshToken } : {}) },
+    {
+      accessToken: tokens.accessToken,
+      ...(tokens.refreshToken ? { refreshToken: tokens.refreshToken } : {}),
+    },
     (s) => s.refreshToken === usedRefreshToken,
   );
 

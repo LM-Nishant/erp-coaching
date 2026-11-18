@@ -24,7 +24,11 @@ const WRITE_THROTTLE_MS = 5_000;
 const INPUT_EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'] as const;
 
 export class IdleMonitor {
-  private config: IdleMonitorConfig = { timeoutMinutes: () => 0, onIdle: () => undefined, heartbeat: async () => undefined };
+  private config: IdleMonitorConfig = {
+    timeoutMinutes: () => 0,
+    onIdle: () => undefined,
+    heartbeat: async () => undefined,
+  };
   private timer: ReturnType<typeof setInterval> | null = null;
   private holds = 0;
   private lastWrite = 0;
@@ -49,7 +53,8 @@ export class IdleMonitor {
     if (fresh || !this.lastActivity()) this.touch(true);
     this.lastHeartbeat = this.now();
     if (this.timer) return;
-    for (const e of INPUT_EVENTS) globalThis.addEventListener?.(e, this.onInput, { passive: true, capture: true });
+    for (const e of INPUT_EVENTS)
+      globalThis.addEventListener?.(e, this.onInput, { passive: true, capture: true });
     this.timer = setInterval(() => this.tick(), IDLE_TICK_MS);
     this.check();
   }

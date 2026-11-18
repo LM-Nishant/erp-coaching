@@ -886,14 +886,11 @@ export async function listOfflineLicenses(): Promise<
  * play them offline after `expiresAt`.
  */
 export async function revokeDeviceOfflineLicenses(userId: number, deviceId: number, at: Date) {
-  await LmsOfflineLicense.update(
-    { revokedAt: at },
-    {
-      where: { userId, deviceId, revokedAt: null },
-      // Devices are platform-wide: the licences may belong to several institutes.
-      tenantBypass: true,
-    } as Parameters<typeof LmsOfflineLicense.update>[1],
-  );
+  await LmsOfflineLicense.update({ revokedAt: at }, {
+    where: { userId, deviceId, revokedAt: null },
+    // Devices are platform-wide: the licences may belong to several institutes.
+    tenantBypass: true,
+  } as Parameters<typeof LmsOfflineLicense.update>[1]);
 }
 
 export async function revokeOfflineLicense(id: number) {

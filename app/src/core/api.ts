@@ -28,7 +28,11 @@ export interface RequestOptions {
 }
 
 /** 401 codes a token refresh cannot fix: inactivity timeout, revoked device, deactivated account. */
-export const SESSION_END_CODES: ReadonlySet<string> = new Set(['SESSION_IDLE', 'SESSION_REVOKED', 'ACCOUNT_INACTIVE']);
+export const SESSION_END_CODES: ReadonlySet<string> = new Set([
+  'SESSION_IDLE',
+  'SESSION_REVOKED',
+  'ACCOUNT_INACTIVE',
+]);
 
 type SessionEndedHandler = (code: string) => void | Promise<void>;
 /** Called with the API's error code once the session is over (main.ts locks the app or goes to login). */

@@ -155,4 +155,5 @@ const declinedKey = (userId: number) => `erp.biometric.declined.${userId}`;
 /** The user answered "Not now" to the offer after signing in; don't ask again (Settings › Devices still has it). */
 export const biometricDeclined = async (userId: number) =>
   (await Preferences.get({ key: declinedKey(userId) })).value === '1';
-export const setBiometricDeclined = (userId: number) => Preferences.set({ key: declinedKey(userId), value: '1' });
+export const setBiometricDeclined = (userId: number) =>
+  Preferences.set({ key: declinedKey(userId), value: '1' });

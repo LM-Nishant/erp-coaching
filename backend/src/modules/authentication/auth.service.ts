@@ -1,7 +1,13 @@
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { Op } from 'sequelize';
-import type { AuthTokens, BiometricUnlockEnrolmentDto, BiometricUnlockInput, LoginResult, MeDto } from '@erp/shared';
+import type {
+  AuthTokens,
+  BiometricUnlockEnrolmentDto,
+  BiometricUnlockInput,
+  LoginResult,
+  MeDto,
+} from '@erp/shared';
 import { config } from '../../infrastructure/config';
 import { randomDigits, randomToken, sha256, safeEqual } from '../../infrastructure/crypto';
 import { getMessagingProvider } from '../../infrastructure/messaging';
@@ -240,10 +246,7 @@ export async function refreshTokens(token: string): Promise<AuthTokens> {
   }
   if (row.expiresAt < new Date()) throw Unauthorized('Refresh token expired', 'INVALID_REFRESH_TOKEN');
   if (isIdle(device.lastSeenAt, await getIdleTimeoutMinutes(row.instituteId))) {
-    await RefreshToken.update(
-      { revokedAt: new Date() },
-      { where: { deviceId: device.id, revokedAt: null } },
-    );
+    await RefreshToken.update({ revokedAt: new Date() }, { where: { deviceId: device.id, revokedAt: null } });
     throw Unauthorized('Signed out after a period of inactivity', 'SESSION_IDLE');
   }
   if (row.instituteId) await assertInstituteActive(row.instituteId);

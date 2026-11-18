@@ -36,7 +36,10 @@ describe('mobile & device security (spec 4.18)', () => {
   const api = (method: 'get' | 'post' | 'put' | 'patch' | 'delete', url: string, token: string) =>
     request(app)[method](`/api${url}`).set(bearer(token));
 
-  async function createUser(key: string, opts: { role?: SystemRoleSlug; branchId?: number | null; superAdmin?: boolean }) {
+  async function createUser(
+    key: string,
+    opts: { role?: SystemRoleSlug; branchId?: number | null; superAdmin?: boolean },
+  ) {
     const mobile = nextMobile();
     const user = await User.create({
       name: `MobSec ${tag} ${key}`,
@@ -49,7 +52,12 @@ describe('mobile & device security (spec 4.18)', () => {
     userIds.push(user.id);
     if (opts.role) {
       const role = await getSystemRole(opts.role);
-      await UserRole.create({ userId: user.id, roleId: role.id, instituteId, branchId: opts.branchId ?? null });
+      await UserRole.create({
+        userId: user.id,
+        roleId: role.id,
+        instituteId,
+        branchId: opts.branchId ?? null,
+      });
     }
     u[key] = { id: user.id, mobile, password: PASSWORD };
     return u[key];
@@ -214,9 +222,9 @@ describe('mobile & device security (spec 4.18)', () => {
     const after = await api('get', `/users/${u.student.id}/devices`, admin.accessToken);
     expect(after.body.find((d: { id: number }) => d.id === phoneRow.id)).toMatchObject({ status: 'revoked' });
     // idempotent
-    expect((await api('delete', `/users/${u.student.id}/devices/${phoneRow.id}`, admin.accessToken)).status).toBe(
-      204,
-    );
+    expect(
+      (await api('delete', `/users/${u.student.id}/devices/${phoneRow.id}`, admin.accessToken)).status,
+    ).toBe(204);
     // the user revoking their own device gets no administrator notice
     await api('delete', `/auth/devices/${laptopRow.id}`, onLaptop.accessToken).expect(204);
     await processDueJobs(200);
@@ -238,11 +246,16 @@ describe('mobile & device security (spec 4.18)', () => {
     expect((await api('get', `/users/${u.admin.id}/devices`, branchAdmin.accessToken)).status).toBe(404);
     const teacherDevice = (await deviceOf(teacher.device))!;
     expect(
-      (await api('delete', `/users/${u.teacher.id}/devices/${teacherDevice.id}`, branchAdmin.accessToken)).status,
+      (await api('delete', `/users/${u.teacher.id}/devices/${teacherDevice.id}`, branchAdmin.accessToken))
+        .status,
     ).toBe(404);
     expect((await api('get', '/auth/me', teacher.accessToken)).status).toBe(200);
 
-    const search = await api('get', `/users/devices?search=${encodeURIComponent(`MobSec ${tag}`)}`, branchAdmin.accessToken);
+    const search = await api(
+      'get',
+      `/users/devices?search=${encodeURIComponent(`MobSec ${tag}`)}`,
+      branchAdmin.accessToken,
+    );
     expect(search.status).toBe(200);
     const names = search.body.map((r: { id: number }) => r.id);
     expect(names).toEqual(expect.arrayContaining([u.student.id, u.bio.id, u.branchAdmin.id]));
@@ -250,7 +263,11 @@ describe('mobile & device security (spec 4.18)', () => {
     expect(names).not.toContain(u.admin.id);
     expect(names).not.toContain(u.platform.id);
 
-    const all = await api('get', `/users/devices?search=${encodeURIComponent(`MobSec ${tag}`)}`, admin.accessToken);
+    const all = await api(
+      'get',
+      `/users/devices?search=${encodeURIComponent(`MobSec ${tag}`)}`,
+      admin.accessToken,
+    );
     expect(all.body.map((r: { id: number }) => r.id)).toEqual(
       expect.arrayContaining([u.student.id, u.teacher.id, u.admin.id]),
     );
@@ -285,13 +302,15 @@ describe('mobile & device security (spec 4.18)', () => {
     expect(devices.body.map((d: { id: number }) => d.id)).toContain(teacherDevice.id);
     expect((await api('get', '/admin/users/999999999/devices', platform.accessToken)).status).toBe(404);
     expect(
-      (await api('delete', `/admin/users/${u.teacher.id}/devices/${teacherDevice.id}`, platform.accessToken)).status,
+      (await api('delete', `/admin/users/${u.teacher.id}/devices/${teacherDevice.id}`, platform.accessToken))
+        .status,
     ).toBe(204);
     expect((await api('get', '/auth/me', teacher.accessToken)).status).toBe(401);
     // a device of someone else cannot be revoked through another user's id
     const adminDevice = (await deviceOf(admin.device))!;
     expect(
-      (await api('delete', `/admin/users/${u.teacher.id}/devices/${adminDevice.id}`, platform.accessToken)).status,
+      (await api('delete', `/admin/users/${u.teacher.id}/devices/${adminDevice.id}`, platform.accessToken))
+        .status,
     ).toBe(404);
     await processDueJobs(200);
     expect(
@@ -315,7 +334,9 @@ describe('mobile & device security (spec 4.18)', () => {
     expect(enrolled.body).toMatchObject({ deviceId: iosRow.id, secret: expect.any(String) });
     const { secret } = enrolled.body as { secret: string };
     expect((await iosRow.reload()).unlockKeyHash).not.toContain(secret);
-    expect((await api('get', '/auth/me', app1.accessToken)).body.session).toMatchObject({ biometricUnlock: true });
+    expect((await api('get', '/auth/me', app1.accessToken)).body.session).toMatchObject({
+      biometricUnlock: true,
+    });
 
     const unlock = (body: Record<string, unknown>) =>
       request(app)
@@ -361,7 +382,7 @@ describe('mobile & device security (spec 4.18)', () => {
   it('audits screenshots and recordings of protected screens reported by the app', async () => {
     const s = await login(u.capture, device('ios'));
     const row = (await deviceOf(s.device))!;
-    const send = (body: unknown) => api('post', '/auth/capture-events', s.accessToken).send(body);
+    const send = (body: object) => api('post', '/auth/capture-events', s.accessToken).send(body);
     expect((await send({ kind: 'screenshot', screens: ['Exam attempt'] })).status).toBe(422);
     expect((await send({ kind: 'photo', screens: [] })).status).toBe(422);
     await send({ kind: 'screenshot', screens: ['exam-attempt', 'exam-attempt'] }).expect(204);
@@ -390,7 +411,9 @@ describe('mobile & device security (spec 4.18)', () => {
     const backdate = (minutes: number) =>
       Device.update({ lastSeenAt: new Date(Date.now() - minutes * 60_000) }, { where: { id: row.id } });
 
-    expect((await api('patch', '/institute', admin.accessToken).send({ idleTimeoutMinutes: 3 })).status).toBe(422);
+    expect((await api('patch', '/institute', admin.accessToken).send({ idleTimeoutMinutes: 3 })).status).toBe(
+      422,
+    );
     const saved = await api('patch', '/institute', admin.accessToken).send({ idleTimeoutMinutes: 15 });
     expect(saved.status).toBe(200);
     expect(saved.body.idleTimeoutMinutes).toBe(15);
@@ -417,7 +440,9 @@ describe('mobile & device security (spec 4.18)', () => {
     expect(refresh.body.error.code).toBe('SESSION_IDLE');
     // the device itself stays registered: signing in again works without OTP
     await backdate(0);
-    expect((await request(app).post('/api/auth/refresh').send({ refreshToken: idle.refreshToken })).status).toBe(401);
+    expect(
+      (await request(app).post('/api/auth/refresh').send({ refreshToken: idle.refreshToken })).status,
+    ).toBe(401);
     const back = await login(u.idle, idle.device);
     expect((await api('get', '/auth/me', back.accessToken)).status).toBe(200);
     expect((await row.reload()).status).toBe('active');

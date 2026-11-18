@@ -131,7 +131,11 @@ export async function searchPlatformUsers(search: string): Promise<PlatformUserD
   const like = `%${search}%`;
   const users = await User.findAll({
     where: {
-      [Op.or]: [{ name: { [Op.like]: like } }, { mobile: { [Op.like]: like } }, { email: { [Op.like]: like } }],
+      [Op.or]: [
+        { name: { [Op.like]: like } },
+        { mobile: { [Op.like]: like } },
+        { email: { [Op.like]: like } },
+      ],
     },
     order: [['name', 'ASC']],
     limit: 20,

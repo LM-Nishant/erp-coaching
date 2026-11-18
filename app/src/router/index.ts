@@ -1,5 +1,10 @@
 import { createRouter, createWebHistory } from '@ionic/vue-router';
-import type { RouteLocation, RouteLocationNormalized, RouteRecordNormalized, RouteRecordRaw } from 'vue-router';
+import type {
+  RouteLocation,
+  RouteLocationNormalized,
+  RouteRecordNormalized,
+  RouteRecordRaw,
+} from 'vue-router';
 import type { PermissionKey } from '@erp/shared';
 import { appModules } from '@/core/modules';
 import { useAuthStore } from '@/stores/auth';
