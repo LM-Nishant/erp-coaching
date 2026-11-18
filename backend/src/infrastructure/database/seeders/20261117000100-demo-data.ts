@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import type { PlanLimits, SystemRoleSlug } from '@erp/shared';
 import type { Migration } from '../migration-helpers';
-import { config } from '../../config';
+import { config, DEFAULT_DEMO_PASSWORD, DEFAULT_SUPERADMIN_PASSWORD } from '../../config';
 import { User } from '../../../modules/users/user.model';
 import { Institute } from '../../../modules/institutes/institute.model';
 import { Branch } from '../../../modules/branches/branch.model';
@@ -12,6 +12,8 @@ import { getSystemRole } from '../../../modules/permissions/catalog.service';
 /**
  * Demo data: super admin, plans, 2 institutes × 2 branches and one user per system role.
  * Mobile numbers: 9000000000 = super admin; 9<inst><role> pattern for demo users (see README).
+ * Production gets only the super admin (with a password you choose) and plans unless
+ * SEED_DEMO_DATA=true; see docs/deployment.md.
  */
 const PLANS: { code: string; name: string; monthly: number; limits: PlanLimits }[] = [
   {
@@ -82,7 +84,22 @@ async function upsertUser(mobile: string, name: string, passwordHash: string, is
   return user;
 }
 
+/** The README publishes the default passwords, so production must never be seeded with them. */
+export function assertSafeForProduction() {
+  if (!config.isProd) return;
+  const password = config.SEED_SUPERADMIN_PASSWORD;
+  if (password === DEFAULT_SUPERADMIN_PASSWORD || password.length < 12)
+    throw new Error(
+      'Refusing to seed production: set SEED_SUPERADMIN_PASSWORD (12+ characters, not the README default)',
+    );
+  if (config.SEED_DEMO_DATA && config.SEED_DEMO_PASSWORD === DEFAULT_DEMO_PASSWORD)
+    throw new Error(
+      'Refusing to seed production demo users with the README password: set SEED_DEMO_PASSWORD',
+    );
+}
+
 export const up: Migration = async () => {
+  assertSafeForProduction();
   await upsertUser(
     config.SEED_SUPERADMIN_MOBILE,
     'Platform Super Admin',
@@ -105,6 +122,7 @@ export const up: Migration = async () => {
     });
     plans[p.code] = plan;
   }
+  if (!config.SEED_DEMO_DATA) return;
 
   const demoHash = await bcrypt.hash(config.SEED_DEMO_PASSWORD, 10);
   for (const def of INSTITUTES) {

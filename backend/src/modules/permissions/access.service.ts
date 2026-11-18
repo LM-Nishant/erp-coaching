@@ -1,3 +1,6 @@
+import { literal, Op, type WhereOptions } from 'sequelize';
+import { requireTenantContext } from '../../shared/context';
+import { Forbidden, NotFound } from '../../shared/errors';
 import { Permission, Role, UserBranch, UserRole } from './models';
 
 export interface Assignment {
@@ -74,4 +77,34 @@ export async function membershipInstituteIds(userId: number): Promise<number[]> 
     tenantBypass: true,
   } as object);
   return rows.map((r) => r.instituteId);
+}
+
+/**
+ * Branch boundary for managing members. Branch-restricted callers see institute-level staff and
+ * members who share one of their branches (404 otherwise), and may only manage members whose every
+ * assignment lies inside their branches (403 otherwise). Institute-wide callers are unrestricted.
+ */
+export async function assertMemberInBranchScope(userId: number, mode: 'read' | 'manage'): Promise<void> {
+  const { instituteId, allowedBranchIds: allowed } = requireTenantContext();
+  if (allowed === null) return;
+  const footprint = computeAccess(await loadAssignments(userId, instituteId)).allowedBranchIds;
+  if (footprint !== null && !footprint.some((b) => allowed.includes(b))) throw NotFound('User');
+  if (mode === 'manage' && (footprint === null || !footprint.every((b) => allowed.includes(b))))
+    throw Forbidden('This member belongs to branches outside your access', 'BRANCH_FORBIDDEN');
+}
+
+/** `User` filter matching {@link assertMemberInBranchScope} read access; undefined when unrestricted. */
+export function memberVisibilityWhere(): WhereOptions | undefined {
+  const { instituteId, allowedBranchIds } = requireTenantContext();
+  if (allowedBranchIds === null) return undefined;
+  const branches = allowedBranchIds.length ? allowedBranchIds.map((b) => Number(b)).join(',') : 'NULL';
+  const inst = Number(instituteId);
+  return {
+    id: {
+      [Op.in]: literal(
+        `(SELECT user_id FROM user_roles WHERE institute_id = ${inst} AND (branch_id IS NULL OR branch_id IN (${branches}))` +
+          ` UNION SELECT user_id FROM user_branches WHERE institute_id = ${inst} AND branch_id IN (${branches}))`,
+      ),
+    },
+  };
 }

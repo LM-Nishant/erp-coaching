@@ -1,0 +1,41 @@
+# Version updates. Security updates are raised as soon as an advisory is published (enable
+# "Dependabot security updates" in the repository settings); see docs/security.md.
+version: 2
+updates:
+  # One lockfile for every workspace (backend, app, packages/shared, e2e, load).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      production-minor:
+        dependency-type: production
+        update-types: [minor, patch]
+      development-minor:
+        dependency-type: development
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ['*']
+
+  # Base images of the API, web and backup images.
+  - package-ecosystem: docker
+    directories: [/deploy, /deploy/backup]
+    schedule:
+      interval: weekly
+      day: monday
+
+  # mysql, redis and nginx images in the compose stack.
+  - package-ecosystem: docker-compose
+    directory: /deploy
+    schedule:
+      interval: weekly
+      day: monday

@@ -14,6 +14,7 @@ import { requireTenantContext } from '../../shared/context';
 import { BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { audit } from '../../shared/audit/audit.service';
+import { isBlockedUploadType } from '../../shared/utilities/file-response';
 import { assertWithinLimit } from '../subscriptions/subscription.service';
 import { FileObject } from '../files/file.model';
 import { saveUploadedFile, signedUrlFor } from '../files/files.service';
@@ -21,8 +22,6 @@ import { LmsUploadSession } from './models';
 
 export const TMP_DIR = path.resolve(__dirname, '../../../tmp/lms-uploads');
 const SESSION_TTL_MS = 24 * 3600_000;
-/** Same block list as the files module: executables and HTML are never stored. */
-export const BLOCKED_MIME = /^(application\/(x-msdownload|x-sh|x-executable|java-archive)|text\/html)/;
 
 export const uploadRepo = new TenantRepository(LmsUploadSession, {
   entity: 'Upload',
@@ -86,7 +85,7 @@ export async function startUpload(input: {
   branchId?: number | null;
 }): Promise<LmsUploadSessionDto> {
   const { instituteId, userId } = requireTenantContext();
-  if (BLOCKED_MIME.test(input.mimeType)) throw BadRequest('This file type is not allowed');
+  if (isBlockedUploadType(input.mimeType)) throw BadRequest('This file type is not allowed');
   if (input.totalBytes > LMS_MAX_UPLOAD_BYTES) throw BadRequest('File is too large');
   const used = Number((await FileObject.sum('sizeBytes', { where: { instituteId } })) || 0);
   await assertWithinLimit(instituteId, 'storageMb', used / 1048576, input.totalBytes / 1048576);
