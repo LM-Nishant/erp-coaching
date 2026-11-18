@@ -85,7 +85,7 @@ async function upsertUser(mobile: string, name: string, passwordHash: string, is
 }
 
 /** The README publishes the default passwords, so production must never be seeded with them. */
-function assertSafeForProduction() {
+export function assertSafeForProduction() {
   if (!config.isProd) return;
   const password = config.SEED_SUPERADMIN_PASSWORD;
   if (password === DEFAULT_SUPERADMIN_PASSWORD || password.length < 12)
@@ -93,7 +93,9 @@ function assertSafeForProduction() {
       'Refusing to seed production: set SEED_SUPERADMIN_PASSWORD (12+ characters, not the README default)',
     );
   if (config.SEED_DEMO_DATA && config.SEED_DEMO_PASSWORD === DEFAULT_DEMO_PASSWORD)
-    throw new Error('Refusing to seed production demo users with the README password: set SEED_DEMO_PASSWORD');
+    throw new Error(
+      'Refusing to seed production demo users with the README password: set SEED_DEMO_PASSWORD',
+    );
 }
 
 export const up: Migration = async () => {
