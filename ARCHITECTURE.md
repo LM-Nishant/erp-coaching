@@ -105,7 +105,7 @@ helmet → cors → json → contextMiddleware (request id, ALS) → rate limit
 | Errors                           | `BadRequest`, `Forbidden`, `NotFound`, `Conflict`, `LimitExceeded`, `AppError` from `shared/errors`                                                                          |
 | Plan limits                      | `assertWithinLimit(instituteId, 'maxStudents', currentCount)`; `requireModule('<module>')` route gate                                                                        |
 | Files                            | `saveUploadedFile({...})`, `signedUrlFor(file)`, `deleteFile(id)` from `modules/files/files.service`; storage path `institutes/<id>/<yyyy>/<mm>/<uuid><ext>`                 |
-| AI                               | `aiChat({ feature: 'exams.generate', messages, jsonMode? })` from `modules/ai/ai.service` (quota check, provider call, `ai_usage` metering)                                  |
+| AI                               | `aiChat({ feature: 'exams.generate', messages, jsonMode? })` from `modules/ai/ai.service` (quota check, provider call, `ai_usage` metering incl. images and cost)            |
 | Background jobs                  | `enqueueJob('module.job-name', payload, { runAt? })`; handlers declared in the module's `jobs` map; run with tenant context                                                  |
 | Notifications (all channels)     | `notify({ event, recipients, data })` from `modules/notifications/api`: rules → templates → preferences → queued delivery with retries (see CONTRIBUTING.md)                 |
 | SMS/WhatsApp/email/push          | Low-level `getMessagingProvider(channel)`; platform/auth code only (OTP). Per-institute providers via `createMessagingProvider()`                                            |
@@ -122,11 +122,41 @@ helmet → cors → json → contextMiddleware (request id, ALS) → rate limit
 
 ## AI configuration
 
-- **Storage.** `ai_settings` is a singleton platform row holding provider, base URL, model, JSON mode and an encrypted key. The key is AES-256-GCM encrypted with `ENCRYPTION_KEY`.
+- **Storage.** `ai_settings` is a singleton platform row holding provider, base URL, model, JSON mode, optional prices (`inputUsdPer1M`, `outputUsdPer1M`) and an encrypted key. The key is AES-256-GCM encrypted with `ENCRYPTION_KEY`.
 - **Defaults.** Env `AI_BASE_URL`, `AI_MODEL` and `AI_API_KEY` apply until a super admin saves settings.
 - **Key handling.** The API returns only `keyHint` (for example `AQ….Sf9Q`) and `keySource` (`database | env | none`). An empty key on save keeps the existing one; `DELETE /api/admin/ai/settings/key` removes it.
 - **Test connection.** `POST /api/admin/ai/settings/test` makes a tiny chat-completions call with the unsaved form values, falling back to the stored key.
-- **Usage metering.** Every `aiChat()` call writes `ai_usage` (institute, user, feature, tokens, latency, status). The quota comes from the plan's `aiTokensMonthly` limit.
+- **Mock provider.** `infrastructure/ai-providers/mock.client.ts` is a deterministic, offline provider for development and tests. It returns the same output for the same input:
+  - Grading prompts are marked by keyword overlap of the answer (typed text plus simulated OCR) with the model answer and rubric, in the grading JSON format.
+  - Question generation returns well-formed sample questions of the requested type. Other chats get a short fixed reply.
+  - Simulated OCR reads text from PNG `tEXt`/`iTXt`/`zTXt` chunks or JPEG comments, so tests can attach "handwritten" pages with known content.
+  - Usage is reported like a real provider (about 4 characters per token, 765 tokens per image) and priced at the mock preset's list price, so quotas and cost tracking work.
+  - A message containing `[[mock:fail]]` fails like a provider error (for tests).
+- **When the mock is used.** Only outside production:
+  - when a super admin selects it (`mockAllowed` in the settings);
+  - or, while the configured provider has no key, as the fallback (`AI_MOCK_FALLBACK`, default `true`). Settings then report `effectiveProvider: 'mock'` and `mockReason: 'fallback'`.
+
+  In production the mock can't be saved (400 `MOCK_AI_NOT_ALLOWED`) or run (503 `AI_NOT_CONFIGURED`). A configured real provider is never replaced by the mock, and provider errors never fall back to it.
+
+- **Usage metering.** Every `aiChat()` call writes `ai_usage`:
+  - institute, user and feature;
+  - provider and model;
+  - prompt and completion tokens, and image count;
+  - estimated cost in USD;
+  - latency and status.
+
+  Cost uses the prices saved in settings, else the preset's list price when the preset model is in use (`pricingSource`). The quota is the plan's `aiTokensMonthly`, counted per calendar month in the institute timezone and checked before each call (429 `AI_QUOTA_EXCEEDED`). `GET /api/ai/usage` (institute, `ai.view`) and `GET /api/admin/ai/usage` (platform, per institute and per provider) summarise it.
+
+- **AI grading (exams).** An exam's `evaluationMode` is one of:
+  - `manual`;
+  - `ai_assist`: the AI suggests marks, and a teacher accepts or overrides them;
+  - `ai_only`: AI marks are final; choosing it needs `exams.configure`.
+
+  The AI modes need AI in the plan. Grading runs as a job through `aiChat({ feature: 'exams.grading' })`. `grading_jobs` and `grading_results` record provider, model, tokens, images, estimated cost, latency and the `ai_usage` row.
+
+  The student's answer is never modified. Every AI result, teacher edit, correction and publish/unpublish snapshot appends to `exam_mark_revisions`; `GET /api/exams/:id/evaluations/:answerId/history` returns them. `GET /api/exams/ai-status` shows the provider, whether it is the mock and the remaining quota.
+
+  When the quota runs out or AI isn't configured, the job stops (audit `exam.ai_grading_stopped`) and the remaining answers stay pending for manual marking.
 
 ## Frontend app
 

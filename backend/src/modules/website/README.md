@@ -45,7 +45,9 @@ Import from `modules/website/api.ts` only, and register hooks from your own `int
   `{ courseId, batchId, couponCode, referralCode, returnUrl }`. If it returns `null`, the visitor is sent
   to online admission. The input also carries `appUrl` (the staff/student app). Fees uses it to return
   `<appUrl>/my-fees/buy/:courseId?batchId&coupon&ref` when the course has an active fee structure and a
-  payment gateway is enabled.
+  payment gateway is enabled. Once the purchase is paid, fees admits the student and enrols them in the
+  batch chosen at checkout (else an open batch of the course with seats), or queues them for an admin
+  under Fees → Course enrolments; see the wiring table in `CONTRIBUTING.md`.
 - `setCoursePriceResolver(fn)`: display prices for the public course catalogue. Fees returns the lowest
   active course-level fee structure total.
 - `validateCoupon({ code, amountPaise, courseId?, customerKey? })`: returns the discount or a reason

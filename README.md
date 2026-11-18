@@ -122,9 +122,9 @@ Native webview origins (`capacitor://localhost`, `https://localhost`) are alread
   - A storage adapter (local disk now; S3/R2 stub) with tenant-scoped paths.
   - Short-lived HMAC-signed download URLs, and a plan storage quota.
 - **AI**
-  - An OpenAI-compatible provider configuration screen with presets: OpenAI, Azure, Gemini, Groq, OpenRouter and Ollama.
+  - An OpenAI-compatible provider configuration screen with presets: OpenAI, Azure, Gemini, Groq, OpenRouter and Ollama, plus a deterministic mock provider for development and tests (never available in production).
   - The key is encrypted at rest (AES-256-GCM) and never returned to the browser.
-  - Test connection, plus an `aiChat()` service with per-institute usage metering and quota (`ai_usage`).
+  - Test connection, plus an `aiChat()` service with per-institute usage metering (tokens, images and estimated cost) and quota (`ai_usage`).
 - **Integrations**: adapter interfaces with console or mock implementations for SMS, WhatsApp, email, push, payments, live streaming and biometric devices.
 - **App shell**
   - Login, OTP and institute selection.
