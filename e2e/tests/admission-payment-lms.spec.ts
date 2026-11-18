@@ -31,7 +31,11 @@ interface Paged<T> {
   items: T[];
 }
 
-test('admission → mock gateway fee payment → paid LMS lecture unlocks', async ({ http, superAdmin, openAs }) => {
+test('admission → mock gateway fee payment → paid LMS lecture unlocks', async ({
+  http,
+  superAdmin,
+  openAs,
+}) => {
   const institute = await createInstitute(http, superAdmin, 'pay');
   const { api } = institute.admin;
   const batch = await createBatch(institute, { label: 'Physics' });

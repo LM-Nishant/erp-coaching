@@ -71,18 +71,18 @@ test('attendance marked absent → parent receives the absent alert', async ({ h
   await test.step("absent students' parents get the SMS; the present student's parent does not", async () => {
     for (const student of [absent, unmarked])
       await waitForMessage(
-        (m) => m.channel === 'sms' && m.to === student.guardian.mobile && m.body.includes(alertText(student.name)),
+        (m) =>
+          m.channel === 'sms' && m.to === student.guardian.mobile && m.body.includes(alertText(student.name)),
         { since, description: `Absent SMS to ${student.guardian.name}` },
       );
     expect(outboxMessages(since).filter((m) => m.to === present.guardian.mobile)).toEqual([]);
   });
 
   await test.step('parent sees the alert in the app notifications', async () => {
+    // The in-app alert is written together with the SMS awaited above, so one reload shows it.
+    await parent.reload();
     const alerts = activePage(parent).locator('ion-item').filter({ hasText: 'Absent today' });
-    await expect(async () => {
-      await parent.reload();
-      await expect(alerts).toHaveCount(1, { timeout: 3_000 });
-    }).toPass({ timeout: 20_000 });
+    await expect(alerts).toHaveCount(1);
     await expect(alerts).toContainText(alertText(absent.name));
     await expect(activePage(parent).getByText(unmarked.name)).toBeHidden();
   });

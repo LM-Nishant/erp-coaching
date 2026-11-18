@@ -81,7 +81,9 @@ test('exam publish → parent sees the result in the parent portal', async ({ ht
     for (const [i, q] of QUESTIONS.entries()) {
       await expect(content.getByText(`Question ${i + 1} of ${QUESTIONS.length}`)).toBeVisible();
       await expect(content.locator('.q-text')).toHaveText(q.text);
-      const option = content.getByRole('radio', { name: `${q.choose}. ${q.options[KEYS.indexOf(q.choose)]}` });
+      const option = content.getByRole('radio', {
+        name: `${q.choose}. ${q.options[KEYS.indexOf(q.choose)]}`,
+      });
       await option.click();
       await expect(option).toBeChecked();
       if (i < QUESTIONS.length - 1) await content.getByRole('button', { name: 'Save & next' }).click();

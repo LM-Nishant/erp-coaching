@@ -34,6 +34,10 @@ for (const command of ['create', 'reset']) {
 }
 
 console.log(`[e2e] starting API on ${API_URL} (outbox: ${OUTBOX_FILE})`);
-const server = spawn(process.execPath, [tsx, 'backend/src/server.ts'], { cwd: REPO_ROOT, env, stdio: 'inherit' });
+const server = spawn(process.execPath, [tsx, 'backend/src/server.ts'], {
+  cwd: REPO_ROOT,
+  env,
+  stdio: 'inherit',
+});
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => server.kill(signal));
 server.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));

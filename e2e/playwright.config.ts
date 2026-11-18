@@ -16,8 +16,14 @@ export default defineConfig({
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
   timeout: 120_000,
+  // A whole run takes a few minutes; stop a hung CI job long before the runner's own limit.
+  globalTimeout: isCI ? 20 * 60_000 : undefined,
   expect: { timeout: 15_000 },
-  reporter: [['list'], ['html', { outputFolder: './playwright-report', open: 'never' }]],
+  reporter: [
+    ...(isCI ? [['github'] as const] : []),
+    ['list'],
+    ['html', { outputFolder: './playwright-report', open: 'never' }],
+  ],
   globalSetup: './global-setup.ts',
   use: {
     baseURL: WEB_URL,

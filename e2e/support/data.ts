@@ -130,12 +130,15 @@ export async function addGuardian(
   relation = 'mother',
 ): Promise<Omit<Person, 'password'>> {
   const mobile = uniqueMobile();
-  const link = await institute.admin.api.post<{ userId: number }>(`/students/${student.studentId}/guardians`, {
-    name,
-    mobile,
-    relation,
-    isPrimary: true,
-  });
+  const link = await institute.admin.api.post<{ userId: number }>(
+    `/students/${student.studentId}/guardians`,
+    {
+      name,
+      mobile,
+      relation,
+      isPrimary: true,
+    },
+  );
   return { id: link.userId, name, mobile };
 }
 

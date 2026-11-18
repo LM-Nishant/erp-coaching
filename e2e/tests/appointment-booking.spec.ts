@@ -12,7 +12,15 @@
 import { expect, test } from '../support/fixtures';
 import { loginWithPassword, newDevice } from '../support/api';
 import { addGuardian, addStaff, addStudent, createBatch, createInstitute, isoDate } from '../support/data';
-import { activePage, alertDialog, chooseOption, confirmAlert, expectToast, selectSegment, signInWithOtp } from '../support/ui';
+import {
+  activePage,
+  alertDialog,
+  chooseOption,
+  confirmAlert,
+  expectToast,
+  selectSegment,
+  signInWithOtp,
+} from '../support/ui';
 import type { Locator } from '@playwright/test';
 
 test('parent-teacher appointment: parent requests a slot → teacher accepts', async ({
@@ -48,35 +56,36 @@ test('parent-teacher appointment: parent requests a slot → teacher accepts', a
   /** The meeting's summary row (date, time, status badge, mode) on the detail page. */
   const summary = (content: Locator) => content.locator('ion-item').filter({ hasText: when }).first();
 
-  const { parent, appointmentPath } = await test.step('parent signs in and requests a free slot', async () => {
-    const page = await openAs(null, '/appointments');
-    await signInWithOtp(page, guardian.mobile);
-    await expect(page).toHaveURL(/\/appointments$/);
-    const content = activePage(page);
-    await expect(content.getByText('No meetings here.')).toBeVisible();
-    await content.getByRole('link', { name: 'Request', exact: true }).click();
-    await expect(page).toHaveURL(/\/appointments\/request$/);
+  const { parent, appointmentPath } =
+    await test.step('parent signs in and requests a free slot', async () => {
+      const page = await openAs(null, '/appointments');
+      await signInWithOtp(page, guardian.mobile);
+      await expect(page).toHaveURL(/\/appointments$/);
+      const content = activePage(page);
+      await expect(content.getByText('No meetings here.')).toBeVisible();
+      await content.getByRole('link', { name: 'Request', exact: true }).click();
+      await expect(page).toHaveURL(/\/appointments\/request$/);
 
-    // The only child is preselected; the teachers offered are those of the child's batches.
-    await expect(content.locator('ion-select').filter({ hasText: 'Child' })).toContainText(student.name);
-    await chooseOption(
-      content.locator('ion-select').filter({ hasText: 'Teacher' }),
-      `${teacher.name} (${batch.batchName})`,
-    );
-    const slot = content.locator('ion-chip').filter({ hasText: '16:00' });
-    await expect(content.locator('ion-chip')).toHaveText(['16:00', '16:15']);
-    await slot.click();
-    await selectSegment(content, 'In person');
-    await expect(content.getByText('At Room 4')).toBeVisible();
-    await content.getByLabel('What would you like to discuss?').fill(agenda);
-    await content.getByRole('button', { name: `Request ${date} 16:00` }).click();
-    await expectToast(page, 'Request sent. The teacher will confirm.');
+      // The only child is preselected; the teachers offered are those of the child's batches.
+      await expect(content.locator('ion-select').filter({ hasText: 'Child' })).toContainText(student.name);
+      await chooseOption(
+        content.locator('ion-select').filter({ hasText: 'Teacher' }),
+        `${teacher.name} (${batch.batchName})`,
+      );
+      const slot = content.locator('ion-chip').filter({ hasText: '16:00' });
+      await expect(content.locator('ion-chip')).toHaveText(['16:00', '16:15']);
+      await slot.click();
+      await selectSegment(content, 'In person');
+      await expect(content.getByText('At Room 4')).toBeVisible();
+      await content.getByLabel('What would you like to discuss?').fill(agenda);
+      await content.getByRole('button', { name: `Request ${date} 16:00` }).click();
+      await expectToast(page, 'Request sent. The teacher will confirm.');
 
-    await expect(page).toHaveURL(/\/appointments\/\d+$/);
-    await expect(summary(content).locator('ion-badge')).toHaveText('Requested');
-    await expect(summary(content)).toContainText('In person');
-    return { parent: page, appointmentPath: new URL(page.url()).pathname };
-  });
+      await expect(page).toHaveURL(/\/appointments\/\d+$/);
+      await expect(summary(content).locator('ion-badge')).toHaveText('Requested');
+      await expect(summary(content)).toContainText('In person');
+      return { parent: page, appointmentPath: new URL(page.url()).pathname };
+    });
 
   await test.step('teacher finds the pending request and approves it', async () => {
     const page = await openAs(teacherSession, '/appointments');
@@ -107,21 +116,19 @@ test('parent-teacher appointment: parent requests a slot → teacher accepts', a
     await expect(summary(content).locator('ion-badge')).toHaveText('Confirmed');
     await expect(content.locator('ion-item').filter({ hasText: "Teacher's note" })).toContainText(note);
     await expect(content.getByText(location, { exact: true })).toBeVisible();
-    await expect(content.locator('ion-item').filter({ hasText: `Requested · ${guardian.name}` })).toContainText(
-      agenda,
-    );
+    await expect(
+      content.locator('ion-item').filter({ hasText: `Requested · ${guardian.name}` }),
+    ).toContainText(agenda);
     await expect(content.locator('ion-item').filter({ hasText: `Approved · ${teacher.name}` })).toContainText(
       note,
     );
   });
 
   await test.step('parent gets the confirmation in the app notifications', async () => {
+    // Approving writes the in-app message before it responds, so no polling (see e2e/README.md).
     await parent.goto('/notifications');
     const confirmed = activePage(parent).locator('ion-item').filter({ hasText: 'Meeting confirmed' });
-    await expect(async () => {
-      await parent.reload();
-      await expect(confirmed).toHaveCount(1, { timeout: 3_000 });
-    }).toPass({ timeout: 20_000 });
+    await expect(confirmed).toHaveCount(1);
     await expect(confirmed).toContainText(
       `Your meeting with ${teacher.name} on ${date} at 16:00 (offline) is confirmed.`,
     );

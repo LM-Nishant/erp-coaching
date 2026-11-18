@@ -19,7 +19,8 @@ function port(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;
   const value = Number(raw);
-  if (!Number.isInteger(value) || value < 1 || value > 65535) throw new Error(`${name} must be a port number`);
+  if (!Number.isInteger(value) || value < 1 || value > 65535)
+    throw new Error(`${name} must be a port number`);
   return value;
 }
 

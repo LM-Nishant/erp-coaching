@@ -53,7 +53,11 @@ export class Api {
       body = text;
     }
     if (!response.ok())
-      throw new ApiError(response.status(), body, `${method} ${path} → ${response.status()} ${text.slice(0, 500)}`);
+      throw new ApiError(
+        response.status(),
+        body,
+        `${method} ${path} → ${response.status()} ${text.slice(0, 500)}`,
+      );
     return body as T;
   }
 
@@ -137,7 +141,8 @@ export async function loginWithOtp(
   const anonymous = new Api(http);
   const since = outboxMark();
   const challenge = await anonymous.post<LoginResponse>('/auth/otp/request', { mobile, device });
-  if (challenge.status !== 'otp_required') throw new Error(`Unexpected OTP response: ${JSON.stringify(challenge)}`);
+  if (challenge.status !== 'otp_required')
+    throw new Error(`Unexpected OTP response: ${JSON.stringify(challenge)}`);
   const code = await waitForOtp(mobile, since);
   const result = await anonymous.post<LoginResponse>('/auth/otp/verify', {
     challengeId: challenge.challengeId,
