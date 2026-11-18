@@ -89,6 +89,7 @@ export const MODULE_OWNED_FILE_PURPOSES: ReadonlySet<string> = new Set([
   'admissions',
   'appointments',
   'parent-portal',
+  'reports',
 ]);
 
 export const isModuleOwnedPurpose = (purpose: string) => MODULE_OWNED_FILE_PURPOSES.has(purpose);

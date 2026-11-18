@@ -9,6 +9,7 @@ import { logger } from '../../infrastructure/logger';
 import { isoInstant, num, reportQuery, utcSql } from '../../shared/reporting';
 import { platformStudentCounts } from '../students/api';
 import { periodDto, resolvePeriod } from './filters';
+import type { ReportDocument } from './render';
 
 /**
  * SaaS-wide figures for the super admin dashboard (spec §4.1). These queries read across every
@@ -131,7 +132,10 @@ const countBy = (rows: Record<string, unknown>[], key = 'institute_id', value = 
   new Map(rows.map((r) => [num(r[key]), num(r[value])]));
 
 /** SaaS-wide dashboard; the period is evaluated in the platform default timezone. */
-export async function saasDashboard(input: ReportFiltersInput): Promise<SaasDashboardDto> {
+export async function saasDashboard(
+  input: ReportFiltersInput,
+  opts: { tableLimit?: number } = {},
+): Promise<SaasDashboardDto> {
   const period = resolvePeriod(input, DEFAULT_INSTITUTE_TIMEZONE);
   const range = { start: utcSql(period.start), end: utcSql(period.end) };
   const [institutes, subscriptions, branches, members, teachers, users, files, ai, students] =
@@ -214,26 +218,28 @@ export async function saasDashboard(input: ReportFiltersInput): Promise<SaasDash
     byPlan.set(s.planId, p);
   }
 
-  const table: SaasInstituteRowDto[] = institutes.slice(0, INSTITUTE_TABLE_LIMIT).map((i) => {
-    const id = num(i.id);
-    const sub = subsByInstitute.get(id);
-    return {
-      id,
-      name: String(i.name),
-      slug: String(i.slug),
-      status: String(i.status),
-      planName: sub?.planName ?? null,
-      subscriptionStatus: sub?.status ?? null,
-      subscriptionEndsAt: sub?.endsAt?.toISOString() ?? null,
-      branches: branchCounts.get(id) ?? 0,
-      users: memberCounts.get(id) ?? 0,
-      students: studentCounts.get(id)?.total ?? 0,
-      teachers: teacherCounts.get(id) ?? 0,
-      storageBytes: storage.get(id) ?? 0,
-      aiTokensInPeriod: aiTokens.get(id) ?? 0,
-      createdAt: isoInstant(i.created_at) ?? '',
-    };
-  });
+  const table: SaasInstituteRowDto[] = institutes
+    .slice(0, opts.tableLimit ?? INSTITUTE_TABLE_LIMIT)
+    .map((i) => {
+      const id = num(i.id);
+      const sub = subsByInstitute.get(id);
+      return {
+        id,
+        name: String(i.name),
+        slug: String(i.slug),
+        status: String(i.status),
+        planName: sub?.planName ?? null,
+        subscriptionStatus: sub?.status ?? null,
+        subscriptionEndsAt: sub?.endsAt?.toISOString() ?? null,
+        branches: branchCounts.get(id) ?? 0,
+        users: memberCounts.get(id) ?? 0,
+        students: studentCounts.get(id)?.total ?? 0,
+        teachers: teacherCounts.get(id) ?? 0,
+        storageBytes: storage.get(id) ?? 0,
+        aiTokensInPeriod: aiTokens.get(id) ?? 0,
+        createdAt: isoInstant(i.created_at) ?? '',
+      };
+    });
 
   const [u] = users;
   return {
@@ -271,5 +277,131 @@ export async function saasDashboard(input: ReportFiltersInput): Promise<SaasDash
       aiByFeature: [...aiFeatures.values()].sort((a, b) => b.tokens - a.tokens),
     },
     institutesTable: table,
+  };
+}
+
+const MB = 1024 * 1024;
+const megabytes = (bytes: number) => Math.round((bytes / MB) * 10) / 10;
+
+/** The SaaS dashboard as an exportable document: platform metrics plus per-institute rows. */
+export function saasExportDocument(dash: SaasDashboardDto): ReportDocument {
+  const { revenue, usage } = dash;
+  const estimated = revenue.source === 'subscriptions';
+  return {
+    key: 'saas-institutes',
+    title: 'Platform overview',
+    description: 'Institutes, users, subscriptions, revenue and resource usage across the platform.',
+    generatedAt: dash.generatedAt,
+    period: dash.period,
+    filters: {
+      branchId: null,
+      branchName: null,
+      courseId: null,
+      courseName: null,
+      batchId: null,
+      batchName: null,
+    },
+    scope: { audience: 'management', label: 'All institutes' },
+    summary: [
+      { key: 'institutes', label: 'Institutes', value: dash.institutes.total, type: 'number' },
+      { key: 'newInstitutes', label: 'New institutes', value: dash.institutes.newInPeriod, type: 'number' },
+      { key: 'users', label: 'Users', value: dash.users.total, type: 'number' },
+      { key: 'activeStudents', label: 'Active students', value: dash.students.active, type: 'number' },
+      { key: 'teachers', label: 'Teachers', value: dash.teachers.total, type: 'number' },
+      { key: 'branches', label: 'Branches', value: dash.branches.total, type: 'number' },
+      { key: 'paid', label: 'Paid subscriptions', value: revenue.paidSubscriptions, type: 'number' },
+      {
+        key: 'mrr',
+        label: 'Monthly recurring revenue',
+        value: revenue.mrrPaise,
+        type: 'money',
+        hint: estimated ? 'estimated from plan prices' : undefined,
+      },
+      { key: 'arr', label: 'Annual run rate', value: revenue.arrPaise, type: 'money' },
+      { key: 'revenue', label: 'Revenue in period', value: revenue.revenueInPeriodPaise, type: 'money' },
+      { key: 'outstanding', label: 'Outstanding invoices', value: revenue.outstandingPaise, type: 'money' },
+      { key: 'storage', label: 'Storage used (MB)', value: megabytes(usage.storageBytes), type: 'number' },
+      { key: 'aiTokens', label: 'AI tokens in period', value: usage.aiTokensInPeriod, type: 'number' },
+      { key: 'aiRequests', label: 'AI requests in period', value: usage.aiRequestsInPeriod, type: 'number' },
+    ],
+    tables: [
+      {
+        key: 'institutes',
+        title: 'Institutes',
+        columns: [
+          { key: 'name', label: 'Institute', type: 'text' },
+          { key: 'slug', label: 'Slug', type: 'text' },
+          { key: 'status', label: 'Status', type: 'text' },
+          { key: 'planName', label: 'Plan', type: 'text' },
+          { key: 'subscriptionStatus', label: 'Subscription', type: 'text' },
+          { key: 'subscriptionEndsAt', label: 'Subscription ends', type: 'datetime' },
+          { key: 'branches', label: 'Branches', type: 'number' },
+          { key: 'users', label: 'Users', type: 'number' },
+          { key: 'students', label: 'Students', type: 'number' },
+          { key: 'teachers', label: 'Teachers', type: 'number' },
+          { key: 'storageMb', label: 'Storage (MB)', type: 'number' },
+          { key: 'aiTokensInPeriod', label: 'AI tokens in period', type: 'number' },
+          { key: 'createdAt', label: 'Created', type: 'datetime' },
+        ],
+        rows: dash.institutesTable.map((i) => ({
+          name: i.name,
+          slug: i.slug,
+          status: i.status,
+          planName: i.planName,
+          subscriptionStatus: i.subscriptionStatus ?? 'none',
+          subscriptionEndsAt: i.subscriptionEndsAt,
+          branches: i.branches,
+          users: i.users,
+          students: i.students,
+          teachers: i.teachers,
+          storageMb: megabytes(i.storageBytes),
+          aiTokensInPeriod: i.aiTokensInPeriod,
+          createdAt: i.createdAt,
+        })),
+        totalRows: dash.institutes.total,
+      },
+      {
+        key: 'plans',
+        title: 'Revenue by plan',
+        columns: [
+          { key: 'planName', label: 'Plan', type: 'text' },
+          { key: 'subscriptions', label: 'Paid subscriptions', type: 'number' },
+          { key: 'mrrPaise', label: 'Monthly recurring revenue', type: 'money' },
+        ],
+        rows: revenue.byPlan.map((p) => ({
+          planName: p.planName,
+          subscriptions: p.subscriptions,
+          mrrPaise: p.mrrPaise,
+        })),
+        totalRows: revenue.byPlan.length,
+      },
+      {
+        key: 'subscriptions',
+        title: 'Subscriptions by status',
+        columns: [
+          { key: 'status', label: 'Status', type: 'text' },
+          { key: 'count', label: 'Institutes', type: 'number' },
+        ],
+        rows: dash.subscriptions.byStatus.map((s) => ({ status: s.status, count: s.count })),
+        totalRows: dash.subscriptions.byStatus.length,
+      },
+      {
+        key: 'ai',
+        title: 'AI usage by feature',
+        columns: [
+          { key: 'feature', label: 'Feature', type: 'text' },
+          { key: 'requests', label: 'Requests', type: 'number' },
+          { key: 'tokens', label: 'Tokens', type: 'number' },
+        ],
+        rows: usage.aiByFeature.map((f) => ({ feature: f.feature, requests: f.requests, tokens: f.tokens })),
+        totalRows: usage.aiByFeature.length,
+      },
+    ],
+    notes: [
+      estimated
+        ? 'Recurring revenue is estimated from current subscriptions and plan prices; yearly plans count as one twelfth per month. Revenue and outstanding invoices are not tracked yet.'
+        : 'Revenue figures come from SaaS billing (invoices and payments).',
+      `Subscriptions ending within 30 days: ${dash.subscriptions.endingSoon}.`,
+    ],
   };
 }

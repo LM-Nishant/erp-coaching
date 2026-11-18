@@ -191,6 +191,9 @@ export interface ReportExportDto {
   fileName: string | null;
   error: string | null;
   filters: ReportFiltersInput;
+  /** Period and scope resolved when the export was requested, e.g. "This month (1 Jan 2026 – 31 Jan 2026)". */
+  periodLabel: string;
+  scopeLabel: string;
   createdAt: string;
   completedAt: string | null;
   expiresAt: string | null;

@@ -1,14 +1,19 @@
 import { defineModule } from '../../shared/module';
+import { EXPIRE_JOB, EXPORT_JOB, expireExportJob, runExportJob } from './exports.service';
+import { registerReportIntegrations } from './integrations';
 import { ReportExport } from './models';
+import { reportsRoutes } from './reports.routes';
 
 export default defineModule({
   name: 'reports',
   models: (sequelize) => ReportExport.initModel(sequelize),
+  routes: reportsRoutes,
   permissions: [
     {
       module: 'reports',
       label: 'Reports & analytics',
       actions: ['view', 'export'],
+      // Each report also needs the source module's permission; scope narrows rows per role.
       grants: {
         'branch-admin': 'all',
         accountant: 'all',
@@ -18,4 +23,9 @@ export default defineModule({
       },
     },
   ],
+  jobs: {
+    [EXPORT_JOB]: runExportJob,
+    [EXPIRE_JOB]: expireExportJob,
+  },
+  onReady: registerReportIntegrations,
 });
