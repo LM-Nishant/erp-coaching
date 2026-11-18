@@ -18,6 +18,7 @@ import {
 } from '../src/modules/subscriptions/billing-settings';
 import { computeAccessState } from '../src/modules/subscriptions/subscription.service';
 import type { Subscription } from '../src/modules/subscriptions/models';
+import { renderPdf } from '../src/modules/subscriptions/pdf';
 import { sweepInstitute, type BillingSweepResult } from '../src/modules/subscriptions/sweep.service';
 import { billingDate } from '../src/modules/subscriptions/util';
 import { bearer, getApp, login, purgeRows, USERS } from './helpers';
@@ -295,6 +296,18 @@ describe('access state', () => {
     const info = computeAccessState(sub('active', ago(400)), lenient, now);
     expect(info.state).toBe('restricted');
     expect(info.suspendsAt).toBeNull();
+  });
+});
+
+describe('invoice PDF layout', () => {
+  it('right-aligns text by its real Helvetica glyph widths', () => {
+    const pdf = renderPdf([
+      { x: 545, y: 100, text: 'Amount', size: 9, bold: true, align: 'right' },
+      { x: 545, y: 120, text: '1,999.00', size: 9, align: 'right' },
+    ]).toString('latin1');
+    // Bold "Amount" is 3.777em wide and "1,999.00" 3.892em, so both end at x = 545.
+    expect(pdf).toContain('511.0 742.0 Td (Amount)');
+    expect(pdf).toContain('510.0 722.0 Td (1,999.00)');
   });
 });
 
