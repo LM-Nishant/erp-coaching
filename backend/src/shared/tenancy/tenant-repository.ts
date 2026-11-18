@@ -73,9 +73,13 @@ export class TenantRepository<M extends Model> {
 
   /** Throws unless the current user may modify this row (institute-wide rows need institute-wide access). */
   assertRowWritable(row: M): void {
-    if (!this.opts.branchScoped) return;
-    const branchId = (row as unknown as TenantAttrs).branchId;
-    if (branchId == null) {
+    this.assertBranchAssignable((row as unknown as TenantAttrs).branchId ?? null);
+  }
+
+  /** Throws unless the current user may put a row in `branchId` (null = institute-wide; undefined = unchanged). */
+  assertBranchAssignable(branchId: number | null | undefined): void {
+    if (!this.opts.branchScoped || branchId === undefined) return;
+    if (branchId === null) {
       if (requireTenantContext().allowedBranchIds !== null)
         throw Forbidden(
           'Institute-wide records can only be changed by institute-level users',
@@ -133,7 +137,7 @@ export class TenantRepository<M extends Model> {
     this.assertRowWritable(row);
     const data = { ...values } as Partial<TenantAttrs>;
     delete data.instituteId;
-    if (this.opts.branchScoped && data.branchId !== undefined) this.assertBranchAllowed(data.branchId);
+    this.assertBranchAssignable(data.branchId);
     return row.update(data as Partial<Attributes<M>>, opts);
   }
 

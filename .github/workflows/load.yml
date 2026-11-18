@@ -1,0 +1,84 @@
+# On-demand load test (see docs/load-testing.md). Manual on purpose: shared runners are too noisy
+# for latency gates on every pull request, so treat the numbers as a smoke check, not a baseline.
+name: Load test
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: Seconds per duration-based scenario (LOAD_DURATION)
+        default: '15'
+      connections:
+        description: Concurrent connections per scenario (LOAD_CONNECTIONS)
+        default: '10'
+      scenarios:
+        description: Comma-separated scenarios (LOAD_SCENARIOS; empty runs all)
+        default: ''
+      enforce-thresholds:
+        description: Fail the run when a threshold is breached
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  load:
+    name: Load scenarios
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot" --health-interval=5s --health-timeout=5s
+          --health-retries=30
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: root
+      TEST_DB_NAME: erp_coaching_test
+      LOAD_DURATION: ${{ inputs.duration }}
+      LOAD_CONNECTIONS: ${{ inputs.connections }}
+      LOAD_SCENARIOS: ${{ inputs.scenarios }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Start the API (fresh database, rate limits off)
+        run: |
+          npm run load:serve > load-api.log 2>&1 &
+          for _ in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:4105/api/health > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat load-api.log
+          exit 1
+      - name: Run the scenarios
+        env:
+          ENFORCE_THRESHOLDS: ${{ inputs.enforce-thresholds }}
+        run: |
+          set +e
+          npm run load
+          status=$?
+          # 1 = a threshold was breached (report only unless enforced); anything else is a failure.
+          if [ "$status" = 1 ] && [ "$ENFORCE_THRESHOLDS" != true ]; then
+            echo "::warning::Load thresholds breached; see the uploaded report."
+            exit 0
+          fi
+          exit "$status"
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: load-results
+          path: |
+            load/results/
+            load-api.log
+          retention-days: 30

@@ -3,6 +3,7 @@ import { associateStudentModels, initStudentModels } from './models';
 import { studentRoutes } from './students.routes';
 import { studentPortalRoutes } from './student-portal.routes';
 import { selfRegistrationRoutes } from './self-registration.routes';
+import { registerStudentIntegrations } from './integrations';
 
 export default defineModule({
   name: 'students',
@@ -31,4 +32,5 @@ export default defineModule({
       grants: { student: ['view', 'edit'] },
     },
   ],
+  onReady: registerStudentIntegrations,
 });

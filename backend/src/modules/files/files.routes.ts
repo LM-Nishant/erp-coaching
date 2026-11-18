@@ -14,13 +14,12 @@ import { withContext } from '../../shared/middleware/context';
 import { getContext } from '../../shared/context';
 import { BadRequest, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
+import { isBlockedUploadType, setFileResponseHeaders } from '../../shared/utilities/file-response';
+import { mediaRateLimit } from '../../shared/middleware/security';
 import { FileObject } from './file.model';
 import { deleteFile, fileRepo, isModuleOwnedPurpose, saveUploadedFile, signedUrlFor } from './files.service';
 
 const TMP_DIR = path.resolve(__dirname, '../../../tmp/uploads');
-
-/** Blocked outright; everything else is accepted (documents, media, images…). */
-const BLOCKED_MIME = /^(application\/(x-msdownload|x-sh|x-executable|java-archive)|text\/html)/;
 
 export const uploadMiddleware = withContext(
   multer({
@@ -31,23 +30,21 @@ export const uploadMiddleware = withContext(
       },
     }),
     limits: { fileSize: config.MAX_UPLOAD_MB * 1048576, files: 1 },
-    fileFilter: (_req, file, cb) => cb(null, !BLOCKED_MIME.test(file.mimetype)),
+    // Executables and HTML are rejected; everything else (documents, media, images…) is accepted.
+    fileFilter: (_req, file, cb) => cb(null, !isBlockedUploadType(file.mimetype)),
   }).single('file'),
 );
 
 export function fileRoutes(api: Router) {
   // Signed download: no session auth (token is the credential), supports Range for video seeking.
-  api.get('/files/signed/:token', async (req, res) => {
-    const claims = verifyFileToken(req.params.token);
+  api.get('/files/signed/:token', mediaRateLimit, async (req, res) => {
+    const claims = verifyFileToken(String(req.params.token));
     if (!claims || claims.i === null) throw NotFound('File');
     const file = await FileObject.findOne({ where: { id: claims.f, instituteId: claims.i } });
     if (!file) throw NotFound('File');
     const size = Number(file.sizeBytes);
-    res.setHeader('Content-Type', file.mimeType);
+    setFileResponseHeaders(res, file, 'private, max-age=60');
     res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Cache-Control', 'private, max-age=60');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.originalName)}"`);
     const range = /^bytes=(\d*)-(\d*)$/.exec(req.header('range') ?? '');
     if (range && size > 0) {
       const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));

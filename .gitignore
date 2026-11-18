@@ -11,3 +11,9 @@ backend/tmp/
 app/android/app/build/
 app/ios/App/build/
 .vite/
+e2e/test-results/
+e2e/playwright-report/
+e2e/.tmp/
+load/results/
+load/.tmp/
+backups/

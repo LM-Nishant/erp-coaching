@@ -6,3 +6,9 @@ app/ios
 package-lock.json
 backend/storage
 backend/tmp
+e2e/test-results
+e2e/playwright-report
+e2e/.tmp
+load/results
+load/.tmp
+backups

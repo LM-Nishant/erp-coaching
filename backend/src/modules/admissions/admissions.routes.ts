@@ -11,6 +11,7 @@ import { requireModule, requirePermission, requireTenant } from '../../shared/mi
 import { requireTenantContext } from '../../shared/context';
 import { BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
+import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { User } from '../users/user.model';
 import {
   createStudent,
@@ -335,14 +336,20 @@ export function admissionRoutes(api: Router) {
   });
 
   // ================================================================ admission forms
+  // Branch forms stay inside their branch; institute-wide forms are readable by all, changed by institute-level users.
+  const formRepo = new TenantRepository(AdmissionForm, {
+    entity: 'Form',
+    branchScoped: true,
+    instituteWideRows: true,
+  });
+
   r.get('/forms', requirePermission('admissions', 'view'), async (req, res) => {
     const q = parse(
       z.object({ purpose: z.enum(['enquiry', 'admission', 'self_registration']).optional() }),
       req.query,
     );
-    const { instituteId } = requireTenantContext();
-    const forms = await AdmissionForm.findAll({
-      where: { instituteId, ...(q.purpose ? { purpose: q.purpose } : {}) },
+    const forms = await formRepo.findAll({
+      where: q.purpose ? { purpose: q.purpose } : {},
       order: [['id', 'DESC']],
     });
     res.json(forms.map(toFormDto));
@@ -360,10 +367,9 @@ export function admissionRoutes(api: Router) {
     res.json(form ? toFormDto(form) : null);
   });
 
-  async function findForm(id: number) {
-    const { instituteId } = requireTenantContext();
-    const form = await AdmissionForm.findOne({ where: { instituteId, id } });
-    if (!form) throw NotFound('Form');
+  async function findForm(id: number, write = false) {
+    const form = await formRepo.findById(id);
+    if (write) formRepo.assertRowWritable(form);
     return form;
   }
 
@@ -377,9 +383,7 @@ export function admissionRoutes(api: Router) {
   r.post('/forms', requirePermission('admissions', 'configure'), async (req, res) => {
     const body = parse(formBodySchema, req.body);
     await assertFormBranch(body.branchId);
-    const { instituteId } = requireTenantContext();
-    const form = await AdmissionForm.create({
-      instituteId,
+    const form = await formRepo.create({
       branchId: body.branchId ?? null,
       name: body.name,
       description: body.description ?? null,
@@ -400,7 +404,8 @@ export function admissionRoutes(api: Router) {
     const { id } = parse(idParam, req.params);
     const body = parse(formBodySchema, req.body);
     await assertFormBranch(body.branchId);
-    const form = await findForm(id);
+    const form = await findForm(id, true);
+    formRepo.assertBranchAssignable(body.branchId ?? null);
     await form.update({
       name: body.name,
       description: body.description ?? null,
@@ -415,7 +420,7 @@ export function admissionRoutes(api: Router) {
 
   r.delete('/forms/:id', requirePermission('admissions', 'configure'), async (req, res) => {
     const { id } = parse(idParam, req.params);
-    const form = await findForm(id);
+    const form = await findForm(id, true);
     const { instituteId } = requireTenantContext();
     if (await AdmissionApplication.count({ where: { instituteId, formId: id } })) {
       await form.update({ isActive: false }); // keep history of submitted applications

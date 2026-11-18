@@ -1,6 +1,7 @@
 import { defineModule } from '../../shared/module';
 import { associateHrModels, initHrModels } from './models';
 import { hrRoutes } from './hr.routes';
+import { registerHrIntegrations } from './integrations';
 
 export default defineModule({
   name: 'hr',
@@ -22,4 +23,5 @@ export default defineModule({
       grants: { teacher: 'all', 'branch-admin': 'all', accountant: 'all' },
     },
   ],
+  onReady: registerHrIntegrations,
 });

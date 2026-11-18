@@ -6,7 +6,9 @@
   "workspaces": [
     "packages/*",
     "backend",
-    "app"
+    "app",
+    "e2e",
+    "load"
   ],
   "engines": {
     "node": ">=22"
@@ -21,6 +23,10 @@
     "db:seed": "npm run db:seed -w backend",
     "db:reset": "npm run db:reset -w backend",
     "test": "npm run test -w @erp/shared --if-present && npm run test -w backend && npm run test -w app --if-present",
+    "e2e": "npm run test -w @erp/e2e",
+    "e2e:install": "npm run install:browsers -w @erp/e2e",
+    "load": "npm run start -w @erp/load",
+    "load:serve": "npm run serve:api -w @erp/load",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

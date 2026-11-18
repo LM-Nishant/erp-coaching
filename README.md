@@ -14,10 +14,20 @@ packages/shared/  TypeScript types/constants shared by API and app (@erp/shared)
 
 Read [ARCHITECTURE.md](ARCHITECTURE.md) for how the platform works. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the conventions every feature module **must** follow.
 
+| Document                                         | Covers                                                                    |
+| ------------------------------------------------ | ------------------------------------------------------------------------- |
+| [ARCHITECTURE.md](ARCHITECTURE.md)               | how the platform works: modules, tenancy, RBAC, auth, files, probes, logs |
+| [CONTRIBUTING.md](CONTRIBUTING.md)               | module conventions, tests, CI and the other quality gates                 |
+| [docs/security.md](docs/security.md)             | security controls, dependency and secret scanning, review findings        |
+| [docs/deployment.md](docs/deployment.md)         | Docker Compose stack, nginx and TLS, releases, rollback, scaling          |
+| [docs/backup-restore.md](docs/backup-restore.md) | MySQL and media backups, restore, the restore test, RPO and RTO           |
+| [docs/load-testing.md](docs/load-testing.md)     | load scenarios, thresholds and the local baseline                         |
+| [e2e/README.md](e2e/README.md)                   | the Playwright browser tests of the critical workflows                    |
+
 ## Prerequisites
 
 - Node.js 22+ and npm 10+.
-- MySQL 8, installed locally. Docker is not needed.
+- MySQL 8, installed locally. Docker is not needed for development; production runs in Docker (see [docs/deployment.md](docs/deployment.md)).
 - For mobile builds:
   - Android: Android Studio (SDK and emulator).
   - iOS: Xcode 16+ on macOS. CocoaPods is not required because Capacitor 8 uses Swift Package Manager.
@@ -77,8 +87,17 @@ npm run dev:app       # http://localhost:5173
 npm test              # backend integration tests (real MySQL test DB) + app unit tests
 npm run typecheck
 npm run lint
+npm run format:check  # Prettier
 npm run build         # shared → backend (dist/) → app (dist/)
+
+npm run e2e:install   # once: Playwright's Chromium
+npm run e2e           # browser tests of the critical workflows (own database, API on :4105, web on :5205)
+
+npm run load:serve    # terminal 1: API on :4105 with its own database
+npm run load          # terminal 2: load scenarios, see docs/load-testing.md
 ```
+
+CI (`.github/workflows/ci.yml`) runs lint, format check, typecheck, build, the backend, app and E2E tests, a dependency audit, a secret scan and the deployment checks on every pull request. See [CONTRIBUTING.md › Quality gates](CONTRIBUTING.md#quality-gates).
 
 ## Mobile (Capacitor)
 
@@ -118,6 +137,7 @@ Native webview origins (`capacitor://localhost`, `https://localhost`) are alread
   - Audited impersonation.
 - **Platform services**
   - Audit log, zod validation, consistent error shape, rate limiting, helmet, and a DB-backed background job queue.
+  - Health and readiness probes, structured JSON logs with request ids, and an optional error-tracking adapter.
 - **Files**
   - A storage adapter (local disk now; S3/R2 stub) with tenant-scoped paths.
   - Short-lived HMAC-signed download URLs, and a plan storage quota.

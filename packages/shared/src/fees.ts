@@ -247,6 +247,8 @@ export interface GatewayConfigDto {
   sandbox: boolean;
   /** Public URL the gateway must post webhooks to. */
   webhookUrl: string;
+  /** Provisioned from the platform's global gateway (no own merchant account configured). */
+  platformManaged?: boolean;
 }
 
 export interface BankAccountDto {

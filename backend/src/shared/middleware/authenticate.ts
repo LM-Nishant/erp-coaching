@@ -1,4 +1,4 @@
-import type { RequestHandler } from 'express';
+import type { Request, RequestHandler } from 'express';
 import { Unauthorized, Forbidden } from '../errors';
 import { User } from '../../modules/users/user.model';
 import { Institute } from '../../modules/institutes/institute.model';
@@ -6,6 +6,19 @@ import { Branch } from '../../modules/branches/branch.model';
 import { Device, ImpersonationSession } from '../../modules/authentication/models';
 import { verifyAccessToken } from '../../modules/authentication/token.service';
 import { computeAccess, loadAssignments } from '../../modules/permissions/access.service';
+
+/** Extra check for tenant requests, run once the context is filled. Throw an AppError to refuse. */
+export type TenantRequestGuard = (req: Request) => Promise<void> | void;
+
+const tenantGuards = new Map<string, TenantRequestGuard>();
+
+/**
+ * Registers a tenant request guard (e.g. subscriptions blocks writes for a lapsed subscription).
+ * Keyed by name so re-registration replaces instead of duplicating.
+ */
+export function addTenantRequestGuard(name: string, guard: TenantRequestGuard): void {
+  tenantGuards.set(name, guard);
+}
 
 /**
  * Verifies the bearer token and fills the request context (user, device, institute, roles,
@@ -72,6 +85,7 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
     ctx.allowedBranchIds = access.allowedBranchIds;
     ctx.roles = access.roles;
     ctx.permissions = access.permissions;
+    for (const guard of tenantGuards.values()) await guard(req);
   } else {
     ctx.roles = [];
     ctx.permissions = new Set();

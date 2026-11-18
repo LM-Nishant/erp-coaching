@@ -1,0 +1,34 @@
+# Build context of deploy/api.Dockerfile and deploy/web.Dockerfile is the repository root.
+# Only sources and npm manifests are needed; keep secrets, build output and runtime data out.
+.git
+.github
+.vscode
+.idea
+**/node_modules
+**/dist
+**/.vite
+**/coverage
+**/*.log
+**/.DS_Store
+**/.env
+**/.env.*
+!**/.env.example
+
+backend/tmp
+backend/storage
+backups
+docs
+
+# Native mobile projects are not part of the web build.
+app/android
+app/ios
+
+# npm ci validates every workspace against the lockfile, so the e2e/load manifests are kept.
+e2e/*
+!e2e/package.json
+load/*
+!load/package.json
+
+# Only the nginx config is used from deploy/ (certificates, secrets, env files and backups live there too).
+deploy/*
+!deploy/nginx
