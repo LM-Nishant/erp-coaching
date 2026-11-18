@@ -11,10 +11,10 @@ import { expect, test } from '../support/fixtures';
 import { addStaff, createInstitute, type Person } from '../support/data';
 import { MAX_ACTIVE_DEVICES } from '../support/env';
 import { outboxMark, waitForOtp } from '../support/outbox';
-import { activePage, expectToast, selectSegment } from '../support/ui';
+import { activePage, confirmAlert, expectToast, selectSegment } from '../support/ui';
 
 const LOGIN_LIMIT_MESSAGE =
-  'You are already signed in on the maximum number of devices. Ask your institute admin to remove an old device.';
+  'You are already signed in on the maximum number of devices. Sign out of one in "My devices" on another device, or ask your institute admin to remove an old device.';
 const VERIFY_LIMIT_MESSAGE = 'Device limit reached. Ask your institute admin to remove an old device.';
 
 async function requestOtpLogin(page: Page, user: Person): Promise<number> {
@@ -89,8 +89,9 @@ test('OTP login, then the device limit blocks a third device until one is signed
     await expect(devices.getByText('This device')).toBeVisible();
     await expect(devices.locator('ion-item')).toHaveCount(MAX_ACTIVE_DEVICES);
     await devices.getByRole('button', { name: 'Sign out' }).click();
+    await confirmAlert(second, 'Sign out');
     await expectToast(second, 'Device signed out');
-    await expect(devices.getByText(/^revoked · last seen/)).toBeVisible();
+    await expect(devices.getByText(/^Signed out · last seen/)).toBeVisible();
   });
 
   await test.step('device 3 can now sign in (password + new-device OTP)', async () => {
