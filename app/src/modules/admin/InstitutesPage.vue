@@ -33,6 +33,12 @@
     </ion-list>
     <p class="muted">{{ total }} institute(s)</p>
 
+    <InstituteEditModal
+      :institute-id="editingId"
+      @close="editingId = null"
+      @saved="((editingId = null), load())"
+    />
+
     <ion-modal :is-open="!!form" @did-dismiss="form = null">
       <ion-header>
         <ion-toolbar>
@@ -119,6 +125,7 @@ import { add } from 'ionicons/icons';
 import type { InstituteStatus } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import { toast, toastError } from '@/core/toast';
+import InstituteEditModal from './components/InstituteEditModal.vue';
 import { useAuthStore } from '@/stores/auth';
 import { adminApi, type CreateInstituteInput, type InstituteRow, type PlanDto } from './api';
 
@@ -131,6 +138,7 @@ const status = ref('');
 const plans = ref<PlanDto[]>([]);
 const form = ref<(CreateInstituteInput & { admin: { password: string } }) | null>(null);
 const busy = ref(false);
+const editingId = ref<number | null>(null);
 const statusColor: Record<InstituteStatus, string> = {
   active: 'success',
   suspended: 'danger',
@@ -182,10 +190,59 @@ async function create() {
   }
 }
 
-async function setStatus(i: InstituteRow, next: InstituteStatus) {
-  await adminApi.setStatus(i.id, next);
-  await toast(`${i.name} is now ${next}`);
-  await load();
+const STATUS_ACTIONS: Record<InstituteStatus, { verb: string; note: string; needsReason: boolean }> = {
+  active: { verb: 'Activate', note: "The institute's users can sign in again.", needsReason: false },
+  suspended: {
+    verb: 'Suspend',
+    note:
+      'Blocks every user of the institute until it is activated again. For non-payment, suspend the ' +
+      'subscription from Billing instead: that keeps billing and data export open.',
+    needsReason: true,
+  },
+  inactive: {
+    verb: 'Deactivate',
+    note:
+      'Closes the institute: its users can no longer sign in. Its data is kept; use Data export & ' +
+      'deletion to remove it.',
+    needsReason: true,
+  },
+};
+
+async function changeStatus(i: InstituteRow, next: InstituteStatus) {
+  const a = STATUS_ACTIONS[next];
+  const alert = await alertController.create({
+    header: `${a.verb} ${i.name}?`,
+    message: a.note,
+    inputs: [
+      {
+        name: 'reason',
+        type: 'textarea',
+        placeholder: a.needsReason ? 'Reason (recorded in the audit log)' : 'Reason (optional)',
+        attributes: { maxlength: 255 },
+      },
+    ],
+    buttons: [
+      { text: 'Cancel', role: 'cancel' },
+      {
+        text: a.verb,
+        role: next === 'active' ? undefined : 'destructive',
+        handler: (v: { reason?: string }) => {
+          const reason = v.reason?.trim() ?? '';
+          if (a.needsReason && reason.length < 3) {
+            void toast('Enter a reason', 'warning');
+            return false;
+          }
+          adminApi
+            .setStatus(i.id, next, reason || undefined)
+            .then(() => toast(`${i.name} is now ${next}`))
+            .then(load)
+            .catch(toastError);
+          return true;
+        },
+      },
+    ],
+  });
+  await alert.present();
 }
 
 async function impersonate(i: InstituteRow) {
@@ -238,19 +295,29 @@ async function changePlan(i: InstituteRow) {
   await alert.present();
 }
 
+/** A closed (inactive) institute can only be reopened; otherwise any other status. */
+const nextStatuses = (current: InstituteStatus): InstituteStatus[] =>
+  current === 'inactive'
+    ? ['active']
+    : (['active', 'suspended', 'inactive'] as const).filter((s) => s !== current);
+
 async function actions(i: InstituteRow) {
   const sheet = await actionSheetController.create({
     header: i.name,
     buttons: [
+      {
+        text: 'Billing & subscription',
+        handler: () => void router.push(`/admin/billing/institutes/${i.id}`),
+      },
+      { text: 'Edit details', handler: () => void (editingId.value = i.id) },
       { text: 'Impersonate admin', handler: () => void impersonate(i).catch(toastError) },
       { text: 'Change plan', handler: () => void changePlan(i).catch(toastError) },
-      i.status === 'active'
-        ? {
-            text: 'Suspend',
-            role: 'destructive',
-            handler: () => void setStatus(i, 'suspended').catch(toastError),
-          }
-        : { text: 'Activate', handler: () => void setStatus(i, 'active').catch(toastError) },
+      { text: 'Data export & deletion', handler: () => void router.push(`/admin/data/institutes/${i.id}`) },
+      ...nextStatuses(i.status).map((s) => ({
+        text: STATUS_ACTIONS[s].verb,
+        role: s === 'active' ? undefined : 'destructive',
+        handler: () => void changeStatus(i, s).catch(toastError),
+      })),
       { text: 'Cancel', role: 'cancel' },
     ],
   });
