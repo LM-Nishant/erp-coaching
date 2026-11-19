@@ -161,6 +161,11 @@ export async function buildWorld(mobile: () => string): Promise<World> {
   });
   await ok(admin, 'POST', `/api/website/pages/${page.id}/publish`, {});
 
+  // The report download streams a stored file, so its positive control needs a ready export (small
+  // exports are stored at once).
+  const reportExport = await ok(admin, 'POST', '/api/reports/admissions/exports', { format: 'csv' });
+  if (reportExport.status !== 'ready') throw new Error(`report export is ${reportExport.status}, not ready`);
+
   const restricted = await createStaff(admin, {
     label: 'branch-restricted user',
     mobile: mobile(),

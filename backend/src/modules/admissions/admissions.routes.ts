@@ -1,8 +1,8 @@
 import { emitAdmissionCompleted } from './admission-events';
 import { Router } from 'express';
-import { Op, type WhereOptions } from 'sequelize';
+import { Op, type Transaction, type WhereOptions } from 'sequelize';
 import { z } from 'zod';
-import { ENQUIRY_STATUSES, APPLICATION_STATUSES } from '@erp/shared';
+import { ENQUIRY_STATUSES, APPLICATION_STATUSES, type AdmitApplicationResultDto } from '@erp/shared';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { parse } from '../../shared/utilities/validation';
 import { idParam, paginated, paginationSchema, toLimitOffset } from '../../shared/utilities/pagination';
@@ -25,8 +25,9 @@ import {
 import { AdmissionApplication, AdmissionForm, Enquiry, EnquiryFollowUp } from './models';
 import {
   addToWaitlist,
+  admissionBatchOptions,
   applicationRepo,
-  assertAdmissionBatch,
+  chooseAdmissionBatch,
   notifyAdmissionConfirmed,
   assertInstituteMember,
   assertValidSource,
@@ -36,6 +37,7 @@ import {
   moveInWaitlist,
   nextWaitlistPosition,
   refreshNextFollowUp,
+  resolveAdmissionPlacement,
   scheduleReminder,
   toApplicationDto,
   withCourseNames,
@@ -83,6 +85,10 @@ const applicationBody = z.object({
   formData: z.record(z.string(), z.unknown()).nullable().optional(),
   waitlist: z.boolean().optional(),
 });
+const applicationPatch = applicationBody.omit({ enquiryId: true, formId: true, waitlist: true }).partial();
+/** A linked application (the student registered themselves) takes these from the student record. */
+const STUDENT_RECORD_FIELDS: readonly string[] = ['name', 'mobile', 'email', 'branchId'];
+const PLACEMENT_FIELDS: readonly string[] = ['branchId', 'courseId', 'batchId'];
 
 const followUpParams = z.object({
   id: z.coerce.number().int().positive(),
@@ -93,6 +99,8 @@ const convertBody = studentFieldsSchema
   .omit({ name: true, mobile: true })
   .partial()
   .extend({ allowDuplicate: z.boolean().optional() });
+/** `batchId` replaces the application's batch when admitting; null admits without one. */
+const admitBody = convertBody.extend({ batchId: z.number().int().positive().nullable().optional() });
 
 async function loadFollowUps(enquiryId: number) {
   const { instituteId } = requireTenantContext();
@@ -480,9 +488,7 @@ export function admissionRoutes(api: Router) {
     }
     const branch = await resolveBranch(branchId);
     const { formId, formData } = await resolveFormData(body.formId, branch.id, body.formData);
-    const courseId = body.batchId
-      ? await assertAdmissionBatch(body.batchId, branch.id, body.courseId)
-      : (body.courseId ?? null);
+    const { courseId, batchId } = await resolveAdmissionPlacement(branch.id, body.courseId, body.batchId);
     const duplicates = await findDuplicates({ mobile: body.mobile, email: body.email });
     const { instituteId } = requireTenantContext();
     const app = await getSequelize().transaction(async (transaction) => {
@@ -495,7 +501,7 @@ export function admissionRoutes(api: Router) {
           name: body.name,
           mobile: body.mobile,
           email: body.email ?? null,
-          batchId: body.batchId ?? null,
+          batchId,
           formData,
           status: body.waitlist ? 'waitlisted' : 'pending',
           waitlistPosition: body.waitlist ? await nextWaitlistPosition(base, transaction) : null,
@@ -516,6 +522,94 @@ export function admissionRoutes(api: Router) {
     if (!['pending', 'waitlisted', 'approved'].includes(a.status))
       throw Conflict(`Application is already ${a.status}`, 'APPLICATION_CLOSED');
   };
+
+  /** Re-reads an application under a row lock so edits and admits of it run one at a time. */
+  async function lockOpen(id: number, transaction: Transaction) {
+    const a = await applicationRepo.findById(id, { transaction, lock: transaction.LOCK.UPDATE });
+    open(a);
+    return a;
+  }
+
+  r.patch('/applications/:id', requirePermission('admissions', 'edit'), async (req, res) => {
+    const { id } = parse(idParam, req.params);
+    const body = parse(applicationPatch, req.body);
+    const edited = await getSequelize().transaction(async (transaction) => {
+      const a = await lockOpen(id, transaction);
+      if (a.studentId) {
+        const own = STUDENT_RECORD_FIELDS.filter(
+          (k) => body[k as keyof typeof body] !== undefined && body[k as keyof typeof body] !== a.get(k),
+        );
+        if (own.length)
+          throw BadRequest(
+            `This application belongs to a registered student: change their ${own.join(', ')} on the student's profile`,
+          );
+      }
+      const next: Partial<AdmissionApplication> = {};
+      if (body.name !== undefined) next.name = body.name;
+      if (body.mobile !== undefined) next.mobile = body.mobile;
+      if (body.email !== undefined) next.email = body.email;
+      let branchId = a.branchId;
+      if (PLACEMENT_FIELDS.some((k) => body[k as keyof typeof body] !== undefined)) {
+        const branchChanged = body.branchId !== undefined && body.branchId !== a.branchId;
+        const courseChanged = body.courseId !== undefined && body.courseId !== a.courseId;
+        if (branchChanged) branchId = (await resolveBranch(body.branchId)).id;
+        // A batch belongs to one course and branch, so moving either without naming a batch clears it.
+        const batchId =
+          body.batchId !== undefined ? body.batchId : branchChanged || courseChanged ? null : a.batchId;
+        // A newly chosen batch names its own course when the patch doesn't.
+        const courseId =
+          body.courseId !== undefined
+            ? body.courseId
+            : batchId && batchId !== a.batchId
+              ? undefined
+              : a.courseId;
+        if (branchChanged || courseChanged || batchId !== a.batchId)
+          Object.assign(
+            next,
+            { branchId },
+            await resolveAdmissionPlacement(branchId, courseId, batchId, { currentCourseId: a.courseId }),
+          );
+      }
+      if (body.formData !== undefined)
+        Object.assign(next, await resolveFormData(a.formId, branchId, body.formData));
+      const fields = Object.keys(next).filter(
+        (k) => JSON.stringify(next[k as keyof typeof next] ?? null) !== JSON.stringify(a.get(k) ?? null),
+      );
+      if (!fields.length) return { a, fields };
+      const before = { branchId: a.branchId, courseId: a.courseId, batchId: a.batchId };
+      const moved =
+        next.branchId !== undefined && (next.branchId !== a.branchId || next.courseId !== a.courseId);
+      if (a.status === 'waitlisted' && moved) {
+        // Joins the end of the new branch/course list and closes the gap in the old one.
+        await leaveWaitlist(a, transaction);
+        next.waitlistPosition = await nextWaitlistPosition(
+          { instituteId: a.instituteId, branchId: next.branchId!, courseId: next.courseId ?? null },
+          transaction,
+        );
+      }
+      await a.update(next, { transaction });
+      return { a, fields, before };
+    });
+    const { a, fields, before } = edited;
+    if (fields.length)
+      await audit({
+        action: 'application.updated',
+        entityType: 'application',
+        entityId: id,
+        metadata: {
+          fields,
+          before,
+          after: { branchId: a.branchId, courseId: a.courseId, batchId: a.batchId },
+        },
+      });
+    res.json((await withCourseNames([toApplicationDto(a)]))[0]);
+  });
+
+  /** Batches the application can be admitted into (its course, the student's branch, open, with seats). */
+  r.get('/applications/:id/batches', requirePermission('admissions', 'approve'), async (req, res) => {
+    const { id } = parse(idParam, req.params);
+    res.json(await admissionBatchOptions(await applicationRepo.findById(id)));
+  });
 
   r.post('/applications/:id/waitlist', requirePermission('admissions', 'approve'), async (req, res) => {
     const { id } = parse(idParam, req.params);
@@ -588,57 +682,76 @@ export function admissionRoutes(api: Router) {
    * Admits the student an application is already linked to (a self-registration for a course):
    * no new student record. Re-checked under a row lock so two admins can't admit it twice.
    */
-  async function admitLinkedStudent(found: AdmissionApplication) {
-    const { instituteId, id } = found;
-    const student = await Student.findOne({ where: { instituteId, id: found.studentId! } });
-    if (!student) throw NotFound('Student');
-    const application = await getSequelize().transaction(async (transaction) => {
-      const a = await AdmissionApplication.findOne({
-        where: { instituteId, id },
-        transaction,
-        lock: transaction.LOCK.UPDATE,
-      });
-      if (!a) throw NotFound('Application');
-      open(a);
-      await completeAdmission(a, student, student.branchId, transaction);
-      return a;
+  async function admitLinkedStudent(found: AdmissionApplication, batchId: number | null | undefined) {
+    const student = await Student.findOne({
+      where: { instituteId: found.instituteId, id: found.studentId! },
     });
-    return { application, student };
+    if (!student) throw NotFound('Student');
+    return getSequelize().transaction(async (transaction) => {
+      const application = await lockOpen(found.id, transaction);
+      await chooseAdmissionBatch(application, batchId, student.branchId, transaction);
+      const outcome = await completeAdmission(application, student, student.branchId, transaction);
+      return { application, student, outcome };
+    });
   }
 
   r.post('/applications/:id/admit', requirePermission('admissions', 'approve'), async (req, res) => {
     const { id } = parse(idParam, req.params);
-    const { allowDuplicate, ...extra } = parse(convertBody, req.body ?? {});
+    const { allowDuplicate, batchId, ...extra } = parse(admitBody, req.body ?? {});
     const found = await applicationRepo.findById(id);
     open(found);
     if (found.status === 'pending' && extra.branchId && extra.branchId !== found.branchId)
       throw BadRequest('Admit into the branch the application was made for');
     const linked = !!found.studentId;
-    const { application: a, student } = linked
-      ? await admitLinkedStudent(found)
-      : {
-          application: found,
-          student: await createStudent(
-            {
-              ...extra,
-              name: found.name,
-              mobile: found.mobile,
-              email: extra.email ?? found.email,
-              branchId: found.branchId,
-            },
-            {
-              source: 'application',
-              allowDuplicate,
-              afterCreate: (s, transaction) => completeAdmission(found, s, s.branchId, transaction),
-            },
-          ),
-        };
+    let admitted: Awaited<ReturnType<typeof admitLinkedStudent>>;
+    if (linked) admitted = await admitLinkedStudent(found, batchId);
+    else {
+      let application = found;
+      let outcome: Awaited<ReturnType<typeof completeAdmission>> = { batchEnrolment: null, enrolled: [] };
+      const student = await createStudent(
+        {
+          ...extra,
+          name: found.name,
+          mobile: found.mobile,
+          email: extra.email ?? found.email,
+          branchId: found.branchId,
+        },
+        {
+          source: 'application',
+          allowDuplicate,
+          afterCreate: async (s, transaction) => {
+            application = await lockOpen(id, transaction);
+            if (STUDENT_RECORD_FIELDS.some((k) => application.get(k) !== found.get(k)))
+              throw Conflict(
+                'The application was edited while it was being admitted; try again',
+                'APPLICATION_CHANGED',
+              );
+            await chooseAdmissionBatch(application, batchId, s.branchId, transaction);
+            outcome = await completeAdmission(application, s, s.branchId, transaction);
+          },
+        },
+      );
+      admitted = { application, student, outcome };
+    }
+    const { application: a, student, outcome } = admitted;
     await audit({
       action: 'application.admitted',
       entityType: 'application',
       entityId: id,
-      metadata: { studentId: student.id, existingStudent: linked },
+      metadata: {
+        studentId: student.id,
+        existingStudent: linked,
+        batchId: a.batchId,
+        batchEnrolment: outcome.batchEnrolment,
+      },
     });
+    if (a.batchId && outcome.enrolled.length)
+      await audit({
+        action: 'batch.students_enrolled',
+        entityType: 'Batch',
+        entityId: a.batchId,
+        metadata: { studentUserIds: outcome.enrolled, source: 'admission', applicationId: id },
+      });
     await notifyAdmissionConfirmed(a, student);
     await emitAdmissionCompleted({
       applicationId: a.id,
@@ -648,7 +761,13 @@ export function admissionRoutes(api: Router) {
       courseId: a.courseId ?? null,
       batchId: a.batchId ?? null,
     });
-    res.status(201).json({ application: toApplicationDto(a), student: toStudentDto(student) });
+    const [application] = await withCourseNames([toApplicationDto(a)]);
+    const result: AdmitApplicationResultDto = {
+      application,
+      student: toStudentDto(student),
+      batchEnrolment: outcome.batchEnrolment,
+    };
+    res.status(201).json(result);
   });
 
   api.use('/admissions', r);

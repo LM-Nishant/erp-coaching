@@ -21,8 +21,8 @@ import type {
   PaymentGatewayKey,
   ProfitLossDto,
 } from '@erp/shared';
-import { API_URL, ApiError, api } from '@/core/api';
-import { loadSession } from '@/core/token-storage';
+import { api } from '@/core/api';
+import { openFileLink, saveFile } from '@/core/downloads';
 import type { Page } from '../hr/api';
 
 export interface SignedUrl {
@@ -240,28 +240,13 @@ export function batchOptionLabel(b: CourseBatchOptionDto): string {
   return `${b.name} · from ${from} · ${b.seatsLeft} ${b.seatsLeft === 1 ? 'seat' : 'seats'} left`;
 }
 
-/** Downloads a CSV/Excel report with the session's auth headers. */
+/** Downloads a CSV/Excel report and saves it (a browser download, or the share sheet on a device). */
 export async function downloadFeesReport(path: string, query: Query, format: 'csv' | 'xls') {
-  const session = await loadSession();
-  const url = new URL(`${API_URL}/api/fees/${path}`);
-  const params: Query = { ...query, format };
-  for (const [k, v] of Object.entries(params))
-    if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
-  const headers: Record<string, string> = {};
-  if (session?.accessToken) headers.Authorization = `Bearer ${session.accessToken}`;
-  if (session?.branchId) headers['X-Branch-Id'] = String(session.branchId);
-  const res = await fetch(url, { headers });
-  if (!res.ok) throw new ApiError(res.status, 'HTTP_ERROR', `Export failed (${res.status})`);
-  const name =
-    /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? `report.${format}`;
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(await res.blob());
-  link.download = name;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  const file = await api.download(`/fees/${path}`, { ...query, format });
+  await saveFile(file.blob, file.fileName ?? `report.${format}`);
 }
 
-export const openSigned = (s: SignedUrl) => window.open(s.url, '_blank');
+export const openSigned = (s: SignedUrl) => openFileLink(s.url);
 export const toPaise = (rupees: number | string) => Math.round(Number(rupees) * 100);
 export const MODE_LABELS: Record<string, string> = {
   online: 'Online',

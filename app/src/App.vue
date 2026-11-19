@@ -63,7 +63,14 @@
             >
               Switch
             </ion-button>
-            <ion-button slot="end" fill="clear" size="small" color="danger" @click="logout">
+            <ion-button
+              slot="end"
+              fill="clear"
+              size="small"
+              color="danger"
+              aria-label="Sign out"
+              @click="logout"
+            >
               <ion-icon slot="icon-only" :icon="logOutOutline" />
             </ion-button>
           </ion-item>

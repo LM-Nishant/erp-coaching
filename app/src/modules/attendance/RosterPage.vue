@@ -5,6 +5,7 @@
         v-if="open && hasQr"
         v-can="'attendance.create'"
         :router-link="`/attendance/sessions/${id}/qr`"
+        aria-label="Show attendance QR code"
         ><ion-icon slot="icon-only" :icon="qrCodeOutline"
       /></ion-button>
     </template>

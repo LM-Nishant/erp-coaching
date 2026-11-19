@@ -1,11 +1,11 @@
 <template>
   <AppPage title="My timetable" :on-refresh="load">
     <ion-item lines="none">
-      <ion-button fill="clear" @click="shift(-7)"
+      <ion-button fill="clear" aria-label="Previous week" @click="shift(-7)"
         ><ion-icon slot="icon-only" :icon="chevronBack"
       /></ion-button>
       <ion-label class="ion-text-center">{{ from }} → {{ to }}</ion-label>
-      <ion-button fill="clear" @click="shift(7)"
+      <ion-button fill="clear" aria-label="Next week" @click="shift(7)"
         ><ion-icon slot="icon-only" :icon="chevronForward"
       /></ion-button>
     </ion-item>

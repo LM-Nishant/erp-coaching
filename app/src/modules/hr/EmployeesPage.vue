@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Staff" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'hr.create'" @click="openEditor"
+      <ion-button v-can="'hr.create'" aria-label="New staff member" @click="openEditor"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>

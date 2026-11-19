@@ -5,7 +5,12 @@
     :on-refresh="load"
   >
     <template #actions>
-      <ion-button v-if="!isNew && question" v-can="'question-bank.delete'" color="danger" @click="remove"
+      <ion-button
+        v-if="!isNew && question"
+        v-can="'question-bank.delete'"
+        color="danger"
+        aria-label="Delete question"
+        @click="remove"
         ><ion-icon slot="icon-only" :icon="trashOutline"
       /></ion-button>
     </template>
@@ -51,7 +56,10 @@
               >(tick the correct answer{{ form.type === 'multiple' ? 's' : '' }})</small
             ></ion-label
           >
-          <ion-button v-if="!readonly && form.options.length < OPTION_KEYS.length" @click="addOption"
+          <ion-button
+            v-if="!readonly && form.options.length < OPTION_KEYS.length"
+            aria-label="Add option"
+            @click="addOption"
             ><ion-icon slot="icon-only" :icon="add"
           /></ion-button>
         </ion-list-header>
@@ -78,6 +86,7 @@
               slot="end"
               fill="clear"
               color="medium"
+              aria-label="Remove option image"
               @click="clearOptionImage(i)"
               ><ion-icon slot="icon-only" :icon="closeCircleOutline"
             /></ion-button>
@@ -86,6 +95,7 @@
               slot="end"
               fill="clear"
               color="danger"
+              aria-label="Remove option"
               @click="removeOption(i)"
               ><ion-icon slot="icon-only" :icon="removeCircleOutline"
             /></ion-button>
@@ -283,7 +293,7 @@
       <ion-list v-if="question">
         <ion-list-header>
           <ion-label>Images & attachments</ion-label>
-          <ion-button v-if="!readonly" @click="assetFile?.click()"
+          <ion-button v-if="!readonly" aria-label="Add image or attachment" @click="assetFile?.click()"
             ><ion-icon slot="icon-only" :icon="add"
           /></ion-button>
         </ion-list-header>
@@ -299,7 +309,13 @@
             <a :href="a.url" target="_blank" rel="noopener">{{ a.originalName }}</a>
             <p>{{ a.role === 'question' ? 'Question' : 'Explanation' }}</p>
           </ion-label>
-          <ion-button v-if="!readonly" slot="end" fill="clear" color="danger" @click="removeAsset(a.id)"
+          <ion-button
+            v-if="!readonly"
+            slot="end"
+            fill="clear"
+            color="danger"
+            aria-label="Delete attachment"
+            @click="removeAsset(a.id)"
             ><ion-icon slot="icon-only" :icon="trashOutline"
           /></ion-button>
         </ion-item>

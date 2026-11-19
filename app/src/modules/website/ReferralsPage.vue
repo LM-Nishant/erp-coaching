@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Referrals & affiliates" :on-refresh="load">
     <template #actions>
-      <ion-button v-if="auth.can('website.create')" @click="openEditor()"
+      <ion-button v-if="auth.can('website.create')" aria-label="New referral code" @click="openEditor()"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
@@ -22,7 +22,7 @@
           </p>
           <p v-if="r.commissionNote">{{ r.commissionNote }}</p>
         </ion-label>
-        <ion-button slot="end" fill="clear" @click.stop="copy(r.shareUrl)">
+        <ion-button slot="end" fill="clear" aria-label="Copy share link" @click.stop="copy(r.shareUrl)">
           <ion-icon slot="icon-only" :icon="copyOutline" />
         </ion-button>
       </ion-item>
@@ -68,7 +68,7 @@
             <ion-label class="ion-text-wrap"
               ><p>Share link: {{ editing.shareUrl }}</p></ion-label
             >
-            <ion-button slot="end" fill="clear" @click="copy(editing.shareUrl)"
+            <ion-button slot="end" fill="clear" aria-label="Copy share link" @click="copy(editing.shareUrl)"
               ><ion-icon slot="icon-only" :icon="copyOutline"
             /></ion-button>
           </ion-item>

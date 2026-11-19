@@ -57,10 +57,10 @@
           <ion-badge slot="end" :color="STATUS_COLORS[p.status]">{{ p.status.replace('_', ' ') }}</ion-badge>
           <ion-buttons slot="end">
             <template v-if="p.receiptId">
-              <ion-button title="Receipt PDF" @click="pdf(p.receiptId)"
+              <ion-button title="Receipt PDF" aria-label="Receipt PDF" @click="pdf(p.receiptId)"
                 ><ion-icon slot="icon-only" :icon="documentOutline"
               /></ion-button>
-              <ion-button title="Share on WhatsApp" @click="share(p.receiptId)"
+              <ion-button title="Share on WhatsApp" aria-label="Share on WhatsApp" @click="share(p.receiptId)"
                 ><ion-icon slot="icon-only" :icon="logoWhatsapp"
               /></ion-button>
             </template>
@@ -69,6 +69,7 @@
               v-can="'fees.approve'"
               title="Refund / cancel"
               color="danger"
+              aria-label="Refund / cancel"
               @click="openRefund(p)"
               ><ion-icon slot="icon-only" :icon="returnDownBackOutline"
             /></ion-button>
