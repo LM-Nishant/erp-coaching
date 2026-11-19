@@ -121,10 +121,12 @@ request therefore share one `requestId`.
 - **DNS:**
   - an `A`/`AAAA` record for `SERVER_NAME`;
   - a wildcard record `*.SITES_DOMAIN` if institutes use subdomains;
-  - institutes point their custom domains at the server, with a `CNAME` to `SERVER_NAME` or `A`/`AAAA` records.
+  - institutes point their custom domains at the server, with a `CNAME` to `SERVER_NAME` or `A`/`AAAA` records, and
+    add a `TXT` record to verify them ([custom domains](#institute-custom-domains)).
 - **Firewall:**
   - inbound: TCP 80 and 443 (plus SSH). MySQL is not published;
-  - outbound: HTTPS for ACME and for the AI provider, if you use one.
+  - outbound: HTTPS for ACME and for the AI provider, if you use one, and DNS (the API looks up the custom-domain
+    `TXT` records).
 - **Certificates:** certbot (or another ACME client) on the host. The wildcard certificate also needs your DNS
   provider's certbot plugin.
 - **Clock:** time synchronisation (NTP). Tokens, OTPs and certificates depend on the clock.
@@ -158,7 +160,7 @@ Format rules:
 | `ERP_REGISTRY`, `ERP_IMAGE_TAG`                                                                                                                                          | Image names are `${ERP_REGISTRY}erp-api:${ERP_IMAGE_TAG}`, and likewise for `erp-web` and `erp-backup`. The tag is the release. It is reported as `version` by `/api/ready` and in every log line and error event |
 | `SERVER_NAME`, `PUBLIC_URL`                                                                                                                                              | Host name and origin of the app and API. `PUBLIC_URL` is compiled into the web image, so changing it means rebuilding `erp-web`. If `HTTPS_PORT` isn't 443, include the port (`https://app.example.com:8443`)     |
 | `PUBLIC_WEB_URL`                                                                                                                                                         | Origin of the web app in links the API builds (institute website buttons, course checkout). Blank: `PUBLIC_URL`                                                                                                   |
-| `SITES_DOMAIN`                                                                                                                                                           | Optional parent domain of the institute subdomains (`<subdomain>.sites.example.com`)                                                                                                                              |
+| `SITES_DOMAIN`                                                                                                                                                           | Optional parent domain of the institute subdomains (`<subdomain>.sites.example.com`). The API serves a subdomain site only on a host directly under it; blank: verified custom domains only                       |
 | `HTTP_PORT`, `HTTPS_PORT`                                                                                                                                                | Published ports, 80 and 443 by default                                                                                                                                                                            |
 | `CORS_EXTRA_ORIGINS`                                                                                                                                                     | Allowed origins after `PUBLIC_URL`, for the Capacitor apps ([mobile apps](#mobile-apps-and-cors))                                                                                                                 |
 | `TLS_SELF_SIGNED_FALLBACK`                                                                                                                                               | Keep it `true` only until the first real certificate is installed ([TLS](#tls-certificates))                                                                                                                      |
@@ -337,15 +339,23 @@ The hook installs it as `certs/sites/_wildcard/`.
 
 ### Institute custom domains
 
-The API serves an institute's website on its custom domain once two things are true: the institute has saved the
-domain in its website settings, and the domain's DNS points at the server. Until a certificate is installed, HTTPS on
-that domain shows the platform certificate. To issue one:
+The API serves an institute's website on a custom domain only after the institute has proved that it controls the
+domain's DNS. In the website settings, the institute saves the domain, adds the `TXT` record that the page then shows,
+and selects **Verify domain**:
 
-1. Check that the domain is registered for an institute and resolves to this server:
+| Name                                | Type  | Value                      |
+| ----------------------------------- | ----- | -------------------------- |
+| `_erp-verification.<custom domain>` | `TXT` | `erp-verification=<token>` |
+
+The token is random and new each time the institute changes the domain. Until the domain is verified, the custom
+domain gets a 404 and the site's links use its subdomain. Once it's verified and its DNS points at the server, HTTPS on
+the domain shows the platform certificate until you install one. To issue one:
+
+1. Check that the domain is verified for an institute and resolves to this server:
 
    ```sh
    docker compose exec mysql mysql -uroot -p erp_coaching \
-     -e "SELECT custom_domain FROM website_sites WHERE custom_domain IS NOT NULL"
+     -e "SELECT verified_domain, domain_verified_at FROM website_sites WHERE verified_domain IS NOT NULL"
    dig +short www.institute-example.com
    ```
 
@@ -372,15 +382,35 @@ docker compose exec web erp-certs --reload
 
 Caveats:
 
-- **Ownership:** the app doesn't verify that an institute owns the domain it enters. A domain claimed by one institute
-  can't be used by another, so confirm ownership before you issue a certificate.
-- **Host matching:** the API matches the host exactly against the custom domains. Failing that, it matches the host's
-  first DNS label against the institute subdomains, for any parent domain.
-- **Cache:** the mapping is cached in the API process for 60 seconds.
+- **Ownership:**
+  - several institutes may save the same domain, but only the one that verifies it is served. If another institute
+    later verifies the domain with its own record, the domain moves to that institute; the previous institute's site
+    falls back to its subdomain. Both institutes' audit logs record the move (`website.domain_released` and
+    `website.domain_verified`).
+  - changing or clearing the domain un-verifies it at once.
+  - the institute may delete the `TXT` record after verifying. It needs the record again only to take the domain back
+    after another institute has verified it.
+- **Upgrading:** domains saved before domain verification existed start unverified, so those sites fall back to their
+  subdomains until the institute verifies. To keep serving a domain whose ownership you've already confirmed, apply
+  the migrations first ([upgrades](#upgrades), step 4), mark the domain verified, then switch:
+
+  ```sh
+  docker compose exec mysql mysql -uroot -p erp_coaching -e "UPDATE website_sites \
+    SET verified_domain = custom_domain, domain_verified_at = UTC_TIMESTAMP() WHERE custom_domain = 'www.institute-example.com'"
+  ```
+
+- **DNS lookups:** the api container queries the record through its resolver, with a 4-second timeout and two tries.
+  If the lookup fails, **Verify domain** answers 503 `DNS_LOOKUP_FAILED` and the institute can retry; a missing or
+  different record answers 422 `DOMAIN_NOT_VERIFIED`. New records can take a while to propagate.
+- **Host matching:** the API matches the host (without its port) exactly against the verified custom domains. Failing
+  that, it serves a subdomain site only for a host one label directly under `SITES_DOMAIN`; other hosts get a 404.
+  Set `SITES_DOMAIN` if institutes use subdomains.
+- **Cache:** the mapping is cached in each API process for 60 seconds. Verifying clears the cache of the process that
+  handled it.
 - **Reserved subdomains:** `www`, `api`, `app`, `admin`, `mail`, `static`, `cdn` and `public`.
-- **Automation:** the domain list is in the database, so a nightly job can issue certificates for new domains with
+- **Automation:** the verified domains are in the database, so a nightly job can issue certificates for new ones with
   the commands above. A fully automatic alternative is a Caddy front end with on-demand TLS, but its `ask` endpoint
-  must approve registered domains only, and the API has no such endpoint yet.
+  must approve verified domains only, and the API has no such endpoint yet.
 
 ### Behind a CDN or load balancer
 

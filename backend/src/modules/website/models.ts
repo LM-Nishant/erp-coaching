@@ -27,6 +27,11 @@ export class WebsiteSite extends Model<InferAttributes<WebsiteSite>, InferCreati
   declare instituteId: number;
   declare subdomain: string | null;
   declare customDomain: string | null;
+  /** TXT token proving ownership of `customDomain`; regenerated whenever the domain changes. */
+  declare domainToken: CreationOptional<string | null>;
+  /** The custom domain once its TXT record was verified (unique); only this domain is served. */
+  declare verifiedDomain: CreationOptional<string | null>;
+  declare domainVerifiedAt: CreationOptional<Date | null>;
   declare theme: WebsiteTheme | null;
   declare seo: WebsiteSeo | null;
   declare indexable: CreationOptional<boolean>;
@@ -168,6 +173,9 @@ export function initWebsiteModels(sequelize: Sequelize) {
       instituteId: uint(),
       subdomain: DataTypes.STRING(63),
       customDomain: DataTypes.STRING(253),
+      domainToken: DataTypes.STRING(64),
+      verifiedDomain: DataTypes.STRING(253),
+      domainVerifiedAt: DataTypes.DATE,
       theme: DataTypes.JSON,
       seo: DataTypes.JSON,
       indexable: bool(true),

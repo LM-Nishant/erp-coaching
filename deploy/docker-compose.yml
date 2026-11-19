@@ -110,6 +110,8 @@ services:
       CORS_ORIGINS: ${PUBLIC_URL},${CORS_EXTRA_ORIGINS:-capacitor://localhost,https://localhost,http://localhost}
       # The redis service unless deploy/.env names another Redis.
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      # Institute subdomains (<subdomain>.SITES_DOMAIN) resolve only under this parent domain.
+      SITES_DOMAIN: ${SITES_DOMAIN:-}
     volumes:
       - storage:/var/lib/erp/storage
       - api-tmp:/srv/erp/backend/tmp

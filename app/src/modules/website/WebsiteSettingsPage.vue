@@ -22,8 +22,36 @@
           v-model="form.customDomain"
           label="Custom domain"
           label-placement="stacked"
-          helper-text="e.g. www.apexacademy.in — point its DNS (CNAME) at the platform; the platform team maps it."
+          helper-text="e.g. www.apexacademy.in — point its DNS (CNAME) at the platform, save, then verify it below."
         />
+      </ion-item>
+      <ion-item v-if="site?.domainVerification" lines="none">
+        <ion-label class="ion-text-wrap">
+          <p v-if="site.domainVerification.verifiedAt">
+            <ion-note color="success">Verified</ion-note> — the site is served on {{ site.customDomain }}.
+          </p>
+          <template v-else>
+            <p>
+              <ion-note color="warning">Not verified</ion-note> — {{ site.customDomain }} isn't served until
+              you verify it. Add this TXT record at your DNS provider, then select Verify domain:
+            </p>
+            <p>
+              Name: <code>{{ site.domainVerification.recordName }}</code>
+            </p>
+            <p>
+              Value: <code>{{ site.domainVerification.recordValue }}</code>
+            </p>
+          </template>
+        </ion-label>
+        <ion-button
+          v-if="!site.domainVerification.verifiedAt"
+          slot="end"
+          fill="outline"
+          :disabled="verifying"
+          @click="verifyDomain"
+        >
+          Verify domain
+        </ion-button>
       </ion-item>
       <ion-item>
         <ion-input
@@ -172,6 +200,7 @@ const site = ref<WebsiteSiteDto | null>(null);
 const form = ref<Form | null>(null);
 const branches = ref<NamedRef[]>([]);
 const saving = ref(false);
+const verifying = ref(false);
 
 function toForm(s: WebsiteSiteDto): Form {
   return {
@@ -230,6 +259,18 @@ async function save() {
     await toastError(e);
   } finally {
     saving.value = false;
+  }
+}
+
+async function verifyDomain() {
+  verifying.value = true;
+  try {
+    site.value = await websiteApi.verifyDomain();
+    await toast('Domain verified');
+  } catch (e) {
+    await toastError(e);
+  } finally {
+    verifying.value = false;
   }
 }
 

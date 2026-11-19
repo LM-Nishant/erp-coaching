@@ -34,6 +34,29 @@ const schema = z.object({
     .url()
     .refine((v) => /^https?:\/\//.test(v), 'must be an http(s) URL')
     .optional(),
+  /**
+   * Parent domain of the institute website subdomains (`<subdomain>.SITES_DOMAIN`), as given to nginx.
+   * Website requests for a host directly under it resolve by subdomain; any other host must be a
+   * DNS-verified custom domain. Empty: only verified custom domains resolve.
+   */
+  SITES_DOMAIN: z
+    .string()
+    .transform((v) =>
+      v
+        .trim()
+        .toLowerCase()
+        .replace(/^\*?\./, '')
+        .replace(/\.$/, ''),
+    )
+    .pipe(
+      z
+        .string()
+        .regex(
+          /^$|^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/,
+          'must be a domain name like sites.example.com',
+        ),
+    )
+    .default(''),
   LOG_LEVEL: z.string().default(isProd ? 'info' : 'debug'),
   /** Reported by /api/ready and attached to tracked errors (e.g. the git SHA or image tag). */
   APP_VERSION: z.string().default('dev'),
