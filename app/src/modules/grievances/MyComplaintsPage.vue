@@ -1,7 +1,9 @@
 <template>
   <AppPage title="My complaints" :on-refresh="reload">
     <template #actions>
-      <ion-button router-link="/grievances/new"><ion-icon slot="icon-only" :icon="add" /></ion-button>
+      <ion-button router-link="/grievances/new" aria-label="New complaint"
+        ><ion-icon slot="icon-only" :icon="add"
+      /></ion-button>
     </template>
 
     <ion-segment v-model="tab">

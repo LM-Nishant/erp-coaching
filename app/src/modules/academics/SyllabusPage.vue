@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Syllabus" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'academics.create'" @click="addSubject"
+      <ion-button v-can="'academics.create'" aria-label="Add subject" @click="addSubject"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
@@ -42,6 +42,7 @@
                   v-can="'academics.edit'"
                   fill="clear"
                   size="small"
+                  :aria-label="`Rename ${ch.name}`"
                   @click="renameChapter(s.id, ch)"
                   ><ion-icon slot="icon-only" :icon="createOutline"
                 /></ion-button>
@@ -51,6 +52,7 @@
                   fill="clear"
                   size="small"
                   color="danger"
+                  :aria-label="`Delete ${ch.name}`"
                   @click="run(s.id, () => academicsApi.removeChapter(ch.id))"
                   ><ion-icon slot="icon-only" :icon="trashOutline"
                 /></ion-button>
@@ -66,6 +68,7 @@
                   fill="clear"
                   size="small"
                   color="danger"
+                  :aria-label="`Delete ${t.name}`"
                   @click="run(s.id, () => academicsApi.removeTopic(t.id))"
                   ><ion-icon slot="icon-only" :icon="trashOutline"
                 /></ion-button>

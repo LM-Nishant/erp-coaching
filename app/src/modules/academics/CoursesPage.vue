@@ -2,7 +2,7 @@
   <AppPage title="Courses" :on-refresh="load">
     <template #actions>
       <ion-button v-can="'academics.create'" @click="openCategories">Categories</ion-button>
-      <ion-button v-can="'academics.create'" @click="openEditor()"
+      <ion-button v-can="'academics.create'" aria-label="New course" @click="openEditor()"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
@@ -31,13 +31,29 @@
         <ion-button slot="end" fill="clear" :router-link="`/academics/syllabus?courseId=${c.id}`"
           >Syllabus</ion-button
         >
-        <ion-button slot="end" v-can="'academics.create'" fill="clear" @click="openClone(c)"
+        <ion-button
+          slot="end"
+          v-can="'academics.create'"
+          fill="clear"
+          :aria-label="`Create a course from ${c.name}`"
+          @click="openClone(c)"
           ><ion-icon slot="icon-only" :icon="copyOutline"
         /></ion-button>
-        <ion-button slot="end" v-can="'academics.edit'" fill="clear" @click="openEditor(c)"
+        <ion-button
+          slot="end"
+          v-can="'academics.edit'"
+          fill="clear"
+          :aria-label="`Edit ${c.name}`"
+          @click="openEditor(c)"
           ><ion-icon slot="icon-only" :icon="createOutline"
         /></ion-button>
-        <ion-button slot="end" v-can="'academics.delete'" fill="clear" color="danger" @click="remove(c)"
+        <ion-button
+          slot="end"
+          v-can="'academics.delete'"
+          fill="clear"
+          color="danger"
+          :aria-label="`Delete ${c.name}`"
+          @click="remove(c)"
           ><ion-icon slot="icon-only" :icon="trashOutline"
         /></ion-button>
       </ion-item>
@@ -181,6 +197,7 @@
               v-can="'academics.delete'"
               fill="clear"
               color="danger"
+              :aria-label="`Delete category ${c.name}`"
               @click="removeCategory(c.id)"
               ><ion-icon slot="icon-only" :icon="trashOutline"
             /></ion-button>

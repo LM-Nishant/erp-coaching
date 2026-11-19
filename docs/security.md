@@ -92,7 +92,8 @@ app through CORS, so downloads keep their names). The app shows stored PDFs in a
 (web dev server, `capacitor://localhost`, `https://localhost`), so file responses replace `frame-ancestors 'self'`
 with `'self'` plus `CORS_ORIGINS` and `PUBLIC_WEB_URL`, and drop `X-Frame-Options`. Generated PDFs (fee receipts,
 SaaS invoices, payslips, scorecards) are opened in a new tab through signed links or downloaded as blobs, never
-framed.
+framed. Report exports skip signed links: `GET /api/reports/exports/:id/download` sends the file to its creator only,
+as an attachment with its own type (so a CSV is `text/csv`, never shown inline), and audits every download.
 
 ### Rate limiting
 

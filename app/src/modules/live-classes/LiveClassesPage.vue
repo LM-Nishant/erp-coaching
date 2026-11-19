@@ -1,7 +1,10 @@
 <template>
   <AppPage title="Live classes" :on-refresh="reload">
     <template #actions>
-      <ion-button v-if="auth.can('live-classes.create')" @click="openSchedule"
+      <ion-button
+        v-if="auth.can('live-classes.create')"
+        aria-label="Schedule live class"
+        @click="openSchedule"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
@@ -146,6 +149,7 @@ import { add, playCircleOutline } from 'ionicons/icons';
 import { useRouter } from 'vue-router';
 import type { BatchDto, ClassSessionDto, LiveRecordingDto, LiveSessionDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import { openFileLink } from '@/core/downloads';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import { academicsApi } from '@/modules/academics/api';
@@ -182,7 +186,7 @@ watch(tab, reload);
 async function play(id: number) {
   try {
     const { url } = await liveApi.recordingUrl(id);
-    window.open(url, '_blank');
+    openFileLink(url);
   } catch (e) {
     await toastError(e);
   }

@@ -125,7 +125,13 @@
       <ion-item v-for="(l, i) in form.theme.socialLinks" :key="i">
         <ion-input v-model="l.label" label="Label" label-placement="stacked" placeholder="YouTube" />
         <ion-input v-model="l.url" label="URL" label-placement="stacked" placeholder="Full web address" />
-        <ion-button slot="end" fill="clear" color="danger" @click="form.theme.socialLinks!.splice(i, 1)">
+        <ion-button
+          slot="end"
+          fill="clear"
+          color="danger"
+          aria-label="Remove social link"
+          @click="form.theme.socialLinks!.splice(i, 1)"
+        >
           <ion-icon slot="icon-only" :icon="trashOutline" />
         </ion-button>
       </ion-item>

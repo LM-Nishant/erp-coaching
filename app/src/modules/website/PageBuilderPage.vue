@@ -1,10 +1,10 @@
 <template>
   <AppPage :title="page ? page.title : 'Page'" back-href="/website" :on-refresh="load">
     <template #actions>
-      <ion-button :disabled="!page" @click="showPreview"
+      <ion-button :disabled="!page" aria-label="Preview draft" @click="showPreview"
         ><ion-icon slot="icon-only" :icon="eyeOutline"
       /></ion-button>
-      <ion-button :disabled="!page" @click="openVersions"
+      <ion-button :disabled="!page" aria-label="Published versions" @click="openVersions"
         ><ion-icon slot="icon-only" :icon="timeOutline"
       /></ion-button>
     </template>
@@ -101,13 +101,24 @@
                 <p>{{ blockSummary(b) }}</p>
               </ion-label>
               <template v-if="canEdit">
-                <ion-button slot="end" fill="clear" @click.stop="b.hidden = !b.hidden">
+                <ion-button
+                  slot="end"
+                  fill="clear"
+                  :aria-label="b.hidden ? 'Show block' : 'Hide block'"
+                  @click.stop="b.hidden = !b.hidden"
+                >
                   <ion-icon slot="icon-only" :icon="b.hidden ? eyeOffOutline : eyeOutline" />
                 </ion-button>
-                <ion-button slot="end" fill="clear" @click.stop="duplicate(i)">
+                <ion-button slot="end" fill="clear" aria-label="Duplicate block" @click.stop="duplicate(i)">
                   <ion-icon slot="icon-only" :icon="copyOutline" />
                 </ion-button>
-                <ion-button slot="end" fill="clear" color="danger" @click.stop="page.blocks.splice(i, 1)">
+                <ion-button
+                  slot="end"
+                  fill="clear"
+                  color="danger"
+                  aria-label="Delete block"
+                  @click.stop="page.blocks.splice(i, 1)"
+                >
                   <ion-icon slot="icon-only" :icon="trashOutline" />
                 </ion-button>
               </template>
@@ -129,8 +140,12 @@
         <ion-toolbar>
           <ion-title>Preview (draft)</ion-title>
           <ion-segment slot="end" :value="device" @ion-change="device = String($event.detail.value)">
-            <ion-segment-button value="desktop"><ion-icon :icon="desktopOutline" /></ion-segment-button>
-            <ion-segment-button value="mobile"><ion-icon :icon="phonePortraitOutline" /></ion-segment-button>
+            <ion-segment-button value="desktop" aria-label="Desktop"
+              ><ion-icon :icon="desktopOutline"
+            /></ion-segment-button>
+            <ion-segment-button value="mobile" aria-label="Mobile"
+              ><ion-icon :icon="phonePortraitOutline"
+            /></ion-segment-button>
           </ion-segment>
           <ion-buttons slot="end"><ion-button @click="previewHtml = null">Close</ion-button></ion-buttons>
         </ion-toolbar>

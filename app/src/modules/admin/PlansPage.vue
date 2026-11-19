@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Plans" :on-refresh="load">
     <template #actions>
-      <ion-button @click="edit()"><ion-icon slot="icon-only" :icon="add" /></ion-button>
+      <ion-button aria-label="New plan" @click="edit()"><ion-icon slot="icon-only" :icon="add" /></ion-button>
     </template>
     <ion-list>
       <ion-item v-for="p in plans" :key="p.id" button @click="edit(p)">
