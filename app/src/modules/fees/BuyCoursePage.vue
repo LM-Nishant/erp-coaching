@@ -12,6 +12,13 @@
             <span>{{ enrolmentNote.text }}</span>
           </div>
         </template>
+        <template v-else-if="confirming">
+          <p>
+            We're confirming your payment with the gateway. This can take a few minutes; please don't pay
+            again.
+          </p>
+          <ion-button expand="block" fill="outline" :disabled="busy" @click="sync">Check status</ion-button>
+        </template>
         <template v-else-if="!order">
           <ion-list>
             <ion-item v-if="!quote.batchFixed && batchChoices.length">
@@ -78,11 +85,14 @@
           >
         </template>
         <template v-else>
-          <p>Complete the payment in the {{ order.gateway }} window, then tap below.</p>
-          <ion-button v-if="checkoutUrl" expand="block" :href="checkoutUrl" target="_blank"
-            >Open {{ order.gateway }}</ion-button
+          <p>
+            Pay in the {{ GATEWAY_LABELS[order.gateway] ?? order.gateway }} checkout. If it closed before you
+            finished, open it again.
+          </p>
+          <ion-button expand="block" :disabled="busy || vendorOpen" @click="launch(order)"
+            >Open {{ GATEWAY_LABELS[order.gateway] ?? order.gateway }}</ion-button
           >
-          <ion-button expand="block" fill="outline" :disabled="busy" @click="sync"
+          <ion-button expand="block" fill="outline" :disabled="busy || vendorOpen" @click="sync"
             >I've paid, check status</ion-button
           >
         </template>
@@ -110,11 +120,24 @@ import {
   IonSelectOption,
 } from '@ionic/vue';
 import { alertCircleOutline, informationCircleOutline, timeOutline } from 'ionicons/icons';
-import { COURSE_BATCH_ISSUE_LABELS, type CheckoutOrderDto, type CourseQuoteDto } from '@erp/shared';
+import {
+  COURSE_BATCH_ISSUE_LABELS,
+  type CheckoutOrderDto,
+  type CourseQuoteDto,
+  type FeePaymentStatus,
+} from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import {
+  checkoutReturnTo,
+  openCheckout,
+  settlePayment,
+  takeReturnedPayment,
+  withoutReturnQuery,
+  type CheckoutOutcome,
+} from '@/core/payment-checkout';
 import { toast, toastError } from '@/core/toast';
 import { rupees } from '../hr/api';
-import { batchOptionLabel, feesApi } from './api';
+import { GATEWAY_LABELS, batchOptionLabel, feesApi } from './api';
 
 const route = useRoute();
 const router = useRouter();
@@ -127,10 +150,12 @@ const coupon = ref(qs('coupon') ?? '');
 const quote = ref<CourseQuoteDto | null>(null);
 const order = ref<CheckoutOrderDto | null>(null);
 const busy = ref(false);
-const checkoutUrl = computed(() => {
-  const u = order.value?.checkout.url;
-  return typeof u === 'string' ? u : undefined;
-});
+/** App route the gateway's checkout returns to. */
+const returnPath = `/my-fees/buy/${courseId}`;
+/** The gateway's checkout is open over the page. */
+const vendorOpen = ref(false);
+/** A payment the payer came back from that the gateway has not confirmed yet. */
+const confirming = ref<number | null>(null);
 
 const shownBatchId = computed(() => picked.value || quote.value?.batch?.id || 0);
 const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -216,15 +241,59 @@ function pickBatch(id: number) {
 
 async function checkout() {
   busy.value = true;
+  let o: CheckoutOrderDto;
   try {
     const valid = quote.value?.coupon?.valid;
-    order.value = await feesApi.courseCheckout(courseId, {
+    o = await feesApi.courseCheckout(courseId, {
       batchId: picked.value || undefined,
       couponCode: valid ? quote.value?.coupon?.code : undefined,
       referralCode,
+      returnTo: checkoutReturnTo(returnPath),
     });
   } catch (e) {
     void toastError(e);
+    return;
+  } finally {
+    busy.value = false;
+  }
+  order.value = o;
+  if (o.gateway !== 'mock') await launch(o);
+}
+
+/** Opens the gateway's checkout. Only the API's check with the gateway decides how the payment ended. */
+async function launch(o: CheckoutOrderDto) {
+  vendorOpen.value = true;
+  let outcome: CheckoutOutcome;
+  try {
+    outcome = await openCheckout({ paymentId: o.paymentId, path: returnPath, checkout: o.checkout });
+  } catch (e) {
+    void toastError(e);
+    return;
+  } finally {
+    vendorOpen.value = false;
+  }
+  if (outcome === 'away') return;
+  const status = await verify(o.paymentId, outcome === 'completed');
+  if (status === 'pending') {
+    if (outcome === 'completed')
+      await toast('The payment is still pending. Check again in a moment.', 'medium');
+  } else if (status) await done(status);
+}
+
+/** The payment's status once the API has checked it with the gateway (for a few seconds when `wait`). */
+async function verify(id: number, wait: boolean): Promise<FeePaymentStatus | null> {
+  busy.value = true;
+  try {
+    const r = wait
+      ? await settlePayment(
+          () => feesApi.mySync(id),
+          (x) => x.payment.status === 'pending',
+        )
+      : await feesApi.mySync(id);
+    return r.payment.status;
+  } catch (e) {
+    void toastError(e);
+    return null;
   } finally {
     busy.value = false;
   }
@@ -236,7 +305,10 @@ async function done(status: string) {
     await router.replace('/my-fees');
   } else {
     await toast(`Payment ${status}`, 'medium');
-    if (status === 'failed') order.value = null;
+    if (status === 'failed') {
+      order.value = null;
+      confirming.value = null;
+    }
   }
 }
 
@@ -253,16 +325,19 @@ async function complete(outcome: 'success' | 'failed') {
 }
 
 async function sync() {
-  if (!order.value) return;
-  busy.value = true;
-  try {
-    await done((await feesApi.mySync(order.value.paymentId)).payment.status);
-  } catch (e) {
-    void toastError(e);
-  } finally {
-    busy.value = false;
-  }
+  const id = order.value?.paymentId ?? confirming.value;
+  if (!id) return;
+  const status = await verify(id, false);
+  if (status) await done(status);
 }
 
-onMounted(load);
+onMounted(async () => {
+  const returned = takeReturnedPayment(returnPath, route.query);
+  if (route.query.payment !== undefined) await router.replace({ query: withoutReturnQuery(route.query) });
+  await load();
+  if (!returned) return;
+  const status = await verify(returned, true);
+  if (status === 'pending') confirming.value = returned;
+  else if (status) await done(status);
+});
 </script>

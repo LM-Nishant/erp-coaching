@@ -6,10 +6,13 @@ import { registerFeeNotificationEvents } from './notifications';
 import { COURSE_ENROLMENT_JOB, courseEnrolmentJob } from './course-enrolment';
 import {
   FEES_INSTITUTE_SWEEP_JOB,
+  FEES_PAYMENT_RECONCILE_JOB,
   FEES_SWEEP_JOB,
   runFeesSweep,
   runInstituteSweep,
+  runPaymentReconcile,
   scheduleFeesSweep,
+  schedulePaymentReconcile,
 } from './jobs';
 
 export default defineModule({
@@ -48,10 +51,12 @@ export default defineModule({
     [FEES_INSTITUTE_SWEEP_JOB]: async () => {
       await runInstituteSweep();
     },
+    [FEES_PAYMENT_RECONCILE_JOB]: () => runPaymentReconcile(),
   },
   onReady: async () => {
     registerFeeNotificationEvents();
     registerFeesIntegrations();
     await scheduleFeesSweep();
+    await schedulePaymentReconcile();
   },
 });

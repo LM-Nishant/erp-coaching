@@ -1,9 +1,10 @@
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { QueryTypes } from 'sequelize';
 import { decryptSecret, maskSecret } from '../src/infrastructure/crypto';
 import { getSequelize } from '../src/infrastructure/database/sequelize';
 import { getDefaultMessagingProvider } from '../src/infrastructure/messaging';
+import { setPaymentGatewayHttp, type GatewayHttpRequest } from '../src/infrastructure/payment-gateways';
 import { getStorage } from '../src/infrastructure/storage';
 import { runWithContext } from '../src/shared/context';
 import { credentialsOf, enabledGateways } from '../src/modules/fees/gateways.service';
@@ -95,6 +96,8 @@ beforeAll(async () => {
   expect(res.status).toBe(201);
   T = { id: res.body.id, token: (await login({ mobile: adminMobile, password: PASSWORD })).accessToken };
 });
+
+afterEach(() => setPaymentGatewayHttp(null));
 
 afterAll(async () => {
   const sequelize = getSequelize();
@@ -213,10 +216,20 @@ describe('SaaS payment gateways', () => {
   });
 
   it('enables a gateway only after its connection test passes', async () => {
+    // Razorpay answers the read-only connection check with 401: the keys are wrong.
+    const calls: GatewayHttpRequest[] = [];
+    setPaymentGatewayHttp(async (req) => {
+      calls.push(req);
+      return { status: 401, body: JSON.stringify({ error: { code: 'BAD_REQUEST_ERROR' } }) };
+    });
     const enable = await put(RZP, razorpay({ enabled: true }));
     expect(enable.status).toBe(409);
     expect(enable.body.error.code).toBe('INTEGRATION_TEST_FAILED');
-    expect(enable.body.error.message).toContain('not available in this build');
+    expect(enable.body.error.message).toContain('Razorpay rejected the key ID or key secret');
+    expect(calls[0]).toMatchObject({ method: 'GET', url: 'https://api.razorpay.com/v1/orders?count=1' });
+    expect(calls[0].headers.Authorization).toBe(
+      `Basic ${Buffer.from(`rzp_platform:${RZP_SECRET}`).toString('base64')}`,
+    );
 
     const test = await post(`${RZP}/test`, {});
     expect(test.status).toBe(200);

@@ -80,6 +80,8 @@ const schema = z.object({
   EMAIL_PROVIDER: z.enum(['console']).default('console'),
   PUSH_PROVIDER: z.enum(['console']).default('console'),
   PAYMENT_GATEWAY: z.enum(['mock']).default('mock'),
+  /** Minutes between gateway status checks of open online payments and refunds (missed webhooks). */
+  PAYMENT_RECONCILE_INTERVAL_MINUTES: z.coerce.number().int().min(1).max(1440).default(10),
   STREAMING_PROVIDER: z.enum(['mock', 'livekit']).default('mock'),
   /** LiveKit (`STREAMING_PROVIDER=livekit`), see docs/integrations/live-streaming.md. URL clients connect to (wss://…). */
   LIVEKIT_URL: z.string().optional(),
