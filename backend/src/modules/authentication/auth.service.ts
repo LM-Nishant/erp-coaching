@@ -11,6 +11,7 @@ import type {
 import { config } from '../../infrastructure/config';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { randomDigits, randomToken, sha256, safeEqual } from '../../infrastructure/crypto';
+import { captureError } from '../../infrastructure/error-tracking';
 import { getDefaultMessagingProvider } from '../../infrastructure/messaging';
 import { logger } from '../../infrastructure/logger';
 import { hashPassword, verifyPassword } from '../../infrastructure/password';
@@ -178,7 +179,9 @@ const otpExceeded = () => new AppError(429, 'OTP_ATTEMPTS_EXCEEDED', 'Too many a
 
 /**
  * Sends a code to `user`'s number, or to nobody when there is no such (active) user: the response looks
- * the same, but nothing is stored or sent. Returns the challenge id.
+ * the same, but nothing is stored or sent. A failed SMS for an OTP login is reported to the operator but
+ * answered alike too (an outage, or a vendor refusing one number, must not reveal the account); after a
+ * correct password (`new_device`) the failure is returned. Returns the challenge id.
  */
 async function createChallenge(
   user: User | null,
@@ -207,14 +210,22 @@ async function createChallenge(
     expiresAt: new Date(Date.now() + config.OTP_TTL_SECONDS * 1000),
     consumedAt: null,
   });
-  // OTPs are platform messages: the super admin's global SMS provider, else the built-in one.
-  await (
-    await getDefaultMessagingProvider('sms')
-  ).send({
-    to: mobile,
-    body: `${code} is your verification code. It expires in ${Math.round(config.OTP_TTL_SECONDS / 60)} minutes.`,
-    data: { otp: code, purpose },
-  });
+  try {
+    // OTPs are platform messages: the super admin's global SMS provider, else the built-in one.
+    await (
+      await getDefaultMessagingProvider('sms')
+    ).send({
+      to: mobile,
+      body: `${code} is your verification code. It expires in ${Math.round(config.OTP_TTL_SECONDS / 60)} minutes.`,
+      data: { otp: code, purpose },
+    });
+  } catch (err) {
+    if (purpose !== 'login') throw err;
+    logger.error({ err, purpose }, 'OTP SMS not sent');
+    captureError(err, { source: 'otp', purpose });
+    await sleep(Math.max(0, issueMs * (0.8 + Math.random() * 0.4) - (Date.now() - started)));
+    return id;
+  }
   if (!config.isProd) logger.info(`[DEV] OTP for ${mobile} (${purpose}): ${code}`);
   const took = Date.now() - started;
   issueMs = issueMs ? issueMs * 0.8 + took * 0.2 : took;
