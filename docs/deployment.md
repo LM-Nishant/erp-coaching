@@ -169,6 +169,7 @@ Format rules:
 | `ERROR_TRACKING_PROVIDER`, `ERROR_TRACKING_WEBHOOK_URL`                                                                                                                  | [Error tracking](#error-tracking)                                                                                                                                                                                 |
 | `RATE_LIMIT_*`                                                                                                                                                           | [Rate limiting](#rate-limiting-behind-the-proxy)                                                                                                                                                                  |
 | `JOBS_WORKER_ENABLED`, `JOBS_POLL_INTERVAL_MS`                                                                                                                           | [Background jobs](#background-jobs)                                                                                                                                                                               |
+| `CALENDAR_PROVIDER`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI`                                                                 | Google Calendar for parent-teacher meetings: `mock` by default, `google` with the platform's OAuth client ([Google Calendar](integrations/google-calendar.md))                                                    |
 | `AI_BASE_URL`, `AI_MODEL`, `AI_API_KEY`, `AI_TIMEOUT_MS`                                                                                                                 | Defaults for the AI features; the Super Admin can override them in the app                                                                                                                                        |
 | `SMS_PROVIDER`, `WHATSAPP_PROVIDER`, `EMAIL_PROVIDER`, `PUSH_PROVIDER`, `PAYMENT_GATEWAY`, `STREAMING_PROVIDER`, `BIOMETRIC_PROVIDER`                                    | Integration adapters. This release only has `console` and `mock` implementations ([before going live](#before-going-live))                                                                                        |
 | `SEED_SUPERADMIN_MOBILE`, `SEED_SUPERADMIN_PASSWORD`, `SEED_DEMO_DATA`                                                                                                   | First deployment only ([seeding](#first-deployment))                                                                                                                                                              |
@@ -235,6 +236,7 @@ Relative paths are relative to `deploy/`. `ERP_ENV_FILE` names the env file that
 | `JWT_ACCESS_SECRET`           | `openssl rand -base64 48`                    | Signs access tokens and live-class join tokens                                                                                                                                   |
 | `ENCRYPTION_KEY`              | `openssl rand -base64 32` (exactly 32 bytes) | Encrypts stored integration credentials: AI keys, payment and notification settings, offline LMS keys. **It is not in the backups.** Without it, those values can't be decrypted |
 | `FILE_URL_SECRET`             | `openssl rand -hex 32`                       | Signs short-lived file and media URLs                                                                                                                                            |
+| `GOOGLE_OAUTH_CLIENT_SECRET`  | Google Cloud (the OAuth client)              | Google Calendar's OAuth client, only with `CALENDAR_PROVIDER=google`. To rotate it, see [Google Calendar](integrations/google-calendar.md#configuration)                         |
 
 - **Where secrets live:**
   - on the server, only in `deploy/.env` and `deploy/secrets/` (mode 600, owned by root or the deploy user);
@@ -496,6 +498,9 @@ This release only ships development adapters for the external integrations:
 - **Live classes:** `STREAMING_PROVIDER=mock` is the peer-to-peer WebRTC transport ([live classes](#live-classes)).
 - **Biometrics:** `BIOMETRIC_PROVIDER=mock`.
 - **Storage:** `STORAGE_DRIVER` must stay `local`, because the S3/R2 adapter is not implemented.
+- **Google Calendar:** `CALENDAR_PROVIDER=mock` keeps parent-teacher meetings out of Google Calendar. Turning on
+  `google` needs the platform's Google OAuth client, and Google's verification of its consent screen can take weeks
+  ([Google Calendar](integrations/google-calendar.md)).
 
 ## Upgrades
 
