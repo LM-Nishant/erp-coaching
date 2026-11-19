@@ -30,6 +30,7 @@ export default defineModule({
       label: 'Student self-service',
       actions: ['view', 'edit'],
       grants: { student: ['view', 'edit'] },
+      selfService: true,
     },
   ],
   onReady: registerStudentIntegrations,

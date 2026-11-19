@@ -106,7 +106,7 @@ import {
   IonToolbar,
 } from '@ionic/vue';
 import { logOutOutline } from 'ionicons/icons';
-import { appModules } from '@/core/modules';
+import { appModules, fitsPersona } from '@/core/modules';
 import { worksOffline } from '@/router';
 import { useAuthStore } from '@/stores/auth';
 import BiometricOffer from '@/components/BiometricOffer.vue';
@@ -140,6 +140,7 @@ const menu = computed(() =>
       if (item.superAdmin) return auth.isPlatformAdmin;
       if (auth.isPlatformAdmin) return !item.permission;
       if (item.permission && !auth.can(item.permission)) return false;
+      if (!fitsPersona(item, auth.me?.roles)) return false;
       return !item.planModule || auth.moduleEnabled(item.planModule);
     })
     .sort((a, b) => (a.order ?? 100) - (b.order ?? 100)),

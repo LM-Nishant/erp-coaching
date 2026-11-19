@@ -50,6 +50,8 @@ export default defineAppModule({
       path: '/appointments/availability',
       icon: calendarClearOutline,
       permission: 'appointments.edit',
+      // Only teachers have slots; managers hold `edit` to manage meetings.
+      roles: ['teacher'],
       planModule: 'appointments',
       order: 57,
     },

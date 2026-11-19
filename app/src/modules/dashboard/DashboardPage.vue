@@ -71,7 +71,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonCol, IonGrid, IonRow } from '@ionic/vue';
-import type { PlanLimits } from '@erp/shared';
+import type { PlanLimits, SubscriptionDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import StatCard from '@/components/StatCard.vue';
 import { api } from '@/core/api';
@@ -79,7 +79,7 @@ import { widgetsFor } from '@/core/modules';
 import { useAuthStore } from '@/stores/auth';
 
 interface SubscriptionInfo {
-  subscription: { status: string; plan?: { name: string } } | null;
+  subscription: SubscriptionDto | null;
   limits: PlanLimits | null;
   usage: { branches: number; storageMb: number; aiTokensThisMonth: number };
 }

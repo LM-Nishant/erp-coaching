@@ -43,6 +43,7 @@ export default defineModule({
       label: 'My fees & online payment',
       actions: ['view', 'create'],
       grants: { student: ['view', 'create'], parent: ['view', 'create'] },
+      selfService: true,
     },
   ],
   jobs: {

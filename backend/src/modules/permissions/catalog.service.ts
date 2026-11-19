@@ -19,8 +19,9 @@ export const SYSTEM_ROLE_DEFS: Record<SystemRoleSlug, { name: string; descriptio
 
 /**
  * Upserts the permission catalog declared by modules and the system role templates with their
- * default grants. Idempotent; runs at boot and from the seeder. Institute Admin always receives
- * every permission.
+ * default grants. Idempotent; runs at boot and from the seeder. Institute Admin receives every
+ * permission except self-service ones (`PermissionDeclaration.selfService`) not granted to it
+ * explicitly. Grants a system role no longer has are deleted, so existing databases follow suit.
  */
 export async function syncPermissionCatalog(modules: ModuleDefinition[]): Promise<void> {
   const decls = modules.flatMap((m) => m.permissions ?? []);
@@ -42,6 +43,11 @@ export async function syncPermissionCatalog(modules: ModuleDefinition[]): Promis
     }
     const perms = await Permission.findAll({ transaction });
     const byKey = new Map(perms.map((p) => [p.key, p.id]));
+    const selfService = new Set(
+      decls.flatMap((d) =>
+        (d.selfService === true ? d.actions : (d.selfService ?? [])).map((a) => `${d.module}.${a}`),
+      ),
+    );
 
     for (const [slug, def] of Object.entries(SYSTEM_ROLE_DEFS) as [
       SystemRoleSlug,
@@ -53,7 +59,9 @@ export async function syncPermissionCatalog(modules: ModuleDefinition[]): Promis
       else await role.update(def, { transaction });
 
       const keys = new Set<string>();
-      if (slug === SYSTEM_ROLES.INSTITUTE_ADMIN) perms.forEach((p) => keys.add(p.key));
+      if (slug === SYSTEM_ROLES.INSTITUTE_ADMIN) {
+        for (const p of perms) if (!selfService.has(p.key)) keys.add(p.key);
+      }
       for (const d of decls) {
         const grant = d.grants?.[slug];
         if (!grant) continue;

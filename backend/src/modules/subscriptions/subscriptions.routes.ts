@@ -207,7 +207,7 @@ function tenantRoutes(api: Router) {
     const { instituteId } = requireTenantContext();
     const sub = await getActiveSubscription(instituteId);
     res.json({
-      subscription: sub,
+      subscription: sub ? toSubscriptionDto(sub) : null,
       limits: sub ? await getPlanLimits(instituteId) : null,
       usage: await usageFor(instituteId),
     });

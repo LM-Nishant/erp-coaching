@@ -30,6 +30,7 @@ export default defineModule({
         student: ['view', 'create'],
         parent: ['view'],
       },
+      selfService: true,
     },
   ],
   jobs: {

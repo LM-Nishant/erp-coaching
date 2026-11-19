@@ -1,7 +1,11 @@
 import request from 'supertest';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { SYSTEM_ROLES } from '@erp/shared';
+import { discoverModules } from '../src/infrastructure/module-loader';
 import { Branch } from '../src/modules/branches/branch.model';
-import { USERS, bearer, getApp, login } from './helpers';
+import { syncPermissionCatalog } from '../src/modules/permissions/catalog.service';
+import { Permission, Role, RolePermission } from '../src/modules/permissions/models';
+import { DEMO_PASSWORD, USERS, bearer, getApp, login } from './helpers';
 
 describe('RBAC', () => {
   let admin: string;
@@ -85,5 +89,63 @@ describe('RBAC', () => {
           .set(bearer(admin))
       ).status,
     ).toBe(403);
+  });
+
+  describe('system role grants', () => {
+    const SELF_SERVICE = [
+      'student-portal.view',
+      'guardian-portal.view',
+      'parent-portal.view',
+      'my-fees.view',
+      'attendance-self.create',
+      'exam-portal.view',
+      'appointments.create',
+    ];
+    const grantsOf = async (slug: string) => {
+      const role = await Role.findOne({
+        where: { instituteId: null, slug },
+        include: [{ model: Permission, as: 'permissions' }],
+      });
+      return new Set(role!.permissions!.map((p) => p.key));
+    };
+
+    it('leave student and parent self-service out of the institute admin blanket grant', async () => {
+      const [instituteAdmin, student, parent] = await Promise.all(
+        [SYSTEM_ROLES.INSTITUTE_ADMIN, SYSTEM_ROLES.STUDENT, SYSTEM_ROLES.PARENT].map(grantsOf),
+      );
+      expect(SELF_SERVICE.filter((k) => instituteAdmin.has(k))).toEqual([]);
+      expect(SELF_SERVICE.filter((k) => !student.has(k) && !parent.has(k))).toEqual([]);
+      const management = [
+        'parent-portal.configure',
+        'appointments.configure',
+        'students.view',
+        'fees.approve',
+      ];
+      expect(management.filter((k) => !instituteAdmin.has(k))).toEqual([]);
+    });
+
+    it('keep institute admins out of the parent portal API', async () => {
+      const app = await getApp();
+      const parent = (await login({ mobile: '9100000006', password: DEMO_PASSWORD })).accessToken;
+      expect((await request(app).get('/api/guardian-portal/children').set(bearer(parent))).status).toBe(200);
+      const res = await request(app).get('/api/guardian-portal/children').set(bearer(admin));
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('PERMISSION_DENIED');
+    });
+
+    it('drop self-service grants an existing database gave institute admins when re-synced', async () => {
+      const [role, perm] = await Promise.all([
+        Role.findOne({ where: { instituteId: null, slug: SYSTEM_ROLES.INSTITUTE_ADMIN } }),
+        Permission.findOne({ where: { key: 'my-fees.view' } }),
+      ]);
+      const stale = { roleId: role!.id, permissionId: perm!.id };
+      await RolePermission.bulkCreate([stale], { ignoreDuplicates: true });
+      try {
+        await syncPermissionCatalog(await discoverModules());
+        expect(await RolePermission.count({ where: stale })).toBe(0);
+      } finally {
+        await RolePermission.destroy({ where: stale });
+      }
+    });
   });
 });
