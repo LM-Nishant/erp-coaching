@@ -241,11 +241,12 @@ Redis is unreachable, each process counts in memory ([deployment.md](deployment.
 - **Offline downloads.** The download link lasts 10 minutes and is bound to the device: it stops
   working once that device signs out, goes idle or is revoked. A download that has already started
   isn't cut off.
-- **Live classes.** Join tokens are bound to the device in the same way. They last until 30
-  minutes after the scheduled end (at least 15 minutes, at most 4 hours), and the app renews them
-  before they expire. Open live-class sockets are re-checked every minute and whenever the
-  institute's subscription or status changes: a revoked, signed-out or idle device, an inactive
-  user or institute, or a suspended subscription drops them.
+- **Live classes.** Join tokens, which a streaming vendor's SDK uses, are bound to the device in
+  the same way. They last until 30 minutes after the scheduled end (at least 15 minutes, at most
+  4 hours); a client renews one with `POST /api/live-classes/:id/join` before it expires. The
+  built-in transport's sockets use the normal access token instead. Open live-class sockets are
+  re-checked every minute and whenever the institute's subscription or status changes: a revoked,
+  signed-out or idle device, an inactive user or institute, or a suspended subscription drops them.
 
 The release-readiness test checks that a signed URL stops working after its TTL.
 
