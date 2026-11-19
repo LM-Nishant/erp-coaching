@@ -15,20 +15,23 @@ export interface FakeAccount {
   timeZone?: string;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- loosely typed Google JSON, read freely in tests
+type Json = Record<string, any>;
+
 export interface FakeCall {
   method: string;
   /** e.g. `/token` or `/calendar/v3/calendars/primary/events/<id>`. */
   path: string;
   query: Record<string, string>;
   /** JSON or form body. */
-  body: Record<string, any> | null;
+  body: Json | null;
   /** The account whose access token was sent (Calendar API calls). */
   account: string | null;
 }
 
 export type FakeFailure = { status: number; body?: unknown } | 'network' | 'timeout';
 
-type FakeEvent = Record<string, any> & { id: string; status: string };
+type FakeEvent = Json & { id: string; status: string };
 
 interface AuthCode {
   account: FakeAccount;
@@ -68,15 +71,17 @@ const meetCode = () => {
   return `${s.slice(0, 3)}-${s.slice(3, 7)}-${s.slice(7, 10)}`;
 };
 
-function urlOf(input: RequestInfo | URL): URL {
+type FetchInput = Parameters<typeof fetch>[0];
+
+function urlOf(input: FetchInput): URL {
   if (input instanceof URL) return input;
   return new URL(typeof input === 'string' ? input : input.url);
 }
 
-function bodyOf(init: RequestInit | undefined): Record<string, any> | null {
+function bodyOf(init: RequestInit | undefined): Json | null {
   if (typeof init?.body !== 'string') return null;
   const contentType = new Headers(init.headers).get('content-type') ?? '';
-  if (contentType.includes('application/json')) return JSON.parse(init.body) as Record<string, any>;
+  if (contentType.includes('application/json')) return JSON.parse(init.body) as Json;
   return Object.fromEntries(new URLSearchParams(init.body));
 }
 
@@ -139,7 +144,10 @@ export function installFakeGoogle(client: { clientId: string; clientSecret: stri
     },
 
     /** Tokens for an account without going through consent (provider-level tests). */
-    grant(account: FakeAccount, scopes = ['openid', 'email', 'https://www.googleapis.com/auth/calendar.events']) {
+    grant(
+      account: FakeAccount,
+      scopes = ['openid', 'email', 'https://www.googleapis.com/auth/calendar.events'],
+    ) {
       accounts.set(account.sub, account);
       const refreshToken = opaque('1//fake-');
       refreshTokens.set(refreshToken, { sub: account.sub, scopes });
@@ -148,7 +156,9 @@ export function installFakeGoogle(client: { clientId: string; clientSecret: stri
 
     /** Refresh tokens currently valid for the account. */
     refreshTokensOf(email: string) {
-      return [...refreshTokens].filter(([, t]) => accounts.get(t.sub)?.email === email).map(([token]) => token);
+      return [...refreshTokens]
+        .filter(([, t]) => accounts.get(t.sub)?.email === email)
+        .map(([token]) => token);
     },
 
     /** The user removes the app's access in their Google Account (or an admin does). */
@@ -215,13 +225,14 @@ export function installFakeGoogle(client: { clientId: string; clientSecret: stri
     return `${b64({ alg: 'RS256', kid: 'fake', typ: 'JWT' })}.${b64(claims)}.fake-signature`;
   }
 
-  function token(form: Record<string, any>): Response {
+  function token(form: Json): Response {
     if (form.client_id !== client.clientId || form.client_secret !== client.clientSecret)
       return oauthError(401, 'invalid_client', 'Unauthorized');
     if (form.grant_type === 'authorization_code') {
       const code = codes.get(String(form.code ?? ''));
       if (!code || code.used) return oauthError(400, 'invalid_grant', 'Malformed auth code.');
-      if (form.redirect_uri !== code.redirectUri) return oauthError(400, 'redirect_uri_mismatch', 'Bad Request');
+      if (form.redirect_uri !== code.redirectUri)
+        return oauthError(400, 'redirect_uri_mismatch', 'Bad Request');
       if (challengeOf(String(form.code_verifier ?? '')) !== code.challenge)
         return oauthError(400, 'invalid_grant', 'Invalid code verifier.');
       code.used = true;
@@ -257,7 +268,7 @@ export function installFakeGoogle(client: { clientId: string; clientSecret: stri
     return oauthError(400, 'unsupported_grant_type', 'Invalid grant_type');
   }
 
-  function revoke(form: Record<string, any>): Response {
+  function revoke(form: Json): Response {
     const t = String(form.token ?? '');
     const sub = refreshTokens.get(t)?.sub ?? accessTokens.get(t);
     if (!sub) return oauthError(400, 'invalid_token', 'Token expired or revoked');
@@ -266,7 +277,7 @@ export function installFakeGoogle(client: { clientId: string; clientSecret: stri
     return json(200, {});
   }
 
-  function addConference(ev: FakeEvent, request: Record<string, any>) {
+  function addConference(ev: FakeEvent, request: Json) {
     if (fake.meetPending) {
       ev.conferenceData = { createRequest: { ...request, status: { statusCode: 'pending' } } };
       delete ev.hangoutLink;
@@ -284,7 +295,7 @@ export function installFakeGoogle(client: { clientId: string; clientSecret: stri
     pendingConferences.delete(ev);
   }
 
-  const withResponses = (attendees: Record<string, any>[] | undefined) =>
+  const withResponses = (attendees: Json[] | undefined) =>
     (attendees ?? []).map((a) => ({ ...a, responseStatus: a.responseStatus ?? 'needsAction' }));
 
   function calendarApi(method: string, url: URL, init: RequestInit | undefined, call: FakeCall): Response {
@@ -371,7 +382,7 @@ export function installFakeGoogle(client: { clientId: string; clientSecret: stri
 
   const spy = vi
     .spyOn(globalThis, 'fetch')
-    .mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+    .mockImplementation(async (input: FetchInput, init?: RequestInit) => {
       const url = urlOf(input);
       if (!GOOGLE_HOST.test(url.hostname)) return realFetch(input, init);
       const method = (init?.method ?? 'GET').toUpperCase();

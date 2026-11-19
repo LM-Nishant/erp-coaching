@@ -73,7 +73,10 @@ describe('GoogleCalendarProvider', () => {
   it('creates the event in the institute time zone with attendees and a Meet link', async () => {
     const { provider } = providerFor(teacher);
     const res = await provider.createEvent(meeting());
-    expect(res).toEqual({ eventId: googleEventId('appointments:1:1'), meetingUrl: expect.stringMatching(MEET) });
+    expect(res).toEqual({
+      eventId: googleEventId('appointments:1:1'),
+      meetingUrl: expect.stringMatching(MEET),
+    });
     // Google event ids: base32hex characters (a-v, 0-9), 5 to 1024 long.
     expect(res.eventId).toMatch(/^[a-v0-9]{5,1024}$/);
 
@@ -326,7 +329,10 @@ describe('GoogleCalendarProvider', () => {
     // Google never reuses a deleted id, so the same request id cannot create it again.
     await expect(provider.createEvent(meeting())).rejects.toMatchObject({ kind: 'not_found' });
 
-    google.failNext('DELETE /events/', { status: 503, body: { error: { code: 503, message: 'Backend Error' } } });
+    google.failNext('DELETE /events/', {
+      status: 503,
+      body: { error: { code: 503, message: 'Backend Error' } },
+    });
     await expect(provider.cancelEvent(eventId)).rejects.toMatchObject({ kind: 'retryable', status: 503 });
   });
 
@@ -346,7 +352,10 @@ describe('GoogleCalendarProvider', () => {
 
     google.revokeAccount(teacher.email);
     const err = await p.provider.updateEvent(eventId, meeting()).catch((e: Error) => e);
-    expect(err).toMatchObject({ kind: 'auth', message: 'Google OAuth token refresh failed (400 invalid_grant)' });
+    expect(err).toMatchObject({
+      kind: 'auth',
+      message: 'Google OAuth token refresh failed (400 invalid_grant)',
+    });
     expect((err as Error).message).not.toContain(p.refreshToken);
   });
 
@@ -390,7 +399,9 @@ describe('Google OAuth helpers', () => {
   it('exchanges a code once, only with its verifier and the right client', async () => {
     const verifier = 'a'.repeat(64);
     const consent = googleAuthUrl(client, { state: 'state-1', codeVerifier: verifier });
-    const code = new URL(google.consent(consent, teacher), 'https://api.example.test').searchParams.get('code')!;
+    const code = new URL(google.consent(consent, teacher), 'https://api.example.test').searchParams.get(
+      'code',
+    )!;
 
     await expect(exchangeGoogleCode(client, code, 'b'.repeat(64))).rejects.toMatchObject({
       kind: 'auth',
@@ -398,7 +409,10 @@ describe('Google OAuth helpers', () => {
     });
     await expect(
       exchangeGoogleCode({ ...client, clientSecret: 'wrong' }, code, verifier),
-    ).rejects.toMatchObject({ kind: 'invalid', message: 'Google OAuth code exchange failed (401 invalid_client)' });
+    ).rejects.toMatchObject({
+      kind: 'invalid',
+      message: 'Google OAuth code exchange failed (401 invalid_client)',
+    });
 
     const tokens = await exchangeGoogleCode(client, code, verifier);
     expect(tokens).toEqual({
@@ -408,7 +422,10 @@ describe('Google OAuth helpers', () => {
       scopes: ['openid', 'email', GOOGLE_EVENTS_SCOPE],
       idToken: expect.any(String),
     });
-    expect(googleIdentity(tokens.idToken, client.clientId)).toEqual({ accountId: '1001', email: teacher.email });
+    expect(googleIdentity(tokens.idToken, client.clientId)).toEqual({
+      accountId: '1001',
+      email: teacher.email,
+    });
     expect(google.calls.at(-1)!.body).toEqual({
       grant_type: 'authorization_code',
       code,
@@ -491,12 +508,22 @@ describe('Google OAuth helpers', () => {
       ['no verified email', jwt({ ...base, email_verified: false })],
       ['no verified email', jwt({ ...base, email: undefined })],
     ])('rejects a token: %s', (why, token) => {
-      expect(() => googleIdentity(token, client.clientId, now)).toThrow(`Google identity token rejected: ${why}`);
+      expect(() => googleIdentity(token, client.clientId, now)).toThrow(
+        `Google identity token rejected: ${why}`,
+      );
     });
 
     it('accepts an audience list, the short issuer and a little clock skew', () => {
-      const token = jwt({ ...base, aud: ['other', client.clientId], iss: 'accounts.google.com', exp: now / 1000 - 30 });
-      expect(googleIdentity(token, client.clientId, now)).toEqual({ accountId: '42', email: 'teacher@example.test' });
+      const token = jwt({
+        ...base,
+        aud: ['other', client.clientId],
+        iss: 'accounts.google.com',
+        exp: now / 1000 - 30,
+      });
+      expect(googleIdentity(token, client.clientId, now)).toEqual({
+        accountId: '42',
+        email: 'teacher@example.test',
+      });
     });
   });
 });
