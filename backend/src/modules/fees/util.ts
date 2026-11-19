@@ -68,6 +68,7 @@ export function auditFee(input: {
   action: string;
   entityType?: string;
   entityId?: string | number;
+  branchId?: number | null;
   before?: unknown;
   after?: unknown;
   metadata?: Record<string, unknown>;
