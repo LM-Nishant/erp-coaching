@@ -57,6 +57,7 @@ const CREATED_TABLES = [
   'appointments',
   'notification_messages',
   'jobs',
+  'impersonation_sessions',
   'students',
   'guardians',
   'users',
@@ -288,6 +289,20 @@ describe('Google Calendar', () => {
     expect((await request(app).post('/api/calendar/me/connect').set(bearer(parent)).send({})).status).toBe(
       403,
     );
+
+    // Support staff impersonating an institute admin can't attach a Google account to the institute.
+    const imp = await request(app)
+      .post('/api/auth/impersonate')
+      .set(bearer(superAdmin))
+      .send({ instituteId: 1, reason: 'gcal test' });
+    expect(imp.status, JSON.stringify(imp.body)).toBe(200);
+    const asSupport = await request(app)
+      .post('/api/calendar/organiser/connect')
+      .set(bearer(imp.body.accessToken))
+      .send({});
+    expect(asSupport.status).toBe(400);
+    expect(asSupport.body.error.message).toBe('Calendars cannot be connected while impersonating');
+    await request(app).post('/api/auth/impersonation/stop').set(bearer(imp.body.accessToken));
   });
 
   // ------------------------------------------------------------ consent

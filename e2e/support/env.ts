@@ -123,6 +123,7 @@ export function apiServerEnv(): Record<string, string> {
     PAYMENT_GATEWAY: 'mock',
     STREAMING_PROVIDER: 'mock',
     BIOMETRIC_PROVIDER: 'mock',
+    CALENDAR_PROVIDER: 'mock',
     DEV_OUTBOX_FILE: OUTBOX_FILE,
     STORAGE_DRIVER: 'local',
     STORAGE_LOCAL_ROOT: STORAGE_DIR,
