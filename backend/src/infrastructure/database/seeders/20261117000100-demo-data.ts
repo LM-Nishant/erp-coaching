@@ -1,7 +1,7 @@
-import bcrypt from 'bcryptjs';
 import type { PlanLimits, SystemRoleSlug } from '@erp/shared';
 import type { Migration } from '../migration-helpers';
 import { config, DEFAULT_DEMO_PASSWORD, DEFAULT_SUPERADMIN_PASSWORD } from '../../config';
+import { hashPassword } from '../../password';
 import { User } from '../../../modules/users/user.model';
 import { Institute } from '../../../modules/institutes/institute.model';
 import { Branch } from '../../../modules/branches/branch.model';
@@ -103,7 +103,7 @@ export const up: Migration = async () => {
   await upsertUser(
     config.SEED_SUPERADMIN_MOBILE,
     'Platform Super Admin',
-    await bcrypt.hash(config.SEED_SUPERADMIN_PASSWORD, 10),
+    await hashPassword(config.SEED_SUPERADMIN_PASSWORD),
     true,
   );
 
@@ -124,7 +124,7 @@ export const up: Migration = async () => {
   }
   if (!config.SEED_DEMO_DATA) return;
 
-  const demoHash = await bcrypt.hash(config.SEED_DEMO_PASSWORD, 10);
+  const demoHash = await hashPassword(config.SEED_DEMO_PASSWORD);
   for (const def of INSTITUTES) {
     if (await Institute.findOne({ where: { slug: def.slug } })) continue;
     const inst = await Institute.create({

@@ -7,3 +7,4 @@
 export { onDeviceRevoked, type DeviceRevokedEvent } from './device-events';
 export { listUserDevices, revokeDevice, toDeviceDto } from './devices.service';
 export { Device } from './models';
+export { clearSignInLock, confirmAccountPassword, signInLocks } from './sign-in-lock';

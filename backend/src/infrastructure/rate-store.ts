@@ -109,6 +109,11 @@ export function windowCounter(name: string, windowMs: number) {
   return {
     /** Counts a hit and returns the hits in the current window, including this one. */
     hit: async (key: string) => (await store.increment(key)).totalHits,
+    /** The hits in the current window, without counting one (0 once the window has ended). */
+    count: async (key: string) => {
+      const info = await store.get?.(key);
+      return info && (!info.resetTime || info.resetTime.getTime() > Date.now()) ? info.totalHits : 0;
+    },
     reset: (key: string) => store.resetKey(key),
   };
 }

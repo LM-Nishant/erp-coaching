@@ -1,4 +1,3 @@
-import bcrypt from 'bcryptjs';
 import { Op, type Transaction, type WhereOptions } from 'sequelize';
 import { z } from 'zod';
 import type {
@@ -13,6 +12,7 @@ import type {
 } from '@erp/shared';
 import { GUARDIAN_RELATIONS, STUDENT_STATUSES } from '@erp/shared';
 import { getSequelize } from '../../infrastructure/database/sequelize';
+import { hashPassword } from '../../infrastructure/password';
 import { requireTenantContext } from '../../shared/context';
 import { BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
@@ -293,7 +293,7 @@ export async function findOrCreateUser(
       name: input.name,
       mobile: input.mobile,
       email: input.email && !emailTaken ? input.email : null,
-      passwordHash: input.password ? await bcrypt.hash(input.password, 10) : null,
+      passwordHash: input.password ? await hashPassword(input.password) : null,
       lastLoginAt: null,
     },
     { transaction },

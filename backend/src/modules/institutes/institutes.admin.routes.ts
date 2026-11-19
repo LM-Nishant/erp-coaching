@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
 import { Op, fn, col } from 'sequelize';
 import { z } from 'zod';
 import { SYSTEM_ROLES } from '@erp/shared';
@@ -10,6 +9,7 @@ import { requireSuperAdmin } from '../../shared/middleware/authorize';
 import { AppError, BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
 import { getSequelize } from '../../infrastructure/database/sequelize';
+import { hashPassword } from '../../infrastructure/password';
 import { Institute } from './institute.model';
 import { Branch } from '../branches/branch.model';
 import { User } from '../users/user.model';
@@ -165,7 +165,7 @@ export function instituteAdminRoutes(api: Router) {
             name: admin.name,
             mobile: admin.mobile,
             email: admin.email ?? null,
-            passwordHash: admin.password ? await bcrypt.hash(admin.password, 10) : null,
+            passwordHash: admin.password ? await hashPassword(admin.password) : null,
             lastLoginAt: null,
           },
           { transaction },

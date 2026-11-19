@@ -56,7 +56,10 @@ const schema = z.object({
   /** 32 bytes, base64 encoded. Used for AES-256-GCM encryption of secrets at rest. */
   ENCRYPTION_KEY: devDefault('ZGV2LW9ubHktZW5jcnlwdGlvbi1rZXktMzItYnl0ZXM='),
   FILE_URL_SECRET: devDefault('dev-only-file-url-secret-change-me'),
-  /** Server-side key for the HMAC that stores OTP codes (and keys per-mobile OTP counters). */
+  /**
+   * Server-side key for the HMAC that stores OTP codes. It also keys the per-mobile OTP counters and the
+   * sign-in locks of identifiers without an account. Changing it invalidates codes already sent.
+   */
   OTP_HASH_SECRET: devDefault('dev-only-otp-hash-secret-change-me'),
   /**
    * scrypt cost of new password hashes, as log2(N) (memory = 128 * 2^cost * 8 bytes). Sign-in rehashes
@@ -66,7 +69,7 @@ const schema = z.object({
     .number()
     .int()
     .min(isProd ? 15 : 10)
-    .max(20)
+    .max(18)
     .default(15),
 
   OTP_TTL_SECONDS: z.coerce.number().default(300),
@@ -79,7 +82,7 @@ const schema = z.object({
    */
   LOGIN_LOCKOUT_THRESHOLD: z.coerce.number().int().min(0).default(5),
   LOGIN_LOCKOUT_BASE_SECONDS: z.coerce.number().int().positive().default(60),
-  LOGIN_LOCKOUT_MAX_SECONDS: z.coerce.number().int().positive().default(900),
+  LOGIN_LOCKOUT_MAX_SECONDS: z.coerce.number().int().positive().max(86400).default(900),
   MAX_ACTIVE_DEVICES: z.coerce.number().default(2),
   /** Default inactivity timeout (minutes, 0 = off) for sessions without an institute setting. */
   SESSION_IDLE_TIMEOUT_MINUTES: z.coerce.number().int().min(0).max(1440).default(0),

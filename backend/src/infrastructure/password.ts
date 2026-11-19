@@ -58,16 +58,18 @@ export async function verifyPassword(
   const parts = stored.split('$');
   if (parts.length !== 6 || parts[0] !== 'scrypt') return no;
   const params = { N: Number(parts[1]), r: Number(parts[2]), p: Number(parts[3]) };
+  // Bounded so a crafted hash can't make one check take seconds or hundreds of MiB.
   const valid =
     Number.isInteger(Math.log2(params.N)) &&
     params.N >= 2 ** 10 &&
-    params.N <= 2 ** 20 &&
+    params.N <= 2 ** 18 &&
     Number.isInteger(params.r) &&
     params.r >= 1 &&
-    params.r <= 32 &&
+    params.r <= 16 &&
+    params.N * params.r <= 2 ** 21 &&
     Number.isInteger(params.p) &&
     params.p >= 1 &&
-    params.p <= 16;
+    params.p <= 4;
   const expected = Buffer.from(parts[5], 'base64');
   if (!valid || expected.length < 16) return no;
   const actual = await derive(password, Buffer.from(parts[4], 'base64'), params, expected.length);
