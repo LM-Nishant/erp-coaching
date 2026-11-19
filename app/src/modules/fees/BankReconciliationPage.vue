@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Bank accounts" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'accounting.create'" @click="openBank()"
+      <ion-button v-can="'accounting.create'" aria-label="Add bank account" @click="openBank()"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>

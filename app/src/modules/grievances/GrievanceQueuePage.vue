@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Complaint queue" :on-refresh="reload">
     <template #actions>
-      <ion-button v-can="'grievances.create'" router-link="/grievances/new"
+      <ion-button v-can="'grievances.create'" router-link="/grievances/new" aria-label="New complaint"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>

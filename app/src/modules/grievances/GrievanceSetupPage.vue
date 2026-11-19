@@ -35,7 +35,9 @@
     <ion-list>
       <ion-list-header>
         <ion-label>Categories</ion-label>
-        <ion-button @click="openEditor()"><ion-icon slot="icon-only" :icon="add" /></ion-button>
+        <ion-button aria-label="New category" @click="openEditor()"
+          ><ion-icon slot="icon-only" :icon="add"
+        /></ion-button>
       </ion-list-header>
       <ion-item v-for="c in categories" :key="c.id">
         <ion-label>
@@ -43,10 +45,10 @@
           <p>SLA {{ c.slaHours }} h · {{ c.defaultAssigneeName ?? 'No default assignee' }}</p>
           <p v-if="c.description">{{ c.description }}</p>
         </ion-label>
-        <ion-button slot="end" fill="clear" @click="openEditor(c)"
+        <ion-button slot="end" fill="clear" :aria-label="`Edit ${c.name}`" @click="openEditor(c)"
           ><ion-icon slot="icon-only" :icon="createOutline"
         /></ion-button>
-        <ion-button slot="end" fill="clear" color="danger" @click="remove(c)"
+        <ion-button slot="end" fill="clear" color="danger" :aria-label="`Delete ${c.name}`" @click="remove(c)"
           ><ion-icon slot="icon-only" :icon="trashOutline"
         /></ion-button>
       </ion-item>

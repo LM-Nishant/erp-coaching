@@ -3,8 +3,17 @@ import { SUBSCRIPTION_ERROR_CODES } from '@erp/shared';
 import { AppError } from '../../shared/errors';
 import { getAccessStateCached } from './subscription.service';
 
-/** Reachable in every state: sign-in/out, the billing page (to pay) and data export. */
-const ALWAYS_ALLOWED = [/^\/api\/auth(\/|$)/, /^\/api\/subscription(\/|$)/, /^\/api\/tenant-data(\/|$)/];
+/**
+ * Reachable in every state: sign-in/out, the billing page (to pay), data export, and admins signing
+ * out members' devices (a lost phone must be signed out even while suspended).
+ */
+const ALWAYS_ALLOWED = [
+  /^\/api\/auth(\/|$)/,
+  /^\/api\/subscription(\/|$)/,
+  /^\/api\/tenant-data(\/|$)/,
+  /^\/api\/users\/devices$/,
+  /^\/api\/users\/\d+\/devices(\/\d+)?$/,
+];
 /** Writes that stay allowed while read-only (personal notification state, not institute data). */
 const RESTRICTED_WRITES = [/^\/api\/notifications\/(inbox|preferences|push-tokens)(\/|$)/];
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);

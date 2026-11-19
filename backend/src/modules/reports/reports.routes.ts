@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { REPORT_EXPORT_FORMATS } from '@erp/shared';
+import { logger } from '../../infrastructure/logger';
 import { audit } from '../../shared/audit/audit.service';
 import { authenticate } from '../../shared/middleware/authenticate';
 import {
@@ -9,11 +10,12 @@ import {
   requireSuperAdmin,
   requireTenant,
 } from '../../shared/middleware/authorize';
+import { contentDisposition } from '../../shared/utilities/file-response';
 import { idParam } from '../../shared/utilities/pagination';
 import { parse } from '../../shared/utilities/validation';
 import { roleDashboard } from './dashboard.service';
 import { SCREEN_ROW_LIMIT, availableReports, catalogItem, prepareReport, runReport } from './definitions';
-import { createExport, downloadExport, getExport, listExports } from './exports.service';
+import { createExport, getExport, listExports, openExportDownload } from './exports.service';
 import { createExportSchema, reportFiltersSchema } from './filters';
 import { renderReport } from './render';
 import { platformBrand, saasDashboard, saasExportDocument } from './saas';
@@ -52,9 +54,19 @@ export function reportsRoutes(api: Router) {
     res.json(await getExport(parse(idParam, req.params).id));
   });
 
-  // POST: every download is signed and audited separately.
-  r.post('/exports/:id/download', requirePermission(M, 'export'), async (req, res) => {
-    res.json(await downloadExport(parse(idParam, req.params).id));
+  // A file attachment (not shown inline, even for CSV); every download is audited.
+  r.get('/exports/:id/download', requirePermission(M, 'export'), async (req, res) => {
+    const file = await openExportDownload(parse(idParam, req.params).id);
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Content-Length', String(file.size));
+    res.setHeader('Content-Disposition', contentDisposition('attachment', file.fileName));
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    file.stream.on('error', (err) => {
+      logger.warn({ err }, 'Report export download stream failed');
+      res.destroy(err);
+    });
+    file.stream.pipe(res);
   });
 
   r.post('/:key/exports', requirePermission(M, 'export'), async (req, res) => {

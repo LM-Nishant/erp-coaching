@@ -3,14 +3,16 @@
  * then downloads it again from "Report exports".
  *
  * Setup (API): a new institute with one batch. Browser: the admin opens "Capacity and utilisation",
- * exports it as CSV (small, so it is prepared at once and opened as a signed download link), then
- * finds the export on "Report exports" with its row count and downloads it again. Both downloads
- * are fetched over HTTP and are the same CSV, listing the batch.
+ * exports it as CSV (small, so it is prepared at once and downloaded straight away), then finds the
+ * export on "Report exports" and downloads it again. Both downloads are served as CSV attachments,
+ * saved by the browser under the export's name, and are the same CSV, listing the batch.
  */
 import { expect, test } from '../support/fixtures';
 import { createBatch, createInstitute } from '../support/data';
-import { fetchDownload, openedUrl, trapWindowOpen } from '../support/downloads';
-import { actionSheet, activePage } from '../support/ui';
+import { savedDownload } from '../support/downloads';
+import { actionSheet, activePage, expectToast } from '../support/ui';
+
+const DOWNLOAD_URL = /\/api\/reports\/exports\/\d+\/download$/;
 
 test('report export → download from the report and from "Report exports"', async ({
   http,
@@ -24,20 +26,21 @@ test('report export → download from the report and from "Report exports"', asy
     const page = await openAs(institute.admin, '/reports/capacity');
     const content = activePage(page);
     await expect(content.getByText('Batch seat utilisation and classroom occupancy.')).toBeVisible();
-    await trapWindowOpen(page);
     await page.getByRole('button', { name: 'Export', exact: true }).click();
     const sheet = actionSheet(page);
     await expect(sheet).toContainText('Export Capacity and utilisation');
-    await sheet.getByRole('button', { name: 'CSV', exact: true }).click();
-    await expect(sheet).toBeHidden();
 
-    const file = await fetchDownload(http, await openedUrl(page));
-    // Stored text files are served as sandboxed plain text (file-response policy), named .csv.
-    expect(file.headers()['content-type']).toBe('text/plain; charset=utf-8');
-    expect(file.headers()['content-disposition']).toMatch(/filename=".*\.csv"/);
-    const text = await file.text();
-    expect(text).toContain(batch.batchName);
-    return text;
+    const file = await savedDownload(page, DOWNLOAD_URL, () =>
+      sheet.getByRole('button', { name: 'CSV', exact: true }).click(),
+    );
+    expect(file.response.headers()['content-type']).toBe('text/csv; charset=utf-8');
+    expect(file.response.headers()['content-disposition']).toBe(
+      `attachment; filename="${file.fileName}"; filename*=UTF-8''${file.fileName}`,
+    );
+    expect(file.fileName).toMatch(/^capacity-\d{4}-\d{2}-\d{2}-to-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(file.text).toContain(batch.batchName);
+    await expectToast(page, `Downloaded ${file.fileName}`);
+    return file;
   });
 
   await test.step('the export is listed on "Report exports" and downloads again', async () => {
@@ -48,9 +51,11 @@ test('report export → download from the report and from "Report exports"', asy
     await expect(row).toContainText('CSV');
     await expect(row.locator('ion-badge')).toHaveText('Ready');
 
-    await trapWindowOpen(page);
-    await row.getByRole('button', { name: 'Download' }).click();
-    const again = await fetchDownload(http, await openedUrl(page));
-    expect(await again.text()).toBe(csv);
+    const again = await savedDownload(page, DOWNLOAD_URL, () =>
+      row.getByRole('button', { name: 'Download' }).click(),
+    );
+    expect(again.response.headers()['content-type']).toBe('text/csv; charset=utf-8');
+    expect(again.fileName).toBe(csv.fileName);
+    expect(again.text).toBe(csv.text);
   });
 });

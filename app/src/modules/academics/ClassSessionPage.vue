@@ -70,6 +70,7 @@
                 slot="end"
                 fill="clear"
                 size="small"
+                aria-label="Delete comment"
                 @click="removeComment(c.id)"
                 ><ion-icon slot="icon-only" :icon="closeOutline"
               /></ion-button>
@@ -81,7 +82,12 @@
                 aria-label="Comment"
                 @keyup.enter="comment(n.id)"
               />
-              <ion-button slot="end" fill="clear" :disabled="!drafts[n.id]?.trim()" @click="comment(n.id)"
+              <ion-button
+                slot="end"
+                fill="clear"
+                :disabled="!drafts[n.id]?.trim()"
+                aria-label="Post comment"
+                @click="comment(n.id)"
                 ><ion-icon slot="icon-only" :icon="sendOutline"
               /></ion-button>
             </ion-item>

@@ -24,12 +24,13 @@ import type {
   UsageSnapshotDto,
 } from '@erp/shared';
 import { api } from '@/core/api';
+import { openFileLink } from '@/core/downloads';
 
 export interface SignedLink {
   url: string;
   expiresAt: string;
 }
-export const openLink = (s: SignedLink) => window.open(s.url, '_blank');
+export const openLink = (s: SignedLink) => openFileLink(s.url);
 
 export interface PageQuery {
   page?: number;

@@ -1,7 +1,11 @@
 <template>
   <AppPage title="Homework" :on-refresh="load">
     <template #actions>
-      <ion-button v-if="isStaff" v-can="'lms-assignments.edit'" router-link="/lms/homework/new"
+      <ion-button
+        v-if="isStaff"
+        v-can="'lms-assignments.edit'"
+        router-link="/lms/homework/new"
+        aria-label="New homework"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>

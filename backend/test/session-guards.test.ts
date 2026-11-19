@@ -320,4 +320,37 @@ describe('device session checks, subscription guard and member devices', () => {
     expect(ids).not.toContain(u.teacherB.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
+
+  it("lets admins sign out members' devices while the institute is suspended or read-only", async () => {
+    await createUser('devicesAdmin', [{ role: SYSTEM_ROLES.INSTITUTE_ADMIN, branchId: null }]);
+    await createUser('lostPhone', [{ role: SYSTEM_ROLES.STUDENT, branchId: branchA }]);
+    const admin = await signIn('devicesAdmin');
+    const signOutLostPhone = async () => {
+      const lost = await signIn('lostPhone');
+      const device = await deviceOf(lost.device);
+      const search = `/users/devices?search=${encodeURIComponent(`Guards ${tag} lostPhone`)}`;
+      const found = await api('get', search, admin.accessToken);
+      expect([found.status, found.body.map((m: { id: number }) => m.id)]).toEqual([200, [u.lostPhone.id]]);
+      const list = await api('get', `/users/${u.lostPhone.id}/devices`, admin.accessToken);
+      expect(list.status).toBe(200);
+      expect(list.body.map((d: { id: number }) => d.id)).toContain(device.id);
+      await api('delete', `/users/${u.lostPhone.id}/devices/${device.id}`, admin.accessToken).expect(204);
+      expect((await api('get', '/auth/me', lost.accessToken)).body.error.code).toBe('SESSION_REVOKED');
+    };
+    try {
+      await setSubscription({ suspendedAt: new Date() });
+      await signOutLostPhone();
+      // The rest of /users stays blocked.
+      const member = await api('get', `/users/${u.lostPhone.id}`, admin.accessToken);
+      expect([member.status, member.body.error.code]).toEqual([402, 'SUBSCRIPTION_SUSPENDED']);
+
+      await setSubscription({ suspendedAt: null, endsAt: new Date(Date.now() - 8 * DAY) });
+      expect((await getAccessState(instituteId)).state).toBe('restricted');
+      await signOutLostPhone();
+      const removal = await api('delete', `/users/${u.lostPhone.id}`, admin.accessToken);
+      expect([removal.status, removal.body.error.code]).toEqual([402, 'SUBSCRIPTION_RESTRICTED']);
+    } finally {
+      await setSubscription({ suspendedAt: null, endsAt: null });
+    }
+  });
 });

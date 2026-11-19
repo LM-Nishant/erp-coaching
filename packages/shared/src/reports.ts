@@ -200,12 +200,6 @@ export interface ReportExportDto {
   expiresAt: string | null;
 }
 
-export interface ReportDownloadDto {
-  url: string;
-  expiresAt: string;
-  fileName: string;
-}
-
 // ---------------------------------------------------------------- dashboards
 
 export interface DashboardGroupDto {
