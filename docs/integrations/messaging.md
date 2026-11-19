@@ -54,8 +54,10 @@ test** or **Check keys**.
   the stored value. Rotate them as described in [rotating secrets](../deployment.md#rotating-secrets).
 - Changing the SMTP host, port or connection security requires re-entering the password (`SECRET_REQUIRED`), so a
   stored password can't be sent to a different server.
-- Logs and stored errors never contain credentials or message bodies. A failed message keeps the vendor's error
-  code and reason, for example `Twilio 21211: Invalid 'To' Phone Number`, in **Communication → History**.
+- Logs and stored errors never contain credentials or message bodies. The API and nginx logs redact the key in
+  webhook URLs, and the API log redacts the WhatsApp `hub.verify_token` (nginx logs no query strings). A failed
+  message keeps the vendor's error code and reason, for example `Twilio 21211: Invalid 'To' Phone Number`, in
+  **Communication → History**.
 - Mobiles stored without a country code (10 digits) get `MESSAGING_DEFAULT_COUNTRY_CODE` (default `91`) before
   they go to a vendor. `MESSAGING_TIMEOUT_MS` (default 15000) bounds each vendor request.
 

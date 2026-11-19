@@ -17,7 +17,7 @@ map $request_uri $erp_path {
 }
 map $erp_path $erp_log_path {
     default $erp_path;
-    "~^(?<erp_lp_head>/api/(?:files/signed|lms/public/hls|fees/public/webhooks/[^/]+)/)[^/]+(?<erp_lp_tail>.*)$" "${erp_lp_head}[redacted]${erp_lp_tail}";
+    "~^(?<erp_lp_head>/api/(?:files/signed|lms/public/hls|(?:fees|notifications)/public/webhooks/[^/]+)/)[^/]+(?<erp_lp_tail>.*)$" "${erp_lp_head}[redacted]${erp_lp_tail}";
 }
 
 log_format erp_json escape=json
