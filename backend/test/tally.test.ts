@@ -827,6 +827,9 @@ describe('Tally accounting export', () => {
       ]),
     );
     expect(events.every((e) => e.instituteId === APEX)).toBe(true);
+    // Logged against their branch (null: institute-wide), so branch admins see their branch's events.
+    expect(events.filter((e) => e.branchId !== (e.metadata?.branchId ?? null))).toEqual([]);
+    expect(new Set(events.map((e) => e.branchId))).toEqual(new Set([null, K, B]));
     expect(events.filter((e) => e.action === 'tally.ledgers.cleared')).toHaveLength(1);
     expect(
       events.find((e) => e.action === 'tally.export.created' && e.entityId === String(exportId))?.metadata,

@@ -236,6 +236,7 @@ export async function updateSettings(input: TallySettingsUpdate): Promise<TallyS
     action: 'tally.settings.updated',
     entityType: 'tally_settings',
     entityId: scopeOf(branchId),
+    branchId,
     before: before.values,
     after: after.values,
     metadata: { branchId },
@@ -465,6 +466,7 @@ export async function updateMapping(input: TallyMappingUpdate): Promise<TallyMap
       action: 'tally.mapping.updated',
       entityType: 'tally_mapping',
       entityId: scope,
+      branchId,
       metadata: { branchId, changes },
     });
   }
@@ -515,6 +517,7 @@ export async function importKnownLedgers(
     action: 'tally.ledgers.imported',
     entityType: 'tally_ledger_list',
     entityId: scope,
+    branchId,
     metadata: {
       branchId,
       ledgers: parsed.ledgers.length,
@@ -561,6 +564,7 @@ export async function clearKnownLedgers(requested: number | null | undefined): P
       action: 'tally.ledgers.cleared',
       entityType: 'tally_ledger_list',
       entityId: scopeOf(branchId),
+      branchId,
       metadata: { branchId, deleted },
     });
   return { deleted };
@@ -927,6 +931,7 @@ export async function createExport(req: TallyExportRequest): Promise<TallyExport
     action: 'tally.export.created',
     entityType: 'tally_export',
     entityId: batch.id,
+    branchId: plan.branchId,
     metadata: {
       branchId: plan.branchId,
       from: plan.from,
@@ -1138,6 +1143,7 @@ export async function exportFile(id: number, kind: 'masters' | 'vouchers'): Prom
     action: 'tally.export.downloaded',
     entityType: 'tally_export',
     entityId: batch.id,
+    branchId: batch.branchId,
     metadata: { branchId: batch.branchId, file: kind, count },
   });
   return { fileName: fileName(batch, kind), xml };
