@@ -10,7 +10,8 @@
 import { IonChip, IonIcon, IonLabel } from '@ionic/vue';
 import { attachOutline } from 'ionicons/icons';
 import type { LmsFileRef } from '@erp/shared';
+import { openFileLink } from '@/core/downloads';
 
 defineProps<{ files: LmsFileRef[] }>();
-const open = (f: LmsFileRef) => f.url && window.open(f.url, '_blank', 'noopener');
+const open = (f: LmsFileRef) => f.url && openFileLink(f.url);
 </script>

@@ -149,6 +149,7 @@ import { add, playCircleOutline } from 'ionicons/icons';
 import { useRouter } from 'vue-router';
 import type { BatchDto, ClassSessionDto, LiveRecordingDto, LiveSessionDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import { openFileLink } from '@/core/downloads';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import { academicsApi } from '@/modules/academics/api';
@@ -185,7 +186,7 @@ watch(tab, reload);
 async function play(id: number) {
   try {
     const { url } = await liveApi.recordingUrl(id);
-    window.open(url, '_blank');
+    openFileLink(url);
   } catch (e) {
     await toastError(e);
   }

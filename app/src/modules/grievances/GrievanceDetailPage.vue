@@ -212,6 +212,7 @@ import {
   type GrievanceUserRef,
 } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import { openFileLink } from '@/core/downloads';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import { PRIORITY_COLORS, STATUS_COLORS, formatDate, grievancesApi, isOverdue, statusLabel } from './api';
@@ -350,7 +351,7 @@ const confirm = () =>
 async function openAttachment(attachmentId: number) {
   try {
     const { url } = await grievancesApi.attachmentUrl(id.value, attachmentId);
-    window.open(url, '_blank');
+    openFileLink(url);
   } catch (e) {
     await toastError(e);
   }

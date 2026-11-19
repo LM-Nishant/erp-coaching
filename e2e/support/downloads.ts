@@ -1,8 +1,9 @@
 /**
- * Signed download links (invoice PDFs, data exports) are opened with `window.open`. Instead of
- * chasing a new tab that turns into a download, the specs record the URL the app opens and fetch it
- * over HTTP, so they can check the file itself. Files the app fetches itself (`api.download`, e.g.
- * report exports) are saved with an `<a download>` link instead: `savedDownload` captures those.
+ * Signed download links (invoice PDFs, data exports) are opened with `openFileLink`, which calls
+ * `window.open` in a browser. Instead of chasing a new tab that turns into a download, the specs
+ * record the URL the app opens and fetch it over HTTP, so they can check the file itself. Files the
+ * app fetches itself (`api.download`, e.g. report exports) go through `saveFile`, which uses an
+ * `<a download>` link in a browser: `savedDownload` captures those.
  */
 import { readFile } from 'node:fs/promises';
 import { expect, type APIRequestContext, type APIResponse, type Page, type Response } from '@playwright/test';

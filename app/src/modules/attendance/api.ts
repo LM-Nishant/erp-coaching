@@ -146,13 +146,3 @@ export const localDate = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 export const pct = (p: number | null | undefined) => (p == null ? '—' : `${p}%`);
-
-/** Saves report text as a file (browser download; WebView handles it the same way). */
-export function downloadText(text: string, fileName: string, type: string) {
-  const url = URL.createObjectURL(new Blob([text], { type }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  a.click();
-  URL.revokeObjectURL(url);
-}

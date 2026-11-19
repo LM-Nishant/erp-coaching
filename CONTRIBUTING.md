@@ -389,6 +389,7 @@ export default defineAppModule({
 - **API calls.**
   - Go through `core/api.ts` only, never raw `fetch` or axios. It handles tokens, refresh and `X-Branch-Id`.
   - For endpoints that respond with a file attachment, use `api.download(path, query)`. It returns `{ blob, fileName }`; `fileName` is null when the browser can't read `Content-Disposition` cross-origin.
+  - Save files with `saveFile(data, fileName)` from `core/downloads.ts`, and open signed links with `openFileLink(url)`. The web gets a browser download or a new tab. The Android and iOS apps get the share sheet or the system browser, because their WebView ignores `<a download>` and blob URLs. `downloads.guard.test.ts` fails on `window.open`, `<a download>` or `URL.createObjectURL` anywhere else.
   - Show errors with `errorMessage(e)` and `toast`.
   - Pass `{ background: true }` for automatic polls (unread counts, status refreshes) so they don't count as activity for the inactivity timeout.
 - **Branding.** Use Ionic colour variables (`var(--ion-color-primary)`) and never hard-code brand colours.

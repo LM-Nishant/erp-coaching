@@ -165,8 +165,3 @@ export function deletionTotals(r: Pick<DeletionRequestDto, 'summary'>): string {
     .filter(Boolean)
     .join(' · ');
 }
-
-/** Opens a signed download (a new tab on the web, the system browser on devices). */
-export function openDownload(url: string) {
-  if (!window.open(url, '_blank')) window.location.assign(url);
-}

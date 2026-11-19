@@ -133,8 +133,10 @@ async function exportReport() {
   exporting.value = true;
   try {
     const exp = await reportsApi.createExport(key.value, format, filtersInput.value);
-    if (exp.status === 'ready') await toast(await saveExport(exp));
-    else await queuedToast();
+    if (exp.status === 'ready') {
+      const saved = await saveExport(exp);
+      if (saved) await toast(saved);
+    } else await queuedToast();
   } catch (e) {
     void toastError(e);
   } finally {

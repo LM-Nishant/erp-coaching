@@ -86,6 +86,7 @@ import { downloadOutline } from 'ionicons/icons';
 import type { AppointmentReportSummary } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import StatCard from '@/components/StatCard.vue';
+import { saveFile } from '@/core/downloads';
 import { toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import { addDaysIso, appointmentsApi, todayIso, type ReportFilters } from './api';
@@ -118,12 +119,7 @@ async function download() {
   downloading.value = true;
   try {
     const csv = await appointmentsApi.exportCsv(query());
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `parent-meetings-${todayIso()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await saveFile(csv, `parent-meetings-${todayIso()}.csv`, 'text/csv');
   } catch (e) {
     await toastError(e);
   } finally {

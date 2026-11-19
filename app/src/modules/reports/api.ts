@@ -1,5 +1,3 @@
-import { Capacitor } from '@capacitor/core';
-import { Directory, Filesystem } from '@capacitor/filesystem';
 import type {
   ReportCatalogItemDto,
   ReportExportDto,
@@ -12,6 +10,7 @@ import type {
   SaasDashboardDto,
 } from '@erp/shared';
 import { api } from '@/core/api';
+import { saveFile } from '@/core/downloads';
 
 export type PeriodInput = Pick<ReportFiltersInput, 'preset' | 'from' | 'to'>;
 
@@ -34,34 +33,12 @@ export const reportsApi = {
     api.download('/admin/reports/institutes/export', { ...f, format }),
 };
 
-/** Downloads a ready export and saves it like other files; returns a message for a toast. */
-export async function saveExport(exp: Pick<ReportExportDto, 'id' | 'fileName'>): Promise<string> {
+/**
+ * Downloads a ready export and saves it like other files. Returns a toast message for a browser download, or null on
+ * a device, where the share sheet already showed the file.
+ */
+export async function saveExport(exp: Pick<ReportExportDto, 'id' | 'fileName'>): Promise<string | null> {
   const file = await reportsApi.downloadExport(exp.id);
   const name = exp.fileName ?? file.fileName ?? 'report-export';
-  const savedTo = await saveFile(file.blob, name);
-  return savedTo ? `Saved ${name} to Documents` : `Downloaded ${name}`;
-}
-
-/** Saves a downloaded file: a browser download on the web, the Documents folder on devices. */
-export async function saveFile(blob: Blob, fileName: string): Promise<string | null> {
-  if (Capacitor.isNativePlatform()) {
-    const data = await blobToBase64(blob);
-    const { uri } = await Filesystem.writeFile({ path: fileName, data, directory: Directory.Documents });
-    return uri;
-  }
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = fileName;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-  return null;
-}
-
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''));
-    reader.onerror = () => reject(reader.error ?? new Error('Could not read the file'));
-    reader.readAsDataURL(blob);
-  });
+  return (await saveFile(file.blob, name)) === 'downloaded' ? `Downloaded ${name}` : null;
 }

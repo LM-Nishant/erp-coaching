@@ -29,8 +29,8 @@ import type {
   StudentExamListItem,
   UpdateExamQuestionInput,
 } from '@erp/shared';
-import { API_URL, ApiError, api } from '@/core/api';
-import { loadSession } from '@/core/token-storage';
+import { api } from '@/core/api';
+import { saveFile } from '@/core/downloads';
 
 const E = '/exams';
 
@@ -134,26 +134,10 @@ export const examsApi = {
     download(`${E}/children/results/${attemptId}/scorecard.pdf`, `scorecard-${attemptId}.pdf`),
 };
 
-/** Authenticated binary download (PDF/CSV); `api.get` would decode the body as text. */
+/** Downloads a file (PDF/CSV) and saves it: a browser download, or the share sheet on a device. */
 export async function download(path: string, fallbackName: string) {
-  const session = await loadSession();
-  const headers: Record<string, string> = {};
-  if (session?.accessToken) headers.Authorization = `Bearer ${session.accessToken}`;
-  if (session?.branchId) headers['X-Branch-Id'] = String(session.branchId);
-  const res = await fetch(`${API_URL}/api${path}`, { headers });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new ApiError(res.status, body?.error?.code ?? 'HTTP_ERROR', body?.error?.message ?? res.statusText);
-  }
-  const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? fallbackName;
-  const url = URL.createObjectURL(await res.blob());
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  const file = await api.download(path);
+  await saveFile(file.blob, file.fileName ?? fallbackName);
 }
 
 export const PHASE_COLORS: Record<ExamPhase, string> = {

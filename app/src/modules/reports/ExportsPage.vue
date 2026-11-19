@@ -90,7 +90,8 @@ function stopPolling() {
 async function download(e: ReportExportDto) {
   downloading.value = e.id;
   try {
-    await toast(await saveExport(e));
+    const saved = await saveExport(e);
+    if (saved) await toast(saved);
   } catch (err) {
     void toastError(err);
     void load();
