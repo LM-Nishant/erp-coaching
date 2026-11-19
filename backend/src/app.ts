@@ -11,11 +11,23 @@ import { errorHandler, notFoundHandler } from './shared/middleware/error-handler
 import type { ModuleDefinition } from './shared/module';
 
 const PROBE_PATHS = new Set(['/api/health', '/api/ready']);
+/** ZKTeco/eSSL ADMS devices call fixed paths at the server root (some firmware adds `.aspx`). */
+const ICLOCK_PATH = /^\/iclock\/(cdata|fdata|getrequest|devicecmd|ping)(?:\.aspx)?(?=\?|$)/i;
 
 export function createApp(modules: ModuleDefinition[]) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', config.TRUST_PROXY);
+  // Served by the attendance module under /api, so API limits and the error handler apply.
+  app.use((req, _res, next) => {
+    const m = ICLOCK_PATH.exec(req.url);
+    if (m) {
+      req.url = `/api/attendance/public/iclock/${m[1].toLowerCase()}${req.url.slice(m[0].length)}`;
+      // Device bodies are text or gzip whatever their label says; the ADMS router reads them as bytes.
+      if (req.headers['content-type']) req.headers['content-type'] = 'application/octet-stream';
+    }
+    next();
+  });
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
   app.use(
     cors({

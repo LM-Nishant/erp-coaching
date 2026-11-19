@@ -8,3 +8,11 @@ export { computeTotals, studentSummary } from './reports.service';
 
 /** Read-only report queries (reports module, spec §4.17); callers pass a validated `ReportScope`. */
 export { attendanceReport } from './reporting';
+
+/** Staff punches from biometric devices (HR registers the provider). */
+export {
+  setStaffPunchProvider,
+  type StaffPin,
+  type StaffPunchOutcome,
+  type StaffPunchProvider,
+} from './staff-punches';
