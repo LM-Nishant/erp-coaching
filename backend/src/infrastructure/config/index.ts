@@ -78,6 +78,11 @@ const schema = z.object({
   IMPERSONATION_TTL_SECONDS: z.coerce.number().default(1800),
   /** 32 bytes, base64 encoded. Used for AES-256-GCM encryption of secrets at rest. */
   ENCRYPTION_KEY: devDefault('ZGV2LW9ubHktZW5jcnlwdGlvbi1rZXktMzItYnl0ZXM='),
+  /**
+   * Earlier ENCRYPTION_KEY values, comma separated: secrets stored with them still decrypt until
+   * `secrets:reencrypt` moves them to the current key (docs/deployment.md, "Rotating the encryption key").
+   */
+  ENCRYPTION_PREVIOUS_KEYS: z.string().default(''),
   FILE_URL_SECRET: devDefault('dev-only-file-url-secret-change-me'),
   /**
    * Server-side key for the HMAC that stores OTP codes. It also keys the per-mobile OTP counters and the

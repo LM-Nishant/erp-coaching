@@ -1,4 +1,7 @@
-/* Database CLI: create | migrate | migrate:undo | migrate:status | seed | seed:undo | reset | make:migration <module> <name> */
+/*
+ * Database CLI: create | migrate | migrate:undo | migrate:status | seed | seed:undo | reset
+ * | make:migration <module> <name> | secrets:reencrypt [--dry-run]
+ */
 import fs from 'node:fs';
 import path from 'node:path';
 import mysql from 'mysql2/promise';
@@ -6,6 +9,7 @@ import { config } from '../config';
 import { closeSequelize, getSequelize } from './sequelize';
 import { createMigrator, createSeeder } from './migrator';
 import { initModels } from '../../bootstrap';
+import { reencryptStoredSecrets } from './encrypted-columns';
 
 async function createDatabase(name = config.DB_NAME) {
   const conn = await mysql.createConnection({
@@ -52,6 +56,33 @@ export const down: Migration = async ({ context: { queryInterface } }) => {
 `,
   );
   console.log(`Created ${path.relative(process.cwd(), file)}`);
+}
+
+/** Moves stored secrets to the current ENCRYPTION_KEY. Returns false when some value can't be decrypted. */
+async function reencryptSecrets(dryRun: boolean): Promise<boolean> {
+  const reports = await reencryptStoredSecrets({ dryRun });
+  console.table(
+    reports.map((r) => ({
+      column: `${r.table}.${r.column}`,
+      values: r.total,
+      'on current key': r.current,
+      [dryRun ? 'to re-encrypt' : 're-encrypted']: r.reencrypted,
+      ...(dryRun ? {} : { 'changed meanwhile': r.changedMeanwhile }),
+      'cannot decrypt': r.failedIds.length,
+    })),
+  );
+  const failed = reports.filter((r) => r.failedIds.length);
+  for (const r of failed)
+    console.error(`${r.table}.${r.column}: no configured key decrypts ids ${r.failedIds.join(', ')}`);
+  const left = reports.reduce((n, r) => n + (dryRun ? r.reencrypted : r.changedMeanwhile), 0);
+  if (failed.length)
+    console.error(
+      'Add the missing keys to ENCRYPTION_PREVIOUS_KEYS and run again, or re-enter those secrets.',
+    );
+  else if (left)
+    console.log(`${left} values are on a previous key${dryRun ? '' : ': run the command again'}.`);
+  else console.log('Every stored secret uses the current key: ENCRYPTION_PREVIOUS_KEYS can be emptied.');
+  return !failed.length;
 }
 
 async function main() {
@@ -104,6 +135,10 @@ async function main() {
       await seeder.up();
       break;
     }
+    case 'secrets:reencrypt':
+      await initModels();
+      if (!(await reencryptSecrets(args.includes('--dry-run')))) process.exitCode = 1;
+      break;
     default:
       throw new Error(`Unknown command: ${cmd}`);
   }

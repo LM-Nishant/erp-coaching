@@ -15,7 +15,14 @@ import {
   type StorageDriverKey,
 } from '@erp/shared';
 import { config } from '../../infrastructure/config';
-import { decryptSecret, encryptSecret, hmac, maskSecret, randomToken } from '../../infrastructure/crypto';
+import {
+  decryptSecret,
+  encryptionKeys,
+  encryptSecret,
+  hmac,
+  maskSecret,
+  randomToken,
+} from '../../infrastructure/crypto';
 import { logger } from '../../infrastructure/logger';
 import { createMessagingProvider, type MessagingProvider } from '../../infrastructure/messaging';
 import {
@@ -142,8 +149,10 @@ function stableJson(value: unknown): string {
 }
 
 /** Identifies a connection configuration (provider, endpoints, credentials; not on/off flags). */
-const fingerprint = (connection: { secrets?: Secrets } & Record<string, unknown>) =>
-  hmac(stableJson({ ...connection, secrets: present(connection.secrets ?? {}) }), config.ENCRYPTION_KEY);
+const fingerprint = (
+  connection: { secrets?: Secrets } & Record<string, unknown>,
+  key = config.ENCRYPTION_KEY,
+) => hmac(stableJson({ ...connection, secrets: present(connection.secrets ?? {}) }), key);
 
 /** Drops blank secrets (they are not stored). */
 const present = (secrets: Secrets): Secrets =>
@@ -233,11 +242,32 @@ const testStatus = (row: PlatformIntegration | undefined): IntegrationTestStatus
 });
 
 /** Fingerprint of a saved row's connection configuration. */
-function rowFingerprint(row: PlatformIntegration): string {
+function rowFingerprint(row: PlatformIntegration, key?: string): string {
   const secrets = readSecrets(row);
-  if (row.kind === 'gateway') return gatewayFingerprint(row.slot, gatewaySettings(row), secrets);
-  if (row.kind === 'messaging') return fingerprint({ provider: row.provider, fields: row.settings, secrets });
-  return storageFingerprint(row.provider as StorageDriverKey, storageSettings(row), secrets);
+  if (row.kind === 'gateway') return gatewayFingerprint(row.slot, gatewaySettings(row), secrets, key);
+  if (row.kind === 'messaging')
+    return fingerprint({ provider: row.provider, fields: row.settings, secrets }, key);
+  return storageFingerprint(row.provider as StorageDriverKey, storageSettings(row), secrets, key);
+}
+
+/**
+ * Test results count only for the connection they ran against, identified by an HMAC keyed with
+ * ENCRYPTION_KEY. After a key rotation (`secrets:reencrypt`), re-keys the HMACs made with a previous
+ * key so passing tests keep counting. Returns the number of rows re-keyed.
+ */
+export async function rekeyTestedFingerprints(): Promise<number> {
+  const { current, previous } = encryptionKeys();
+  await loadIntegrations(true);
+  let rekeyed = 0;
+  for (const { row } of snapshot.values()) {
+    const print = row.testedFingerprint;
+    if (!print || print === rowFingerprint(row, current.encoded)) continue;
+    if (!previous.some((k) => print === rowFingerprint(row, k.encoded))) continue;
+    await row.update({ testedFingerprint: rowFingerprint(row, current.encoded) }, { silent: true });
+    rekeyed++;
+  }
+  if (rekeyed) await loadIntegrations(true);
+  return rekeyed;
 }
 
 // ------------------------------------------------------------------ payment gateways
@@ -259,8 +289,8 @@ function gatewaySettings(row: PlatformIntegration | undefined): GatewaySettings 
   };
 }
 
-const gatewayFingerprint = (gateway: string, s: GatewaySettings, secrets: Secrets) =>
-  fingerprint({ provider: gateway, sandbox: s.sandbox, merchantId: s.merchantId, secrets });
+const gatewayFingerprint = (gateway: string, s: GatewaySettings, secrets: Secrets, key?: string) =>
+  fingerprint({ provider: gateway, sandbox: s.sandbox, merchantId: s.merchantId, secrets }, key);
 
 /** The mock gateway accepts forged payments by design: never usable in production. */
 const usableGateway = (gateway: string) => !(gateway === 'mock' && config.isProd);
@@ -592,8 +622,8 @@ function storageSettings(row: PlatformIntegration | undefined): StorageSettings 
   };
 }
 
-const storageFingerprint = (driver: StorageDriverKey, s: StorageSettings, secrets: Secrets) =>
-  fingerprint(driver === 'local' ? { provider: 'local' } : { provider: driver, ...s, secrets });
+const storageFingerprint = (driver: StorageDriverKey, s: StorageSettings, secrets: Secrets, key?: string) =>
+  fingerprint(driver === 'local' ? { provider: 'local' } : { provider: driver, ...s, secrets }, key);
 
 function storageConnection(s: StorageSettings, secrets: Secrets): S3Connection {
   return {
