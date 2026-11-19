@@ -19,6 +19,7 @@ import {
   testGatewayConfig,
   testMessagingConfig,
   testStorageConfig,
+  verifyMessagingConfig,
 } from './platform.service';
 
 const secret = z.string().max(4000).optional();
@@ -125,10 +126,23 @@ export function platformRoutes(api: Router) {
   admin.post('/messaging/:channel/test', async (req, res) => {
     const channel = assertChannel(String(req.params.channel));
     const body = parse(
-      messagingSchema.partial().extend({ to: z.string().trim().min(3).max(200) }),
+      messagingSchema.partial().extend({
+        to: z.string().trim().min(3).max(200),
+        templateId: z.string().trim().min(1).max(190).optional(),
+        body: z.string().trim().min(1).max(1000).optional(),
+      }),
       req.body ?? {},
     );
-    res.json(await testMessagingConfig(channel, body, body.to));
+    res.json(
+      await testMessagingConfig(channel, body, body.to, { templateId: body.templateId, body: body.body }),
+    );
+  });
+
+  // Key check: the vendor accepts the credentials; no message is sent.
+  admin.post('/messaging/:channel/verify', async (req, res) => {
+    const channel = assertChannel(String(req.params.channel));
+    const body = parse(messagingSchema.pick({ provider: true, settings: true }).partial(), req.body ?? {});
+    res.json(await verifyMessagingConfig(channel, body));
   });
 
   admin.delete('/messaging/:channel', async (req, res) => {

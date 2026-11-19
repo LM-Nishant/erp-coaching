@@ -10,7 +10,7 @@ import type {
 } from '@erp/shared';
 import { config } from '../../infrastructure/config';
 import { randomDigits, randomToken, sha256, safeEqual } from '../../infrastructure/crypto';
-import { getDefaultMessagingProvider } from '../../infrastructure/messaging';
+import { getDefaultMessagingProvider, otpSms } from '../../infrastructure/messaging';
 import { logger } from '../../infrastructure/logger';
 import { AppError, BadRequest, Forbidden, Unauthorized, NotFound } from '../../shared/errors';
 import { getContext } from '../../shared/context';
@@ -135,11 +135,7 @@ async function createChallenge(
     // OTPs are platform messages: the super admin's global SMS provider, else the built-in one.
     await (
       await getDefaultMessagingProvider('sms')
-    ).send({
-      to: mobile,
-      body: `${code} is your verification code. It expires in ${Math.round(config.OTP_TTL_SECONDS / 60)} minutes.`,
-      data: { otp: code, purpose },
-    });
+    ).send({ ...otpSms(mobile, code, config.OTP_TTL_SECONDS), data: { otp: code, purpose } });
     if (!config.isProd) logger.info(`[DEV] OTP for ${mobile} (${purpose}): ${code}`);
   }
   return challenge;

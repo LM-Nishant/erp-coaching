@@ -77,6 +77,7 @@
                 v-model="form.providerTemplateId"
                 label="Provider template id (DLT / WhatsApp)"
                 label-placement="stacked"
+                helper-text="SMS: DLT template id, MSG91 template id or Twilio Content SID (HX…). WhatsApp: approved template name, optionally name:language. Body placeholders fill the template variables in order."
               />
             </ion-item>
             <ion-item>
