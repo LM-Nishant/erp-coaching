@@ -19,6 +19,7 @@ export {
 } from './live-events';
 export { listBatchRecordings, getRecording } from './live-classes.service';
 export { LiveSession, LiveRecording, LiveParticipant } from './models';
+export { setLiveRecordingPlayback, type LiveRecordingPlayback } from './playback';
 export {
   setLiveEntitlementProvider,
   type LiveEntitlementProvider,

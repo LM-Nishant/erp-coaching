@@ -92,7 +92,32 @@ const schema = z.object({
   PAYMENT_GATEWAY: z.enum(['mock']).default('mock'),
   /** Minutes between gateway status checks of open online payments and refunds (missed webhooks). */
   PAYMENT_RECONCILE_INTERVAL_MINUTES: z.coerce.number().int().min(1).max(1440).default(10),
-  STREAMING_PROVIDER: z.enum(['mock']).default('mock'),
+  STREAMING_PROVIDER: z.enum(['mock', 'livekit']).default('mock'),
+  /** LiveKit (`STREAMING_PROVIDER=livekit`), see docs/integrations/live-streaming.md. URL clients connect to (wss://…). */
+  LIVEKIT_URL: z.string().optional(),
+  /** Server API base when the API reaches LiveKit differently (e.g. http://host.docker.internal:7880); defaults to LIVEKIT_URL. */
+  LIVEKIT_API_URL: z.string().optional(),
+  LIVEKIT_API_KEY: z.string().optional(),
+  LIVEKIT_API_SECRET: z.string().optional(),
+  /** Room names are `<prefix>-<instituteId>-<liveSessionId>`: one prefix per deployment sharing a LiveKit project. */
+  LIVEKIT_ROOM_PREFIX: z
+    .string()
+    .regex(/^[a-z0-9]{1,16}$/)
+    .default('erp'),
+  /** `local`: Egress writes MP4s to a directory the API can read (self-hosted). `s3`: Egress uploads to an S3 bucket (LiveKit Cloud). */
+  LIVEKIT_RECORDING_OUTPUT: z.enum(['local', 's3']).default('local'),
+  /** Directory Egress writes recordings to, as seen by the Egress service (local output). */
+  LIVEKIT_EGRESS_OUTPUT_DIR: z.string().default('/out'),
+  /** The same directory as seen by the API (local output). */
+  LIVEKIT_RECORDINGS_DIR: z.string().default('./tmp/livekit-recordings'),
+  /** S3-compatible staging bucket for `LIVEKIT_RECORDING_OUTPUT=s3`; the API imports each file to its own storage and deletes it. */
+  LIVEKIT_S3_BUCKET: z.string().optional(),
+  LIVEKIT_S3_REGION: z.string().default('us-east-1'),
+  /** Custom endpoint for S3-compatible stores (R2, MinIO…); blank = AWS. */
+  LIVEKIT_S3_ENDPOINT: z.string().optional(),
+  LIVEKIT_S3_ACCESS_KEY: z.string().optional(),
+  LIVEKIT_S3_SECRET_KEY: z.string().optional(),
+  LIVEKIT_S3_FORCE_PATH_STYLE: bool(false),
   BIOMETRIC_PROVIDER: z.enum(['mock']).default('mock'),
 
   JOBS_WORKER_ENABLED: bool(true),
@@ -146,6 +171,26 @@ if (
   throw new Error(
     'GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET are required when CALENDAR_PROVIDER=google',
   );
+if (parsed.data.STREAMING_PROVIDER === 'livekit') {
+  const d = parsed.data;
+  if (!d.LIVEKIT_URL || !d.LIVEKIT_API_KEY || !d.LIVEKIT_API_SECRET)
+    throw new Error(
+      'LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET are required when STREAMING_PROVIDER=livekit',
+    );
+  for (const [key, url] of [
+    ['LIVEKIT_URL', d.LIVEKIT_URL],
+    ['LIVEKIT_API_URL', d.LIVEKIT_API_URL],
+  ] as const)
+    if (url && !/^(wss?|https?):\/\/[^\s]+$/.test(url))
+      throw new Error(`${key} must be a ws://, wss://, http:// or https:// URL`);
+  if (
+    d.LIVEKIT_RECORDING_OUTPUT === 's3' &&
+    (!d.LIVEKIT_S3_BUCKET || !d.LIVEKIT_S3_ACCESS_KEY || !d.LIVEKIT_S3_SECRET_KEY)
+  )
+    throw new Error(
+      'LIVEKIT_S3_BUCKET, LIVEKIT_S3_ACCESS_KEY and LIVEKIT_S3_SECRET_KEY are required when LIVEKIT_RECORDING_OUTPUT=s3',
+    );
+}
 
 const corsOrigins = parsed.data.CORS_ORIGINS.split(',')
   .map((s) => s.trim())
@@ -161,6 +206,7 @@ export const config = {
   isProd,
   isTest: parsed.data.NODE_ENV === 'test',
   storageLocalRoot: path.resolve(__dirname, '../../..', parsed.data.STORAGE_LOCAL_ROOT),
+  livekitRecordingsDir: path.resolve(__dirname, '../../..', parsed.data.LIVEKIT_RECORDINGS_DIR),
   devOutboxFile: parsed.data.DEV_OUTBOX_FILE
     ? path.resolve(__dirname, '../../..', parsed.data.DEV_OUTBOX_FILE)
     : null,

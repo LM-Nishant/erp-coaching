@@ -12,6 +12,9 @@
       <p v-if="recorder && (recorder.uploading.value || saving)">
         Saving the recording… please keep this page open.
       </p>
+      <p v-else-if="media && live.room.session?.recordingEnabled" class="muted">
+        The recording will appear on the class page once it has been processed.
+      </p>
       <ion-button :router-link="`/live-classes/${id}`">Back to class</ion-button>
     </div>
 
@@ -21,7 +24,12 @@
           <ion-badge :color="live.room.connected ? 'danger' : 'medium'">
             {{ live.room.connected ? '● LIVE' : 'Reconnecting…' }}
           </ion-badge>
-          <ion-badge v-if="recorder?.recording.value" color="dark">⏺ Recording</ion-badge>
+          <ion-badge v-if="media && !media.connected.value" color="warning">Connecting media…</ion-badge>
+          <ion-badge
+            v-if="recorder?.recording.value || (media && live.room.session?.recordingEnabled)"
+            color="dark"
+            >⏺ Recording</ion-badge
+          >
           <ion-badge v-if="recorder?.uploading.value" color="warning">Uploading recording…</ion-badge>
           <ion-badge v-if="live.room.screenSharing" color="tertiary">Screen sharing</ion-badge>
           <span class="spacer" />
@@ -43,7 +51,13 @@
           <div v-show="!live.room.whiteboard.visible" class="video-wrap">
             <video ref="stageVideo" v-src="stageStream" autoplay playsinline muted />
             <div v-if="!isHost && !viewer?.video.value" class="placeholder">
-              {{ live.room.hostOnline ? 'Connecting to the teacher…' : 'Waiting for the teacher to join…' }}
+              {{
+                !live.room.hostOnline
+                  ? 'Waiting for the teacher to join…'
+                  : viewer && 'hostConnected' in viewer && viewer.hostConnected.value
+                    ? "The teacher's camera is off."
+                    : 'Connecting to the teacher…'
+              }}
             </div>
           </div>
           <video
@@ -57,7 +71,11 @@
           />
           <audio v-if="audioStream" ref="audioEl" v-src="audioStream" autoplay />
         </SecureView>
-        <ion-button v-if="needsUnmute" expand="block" color="warning" @click="unmute"
+        <ion-button
+          v-if="needsUnmute || media?.audioBlocked.value"
+          expand="block"
+          color="warning"
+          @click="unmute"
           >Tap to enable sound</ion-button
         >
 
@@ -95,6 +113,7 @@
           This device can't record the class automatically. Use a desktop browser to record.
         </p>
         <p v-if="isHost && mediaError" class="warn small">{{ mediaError }}</p>
+        <p v-if="media?.error.value" class="warn small">{{ media.error.value }}</p>
 
         <!-- Student controls -->
         <div v-if="!isHost" class="controls">
@@ -145,6 +164,7 @@ import RoomPanel from './components/RoomPanel.vue';
 import Whiteboard from './components/Whiteboard.vue';
 import { useLiveSocket, type LiveSocket } from './composables/useLiveSocket';
 import { useTeacherMedia, useViewerMedia } from './composables/useLiveMedia';
+import { useLiveKitTeacher, useLiveKitViewer, type LiveKitConnection } from './composables/useLiveKitMedia';
 import { recordingSupported, useClassRecorder } from './composables/useClassRecorder';
 
 const vSrc: Directive<HTMLMediaElement, MediaStream | null | undefined> = {
@@ -164,8 +184,14 @@ const mediaError = ref<string | null>(null);
 const saving = ref(false);
 const needsUnmute = ref(false);
 const live = shallowRef<LiveSocket | null>(null);
-const teacher = shallowRef<ReturnType<typeof useTeacherMedia> | null>(null);
-const viewer = shallowRef<ReturnType<typeof useViewerMedia> | null>(null);
+const teacher = shallowRef<ReturnType<typeof useTeacherMedia> | ReturnType<typeof useLiveKitTeacher> | null>(
+  null,
+);
+const viewer = shallowRef<ReturnType<typeof useViewerMedia> | ReturnType<typeof useLiveKitViewer> | null>(
+  null,
+);
+/** The LiveKit media connection (`vendor-sdk` transport); null with the dev peer-to-peer transport. */
+const media = shallowRef<LiveKitConnection | null>(null);
 const recorder = shallowRef<ReturnType<typeof useClassRecorder> | null>(null);
 const recordingUnsupported = ref(false);
 const stageVideo = ref<HTMLVideoElement | null>(null);
@@ -188,8 +214,14 @@ const onlineStudents = computed(
 const stageStream = computed(
   () => (isHost.value ? teacher.value?.preview.value : viewer.value?.video.value) ?? null,
 );
+/** LiveKit sends the teacher's camera separately from their screen. */
+const teacherVideo = computed(() => {
+  const v = viewer.value;
+  return v && 'camera' in v ? v.camera.value : null;
+});
 const pipStream = computed(
-  () => (isHost.value ? teacher.value?.camera.value : viewer.value?.video.value) ?? null,
+  () =>
+    (isHost.value ? teacher.value?.camera.value : (teacherVideo.value ?? viewer.value?.video.value)) ?? null,
 );
 const audioStream = computed(
   () => (isHost.value ? teacher.value?.speakerAudio.value : viewer.value?.audio.value) ?? null,
@@ -213,6 +245,7 @@ watch(audioStream, async (s) => {
 });
 
 function unmute() {
+  void media.value?.startAudio().catch(toastError);
   void audioEl.value?.play().then(() => (needsUnmute.value = false));
 }
 
@@ -249,14 +282,41 @@ function setupRecorder(l: LiveSocket) {
   );
 }
 
+/** Turns a student's microphone on and off as the teacher grants and revokes it. */
+function followMicGrant(l: LiveSocket, setMicGranted: (granted: boolean) => Promise<void>) {
+  watch(
+    () => l.room.speakers.some((s) => s.id === l.room.me?.id),
+    (granted) =>
+      void setMicGranted(granted).catch((e) => {
+        toastError(e);
+        void l.revokeMic(l.room.me!.id).catch(() => {});
+      }),
+  );
+}
+
 async function init() {
   try {
     const info = await liveApi.join(id);
-    if (info.transport !== 'socket-webrtc') {
+    const liveKit = info.transport === 'vendor-sdk' && info.provider === 'livekit';
+    if (info.transport !== 'socket-webrtc' && !liveKit) {
       fatal.value = `The "${info.provider}" streaming provider needs its SDK client, which this build does not include.`;
       return;
     }
-    if (info.role === 'host') {
+    if (liveKit) {
+      // Media goes through LiveKit, which also records the class (Egress); the socket carries the rest.
+      const l = useLiveSocket(id, info);
+      live.value = l;
+      if (info.role === 'host') {
+        const t = useLiveKitTeacher(l, info, () => board.value?.canvas() ?? null);
+        teacher.value = t;
+        media.value = t.media;
+      } else {
+        const v = useLiveKitViewer(l, info);
+        viewer.value = v;
+        media.value = v.media;
+        followMicGrant(l, v.setMicGranted);
+      }
+    } else if (info.role === 'host') {
       const l = useLiveSocket(id, info);
       const t = useTeacherMedia(l, info);
       live.value = l;
@@ -275,14 +335,7 @@ async function init() {
       const v = useViewerMedia(l, info);
       live.value = l;
       viewer.value = v;
-      watch(
-        () => l.room.speakers.some((s) => s.id === l.room.me?.id),
-        (granted) =>
-          void v.setMicGranted(granted).catch((e) => {
-            toastError(e);
-            void l.revokeMic(l.room.me!.id).catch(() => {});
-          }),
-      );
+      followMicGrant(l, v.setMicGranted);
     }
   } catch (e) {
     fatal.value = errorMessage(e);
