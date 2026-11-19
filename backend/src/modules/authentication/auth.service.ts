@@ -164,7 +164,11 @@ const otpHash = (challengeId: string, mobile: string, code: string) =>
     .update(`otp:${challengeId}:${mobile}:${code}`)
     .digest('hex');
 
-/** OTP requests per number in 10 minutes, counted whether or not the number has an account. */
+/**
+ * OTP requests per number in 10 minutes, counted whether or not the number has an account. As with sign-in
+ * locks, each device the user has signed in on has a budget of its own, so requests from elsewhere can't use
+ * up the user's.
+ */
 const otpRequests = windowCounter('otp-mobile', 10 * 60_000);
 /**
  * Challenges handed out for numbers without an account (no row is stored for them), keyed by challenge
@@ -190,7 +194,8 @@ async function createChallenge(
   deviceUid: string,
 ): Promise<string> {
   const tag = identifierTag(mobile);
-  if ((await otpRequests.hit(tag)) > config.OTP_REQUESTS_PER_MOBILE)
+  const { scope } = await signInSubject(user, tag, deviceUid);
+  if ((await otpRequests.hit(`${tag}:${scope}`)) > config.OTP_REQUESTS_PER_MOBILE)
     throw new AppError(429, 'OTP_RATE_LIMITED', 'Too many OTP requests. Try again later.');
   const id = challengeIdFor(tag);
   if (!user) {

@@ -379,6 +379,15 @@ describe('OTP', () => {
       expect(outcome(await requestOtp(m, newDevice()))).toBe('429 OTP_RATE_LIMITED');
     }
   });
+
+  it('keeps a request budget for each device the user has signed in on', async () => {
+    const user = await createUser();
+    const known = newDevice();
+    await login(user, known);
+    for (let i = 0; i <= config.OTP_REQUESTS_PER_MOBILE; i++) await requestOtp(user.mobile, newDevice());
+    expect(outcome(await requestOtp(user.mobile, newDevice()))).toBe('429 OTP_RATE_LIMITED');
+    expect(outcome(await requestOtp(user.mobile, known))).toBe('200 otp_required');
+  });
 });
 
 describe('biometric unlock', () => {
