@@ -18,6 +18,8 @@ export {
   type LiveSessionEndedEvent,
 } from './live-events';
 export { listBatchRecordings, getRecording } from './live-classes.service';
+/** For a media relay or webhook: a join token's claims while its device is still signed in, else null. */
+export { verifyJoinCredentials } from './live-classes.service';
 export { LiveSession, LiveRecording, LiveParticipant } from './models';
 export {
   setLiveEntitlementProvider,

@@ -24,6 +24,15 @@ export interface JoinCredentials {
   expiresAt: Date;
 }
 
+/** A verified join token. */
+export interface JoinTokenClaims {
+  roomId: string;
+  userId: number;
+  /** The device it was issued to: the token stops working once that device signs out or is revoked. */
+  deviceId: number;
+  role: StreamingRole;
+}
+
 export interface StartRecordingResult {
   /**
    * `provider`: the vendor records server-side and returns files from `endRoom`/webhooks.
@@ -53,10 +62,17 @@ export interface StreamingProvider {
   issueJoinToken(input: {
     roomId: string;
     userId: number;
+    /** The requesting device: put it in the vendor's participant identity (see modules/live-classes/README.md). */
+    deviceId: number;
     displayName: string;
     role: StreamingRole;
     ttlSeconds: number;
   }): Promise<JoinCredentials>;
+  /**
+   * Checks the signature and expiry of a token this adapter issued (null when invalid). Media relays and
+   * webhooks call `verifyJoinCredentials` (live-classes), which also checks the device is still signed in.
+   */
+  verifyJoinToken?(token: string): JoinTokenClaims | null;
   iceServers(): IceServer[];
   startRecording(roomId: string): Promise<StartRecordingResult>;
   /** Closes the room and returns finished provider-side recordings (empty for client-upload). */

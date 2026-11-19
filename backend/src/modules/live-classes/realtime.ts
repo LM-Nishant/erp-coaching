@@ -17,7 +17,7 @@ import { config } from '../../infrastructure/config';
 import { logger } from '../../infrastructure/logger';
 import { newRedisConnection, type RedisClient } from '../../infrastructure/redis';
 import { runWithContext, hasPermission, type RequestContext } from '../../shared/context';
-import { authenticate, recheckSession } from '../../shared/middleware/authenticate';
+import { assertOpenSession, authenticate, recheckSession } from '../../shared/middleware/authenticate';
 import { AppError, Conflict, Forbidden, TooManyRequests } from '../../shared/errors';
 import { parse } from '../../shared/utilities/validation';
 import { isModuleEnabled } from '../subscriptions/subscription.service';
@@ -32,10 +32,11 @@ import { createRoomStore, type RoomExtras, type RoomStore } from './room-store';
  * - Auth: the handshake carries the normal access token (`auth.token`) and optional `auth.branchId`;
  *   it goes through the same `authenticate` checks as REST (revoked / idle device → 401 first, membership,
  *   branch, then the tenant request guards: a suspended subscription → 402, a read-only one may join since the
- *   handshake counts as a read), plus the `live-classes.view` permission and the plan's module switch.
+ *   handshake counts as a read), plus the `live-classes.view` permission and the plan's module switch. A device
+ *   that signed out is refused (401 `SIGNED_OUT`) although its access token has not expired yet.
  * - Open sockets are re-checked with `recheckSession` every minute and when an institute's subscription or status
- *   changes (`recheckLiveSockets`): a revoked or idle device, an inactive user or institute and a suspended
- *   subscription drop them. A revoked device's sockets are dropped at once (`disconnectDeviceSockets`).
+ *   changes (`recheckLiveSockets`): a revoked, idle or signed-out device, an inactive user or institute and a
+ *   suspended subscription drop them. A revoked device's sockets are dropped at once (`disconnectDeviceSockets`).
  * - Every event handler runs inside the socket's request context, so tenant-scoped repositories work.
  * - Several API instances: with REDIS_URL set, the Socket.IO Redis adapter carries broadcasts and the room's
  *   hands, speakers, screen share and whiteboard live in Redis (`room-store.ts`). Who is in a room is read from
@@ -308,6 +309,7 @@ async function authenticateSocket(socket: LiveSocket) {
   const fakeReq = { ctx, header: (n: string) => headers[n.toLowerCase()] } as unknown as Request;
   await runWithContext(ctx, () => authenticate(fakeReq, {} as Response, () => {}));
   await runWithContext(ctx, async () => {
+    await assertOpenSession(ctx.deviceId!);
     if (!ctx.instituteId) throw Forbidden('Select an institute first', 'INSTITUTE_REQUIRED');
     if (!hasPermission(`${svc.MODULE}.view`)) throw Forbidden();
     if (!(await isModuleEnabled(ctx.instituteId, svc.MODULE)))

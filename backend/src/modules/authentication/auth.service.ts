@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { Op } from 'sequelize';
+import { Op, type WhereOptions } from 'sequelize';
 import type {
   AuthTokens,
   BiometricUnlockEnrolmentDto,
@@ -9,6 +9,7 @@ import type {
   MeDto,
 } from '@erp/shared';
 import { config } from '../../infrastructure/config';
+import { getSequelize } from '../../infrastructure/database/sequelize';
 import { randomDigits, randomToken, sha256, safeEqual } from '../../infrastructure/crypto';
 import { getDefaultMessagingProvider } from '../../infrastructure/messaging';
 import { logger } from '../../infrastructure/logger';
@@ -51,20 +52,36 @@ export function maskMobile(mobile: string) {
 
 // ---------------------------------------------------------------- tokens
 
-async function issueTokens(user: User, device: Device, instituteId?: number | null): Promise<AuthTokens> {
+/**
+ * Issues an access and a refresh token on the device. `replaces` selects the refresh tokens the new one
+ * supersedes: they are revoked in the same transaction, so a device that stays signed in never looks
+ * signed out in between (signed offline links and live-class sockets check that; see `isDeviceSignedIn`).
+ */
+async function issueTokens(
+  user: User,
+  device: Device,
+  instituteId?: number | null,
+  replaces?: WhereOptions<RefreshToken>,
+): Promise<AuthTokens> {
   let inst = instituteId ?? undefined;
   if (inst === undefined && !user.isSuperAdmin) {
     const ids = await membershipInstituteIds(user.id);
     if (ids.length === 1) inst = ids[0];
   }
   const refreshToken = randomToken();
-  await RefreshToken.create({
-    userId: user.id,
-    deviceId: device.id,
-    instituteId: inst ?? null,
-    tokenHash: sha256(refreshToken),
-    expiresAt: new Date(Date.now() + config.REFRESH_TOKEN_TTL_DAYS * 86400_000),
-    revokedAt: null,
+  await getSequelize().transaction(async (transaction) => {
+    if (replaces) await RefreshToken.update({ revokedAt: new Date() }, { where: replaces, transaction });
+    await RefreshToken.create(
+      {
+        userId: user.id,
+        deviceId: device.id,
+        instituteId: inst ?? null,
+        tokenHash: sha256(refreshToken),
+        expiresAt: new Date(Date.now() + config.REFRESH_TOKEN_TTL_DAYS * 86400_000),
+        revokedAt: null,
+      },
+      { transaction },
+    );
   });
   await user.update({ lastLoginAt: new Date() });
   return {
@@ -338,14 +355,20 @@ export async function refreshTokens(token: string): Promise<AuthTokens> {
     throw Unauthorized('Signed out after a period of inactivity', 'SESSION_IDLE');
   }
   if (row.instituteId) await assertInstituteActive(row.instituteId);
-  await row.update({ revokedAt: new Date() });
-  return issueTokens(user, device, row.instituteId);
+  return issueTokens(user, device, row.instituteId, { id: row.id });
 }
 
+/**
+ * Signs out on the device the refresh token belongs to: every session on that device ends (also one left over
+ * from an earlier sign-in), so offline links and live-class credentials bound to it stop working.
+ */
 export async function logout(token: string) {
   const row = await RefreshToken.findOne({ where: { tokenHash: sha256(token) } });
   if (!row) return;
-  if (!row.revokedAt) await row.update({ revokedAt: new Date() });
+  await RefreshToken.update(
+    { revokedAt: new Date() },
+    { where: { deviceId: row.deviceId, revokedAt: null } },
+  );
   // Signing out turns biometric unlock off on that device (the app deletes its credential too).
   // Locking after inactivity does not call this, so unlock keeps working there.
   await Device.update(
@@ -371,8 +394,7 @@ export async function selectInstitute(
   await assertInstituteActive(instituteId);
   const [user, device] = await Promise.all([User.findByPk(userId), Device.findByPk(deviceId)]);
   if (!user || !device) throw Unauthorized();
-  await RefreshToken.update({ revokedAt: new Date() }, { where: { deviceId, revokedAt: null } });
-  return issueTokens(user, device, instituteId);
+  return issueTokens(user, device, instituteId, { deviceId, revokedAt: null });
 }
 
 // ---------------------------------------------------------------- biometric unlock
@@ -450,8 +472,6 @@ export async function unlockWithBiometric(input: BiometricUnlockInput): Promise<
     instituteId = input.instituteId;
   }
   const ctx = getContext();
-  // One session per device: tokens left over from before the lock stop working.
-  await RefreshToken.update({ revokedAt: new Date() }, { where: { deviceId: device.id, revokedAt: null } });
   await device.update({ lastSeenAt: new Date(), lastIp: ctx.ip ?? null });
   await audit({
     action: 'auth.login',
@@ -460,7 +480,9 @@ export async function unlockWithBiometric(input: BiometricUnlockInput): Promise<
     instituteId: null,
     metadata: { method: 'biometric', deviceId: device.id },
   });
-  return { status: 'authenticated', ...(await issueTokens(user, device, instituteId)) };
+  // One session per device: tokens left over from before the lock stop working.
+  const replaces = { deviceId: device.id, revokedAt: null };
+  return { status: 'authenticated', ...(await issueTokens(user, device, instituteId, replaces)) };
 }
 
 // ---------------------------------------------------------------- impersonation

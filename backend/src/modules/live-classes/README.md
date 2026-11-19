@@ -28,8 +28,14 @@ Socket.IO is attached through the generic `attachServer(server)` module hook (`s
   (`403 LIVE_NOT_ENTITLED`). The default allows. Fees registers it so a course with an active fee structure needs the
   fee entitlement or an LMS manual grant.
 - Everyone else gets 404. Join tokens (`POST /:id/join`) are issued only to these roles while the session is `live`.
+  A join token is bound to the device that asked for it and lasts until 30 minutes after the scheduled end (at least
+  15 minutes, at most 4 hours). Clients ask for a new one before `expiresAt`.
 - The socket handshake reuses the HTTP `authenticate` middleware (access token + `branchId`), so tenant, branch,
-  device-session and module checks are identical to REST. Every room action re-checks the role.
+  device-session and module checks are identical to REST. A device that signed out is refused (`401 SIGNED_OUT`) even
+  though its access token has not expired yet. Every room action re-checks the role.
+- Open sockets are re-checked every minute and when the institute's subscription or status changes: a revoked, idle or
+  signed-out device, an inactive user or institute, a suspended subscription or a lost permission drops them. A revoked
+  device's sockets are dropped at once.
 
 ## Dev WebRTC transport (default, no vendor keys)
 
@@ -59,7 +65,11 @@ the storage service (`saveUploadedFile`). Mobile WebViews without `MediaRecorder
    - `transport = 'vendor-sdk'`.
    - `createRoom`: create the vendor room.
    - `issueJoinToken`: mint a vendor token with publish rights for `host`/`speaker` and subscribe-only for `viewer`, and
-     return the SFU `url`.
+     return the SFU `url`. Use `ttlSeconds` as given, and put `deviceId` in the participant identity (for example
+     `u42-d7`): vendors check the token only when a participant connects, so the `live-classes.sockets` listener of
+     `onDeviceRevoked` in `integrations.ts` must also remove that device's participants from the vendor rooms.
+   - `verifyJoinToken` (optional): check the signature and expiry of a token the adapter issued. A media relay or
+     webhook calls `verifyJoinCredentials` (from `api.ts`), which also checks that the device is still signed in.
    - `startRecording`: start vendor egress/composite recording and return `{ mode: 'provider' }`.
    - `endRoom`: close the room and return finished files as `ProviderRecording` (`ref` is used for idempotency).
 2. Add the key to the `STREAMING_PROVIDER` enum in `infrastructure/config` and return the adapter from
@@ -68,8 +78,9 @@ the storage service (`saveUploadedFile`). Mobile WebViews without `MediaRecorder
    file and emits `live.recording.ready`. If files arrive later through a webhook, add a public route under
    `/public/live-classes/...` that verifies the vendor signature and enqueues the same job.
 4. App: `LiveRoomPage.vue` checks `joinInfo.transport`. For `vendor-sdk`, mount the vendor SDK component with
-   `joinInfo.url` + `joinInfo.token` in place of `useTeacherMedia`/`useViewerMedia`. Chat, Q&A, polls, hands, whiteboard
-   and attendance still use the live socket, and mic grants map to the vendor's publish permission.
+   `joinInfo.url` + `joinInfo.token` in place of `useTeacherMedia`/`useViewerMedia`, and fetch new credentials before
+   `joinInfo.expiresAt` so reconnects keep working. Chat, Q&A, polls, hands, whiteboard and attendance still use the
+   live socket, and mic grants map to the vendor's publish permission.
 
 ## Socket protocol
 

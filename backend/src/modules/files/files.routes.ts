@@ -8,7 +8,7 @@ import { getStorage } from '../../infrastructure/storage';
 import { verifyFileToken } from '../../infrastructure/storage/signed-url';
 import { parse } from '../../shared/utilities/validation';
 import { idParam, paginated, paginationSchema, toLimitOffset } from '../../shared/utilities/pagination';
-import { authenticate } from '../../shared/middleware/authenticate';
+import { authenticate, isDeviceSignedIn } from '../../shared/middleware/authenticate';
 import { requirePermission, requireTenant } from '../../shared/middleware/authorize';
 import { withContext } from '../../shared/middleware/context';
 import { getContext } from '../../shared/context';
@@ -36,10 +36,13 @@ export const uploadMiddleware = withContext(
 );
 
 export function fileRoutes(api: Router) {
-  // Signed download: no session auth (token is the credential), supports Range for video seeking.
+  // Signed download: no session auth (token is the credential), supports Range for video seeking. A link
+  // bound to a device (offline download) is refused once that device signed out or was revoked; a download
+  // that already started is not cut off.
   api.get('/files/signed/:token', mediaRateLimit, mediaTokenRateLimit, async (req, res) => {
     const claims = verifyFileToken(String(req.params.token));
     if (!claims || claims.i === null) throw NotFound('File');
+    if (claims.d !== undefined && !(await isDeviceSignedIn(claims.d))) throw NotFound('File');
     const file = await FileObject.findOne({ where: { id: claims.f, instituteId: claims.i } });
     if (!file) throw NotFound('File');
     const size = Number(file.sizeBytes);

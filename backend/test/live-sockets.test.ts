@@ -15,6 +15,7 @@ import {
 } from '@erp/shared';
 import { config } from '../src/infrastructure/config';
 import { closeRedis } from '../src/infrastructure/redis';
+import { getStreamingProvider } from '../src/infrastructure/streaming';
 import { runWithContext } from '../src/shared/context';
 import { clearIdleTimeoutCache } from '../src/shared/session-policy';
 import { AcademicSession, Batch, BatchStudent, Course } from '../src/modules/academics/models';
@@ -23,16 +24,18 @@ import { InstituteSetting } from '../src/modules/institutes/institute-setting.mo
 import { Subscription } from '../src/modules/subscriptions/models';
 import { invalidateAccess } from '../src/modules/subscriptions/api';
 import { LiveParticipant, LiveSession } from '../src/modules/live-classes/models';
+import { verifyJoinCredentials } from '../src/modules/live-classes/api';
 import {
   attachLiveSockets,
   closeLiveSockets,
   disconnectDeviceSockets,
   recheckLiveSockets,
 } from '../src/modules/live-classes/realtime';
-import { getApp } from './helpers';
+import { getApp, login } from './helpers';
 import {
   type Actor,
   type Tenant,
+  PASSWORD,
   createInstitute,
   createStaff,
   createSuperAdmin,
@@ -250,6 +253,40 @@ describe('re-checking open live-class sockets', () => {
       clearIdleTimeoutCache(tenant.id);
       await Device.update({ lastSeenAt: new Date() }, { where: { id: (await deviceOf(student)).id } });
     }
+  });
+
+  it('drops the sockets and join credentials of a device that signed out', async () => {
+    const viewer = await createStaff(tenant.admin, {
+      label: 'viewer',
+      mobile: mobile(),
+      permissions: ['live-classes.view'],
+      branchId: tenant.mainBranchId,
+    });
+    // A second sign-in on the same device: signing out ends both sessions.
+    const { refreshToken } = await login({ mobile: viewer.mobile, password: PASSWORD });
+    const v = sock(baseUrl, viewer.token);
+    const t = sock(baseUrl, teacher.token);
+    await Promise.all([connected(v), connected(t)]);
+    const device = await deviceOf(viewer);
+    const { token } = await getStreamingProvider().issueJoinToken({
+      roomId: `live-${liveId}`,
+      userId: viewer.userId,
+      deviceId: device.id,
+      displayName: 'Viewer',
+      role: 'viewer',
+      ttlSeconds: 900,
+    });
+    expect(await verifyJoinCredentials(token)).toMatchObject({ userId: viewer.userId, deviceId: device.id });
+
+    const gone = dropped(v);
+    await ok(null, 'POST', '/api/auth/logout', { refreshToken });
+    expect(await recheckLiveSockets()).toBe(1);
+    expect(await gone).toBe('io server disconnect');
+    expect(t.connected).toBe(true);
+    await expect(connected(sock(baseUrl, viewer.token))).rejects.toMatchObject({
+      data: { code: 'SIGNED_OUT' },
+    });
+    expect(await verifyJoinCredentials(token)).toBeNull();
   });
 });
 

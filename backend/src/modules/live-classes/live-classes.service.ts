@@ -17,11 +17,16 @@ import type {
   UpdateLiveSessionInput,
 } from '@erp/shared';
 import { LIVE_SOCKET_NAMESPACE, LIVE_SOCKET_PATH } from '@erp/shared';
-import { getStreamingProvider, type StreamingRole } from '../../infrastructure/streaming';
+import {
+  getStreamingProvider,
+  type JoinTokenClaims,
+  type StreamingRole,
+} from '../../infrastructure/streaming';
 import { logger } from '../../infrastructure/logger';
 import { getContext, hasPermission, requireTenantContext } from '../../shared/context';
 import { audit } from '../../shared/audit/audit.service';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../shared/errors';
+import { isDeviceSignedIn } from '../../shared/middleware/authenticate';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { User } from '../users/user.model';
 import { FileObject } from '../files/file.model';
@@ -43,7 +48,10 @@ import { canJoinLive } from './entitlements';
 
 export const MODULE = 'live-classes';
 export const IMPORT_RECORDING_JOB = 'live-classes.import-recording';
-const JOIN_TOKEN_TTL_SECONDS = 4 * 3600;
+const JOIN_TOKEN_MIN_SECONDS = 15 * 60;
+const JOIN_TOKEN_MAX_SECONDS = 4 * 3600;
+/** A join token outlives the scheduled end by this much, so a class that overruns a little is not cut short. */
+const JOIN_TOKEN_GRACE_SECONDS = 30 * 60;
 const HISTORY_LIMIT = 200;
 
 export const repos = {
@@ -450,7 +458,19 @@ export async function endSession(id: number) {
   return getSessionDto(id);
 }
 
-/** Provider media credentials, only for the class teacher, batch teachers/managers and enrolled students. */
+/**
+ * Seconds a join token lasts: until 30 minutes after the scheduled end, at least 15 minutes and at most 4 hours.
+ * A client renews it with `POST /:id/join` before `expiresAt`; a vendor checks it when a participant connects.
+ */
+export function joinTokenTtlSeconds(scheduledEndAt: Date, now = Date.now()): number {
+  const untilEnd = Math.ceil((scheduledEndAt.getTime() - now) / 1000) + JOIN_TOKEN_GRACE_SECONDS;
+  return Math.min(JOIN_TOKEN_MAX_SECONDS, Math.max(JOIN_TOKEN_MIN_SECONDS, untilEnd));
+}
+
+/**
+ * Provider media credentials, only for the class teacher, batch teachers/managers and enrolled students. The
+ * token is bound to the requesting device (see `verifyJoinCredentials`).
+ */
 export async function joinInfo(id: number): Promise<LiveJoinInfo> {
   const { session, role } = await loadSession(id);
   if (session.status !== 'live') throw Conflict('The class is not live', 'NOT_LIVE');
@@ -460,12 +480,15 @@ export async function joinInfo(id: number): Promise<LiveJoinInfo> {
   const user = await User.findByPk(me(), { attributes: ['id', 'name'] });
   const streamingRole: StreamingRole =
     role === 'host' ? 'host' : role === 'moderator' ? 'moderator' : 'viewer';
+  const { deviceId } = getContext();
+  if (!deviceId) throw Forbidden();
   const creds = await provider.issueJoinToken({
     roomId: session.roomId ?? `live-${id}`,
     userId: me(),
+    deviceId,
     displayName: user?.name ?? '',
     role: streamingRole,
-    ttlSeconds: JOIN_TOKEN_TTL_SECONDS,
+    ttlSeconds: joinTokenTtlSeconds(session.scheduledEndAt),
   });
   return {
     sessionId: id,
@@ -480,6 +503,16 @@ export async function joinInfo(id: number): Promise<LiveJoinInfo> {
     socketNamespace: LIVE_SOCKET_NAMESPACE,
     expiresAt: creds.expiresAt.toISOString(),
   };
+}
+
+/**
+ * Verifies a join token for a media relay or webhook: the adapter's signature and expiry, then that the device it
+ * was issued to is still signed in (null otherwise). Needs an adapter with `verifyJoinToken`.
+ */
+export async function verifyJoinCredentials(token: string): Promise<JoinTokenClaims | null> {
+  const claims = getStreamingProvider().verifyJoinToken?.(token) ?? null;
+  if (!claims) return null;
+  return (await isDeviceSignedIn(claims.deviceId)) ? claims : null;
 }
 
 async function safeNotify(fn: () => Promise<unknown>) {
