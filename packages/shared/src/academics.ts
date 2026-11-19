@@ -5,6 +5,7 @@
  *
  * Dates are `YYYY-MM-DD`; class times are institute-local wall-clock `HH:MM` (24h).
  */
+import type { InstalmentPlan } from './fees';
 
 export const COURSE_MODES = ['offline', 'online', 'hybrid'] as const;
 export type CourseMode = (typeof COURSE_MODES)[number];
@@ -116,11 +117,64 @@ export interface PromotionRequest {
   toBatchId: number;
   /** Defaults to every active student of the source batch. */
   studentUserIds?: number[];
+  /**
+   * Also bills the promoted students for the new session (needs `fees.create` and the fees module),
+   * in the same transaction as the promotion.
+   */
+  fees?: PromotionFeeRequest;
+}
+
+export interface PromotionFeeRequest {
+  /** One of `PromotionFeeOptions.structures`; defaults to its `defaultStructureId`. */
+  structureId?: number;
+  /** Overrides the structure's first due date (YYYY-MM-DD); custom plans keep their own dates. */
+  firstDueDate?: string;
 }
 
 export interface PromotionResult {
   promoted: number;
   skipped: { studentUserId: number; reason: string }[];
+  /** Present when the request asked for `fees`; one result per promoted student. */
+  fees?: PromotionFeeSummary;
+}
+
+export interface PromotionFeeSummary {
+  structureId: number;
+  structureName: string;
+  created: number;
+  skipped: number;
+  results: PromotionFeeStudentResult[];
+}
+
+export interface PromotionFeeStudentResult {
+  studentUserId: number;
+  /** Absent only when the user has no student record. */
+  studentName?: string;
+  status: 'created' | 'skipped';
+  /** The new account, or the existing one when the student was already billed for the batch. */
+  accountId?: number;
+  reason?: string;
+}
+
+/** A fee structure that can bill students promoted into a batch (`GET /academics/batches/:id/promotion-fees`). */
+export interface PromotionFeeStructureOption {
+  id: number;
+  name: string;
+  version: number;
+  /** Paise. */
+  total: number;
+  branchId: number | null;
+  batchId: number | null;
+  academicSessionId: number | null;
+  instalmentPlan: InstalmentPlan;
+}
+
+export interface PromotionFeeOptions {
+  /** False when the institute's plan doesn't include the fees module. */
+  available: boolean;
+  /** Most specific match: batch, then the batch's session (branch before institute-wide), then no session. */
+  defaultStructureId: number | null;
+  structures: PromotionFeeStructureOption[];
 }
 
 export interface ClassroomDto {

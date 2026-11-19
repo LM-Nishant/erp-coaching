@@ -1,9 +1,11 @@
 import { logger } from '../../infrastructure/logger';
 import { requireTenantContext } from '../../shared/context';
+import { setPromotionFeeProvider } from '../academics/api';
 import { onAdmissionCompleted } from '../admissions/api';
 import { isModuleEnabled } from '../subscriptions/subscription.service';
 import { generateForAdmission } from './accounts.service';
 import { registerFeesParentPortal } from './parent-portal';
+import { promotionFeeProvider } from './promotion-fees';
 import { setExamEntitlementProvider } from '../exams/api';
 import { setLiveEntitlementProvider } from '../live-classes/api';
 import { resolveCourseEntitlement, setCourseEntitlementProvider } from '../lms/api';
@@ -15,6 +17,8 @@ import { courseCheckoutUrl, coursePrices, feesGatesCourse } from './course-sales
 export function registerFeesIntegrations(): void {
   registerFeesParentPortal();
   registerCourseSalesIntegrations();
+  // Promotions can bill the promoted students for the new session, in the promotion's transaction.
+  setPromotionFeeProvider(promotionFeeProvider);
   // A completed admission gets its fee account from the best matching active structure
   // (batch → course+branch → course). `sourceRef = admission:<id>` makes retries no-ops.
   // Admissions completed by an online course purchase are already billed (`feeAccountId`).
