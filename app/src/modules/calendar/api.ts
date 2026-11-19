@@ -32,13 +32,15 @@ export const calendarApi = {
 };
 
 /**
- * Opens Google's consent screen: in this tab on the web (Google sends the browser back to the app),
- * and in the system browser in the mobile app, because Google refuses sign-in inside app web views.
- * The app reloads the connection when the user returns to it.
+ * Opens Google's consent screen by navigating to the API's start link. On the web, Google sends this
+ * tab back to the app. In the mobile app, Capacitor hands a top-level navigation to another host to
+ * the system browser (Google refuses sign-in inside app web views), and the app reloads the
+ * connection when the user returns to it. So the API and Google hosts must stay out of
+ * `server.allowNavigation`. Unlike opening a new window, a navigation still works after the awaited
+ * request, outside the tap's user gesture (iOS blocks pop-ups there).
  */
 export function openConsent(start: CalendarConnectStartDto): void {
-  if (Capacitor.isNativePlatform()) window.open(start.startUrl, '_blank');
-  else window.location.assign(start.startUrl);
+  window.location.assign(start.startUrl);
 }
 
 type Tone = 'success' | 'warning' | 'danger';

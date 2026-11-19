@@ -55,7 +55,7 @@ export interface MyCalendarDto {
 }
 
 export interface CalendarConnectStartDto {
-  /** Open in a top-level browser window (the system browser in the mobile app). */
+  /** Navigate to it at the top level; the mobile app hands it to the system browser. */
   startUrl: string;
   expiresAt: string;
 }
