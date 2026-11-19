@@ -46,6 +46,7 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     logger.error({ err, method: req.method, route, path: redactUrl(req.path) }, 'Unhandled error');
     captureError(err, { method: req.method, route: route ?? 'unmatched', status: e.status });
   }
+  if (e.retryAfterSeconds) res.set('Retry-After', String(Math.ceil(e.retryAfterSeconds)));
   res.status(e.status).json({ error: { code: e.code, message: e.message, details: e.details } });
 };
 

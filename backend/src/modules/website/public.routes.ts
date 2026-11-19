@@ -7,7 +7,7 @@ import express, { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import type { PublicCheckoutResult } from '@erp/shared';
 import { getStorage } from '../../infrastructure/storage';
-import { publicFormRateLimit } from '../../shared/middleware/security';
+import { mediaRateLimit, publicFormRateLimit, websiteRateLimit } from '../../shared/middleware/security';
 import { parse } from '../../shared/utilities/validation';
 import { AppError, BadRequest, NotFound } from '../../shared/errors';
 import { FileObject } from '../files/file.model';
@@ -105,12 +105,12 @@ export function websitePublicRoutes(api: Router) {
   const pub = Router();
   pub.use(express.urlencoded({ extended: true, limit: '64kb' }));
 
-  pub.get('/:site/resolve', async (req, res) => {
+  pub.get('/:site/resolve', websiteRateLimit, async (req, res) => {
     const s = await site(req);
     res.json(s);
   });
 
-  pub.get('/:site/site', async (req, res) => {
+  pub.get('/:site/site', websiteRateLimit, async (req, res) => {
     const s = await site(req);
     const live = await asInstitute(s.instituteId, loadLiveSite);
     res.setHeader('Cache-Control', PUBLIC_CACHE_CONTROL);
@@ -129,7 +129,7 @@ export function websitePublicRoutes(api: Router) {
     });
   });
 
-  pub.get('/:site/pages/:page', async (req, res) => {
+  pub.get('/:site/pages/:page', websiteRateLimit, async (req, res) => {
     const s = await site(req);
     const data = await asInstitute(s.instituteId, async () => {
       const live = await loadLiveSite();
@@ -144,7 +144,7 @@ export function websitePublicRoutes(api: Router) {
     res.json(data);
   });
 
-  pub.get('/:site/sitemap.xml', async (req, res) => {
+  pub.get('/:site/sitemap.xml', websiteRateLimit, async (req, res) => {
     const s = await site(req);
     const live = await asInstitute(s.instituteId, loadLiveSite);
     const urls = live.site.indexable
@@ -158,7 +158,7 @@ export function websitePublicRoutes(api: Router) {
     res.send(renderSitemap(urls));
   });
 
-  pub.get('/:site/robots.txt', async (req, res) => {
+  pub.get('/:site/robots.txt', websiteRateLimit, async (req, res) => {
     const s = await site(req);
     const live: LiveSite = await asInstitute(s.instituteId, loadLiveSite);
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -170,7 +170,7 @@ export function websitePublicRoutes(api: Router) {
     );
   });
 
-  pub.get('/:site/media/:fileId', async (req, res) => {
+  pub.get('/:site/media/:fileId', mediaRateLimit, async (req, res) => {
     const s = await site(req);
     const fileId = Number(req.params.fileId);
     const file = await asInstitute(s.instituteId, async () => {
@@ -184,7 +184,7 @@ export function websitePublicRoutes(api: Router) {
   });
 
   // Referral link: count the click, then land on the home page carrying the code.
-  pub.get('/:site/r/:code', async (req, res) => {
+  pub.get('/:site/r/:code', websiteRateLimit, async (req, res) => {
     const s = await site(req);
     const code = cleanRef(req.params.code);
     if (code)
@@ -260,7 +260,7 @@ export function websitePublicRoutes(api: Router) {
     if (req.method === 'POST' || req.query.format === 'json') res.json(result);
     else res.redirect(302, result.url);
   };
-  pub.get('/:site/checkout/:courseId', checkout);
+  pub.get('/:site/checkout/:courseId', websiteRateLimit, checkout);
   pub.post('/:site/checkout/:courseId', publicFormRateLimit, checkout);
 
   // Enquiry / demo-class forms → admissions enquiries. JSON for API clients; HTML forms get a
@@ -296,8 +296,8 @@ export function websitePublicRoutes(api: Router) {
     }
   });
 
-  pub.get('/:site/p/:page', (req, res) => renderLive(req, res, String(req.params.page)));
-  pub.get('/:site', (req, res) => renderLive(req, res, null));
+  pub.get('/:site/p/:page', websiteRateLimit, (req, res) => renderLive(req, res, String(req.params.page)));
+  pub.get('/:site', websiteRateLimit, (req, res) => renderLive(req, res, null));
 
   api.use('/public/sites', pub);
 }

@@ -28,7 +28,7 @@ Backups and restores are covered in [backup-restore.md](backup-restore.md), secu
 
 | Path                            | Purpose                                                                                                                                                                                 |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `deploy/docker-compose.yml`     | The stack: `mysql`, `migrate`, `api` and `web`; `backup` and `restore` (profile `ops`); `redis` (profile `redis`)                                                                       |
+| `deploy/docker-compose.yml`     | The stack: `mysql`, `redis`, `migrate`, `api` and `web`; `backup` and `restore` (profile `ops`)                                                                                         |
 | `deploy/.env.example`           | Template for `deploy/.env`, the stack's only configuration file                                                                                                                         |
 | `deploy/api.Dockerfile`         | `erp-api` image: the compiled backend, production dependencies, the database CLI and ffmpeg. Runs as the `node` user                                                                    |
 | `deploy/web.Dockerfile`         | `erp-web` image: the built web app, served by nginx                                                                                                                                     |
@@ -53,6 +53,7 @@ flowchart LR
         api["api: Node.js 22<br/>REST API, Socket.IO, jobs worker"]
         migrate["migrate: one-shot<br/>database migrations"]
         mysql[("mysql 8.4<br/>volume mysql-data")]
+        redis[("redis 8<br/>rate limits, live-class rooms")]
         storage[("media files<br/>volume storage")]
         backup["backup and restore<br/>profile ops"]
     end
@@ -63,6 +64,7 @@ flowchart LR
     certbot -.->|certificates| web
     web -->|HTTP on 4000| api
     api --> mysql
+    api --> redis
     api --> storage
     migrate --> mysql
     backup --> mysql
@@ -70,17 +72,17 @@ flowchart LR
     backup --> archives
 ```
 
-| Service              | Image                              | Role                                                                                  | State                                                                 |
-| -------------------- | ---------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `mysql`              | `mysql:8.4`                        | The database (utf8mb4). Not published on the host                                     | Volume `mysql-data`                                                   |
-| `migrate`            | `erp-api`                          | One-shot: runs `cli.js migrate` before the api starts, then exits                     | None                                                                  |
-| `api`                | `erp-api`                          | REST API on port 4000, Socket.IO for live classes, background jobs worker             | Volumes `storage` (media) and `api-tmp` (upload staging, transcoding) |
-| `web`                | `erp-web`                          | nginx on ports 80 and 443: TLS, the web app, the proxy to the api, institute websites | Read-only bind mounts `certs/` and `acme-webroot/`                    |
-| `backup` / `restore` | `erp-backup` (`mysql:8.4` + tools) | Profile `ops`, run on demand ([backup-restore.md](backup-restore.md))                 | Bind mount `backups/`; volume `storage` (read-only for `backup`)      |
-| `redis`              | `redis:8-alpine`                   | Profile `redis`. Not used by this release; reserved for [scaling](#scaling)           | Volume `redis-data`                                                   |
+| Service              | Image                              | Role                                                                                                                   | State                                                                 |
+| -------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `mysql`              | `mysql:8.4`                        | The database (utf8mb4). Not published on the host                                                                      | Volume `mysql-data`                                                   |
+| `migrate`            | `erp-api`                          | One-shot: runs `cli.js migrate` before the api starts, then exits                                                      | None                                                                  |
+| `api`                | `erp-api`                          | REST API on port 4000, Socket.IO for live classes, background jobs worker                                              | Volumes `storage` (media) and `api-tmp` (upload staging, transcoding) |
+| `web`                | `erp-web`                          | nginx on ports 80 and 443: TLS, the web app, the proxy to the api, institute websites                                  | Read-only bind mounts `certs/` and `acme-webroot/`                    |
+| `backup` / `restore` | `erp-backup` (`mysql:8.4` + tools) | Profile `ops`, run on demand ([backup-restore.md](backup-restore.md))                                                  | Bind mount `backups/`; volume `storage` (read-only for `backup`)      |
+| `redis`              | `redis:8-alpine`                   | Rate-limit counters and live-class rooms, shared by the api processes ([scaling](#scaling)). Not published on the host | Volume `redis-data`                                                   |
 
-Start order: `mysql` is healthy, then `migrate` exits with 0, then `api` is healthy (`/api/ready`), then `web` starts. If a
-migration fails, the api doesn't start and `docker compose up` exits non-zero.
+Start order: `mysql` is healthy, then `migrate` exits with 0; with `redis` healthy too, `api` starts and becomes healthy
+(`/api/ready`), then `web` starts. If a migration fails, the api doesn't start and `docker compose up` exits non-zero.
 
 ### Request routing
 
@@ -168,6 +170,7 @@ Format rules:
 | `MAX_UPLOAD_MB`                                                                                                                                                          | The API's upload limit. nginx accepts `MAX_UPLOAD_MB` + 10 MB per request                                                                                                                                         |
 | `ERROR_TRACKING_PROVIDER`, `ERROR_TRACKING_WEBHOOK_URL`                                                                                                                  | [Error tracking](#error-tracking)                                                                                                                                                                                 |
 | `RATE_LIMIT_*`                                                                                                                                                           | [Rate limiting](#rate-limiting-behind-the-proxy)                                                                                                                                                                  |
+| `REDIS_URL`                                                                                                                                                              | Blank: the stack's `redis` service. Another Redis: a `redis://` or `rediss://` URL with its password ([scaling](#scaling))                                                                                        |
 | `JOBS_WORKER_ENABLED`, `JOBS_POLL_INTERVAL_MS`                                                                                                                           | [Background jobs](#background-jobs)                                                                                                                                                                               |
 | `AI_BASE_URL`, `AI_MODEL`, `AI_API_KEY`, `AI_TIMEOUT_MS`                                                                                                                 | Defaults for the AI features; the Super Admin can override them in the app                                                                                                                                        |
 | `SMS_PROVIDER`, `WHATSAPP_PROVIDER`, `EMAIL_PROVIDER`, `PUSH_PROVIDER`, `PAYMENT_GATEWAY`, `STREAMING_PROVIDER`, `BIOMETRIC_PROVIDER`                                    | Integration adapters. This release only has `console` and `mock` implementations ([before going live](#before-going-live))                                                                                        |
@@ -183,7 +186,8 @@ The compose file sets the following for the API itself, overriding any value in 
 - `API_PUBLIC_URL=$PUBLIC_URL`;
 - `PUBLIC_WEB_URL=$PUBLIC_WEB_URL`, or `$PUBLIC_URL` when blank (also for `migrate`: the API refuses to start in
   production without it);
-- `CORS_ORIGINS=$PUBLIC_URL,$CORS_EXTRA_ORIGINS`.
+- `CORS_ORIGINS=$PUBLIC_URL,$CORS_EXTRA_ORIGINS`;
+- `REDIS_URL=$REDIS_URL`, or `redis://redis:6379` when blank.
 
 The image sets `NODE_ENV=production` and `APP_VERSION`.
 
@@ -697,24 +701,27 @@ the API takes the client address from the last `X-Forwarded-For` entry, which ng
 balancer in front, configure [real IP in nginx](#behind-a-cdn-or-load-balancer) and keep `TRUST_PROXY=1`. Don't raise
 it: clients that bypass the CDN could then choose their own address.
 
-The limits apply per client IP:
+The limits apply per client IP, except the per-URL media limit:
 
-| Variable                     | Default    | Applies to                                                    |
-| ---------------------------- | ---------- | ------------------------------------------------------------- |
-| `RATE_LIMIT_API_PER_MIN`     | 600/min    | Every `/api` request except media                             |
-| `RATE_LIMIT_MEDIA_PER_MIN`   | 3000/min   | Signed file downloads and HLS segments                        |
-| `RATE_LIMIT_AUTH_MAX`        | 30/15 min  | Password login and OTP request and verify                     |
-| `RATE_LIMIT_TOKEN_MAX`       | 600/15 min | Token refresh and logout                                      |
-| `RATE_LIMIT_PUBLIC_FORM_MAX` | 60/15 min  | Public forms: enquiries, checkout, coupons, self-registration |
-| `RATE_LIMIT_DEVICE_PER_MIN`  | 120/min    | Biometric device pushes                                       |
-| `RATE_LIMIT_WEBHOOK_PER_MIN` | 300/min    | Payment gateway webhooks                                      |
+| Variable                             | Default    | Applies to                                                                        |
+| ------------------------------------ | ---------- | --------------------------------------------------------------------------------- |
+| `RATE_LIMIT_API_PER_MIN`             | 600/min    | Every `/api` request except signed media and the public website                   |
+| `RATE_LIMIT_MEDIA_PER_MIN`           | 3000/min   | Signed file downloads, HLS segments and website images                            |
+| `RATE_LIMIT_MEDIA_PER_TOKEN_PER_MIN` | 300/min    | Each signed file or HLS URL, whatever the client IP: caps a leaked or shared link |
+| `RATE_LIMIT_WEBSITE_PER_MIN`         | 300/min    | Institute website pages, sitemaps, `robots.txt` and redirects                     |
+| `RATE_LIMIT_AUTH_MAX`                | 30/15 min  | Password login and OTP request and verify                                         |
+| `RATE_LIMIT_TOKEN_MAX`               | 600/15 min | Token refresh and logout                                                          |
+| `RATE_LIMIT_PUBLIC_FORM_MAX`         | 60/15 min  | Public forms: enquiries, checkout, coupons, self-registration                     |
+| `RATE_LIMIT_DEVICE_PER_MIN`          | 120/min    | Biometric device pushes                                                           |
+| `RATE_LIMIT_WEBHOOK_PER_MIN`         | 300/min    | Payment gateway webhooks                                                          |
 
 Over the limit, the API answers 429 with the standard `RateLimit` headers.
 
 - **Shared addresses:** clients behind one NAT, such as an institute's Wi-Fi, share one budget. Raise the limits for
   large centres.
-- **Restarts:** the counters live in memory, so they reset on a restart, and each API process counts separately
-  ([scaling](#rate-limits)).
+- **Shared counters:** with `REDIS_URL` (the stack's default), the counters live in Redis: every API process counts
+  against the same budget and a restart keeps them. Without Redis, or while it is unreachable, each process counts in
+  memory ([scaling](#rate-limits)).
 - **Turning them off:** `RATE_LIMIT_ENABLED=false` is only for load tests.
 
 ### Background jobs
@@ -824,26 +831,45 @@ This release runs one API process. Node.js handles requests on one thread, and t
 (bcryptjs; see [load-testing.md](load-testing.md)). Extra cores mostly help MySQL and ffmpeg. Running several API
 processes or servers needs the following changes:
 
-| Component       | Today                                                 | Needed for more than one API process                                                          |
-| --------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Live classes    | Room state in process memory (`realtime.ts`)          | Sticky sessions, the Socket.IO Redis adapter and room state in Redis ([below](#live-classes)) |
-| Rate limits     | In-memory counters per process                        | A shared store, for example `rate-limit-redis` for `express-rate-limit`                       |
-| Background jobs | MySQL `jobs` table, `SKIP LOCKED`                     | Nothing: several workers are safe                                                             |
-| Media storage   | Local volume `storage`                                | A shared file system, or object storage (the S3/R2 adapter is not implemented yet)            |
-| Website cache   | In-process, 60 s TTL                                  | Nothing: each process may serve 60 s stale site settings                                      |
-| Authentication  | JWT access tokens; refresh tokens in MySQL            | Nothing                                                                                       |
-| Upgrades        | One api container; the site is down during the switch | Rolling restarts behind a load balancer, which needs everything above                         |
+| Component       | Today                                                                                | Needed for more than one API process                                               |
+| --------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| Live classes    | The Socket.IO Redis adapter; hands, speakers, screen sharing and whiteboard in Redis | Sticky sessions for the long-polling fallback ([below](#live-classes))             |
+| Rate limits     | Counters in Redis                                                                    | Nothing ([below](#rate-limits))                                                    |
+| Background jobs | MySQL `jobs` table, `SKIP LOCKED`                                                    | Nothing: several workers are safe                                                  |
+| Media storage   | Local volume `storage`                                                               | A shared file system, or object storage (the S3/R2 adapter is not implemented yet) |
+| Website cache   | In-process, 60 s TTL                                                                 | Nothing: each process may serve 60 s stale site settings                           |
+| Authentication  | JWT access tokens; refresh tokens in MySQL                                           | Nothing                                                                            |
+| Upgrades        | One api container; the site is down during the switch                                | Rolling restarts behind a load balancer, which needs everything above              |
 
-The `redis` service (`docker compose --profile redis up -d redis`, with AOF persistence) is prepared for these
-changes. Nothing uses it yet.
+Redis is the stack's `redis` service (AOF persistence, not published on the host). Every API process must use the same
+Redis (`REDIS_URL`); for a Redis outside the stack, use `rediss://` with a password. Its keys:
+
+- `rl:<limiter>:<client>`: rate-limit counters, which expire with their window;
+- `live:room:<institute>:<class>:*`: a class's hands, speakers, screen sharing and whiteboard, which expire after 12
+  hours;
+- the `socket.io#*` channels: the adapter's publish and subscribe traffic.
+
+While Redis is unreachable, the API keeps working and logs a warning at most once a minute per kind:
+
+- **Rate limits:** each process counts in memory.
+- **Live classes:** each process sees only its own sockets, so participants on other processes miss events. Joining
+  works without the hands and the whiteboard; hands, microphones, screen sharing and the whiteboard answer
+  `LIVE_STATE_UNAVAILABLE` (503).
+
+Everything goes back to Redis by itself once it is reachable.
 
 ### Live classes
 
 Live classes use Socket.IO (namespace `/live`, path `/api/live-classes/socket.io`) for signalling, chat, polls, hands
 and attendance:
 
-- **Room state:** each room's state lives in a `Map` in the API process. A restart ends every running class: clients
-  reconnect, but the room state is gone.
+- **Room state:** chat, questions, polls and attendance are in MySQL. Who is online is read from the room's sockets.
+  Raised hands, speakers, screen sharing and the whiteboard are in Redis, or in the API process without `REDIS_URL`.
+  After an API restart the clients reconnect and rejoin; without Redis, the hands and the whiteboard are gone.
+- **Re-checks:** open sockets are re-checked every minute with the REST API's session checks. A revoked or idle
+  device, an inactive user, a lost membership or branch, a suspended subscription or an inactive institute drops them.
+  A change of an institute's subscription or status re-checks its sockets at once, and signing a device out drops its
+  sockets at once. The app then asks the REST API, which explains why, and reconnects if it is allowed.
 - **Media:** with `STREAMING_PROVIDER=mock`, media flows peer to peer over WebRTC. The teacher's browser sends one
   stream to each student, so a class is limited by the teacher's upload bandwidth, roughly 15 to 25 viewers (see
   `backend/src/modules/live-classes/README.md`).
@@ -853,13 +879,12 @@ and attendance:
 
 To run live classes on several API processes:
 
-1. **Sticky sessions.** The Socket.IO long-polling transport needs every request of a session to reach the same
-   process. In nginx, use `hash $remote_addr consistent;` or a cookie hash in the `erp_api` upstream. Otherwise, make
-   the client use the WebSocket transport only.
-2. **[`@socket.io/redis-adapter`](https://socket.io/docs/v4/redis-adapter/)**, so that broadcasts reach the sockets on
+1. **One Redis.** Set the same `REDIS_URL` on every process. The
+   [`@socket.io/redis-adapter`](https://socket.io/docs/v4/redis-adapter/) then carries a class's events to the sockets on
    the other processes.
-3. **Room state in Redis.** Move the participants, hands and polls out of the in-memory `Map`. Alternatively, route
-   each room to one owner process.
+2. **Sticky sessions.** The app connects over WebSocket and falls back to long polling, which needs every request of a
+   session to reach the same process. In nginx, use `hash $remote_addr consistent;` or a cookie hash in the `erp_api`
+   upstream.
 
 TURN with [coturn](https://github.com/coturn/coturn):
 
@@ -902,9 +927,10 @@ TURN with [coturn](https://github.com/coturn/coturn):
 
 ### Rate limits
 
-The `express-rate-limit` counters live in memory. With N API processes, a client gets up to N times the budget, and a
-restart resets the counters. Before scaling out, move them to a shared store such as `rate-limit-redis` with the
-`redis` service.
+With `REDIS_URL`, the `express-rate-limit` counters live in Redis (`rate-limit-redis`), so every API process counts
+against one budget per client. Without it, each process counts in memory: with N processes, a client gets up to N times
+the budget, and a restart resets the counters. While Redis is unreachable, the processes count in memory and log
+`Redis rate-limit store failed; counting in memory`; they use Redis again once it is back.
 
 ### Jobs and workers
 

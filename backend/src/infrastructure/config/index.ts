@@ -56,9 +56,30 @@ const schema = z.object({
   /** 32 bytes, base64 encoded. Used for AES-256-GCM encryption of secrets at rest. */
   ENCRYPTION_KEY: devDefault('ZGV2LW9ubHktZW5jcnlwdGlvbi1rZXktMzItYnl0ZXM='),
   FILE_URL_SECRET: devDefault('dev-only-file-url-secret-change-me'),
+  /** Server-side key for the HMAC that stores OTP codes (and keys per-mobile OTP counters). */
+  OTP_HASH_SECRET: devDefault('dev-only-otp-hash-secret-change-me'),
+  /**
+   * scrypt cost of new password hashes, as log2(N) (memory = 128 * 2^cost * 8 bytes). Sign-in rehashes
+   * passwords stored with another cost or with bcrypt. Production requires at least 15 (OWASP).
+   */
+  PASSWORD_HASH_COST: z.coerce
+    .number()
+    .int()
+    .min(isProd ? 15 : 10)
+    .max(20)
+    .default(15),
 
   OTP_TTL_SECONDS: z.coerce.number().default(300),
   OTP_MAX_ATTEMPTS: z.coerce.number().default(5),
+  /** OTP requests per mobile number per 10 minutes, whether or not the number has an account. */
+  OTP_REQUESTS_PER_MOBILE: z.coerce.number().int().positive().default(5),
+  /**
+   * Failed password, OTP or device-unlock attempts before sign-in is locked (0 = never lock). The lock
+   * lasts LOGIN_LOCKOUT_BASE_SECONDS and doubles with every further failure, up to LOGIN_LOCKOUT_MAX_SECONDS.
+   */
+  LOGIN_LOCKOUT_THRESHOLD: z.coerce.number().int().min(0).default(5),
+  LOGIN_LOCKOUT_BASE_SECONDS: z.coerce.number().int().positive().default(60),
+  LOGIN_LOCKOUT_MAX_SECONDS: z.coerce.number().int().positive().default(900),
   MAX_ACTIVE_DEVICES: z.coerce.number().default(2),
   /** Default inactivity timeout (minutes, 0 = off) for sessions without an institute setting. */
   SESSION_IDLE_TIMEOUT_MINUTES: z.coerce.number().int().min(0).max(1440).default(0),
@@ -90,9 +111,20 @@ const schema = z.object({
   TRUST_PROXY: z.coerce.number().int().min(0).default(0),
   JOBS_POLL_INTERVAL_MS: z.coerce.number().default(2000),
   RATE_LIMIT_ENABLED: bool(true),
+  /**
+   * Redis connection (e.g. redis://redis:6379). When set, rate-limit counters and live-class sockets are
+   * shared by every API instance; unset, they are kept in this process (single instance).
+   */
+  REDIS_URL: z
+    .string()
+    .regex(/^rediss?:\/\//, 'must be a redis:// or rediss:// URL')
+    .optional(),
   /** Per client IP. Clients behind one NAT (an institute's Wi-Fi) share these budgets. */
   RATE_LIMIT_API_PER_MIN: z.coerce.number().int().positive().default(600),
   RATE_LIMIT_MEDIA_PER_MIN: z.coerce.number().int().positive().default(3000),
+  /** Per signed file or HLS token, whatever the IP. */
+  RATE_LIMIT_MEDIA_PER_TOKEN_PER_MIN: z.coerce.number().int().positive().default(300),
+  RATE_LIMIT_WEBSITE_PER_MIN: z.coerce.number().int().positive().default(300),
   RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(30),
   RATE_LIMIT_TOKEN_MAX: z.coerce.number().int().positive().default(600),
   RATE_LIMIT_PUBLIC_FORM_MAX: z.coerce.number().int().positive().default(60),

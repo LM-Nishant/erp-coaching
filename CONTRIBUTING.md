@@ -103,18 +103,20 @@ Register the public router before the authenticated one when they share a prefix
 
 #### Rate limiters
 
-Every `/api` request passes the app-wide `apiRateLimit`, so authenticated routes need nothing more. Anonymous routes other than `GET` must also use one of the dedicated limiters in `shared/middleware/security.ts`, or `test/security/route-registry.test.ts` fails. Each limiter keeps its own per-IP budget, so one kind of traffic can't use up another's:
+Every `/api` request passes the app-wide `apiRateLimit`, so authenticated routes need nothing more. Anonymous routes other than `GET` must also use one of the dedicated limiters in `shared/middleware/security.ts`, or `test/security/route-registry.test.ts` fails. So must every route under `OWN_LIMITER_PATH` (signed media and the public website), which `apiRateLimit` skips. Each limiter keeps its own budget, per client IP unless noted, so one kind of traffic can't use up another's:
 
-| Limiter               | Use it for                                                                    | Default budget (env)                         |
-| --------------------- | ----------------------------------------------------------------------------- | -------------------------------------------- |
-| `publicFormRateLimit` | anonymous writes from public pages: enquiry forms, checkout, coupons, sign-up | 60 per 15 min (`RATE_LIMIT_PUBLIC_FORM_MAX`) |
-| `authRateLimit`       | password login and OTP request/verify                                         | 30 per 15 min (`RATE_LIMIT_AUTH_MAX`)        |
-| `tokenRateLimit`      | routes whose credential is a refresh token (refresh, logout)                  | 600 per 15 min (`RATE_LIMIT_TOKEN_MAX`)      |
-| `webhookRateLimit`    | payment and provider webhooks; verify the signature in the handler            | 300 per min (`RATE_LIMIT_WEBHOOK_PER_MIN`)   |
-| `deviceRateLimit`     | pushes from hardware authenticated by a device key (biometric punches)        | 120 per min (`RATE_LIMIT_DEVICE_PER_MIN`)    |
-| `mediaRateLimit`      | token-authorised media (signed file URLs, HLS); exempt from `apiRateLimit`    | 3000 per min (`RATE_LIMIT_MEDIA_PER_MIN`)    |
+| Limiter               | Use it for                                                                                                                   | Default budget (env)                               |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `publicFormRateLimit` | anonymous writes from public pages: enquiry forms, checkout, coupons, sign-up                                                | 60 per 15 min (`RATE_LIMIT_PUBLIC_FORM_MAX`)       |
+| `authRateLimit`       | password login and OTP request/verify                                                                                        | 30 per 15 min (`RATE_LIMIT_AUTH_MAX`)              |
+| `tokenRateLimit`      | routes whose credential is a refresh token (refresh, logout)                                                                 | 600 per 15 min (`RATE_LIMIT_TOKEN_MAX`)            |
+| `webhookRateLimit`    | payment and provider webhooks; verify the signature in the handler                                                           | 300 per min (`RATE_LIMIT_WEBHOOK_PER_MIN`)         |
+| `deviceRateLimit`     | pushes from hardware authenticated by a device key (biometric punches)                                                       | 120 per min (`RATE_LIMIT_DEVICE_PER_MIN`)          |
+| `mediaRateLimit`      | token-authorised media (signed file URLs, HLS); exempt from `apiRateLimit`                                                   | 3000 per min (`RATE_LIMIT_MEDIA_PER_MIN`)          |
+| `mediaTokenRateLimit` | the same routes when the URL has a `:token`: counts per token, whatever the IP, so a leaked link can't be replayed at volume | 300 per min (`RATE_LIMIT_MEDIA_PER_TOKEN_PER_MIN`) |
+| `websiteRateLimit`    | public website pages, sitemap, `robots.txt` and redirects (`/api/public/sites`); exempt from `apiRateLimit`                  | 300 per min (`RATE_LIMIT_WEBSITE_PER_MIN`)         |
 
-`apiRateLimit` allows 600 requests per minute per IP (`RATE_LIMIT_API_PER_MIN`). Counters are kept in memory, so each API process counts separately; see [docs/security.md](docs/security.md).
+`apiRateLimit` allows 600 requests per minute per IP (`RATE_LIMIT_API_PER_MIN`). With `REDIS_URL`, the counters live in Redis and every API process shares them; without it, or while Redis is unreachable, each process counts in memory ([docs/deployment.md](docs/deployment.md#rate-limits)). For a counter outside Express, such as one keyed by account, use `windowCounter(name, windowMs)` from `infrastructure/rate-store.ts`: it follows the same Redis-or-memory rule.
 
 ### 5. Request handling
 
@@ -331,6 +333,9 @@ Set a per-checkout `TEST_DB_NAME` in `backend/.env` (e.g. `erp_coaching_test_<mo
 | `9454…`          | `release-readiness.test.ts`                                                                                                                    |
 | `9458…`          | load runs (`load/`)                                                                                                                            |
 | `9459…`          | browser E2E (`e2e/`)                                                                                                                           |
+| `950…`           | security hardening: `security-hardening.test.ts` 9500, `auth-hardening.test.ts` 9501, `live-sockets.test.ts` 9502                              |
+
+**Redis.** The backend runs without Redis. Tests that need two API instances sharing Redis (`live-sockets.test.ts`, `rate-store.test.ts`) run only when `TEST_REDIS_URL` is set in the shell, for example `TEST_REDIS_URL=redis://127.0.0.1:6379 npm test -w backend`, and are skipped otherwise. The `backend-tests` CI job sets it. They use their own key prefixes and delete their keys, so any local Redis will do; don't point it at a production Redis.
 
 Commands:
 
@@ -447,7 +452,7 @@ To add a new slot, extend `WidgetSlotProps` in `core/modules.ts` with the slot's
 | ---------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
 | `quality`        | lint, format, typecheck and build of every workspace                                                   | `npm run lint && npm run format:check && npm run typecheck && npm run build`                                   |
 | `app-tests`      | shared package and app unit tests                                                                      | `npm run test -w app`                                                                                          |
-| `backend-tests`  | the backend suite against MySQL 8.4; nightly also in reverse and shuffled file order                   | `npm test -w backend`; repeat a shuffled order with `TEST_FILE_SEED` from the job log                          |
+| `backend-tests`  | the backend suite against MySQL 8.4 and Redis; nightly also in reverse and shuffled file order         | `npm test -w backend`; repeat a shuffled order with `TEST_FILE_SEED` from the job log                          |
 | `audit`          | known vulnerabilities in dependencies                                                                  | `node scripts/audit-check.mjs`                                                                                 |
 | `secrets`        | credentials anywhere in the git history (gitleaks)                                                     | `gitleaks git --redact .`                                                                                      |
 | `e2e`            | the browser workflows against MySQL 8.4                                                                | `npm run e2e`                                                                                                  |

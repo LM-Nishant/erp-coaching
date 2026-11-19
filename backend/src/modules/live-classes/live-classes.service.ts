@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { Op, type WhereOptions } from 'sequelize';
+import { Op, UniqueConstraintError, type WhereOptions } from 'sequelize';
 import type {
   CreateLiveSessionInput,
   LiveChatMessageDto,
@@ -502,16 +502,21 @@ export async function markJoined(liveSessionId: number, userId: number, role: Li
   const now = new Date();
   const existing = await repos.participants.findOne({ where: { liveSessionId, userId } });
   if (!existing) {
-    await repos.participants.create({
-      liveSessionId,
-      userId,
-      role,
-      firstJoinedAt: now,
-      lastJoinedAt: now,
-      lastLeftAt: null,
-      joinCount: 1,
-      isOnline: true,
-    });
+    await repos.participants
+      .create({
+        liveSessionId,
+        userId,
+        role,
+        firstJoinedAt: now,
+        lastJoinedAt: now,
+        lastLeftAt: null,
+        joinCount: 1,
+        isOnline: true,
+      })
+      .catch((err: unknown) => {
+        // The user's first socket on another API instance joined at the same moment and created it.
+        if (!(err instanceof UniqueConstraintError)) throw err;
+      });
   } else if (!existing.isOnline) {
     await existing.update({ isOnline: true, lastJoinedAt: now, joinCount: existing.joinCount + 1, role });
   }

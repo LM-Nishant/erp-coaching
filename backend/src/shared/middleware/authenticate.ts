@@ -1,11 +1,16 @@
 import type { Request, RequestHandler } from 'express';
 import { Unauthorized, Forbidden } from '../errors';
+import type { RequestContext } from '../context';
 import { User } from '../../modules/users/user.model';
 import { Institute } from '../../modules/institutes/institute.model';
 import { Branch } from '../../modules/branches/branch.model';
 import { Device, ImpersonationSession } from '../../modules/authentication/models';
 import { verifyAccessToken } from '../../modules/authentication/token.service';
-import { computeAccess, loadAssignments } from '../../modules/permissions/access.service';
+import {
+  computeAccess,
+  loadAssignments,
+  type ResolvedAccess,
+} from '../../modules/permissions/access.service';
 import {
   ACTIVITY_TOUCH_INTERVAL_MS,
   BACKGROUND_REQUEST_HEADER,
@@ -119,3 +124,53 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
   }
   next();
 };
+
+/**
+ * Re-checks a session that `authenticate` accepted earlier, without its access token (which may have
+ * expired since): open live-class sockets are authenticated once, at the handshake. Applies the same
+ * rules: the device is still active and not idle (or the impersonation still running), the user and
+ * institute are active, the user is still a member (and may use the selected branch), and the tenant
+ * request guards pass for a read (a suspended subscription → 402). Throws the error `authenticate`
+ * would; returns the user's current access in the institute (null without one). Run it in `ctx`.
+ */
+export async function recheckSession(ctx: RequestContext): Promise<ResolvedAccess | null> {
+  const [user, device] = await Promise.all([
+    User.findByPk(ctx.userId, { attributes: ['id', 'status'] }),
+    Device.findByPk(ctx.deviceId),
+  ]);
+  if (!user || user.status !== 'active') {
+    if (ctx.impersonatorId) throw Unauthorized('Impersonation session ended', 'IMPERSONATION_ENDED');
+    throw Unauthorized('Account is not active', 'ACCOUNT_INACTIVE');
+  }
+  if (!device || device.status !== 'active' || device.userId !== (ctx.impersonatorId ?? ctx.userId))
+    throw Unauthorized('This device session has been revoked', 'SESSION_REVOKED');
+  if (ctx.impersonatorId) {
+    const session = ctx.impersonationSessionId
+      ? await ImpersonationSession.findByPk(ctx.impersonationSessionId)
+      : null;
+    if (
+      !session ||
+      session.endedAt ||
+      session.expiresAt < new Date() ||
+      session.superAdminId !== ctx.impersonatorId
+    )
+      throw Unauthorized('Impersonation session ended', 'IMPERSONATION_ENDED');
+  } else if (isIdle(device.lastSeenAt, await getIdleTimeoutMinutes(ctx.instituteId ?? null))) {
+    throw Unauthorized('Signed out after a period of inactivity', 'SESSION_IDLE');
+  }
+  if (!ctx.instituteId) return null;
+  const institute = await Institute.findByPk(ctx.instituteId, { attributes: ['id', 'status'] });
+  if (!institute) throw Unauthorized('Institute not found', 'INSTITUTE_NOT_FOUND');
+  if (institute.status !== 'active' && !ctx.impersonatorId)
+    throw Forbidden(`Institute is ${institute.status}`, 'INSTITUTE_NOT_ACTIVE');
+  const data = await loadAssignments(user.id, institute.id);
+  if (!data.assignments.length)
+    throw Forbidden('You are no longer a member of this institute', 'NOT_A_MEMBER');
+  const allowed = computeAccess(data).allowedBranchIds;
+  const branchId = ctx.activeBranchId ?? undefined;
+  if (branchId !== undefined && allowed !== null && !allowed.includes(branchId))
+    throw Forbidden('You do not have access to this branch', 'BRANCH_FORBIDDEN');
+  const req = { ctx, header: () => undefined } as unknown as Request;
+  for (const guard of tenantGuards.values()) await guard(req);
+  return computeAccess(data, branchId);
+}

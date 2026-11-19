@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { Worker } from 'node:worker_threads';
+import { config } from './config';
 
 /**
  * Password hashing that never runs on the event loop.
@@ -12,8 +13,8 @@ export interface PasswordCheck {
   needsRehash: boolean;
 }
 
-// OWASP's scrypt profile with a 32 MiB memory cost (N=2^15, r=8, p=3).
-const CURRENT = { N: 2 ** 15, r: 8, p: 3 };
+// OWASP's scrypt profile (N=2^15, r=8, p=3: 32 MiB per hash); PASSWORD_HASH_COST sets N.
+const CURRENT = { N: 2 ** config.PASSWORD_HASH_COST, r: 8, p: 3 };
 const KEY_BYTES = 32;
 const SALT_BYTES = 16;
 const BCRYPT = /^\$2[aby]\$\d\d\$[./A-Za-z0-9]{53}$/;

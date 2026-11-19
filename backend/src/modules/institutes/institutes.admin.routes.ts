@@ -16,6 +16,7 @@ import { User } from '../users/user.model';
 import { UserRole } from '../permissions/models';
 import { getSystemRole } from '../permissions/catalog.service';
 import { Plan, Subscription } from '../subscriptions/models';
+import { invalidateAccess } from '../subscriptions/api';
 
 const color = z
   .string()
@@ -215,6 +216,8 @@ export function instituteAdminRoutes(api: Router) {
     if (!inst) throw NotFound('Institute');
     const previous = inst.status;
     await inst.update({ status: body.status });
+    // Re-checks open live-class sockets of the institute (see onAccessChanged).
+    invalidateAccess(id);
     await audit({
       action: `institute.status_changed`,
       entityType: 'institute',

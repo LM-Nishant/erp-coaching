@@ -56,11 +56,10 @@ services:
       retries: 30
       start_period: 120s
 
-  # Not used by this release (rate limits and live-class rooms are in memory, the job queue is in MySQL);
-  # reserved for horizontal scaling, see docs/deployment.md. Start with --profile redis.
+  # Rate-limit counters and live-class rooms (Socket.IO adapter, hands, whiteboard), shared by every api
+  # instance; see docs/deployment.md#scaling. The api falls back to memory while it is unreachable.
   redis:
     image: redis:8-alpine
-    profiles: [redis]
     restart: unless-stopped
     command: ['redis-server', '--appendonly', 'yes']
     volumes:
@@ -109,6 +108,8 @@ services:
       # The web origin, then the Capacitor app origins (iOS capacitor://localhost, Android https://localhost /
       # http://localhost).
       CORS_ORIGINS: ${PUBLIC_URL},${CORS_EXTRA_ORIGINS:-capacitor://localhost,https://localhost,http://localhost}
+      # The redis service unless deploy/.env names another Redis.
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
     volumes:
       - storage:/var/lib/erp/storage
       - api-tmp:/srv/erp/backend/tmp
@@ -117,6 +118,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     # On SIGTERM the server stops accepting connections and the jobs worker, then exits within 10 s.
     stop_grace_period: 15s
     healthcheck:

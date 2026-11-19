@@ -9,7 +9,7 @@ import {
   LMS_UPLOAD_CHUNK_BYTES,
 } from '@erp/shared';
 import { parse } from '../../shared/utilities/validation';
-import { mediaRateLimit } from '../../shared/middleware/security';
+import { mediaRateLimit, mediaTokenRateLimit } from '../../shared/middleware/security';
 import { idParam, paginationSchema } from '../../shared/utilities/pagination';
 import { authenticate } from '../../shared/middleware/authenticate';
 import { requireModule, requirePermission } from '../../shared/middleware/authorize';
@@ -112,7 +112,7 @@ export function lmsRoutes(api: Router) {
   // Public: HLS playlist/segments authorised by a short-lived stream token (no session header,
   // because <video>/native players fetch segments themselves). Segment URLs are relative.
   // ------------------------------------------------------------------------------------------
-  api.get('/lms/public/hls/:token/:name', mediaRateLimit, async (req, res) => {
+  api.get('/lms/public/hls/:token/:name', mediaRateLimit, mediaTokenRateLimit, async (req, res) => {
     const claims = verifyStreamToken(req.params.token as string);
     const name = req.params.name as string;
     if (!claims || !HLS_NAME.test(name)) throw NotFound('Stream');

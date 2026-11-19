@@ -15,7 +15,7 @@ import { getContext } from '../../shared/context';
 import { BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
 import { isBlockedUploadType, setFileResponseHeaders } from '../../shared/utilities/file-response';
-import { mediaRateLimit } from '../../shared/middleware/security';
+import { mediaRateLimit, mediaTokenRateLimit } from '../../shared/middleware/security';
 import { FileObject } from './file.model';
 import { deleteFile, fileRepo, isModuleOwnedPurpose, saveUploadedFile, signedUrlFor } from './files.service';
 
@@ -37,7 +37,7 @@ export const uploadMiddleware = withContext(
 
 export function fileRoutes(api: Router) {
   // Signed download: no session auth (token is the credential), supports Range for video seeking.
-  api.get('/files/signed/:token', mediaRateLimit, async (req, res) => {
+  api.get('/files/signed/:token', mediaRateLimit, mediaTokenRateLimit, async (req, res) => {
     const claims = verifyFileToken(String(req.params.token));
     if (!claims || claims.i === null) throw NotFound('File');
     const file = await FileObject.findOne({ where: { id: claims.f, instituteId: claims.i } });
