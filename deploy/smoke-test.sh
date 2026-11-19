@@ -5,7 +5,8 @@
 #   health/readiness, http->https redirect, ACME webroot, SPA (fallback, caching, security headers,
 #   report-only CSP), API headers and request ids, CORS for the Capacitor origin, Socket.IO polling
 #   handshake and WebSocket upgrade, institute websites on a custom domain (per-SNI certificate), a
-#   *.SITES_DOMAIN subdomain and a domain without certificate, super admin seeding (weak password
+#   *.SITES_DOMAIN subdomain and a domain without certificate, biometric device paths (/iclock/ over
+#   https, plain http and the default server), super admin seeding (weak password
 #   refused, strong accepted) and login, migration status, nginx config test + certificate reload,
 #   a 503 while the api is down and recovery after its restart, log redaction, and a backup + verify +
 #   restore drill (restore-test.sh --from-backup latest) in the backup image.
@@ -31,7 +32,7 @@ set -euo pipefail
 for v in ERP_REGISTRY ERP_IMAGE_TAG ERP_ENV_FILE ERP_SECRETS_DIR ERP_CERTS_DIR ERP_ACME_DIR BACKUP_HOST_DIR \
   BACKUP_UID BACKUP_GID BACKUP_KEEP_COUNT BACKUP_KEEP_DAYS DB_NAME DB_USER DB_PASSWORD SERVER_NAME PUBLIC_URL \
   PUBLIC_WEB_URL SITES_DOMAIN HTTP_PORT HTTPS_PORT CORS_EXTRA_ORIGINS MAX_UPLOAD_MB SPA_CSP_MODE SPA_CSP_REPORT_URI \
-  TLS_SELF_SIGNED_FALLBACK COMPOSE_PROJECT_NAME COMPOSE_FILE COMPOSE_PROFILES COMPOSE_ENV_FILES; do
+  TLS_SELF_SIGNED_FALLBACK ADMS_ALLOW_HTTP COMPOSE_PROJECT_NAME COMPOSE_FILE COMPOSE_PROFILES COMPOSE_ENV_FILES; do
   unset "$v"
 done
 
@@ -194,6 +195,7 @@ ADMIN_PASSWORD="Smoke-$(openssl rand -hex 10)-Aa1!"
     HTTP_PORT "$HTTP_PORT" \
     HTTPS_PORT "$HTTPS_PORT" \
     TLS_SELF_SIGNED_FALLBACK false \
+    ADMS_ALLOW_HTTP true \
     DB_NAME erp_coaching \
     DB_USER erp \
     DB_PASSWORD "$(openssl rand -hex 24)" \
@@ -402,6 +404,18 @@ head -c 2000000 /dev/zero >"$OUT/2mb.bin"
 fetch site_big "https://$SITE_HOST:$HTTPS_PORT/contact" -X POST --data-binary "@$OUT/2mb.bin" \
   -H 'Content-Type: application/octet-stream'
 check 'site hosts reject bodies over 1 MB (413)' expect site_big 413
+
+# ------------------------------------------------------------------ biometric devices
+section 'biometric devices (ADMS /iclock/ at the server root)'
+fetch iclock "$BASE/iclock/cdata?SN=SMOKE0000001&options=all"
+check 'GET /iclock/cdata, unregistered serial -> api 403 DEVICE_FORBIDDEN' \
+  expect iclock 403 '"DEVICE_FORBIDDEN"'
+fetch iclock_http "$HTTP_BASE/iclock/getrequest?SN=SMOKE0000001"
+check 'ADMS_ALLOW_HTTP=true: /iclock/ reaches the api over plain http (not redirected)' \
+  expect iclock_http 403 '"DEVICE_FORBIDDEN"'
+fetch iclock_site "https://$SITE_HOST:$HTTPS_PORT/iclock/cdata?SN=SMOKE0000001"
+check 'devices reach /iclock/ through the default server too (IP address, no SNI)' \
+  expect iclock_site 403 '"DEVICE_FORBIDDEN"'
 
 # ------------------------------------------------------------------ first-deploy bootstrap
 section 'bootstrap: super admin seeding and login'

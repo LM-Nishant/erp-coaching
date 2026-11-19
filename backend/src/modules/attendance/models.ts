@@ -17,7 +17,10 @@ import type {
   AttendanceSessionStatus,
   AttendanceSettingsDto,
   AttendanceStatus,
+  DeviceCommandKind,
+  DeviceCommandStatus,
   DeviceEventStatus,
+  DeviceInfoDto,
 } from '@erp/shared';
 import { registerTenantModel } from '../../shared/tenancy/tenant-model';
 import { User } from '../users/user.model';
@@ -143,6 +146,50 @@ export class AttendanceDevice extends Model<
   declare apiKeyHash: string;
   declare active: CreationOptional<boolean>;
   declare lastSeenAt: CreationOptional<Date | null>;
+  declare timeZone: CreationOptional<string | null>;
+  declare ipAllowlist: CreationOptional<string[] | null>;
+  declare allowHttp: CreationOptional<boolean>;
+  declare lastIp: CreationOptional<string | null>;
+  declare info: CreationOptional<DeviceInfoDto | null>;
+  /** ADMS upload pointer per table (`ATTLOG`, `OPERLOG`). */
+  declare pushStamps: CreationOptional<Record<string, string> | null>;
+  declare lastError: CreationOptional<string | null>;
+  declare lastErrorAt: CreationOptional<Date | null>;
+  declare createdAt: Ts['createdAt'];
+  declare updatedAt: Ts['updatedAt'];
+}
+
+/** A user stored on an ADMS device (from its user list uploads): PIN, name and privilege only. */
+export class AttendanceDeviceUser extends Model<
+  InferAttributes<AttendanceDeviceUser>,
+  InferCreationAttributes<AttendanceDeviceUser>
+> {
+  declare id: CreationOptional<number>;
+  declare instituteId: number;
+  declare deviceId: number;
+  declare pin: string;
+  declare name: string | null;
+  declare privilege: number | null;
+  declare lastSeenAt: Date;
+  declare createdAt: Ts['createdAt'];
+  declare updatedAt: Ts['updatedAt'];
+}
+
+export class AttendanceDeviceCommand extends Model<
+  InferAttributes<AttendanceDeviceCommand>,
+  InferCreationAttributes<AttendanceDeviceCommand>
+> {
+  declare id: CreationOptional<number>;
+  declare instituteId: number;
+  declare deviceId: number;
+  declare kind: DeviceCommandKind;
+  declare command: string;
+  declare status: CreationOptional<DeviceCommandStatus>;
+  declare returnCode: CreationOptional<number | null>;
+  declare result: CreationOptional<Record<string, unknown> | null>;
+  declare createdByUserId: number | null;
+  declare sentAt: CreationOptional<Date | null>;
+  declare completedAt: CreationOptional<Date | null>;
   declare createdAt: Ts['createdAt'];
   declare updatedAt: Ts['updatedAt'];
 }
@@ -277,6 +324,32 @@ export function initAttendanceModels(sequelize: Sequelize) {
     apiKeyHash: str(64),
     active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     lastSeenAt: ts(),
+    timeZone: str(64, true),
+    ipAllowlist: { type: DataTypes.JSON, allowNull: true },
+    allowHttp: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    lastIp: str(45, true),
+    info: { type: DataTypes.JSON, allowNull: true },
+    pushStamps: { type: DataTypes.JSON, allowNull: true },
+    lastError: str(255, true),
+    lastErrorAt: ts(),
+  });
+  define(AttendanceDeviceUser, sequelize, 'attendance_device_users', {
+    deviceId: uint(false),
+    pin: str(50),
+    name: str(100, true),
+    privilege: { type: DataTypes.INTEGER, allowNull: true },
+    lastSeenAt: ts(false),
+  });
+  define(AttendanceDeviceCommand, sequelize, 'attendance_device_commands', {
+    deviceId: uint(false),
+    kind: str(30),
+    command: str(255),
+    status: { ...str(20), defaultValue: 'pending' },
+    returnCode: { type: DataTypes.INTEGER, allowNull: true },
+    result: { type: DataTypes.JSON, allowNull: true },
+    createdByUserId: uint(),
+    sentAt: ts(),
+    completedAt: ts(),
   });
   define(AttendanceEnrolment, sequelize, 'attendance_enrolments', {
     studentUserId: uint(false),
@@ -306,4 +379,6 @@ export function associateAttendanceModels() {
   AttendanceCorrection.belongsTo(User, { as: 'student', foreignKey: 'studentUserId' });
   StudentLeaveRequest.belongsTo(User, { as: 'student', foreignKey: 'studentUserId' });
   AttendanceEnrolment.belongsTo(User, { as: 'student', foreignKey: 'studentUserId' });
+  AttendanceDeviceUser.belongsTo(AttendanceDevice, { as: 'device', foreignKey: 'deviceId' });
+  AttendanceDeviceCommand.belongsTo(AttendanceDevice, { as: 'device', foreignKey: 'deviceId' });
 }

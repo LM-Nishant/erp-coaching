@@ -13,6 +13,8 @@
 #   SPA_CSP             optional  replaces the default Content-Security-Policy of the app
 #   SPA_CSP_REPORT_URI  optional  report-uri appended to the default policy
 #   HSTS_HEADER         optional  Strict-Transport-Security value for the app
+#   ADMS_ALLOW_HTTP     optional  true: also accept biometric device pushes (/iclock/) over plain HTTP on
+#                                 port 80; default false (redirected to https like everything else)
 
 erp_config_fail() {
   echo "18-erp-config.envsh: ERROR: $*" >&2
@@ -115,8 +117,14 @@ erp_config_header_value SPA_CSP "$SPA_CSP"
 
 NGINX_LOCAL_RESOLVERS="${NGINX_LOCAL_RESOLVERS:-127.0.0.11}"
 
+case "${ADMS_ALLOW_HTTP:-false}" in
+  true) ADMS_HTTP_LOCATION="include /etc/nginx/erp/snippets/iclock.conf;" ;;
+  false) ADMS_HTTP_LOCATION="" ;;
+  *) erp_config_fail "ADMS_ALLOW_HTTP must be true or false" ;;
+esac
+
 # shellcheck disable=SC2090 # exported by name for envsubst, never word-split, so SPA_CSP's quotes stay literal
 export SERVER_NAME SITES_SERVER_NAME API_UPSTREAM CLIENT_MAX_BODY_SIZE HTTPS_PORT_SUFFIX HSTS_HEADER \
-  SPA_CSP SPA_CSP_HEADER NGINX_LOCAL_RESOLVERS
+  SPA_CSP SPA_CSP_HEADER NGINX_LOCAL_RESOLVERS ADMS_HTTP_LOCATION
 echo "18-erp-config.envsh: SERVER_NAME=$SERVER_NAME sites=$SITES_SERVER_NAME api=$API_UPSTREAM" \
-  "max_body=$CLIENT_MAX_BODY_SIZE csp=$SPA_CSP_HEADER"
+  "max_body=$CLIENT_MAX_BODY_SIZE csp=$SPA_CSP_HEADER adms_http=${ADMS_ALLOW_HTTP:-false}"

@@ -100,6 +100,7 @@ another's: website forms behind a school's NAT don't lock out its logins. Limite
 | `public-form` | anonymous writes: website forms, coupons, checkout, referral clicks, student self-registration | 60 / 15 min  | `RATE_LIMIT_PUBLIC_FORM_MAX` |
 | `device`      | biometric device pushes                                                                        | 120 / min    | `RATE_LIMIT_DEVICE_PER_MIN`  |
 | `webhook`     | payment gateway webhooks (the signature is verified in the handler)                            | 300 / min    | `RATE_LIMIT_WEBHOOK_PER_MIN` |
+| `adms`        | ZKTeco/eSSL biometric devices: ADMS pushes and command polls on `/iclock/*`                    | 600 / min    | `RATE_LIMIT_ADMS_PER_MIN`    |
 
 Some limits sit outside the limiters:
 
@@ -167,6 +168,48 @@ dedicated one. Counters are kept in memory, per API process (see [open findings]
 - **LMS.** Video goes through per-session HLS tokens.
 
 The release-readiness test checks that a signed URL stops working after its TTL.
+
+### Biometric devices (ADMS)
+
+ZKTeco and eSSL devices push attendance to `/iclock/*` at the server root
+([biometric.md](integrations/biometric.md)). ADMS firmware can't send an API key or sign its
+requests.
+
+- **Identity.** The device's serial number identifies it, and the institute and branch come from its
+  registration, never from the request. These all get the same 403 `DEVICE_FORBIDDEN`, before the
+  body is read:
+  - an unknown serial, or a disabled device;
+  - an address outside the device's optional IP allowlist;
+  - plain HTTP for a device that doesn't allow it;
+  - an institute without the attendance module.
+- **Serials aren't secret.** They are printed on the device. Anyone who knows a registered serial
+  and can send from an allowed address could forge punches for mapped PINs, take the device's
+  queued commands, or upload a fake user list or device info. Mitigations:
+  - an IP allowlist, recommended for every device on a fixed address;
+  - forged punches only mark attendance within the device's registration (its institute, and its
+    branch if it has one), never overwrite an existing mark, show under Recent punches, and can be
+    corrected like any other record;
+  - replies contain no personal data: only acknowledgements and commands.
+- **HTTPS by default.** Plain HTTP needs two opt-ins: `ADMS_ALLOW_HTTP=true` makes nginx serve
+  `/iclock/` (and nothing else) on port 80, and **Allow plain HTTP** is set per device. Many
+  devices only have firmware without HTTPS. The trade-off for those devices: their serial number,
+  punches (PIN and time) and user lists (PIN, name and privilege) cross the internet unencrypted
+  and can be altered on the way, and anyone on the path learns the serial. Prefer HTTPS-capable
+  firmware, and combine plain HTTP with an IP allowlist.
+- **No biometric data.** The server asks for no fingerprint or face templates or photos.
+  Template and photo uploads that a device sends anyway are discarded. Of the device users, only
+  PIN, name and privilege are stored.
+- **Limits.** The `adms` limiter (and `api`), `ADMS_MAX_BODY_KB` on the declared size, the received
+  size and unpacked data packets, `ADMS_MAX_RECORDS` before parsing, one request per device at a
+  time (at most 8 waiting), and at most 20 queued commands per device.
+- **Idempotency.** A punch is stored once per serial, PIN and time (a unique key), so re-sent
+  records never count twice.
+- **Secrets.** ADMS devices hold none, so nothing is stored for them in the encrypted settings.
+  The `PushCommKey` query parameter that some firmware sends isn't documented, so it isn't
+  checked; it is redacted from the logs.
+
+The route-registry test requires the `adms` limiter on these routes, and the security suite lists
+them with how the device is identified.
 
 ### Logging and error tracking
 

@@ -98,6 +98,13 @@ const schema = z.object({
   RATE_LIMIT_PUBLIC_FORM_MAX: z.coerce.number().int().positive().default(60),
   RATE_LIMIT_DEVICE_PER_MIN: z.coerce.number().int().positive().default(120),
   RATE_LIMIT_WEBHOOK_PER_MIN: z.coerce.number().int().positive().default(300),
+  /** ZKTeco/eSSL ADMS pushes and command polls (`/iclock/*`), per device IP. */
+  RATE_LIMIT_ADMS_PER_MIN: z.coerce.number().int().positive().default(600),
+  /** Largest ADMS upload accepted, and most records (lines) in one, checked before parsing. nginx allows 10 MB. */
+  ADMS_MAX_BODY_KB: z.coerce.number().int().positive().max(8192).default(2048),
+  ADMS_MAX_RECORDS: z.coerce.number().int().positive().default(10000),
+  /** ADMS punches older than this many days are acknowledged but not applied (first sync, wrong clock). */
+  ADMS_BACKFILL_DAYS: z.coerce.number().int().positive().default(31),
 
   SEED_SUPERADMIN_MOBILE: z.string().default('9000000000'),
   /** Production seeding refuses the default; see docs/deployment.md. */

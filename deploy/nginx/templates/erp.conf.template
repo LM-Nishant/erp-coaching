@@ -75,6 +75,10 @@ server {
         return 200 "ok\n";
     }
 
+    # Biometric devices without HTTPS firmware: with ADMS_ALLOW_HTTP=true, /iclock/ is proxied over plain
+    # HTTP (the API still refuses devices not set to allow it); otherwise it is redirected like the rest.
+    ${ADMS_HTTP_LOCATION}
+
     location / {
         return 301 https://$host${HTTPS_PORT_SUFFIX}$request_uri;
     }
@@ -107,6 +111,9 @@ server {
         proxy_pass http://erp_api;
         error_page 502 504 = @api_unavailable;
     }
+
+    # Biometric devices (ZKTeco/eSSL ADMS push) at the server root.
+    include /etc/nginx/erp/snippets/iclock.conf;
 
     # REST API. No add_header here: the API's own (helmet) security headers pass through unchanged.
     location /api/ {
@@ -169,6 +176,9 @@ server {
     # force HTTPS onto all of the institute's other subdomains: send HSTS for the requested host only.
     proxy_hide_header Strict-Transport-Security;
     add_header Strict-Transport-Security "max-age=31536000" always;
+
+    # Biometric devices set up with an IP address, or whose TLS sends no server name, arrive here.
+    include /etc/nginx/erp/snippets/iclock.conf;
 
     location ^~ /media/ {
         include /etc/nginx/erp/snippets/proxy-headers.conf;

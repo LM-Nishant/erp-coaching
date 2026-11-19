@@ -267,6 +267,22 @@ export const PUBLIC_OUTSIDE_PUBLIC_PREFIX: Record<string, string> = {
 };
 
 /**
+ * Public routes called by attendance devices instead of people, with how the device is identified.
+ * They use the `device` or `adms` rate limiter, and the institute always comes from the registered
+ * device, never from the request.
+ */
+export const DEVICE_AUTHENTICATED_ROUTES: Record<string, string> = {
+  'POST /api/attendance/public/device-events': 'generic punch API: device serial and API key headers',
+  'GET /api/attendance/public/iclock/cdata':
+    'ADMS handshake: registered active serial (SN), IP allowlist, HTTPS unless allowed',
+  'POST /api/attendance/public/iclock/cdata': 'ADMS uploads: same device checks as the handshake',
+  'POST /api/attendance/public/iclock/fdata': 'ADMS photo uploads (dropped): same device checks',
+  'GET /api/attendance/public/iclock/getrequest': 'ADMS command poll: same device checks',
+  'POST /api/attendance/public/iclock/devicecmd': 'ADMS command results: same device checks',
+  'GET /api/attendance/public/iclock/ping': 'ADMS keep-alive: same device checks',
+};
+
+/**
  * Column values for rows the synthesizer creates (victim-data.ts), per table, where the schema
  * alone does not produce a record its owner can read (e.g. results must be published to be seen).
  * Objects and arrays are stored as JSON.

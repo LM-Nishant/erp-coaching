@@ -276,54 +276,103 @@ const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5)
 
 /**
  * Ingests device punches through the biometric adapter (mock today). Punch instants are read on the
- * institute's wall clock. First punch of the day is check-in, last is check-out; late is decided
- * from the employee's shift and grace minutes. Days already marked as leave or edited manually are
- * left untouched.
+ * institute's wall clock; see `applyBiometricPunches`.
  */
 export async function ingestBiometric(payload: unknown) {
   const tz = await getInstituteTimezone();
   const punches = await getBiometricAdapter().parsePush(payload, { timeZone: tz });
-  const enrolments = [...new Set(punches.map((p) => p.enrolmentId))];
+  const byPin = new Map(
+    (await employeesByPins([...new Set(punches.map((p) => p.enrolmentId))])).map((e) => [
+      e.pin,
+      e.employeeId,
+    ]),
+  );
+  const unmatched = new Set<string>();
+  const known: { employeeId: number; punchedAt: Date }[] = [];
+  for (const p of punches) {
+    const employeeId = byPin.get(p.enrolmentId);
+    if (!employeeId || Number.isNaN(p.punchedAt.getTime())) unmatched.add(p.enrolmentId);
+    else known.push({ employeeId, punchedAt: p.punchedAt });
+  }
+  const { updated, skipped } = await applyBiometricPunches(known);
+  return { punches: punches.length, updated, skipped, unmatched: [...unmatched] };
+}
+
+/**
+ * Applies device punches to staff attendance on the institute's wall clock. Per employee and day,
+ * the earliest punch is the check-in and the latest the check-out, merged with the times already
+ * recorded that day (devices push punches as they happen, so re-sent punches change nothing). Late
+ * is decided from the employee's shift and grace minutes. Days marked as leave or edited manually
+ * are left untouched. `outcomes` has one entry per punch, in order.
+ */
+export async function applyBiometricPunches(punches: { employeeId: number; punchedAt: Date }[]) {
+  const outcomes: ('applied' | 'skipped' | 'unknown')[] = punches.map(() => 'unknown');
+  const ids = [...new Set(punches.map((p) => p.employeeId))];
+  if (!ids.length) return { updated: 0, skipped: 0, outcomes };
+  const tz = await getInstituteTimezone();
   const employees = await employeeRepo.findAll({
-    where: { biometricEnrolmentId: { [Op.in]: enrolments } },
+    where: { id: { [Op.in]: ids } },
     include: [{ model: Shift, as: 'shift' }],
   });
-  const byEnrolment = new Map(employees.map((e) => [e.biometricEnrolmentId!, e]));
-  const groups = new Map<string, { employee: Employee; date: string; times: string[] }>();
-  const unmatched = new Set<string>();
-  for (const p of punches) {
-    const employee = byEnrolment.get(p.enrolmentId);
-    if (!employee || Number.isNaN(p.punchedAt.getTime())) {
-      unmatched.add(p.enrolmentId);
-      continue;
-    }
+  const byId = new Map(employees.map((e) => [e.id, e]));
+  const groups = new Map<string, { employee: Employee; date: string; times: string[]; idx: number[] }>();
+  punches.forEach((p, i) => {
+    const employee = byId.get(p.employeeId);
+    if (!employee || Number.isNaN(p.punchedAt.getTime())) return;
     const { date, time } = nowInZone(tz, p.punchedAt);
     const key = `${employee.id}:${date}`;
-    const g = groups.get(key) ?? { employee, date, times: [] };
+    const g = groups.get(key) ?? { employee, date, times: [], idx: [] };
     g.times.push(time);
+    g.idx.push(i);
     groups.set(key, g);
-  }
+  });
   let updated = 0;
   let skipped = 0;
-  for (const { employee, date, times } of groups.values()) {
-    times.sort();
+  for (const { employee, date, times, idx } of groups.values()) {
     const existing = await attendanceRepo.findOne({ where: { employeeId: employee.id, date } });
     if (existing && existing.source !== 'biometric') {
       skipped++;
+      for (const i of idx) outcomes[i] = 'skipped';
       continue;
     }
+    const earlier = [existing?.checkIn, existing?.checkOut].filter((t): t is string => !!t);
+    const all = [...new Set([...times, ...earlier])].sort();
     const shift = employee.shift;
-    const late = shift ? minutes(times[0]) > minutes(shift.startTime) + shift.graceMinutes : false;
+    const late = shift ? minutes(all[0]) > minutes(shift.startTime) + shift.graceMinutes : false;
     await upsertAttendanceRow(employee.id, date, {
       status: late ? 'late' : 'present',
-      checkIn: times[0],
-      checkOut: times.length > 1 ? times[times.length - 1] : null,
+      checkIn: all[0],
+      checkOut: all.length > 1 ? all[all.length - 1] : null,
       source: 'biometric',
       leaveApplicationId: null,
     });
     updated++;
+    for (const i of idx) outcomes[i] = 'applied';
   }
-  return { punches: punches.length, updated, skipped, unmatched: [...unmatched] };
+  return { updated, skipped, outcomes };
+}
+
+/** Employees mapped to device PINs (`biometricEnrolmentId`); every mapped employee without `pins`. */
+export async function employeesByPins(pins?: string[]) {
+  if (pins && !pins.length) return [];
+  const rows = await employeeRepo.findAll({
+    where: { biometricEnrolmentId: pins ? { [Op.in]: pins } : { [Op.ne]: null } },
+    attributes: ['id', 'name', 'biometricEnrolmentId'],
+  });
+  return rows.map((e) => ({ employeeId: e.id, pin: e.biometricEnrolmentId!, name: e.name }));
+}
+
+/** Maps an employee to a device PIN (`biometricEnrolmentId`), or unmaps with null. */
+export async function setEmployeePin(employeeId: number, pin: string | null) {
+  if (pin) {
+    const { instituteId } = requireTenantContext();
+    const clash = await Employee.findOne({
+      where: { instituteId, biometricEnrolmentId: pin, id: { [Op.ne]: employeeId } },
+      attributes: ['id'],
+    });
+    if (clash) throw Conflict('This PIN is already mapped to another employee', 'DUPLICATE_ENROLMENT');
+  }
+  await employeeRepo.update(employeeId, { biometricEnrolmentId: pin });
 }
 
 export interface AttendanceSummary {

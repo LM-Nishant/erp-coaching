@@ -88,6 +88,7 @@ migration fails, the api doesn't start and `docker compose up` exits non-zero.
 | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `http://<any host>/.well-known/acme-challenge/…`                                                  | Files in `deploy/acme-webroot/`: HTTP-01 challenges for every host name                                              |
 | `http://<any host>/nginx-health`                                                                  | `200 ok`, for load balancer probes                                                                                   |
+| `<any host>/iclock/…` over HTTPS, and over HTTP with `ADMS_ALLOW_HTTP=true`                       | ZKTeco/eSSL biometric devices: the API, bodies up to 10 MB ([biometric.md](integrations/biometric.md))               |
 | Any other `http://` request                                                                       | `301` to the same URL on `https://`                                                                                  |
 | `https://SERVER_NAME/api/live-classes/socket.io/`                                                 | Socket.IO (namespace `/live`): WebSocket upgrade and long-polling, unbuffered, 1-hour timeouts                       |
 | `https://SERVER_NAME/api/files/signed/…`, `/api/lms/public/hls/…`, institute logos, website media | The API, unbuffered, so large files and `Range` requests stream through (300 s read timeout)                         |
@@ -170,6 +171,7 @@ Format rules:
 | `RATE_LIMIT_*`                                                                                                                                                           | [Rate limiting](#rate-limiting-behind-the-proxy)                                                                                                                                                                  |
 | `JOBS_WORKER_ENABLED`, `JOBS_POLL_INTERVAL_MS`                                                                                                                           | [Background jobs](#background-jobs)                                                                                                                                                                               |
 | `PAYMENT_RECONCILE_INTERVAL_MINUTES`                                                                                                                                     | Minutes between checks of open gateway payments, 10 by default ([payment gateways](integrations/payments.md#reconciliation-and-idempotency))                                                                      |
+| `ADMS_ALLOW_HTTP`, `ADMS_MAX_BODY_KB`, `ADMS_MAX_RECORDS`, `ADMS_BACKFILL_DAYS`                                                                                          | ZKTeco/eSSL biometric devices ([biometric.md](integrations/biometric.md#server-setup)). `ADMS_ALLOW_HTTP=true` also serves `/iclock/` on `HTTP_PORT`, for firmware without HTTPS                                  |
 | `AI_BASE_URL`, `AI_MODEL`, `AI_API_KEY`, `AI_TIMEOUT_MS`                                                                                                                 | Defaults for the AI features; the Super Admin can override them in the app                                                                                                                                        |
 | `SMS_PROVIDER`, `WHATSAPP_PROVIDER`, `EMAIL_PROVIDER`, `PUSH_PROVIDER`, `PAYMENT_GATEWAY`, `STREAMING_PROVIDER`, `BIOMETRIC_PROVIDER`                                    | Integration adapters. This release only has `console` and `mock` implementations ([before going live](#before-going-live))                                                                                        |
 | `SEED_SUPERADMIN_MOBILE`, `SEED_SUPERADMIN_PASSWORD`, `SEED_DEMO_DATA`                                                                                                   | First deployment only ([seeding](#first-deployment))                                                                                                                                                              |
@@ -497,7 +499,9 @@ This release only ships development adapters for the external integrations:
   Institutes and the platform take real payments once they enter their Paytm, Razorpay or Cashfree keys in the app
   ([payment gateways](integrations/payments.md)).
 - **Live classes:** `STREAMING_PROVIDER=mock` is the peer-to-peer WebRTC transport ([live classes](#live-classes)).
-- **Biometrics:** `BIOMETRIC_PROVIDER=mock`.
+- **Biometrics:** ZKTeco and eSSL devices connect directly over ADMS push
+  ([biometric.md](integrations/biometric.md)). `BIOMETRIC_PROVIDER=mock` is only the payload format of the punch API,
+  for other devices and middleware.
 - **Storage:** `STORAGE_DRIVER` must stay `local`, because the S3/R2 adapter is not implemented.
 
 ## Upgrades
@@ -710,6 +714,7 @@ The limits apply per client IP:
 | `RATE_LIMIT_TOKEN_MAX`       | 600/15 min | Token refresh and logout                                      |
 | `RATE_LIMIT_PUBLIC_FORM_MAX` | 60/15 min  | Public forms: enquiries, checkout, coupons, self-registration |
 | `RATE_LIMIT_DEVICE_PER_MIN`  | 120/min    | Biometric device pushes                                       |
+| `RATE_LIMIT_ADMS_PER_MIN`    | 600/min    | ZKTeco/eSSL device pushes and command polls (`/iclock/`)      |
 | `RATE_LIMIT_WEBHOOK_PER_MIN` | 300/min    | Payment gateway webhooks and checkout returns                 |
 
 Over the limit, the API answers 429 with the standard `RateLimit` headers.
@@ -936,9 +941,9 @@ The CI `deploy` job does two things:
    - builds the three images and starts the stack under the project name `erp-smoke`, on ports 8080 and 8443, with
      throwaway secrets and a throwaway certificate authority;
    - checks through nginx: health and readiness, the redirect to HTTPS, the web app and its headers, CORS, the
-     Socket.IO handshake and the WebSocket upgrade, institute websites on a custom domain and on a subdomain, super
-     admin seeding and sign-in, certificate reload, the 503 while the api is down, log redaction, and a backup with its
-     verification and a [restore drill](backup-restore.md#restore-drill);
+     Socket.IO handshake and the WebSocket upgrade, institute websites on a custom domain and on a subdomain, the
+     biometric device paths (`/iclock/`), super admin seeding and sign-in, certificate reload, the 503 while the api is
+     down, log redaction, and a backup with its verification and a [restore drill](backup-restore.md#restore-drill);
    - always removes the stack and its volumes, and prints the service logs on failure.
 
 ```sh
@@ -960,6 +965,7 @@ The `backup-restore` job runs `deploy/backup/restore-test.sh` against MySQL 8.4;
 | A 503 `SERVICE_UNAVAILABLE` on `/api/…`             | nginx can't reach the api: it is stopped, restarting or crashed (`docker compose logs api`)                                                                                                                |
 | A 413 on uploads                                    | Raise `MAX_UPLOAD_MB` and run `docker compose up -d --wait`; it applies to both nginx and the API                                                                                                          |
 | Live classes don't connect                          | `curl 'https://app.example.com/api/live-classes/socket.io/?EIO=4&transport=polling'` must return `0{"sid":…`. A proxy in front must pass WebSocket upgrades. For media failures, see [TURN](#live-classes) |
+| A biometric device doesn't send punches             | The device's last error in Attendance setup → Biometric, and [biometric.md](integrations/biometric.md#troubleshooting)                                                                                     |
 | CORS errors in the mobile apps                      | `CORS_ORIGINS` (`docker compose exec api printenv CORS_ORIGINS`) must contain the app's origin                                                                                                             |
 | A certificate error on a custom domain              | `docker compose exec web erp-certs --reload` reports skipped certificates; `openssl s_client -servername <host> -connect <host>:443` shows the certificate in use                                          |
 | Clients all share one rate limit                    | A proxy in front of nginx without [real IP](#behind-a-cdn-or-load-balancer) configured                                                                                                                     |
