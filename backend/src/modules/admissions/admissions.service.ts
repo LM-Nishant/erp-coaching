@@ -1,15 +1,29 @@
 import { Op, type Transaction } from 'sequelize';
-import type { ApplicationDto, EnquiryDto, EnquiryFollowUpDto } from '@erp/shared';
+import type {
+  AdmissionBatchEnrolment,
+  ApplicationDto,
+  CourseBatchOptionDto,
+  EnquiryDto,
+  EnquiryFollowUpDto,
+} from '@erp/shared';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { enqueueJob } from '../../infrastructure/jobs/queue';
 import { logger } from '../../infrastructure/logger';
 import { requireTenantContext } from '../../shared/context';
 import { BadRequest, NotFound } from '../../shared/errors';
-import { Batch, Course, enrollStudentsInBatch } from '../academics/api';
+import {
+  Batch,
+  Course,
+  batchAvailability,
+  batchUnavailableError,
+  enrollStudentsInBatch,
+  openBatchesForCourse,
+} from '../academics/api';
 import { guardiansOf, notify, studentUserOf } from '../notifications/api';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { UserRole } from '../permissions/models';
 import { User } from '../users/user.model';
+import { Student } from '../students/api';
 import { recordHistory } from '../students/students.service';
 import { getStudentSettings } from '../students/settings';
 import { AdmissionApplication, Enquiry, EnquiryFollowUp } from './models';
@@ -263,10 +277,68 @@ export async function assertAdmissionBatch(
 }
 
 /**
+ * Where an application is for, validated the same way when it is made and when it is edited: a
+ * batch must be in the branch (and in the course, when one is given) and sets the course; a course
+ * without a batch must exist in the institute. `currentCourseId` (an edit) is not looked up again.
+ */
+export async function resolveAdmissionPlacement(
+  branchId: number,
+  courseId: number | null | undefined,
+  batchId: number | null | undefined,
+  opts: { currentCourseId?: number | null } = {},
+): Promise<{ courseId: number | null; batchId: number | null }> {
+  if (batchId) return { courseId: await assertAdmissionBatch(batchId, branchId, courseId), batchId };
+  if (courseId && courseId !== opts.currentCourseId) {
+    const { instituteId } = requireTenantContext();
+    if (!(await Course.count({ where: { instituteId, id: courseId } }))) throw NotFound('Course');
+  }
+  return { courseId: courseId ?? null, batchId: null };
+}
+
+/** The branch admitting puts the student in: their own for a linked application, else the application's. */
+async function admissionBranchId(a: AdmissionApplication): Promise<number> {
+  if (!a.studentId) return a.branchId;
+  const student = await Student.findOne({
+    where: { instituteId: a.instituteId, id: a.studentId },
+    attributes: ['branchId'],
+  });
+  return student?.branchId ?? a.branchId;
+}
+
+/** Batches an application can be admitted into: open batches of its course, with free seats, in the student's branch. */
+export async function admissionBatchOptions(a: AdmissionApplication): Promise<CourseBatchOptionDto[]> {
+  if (!a.courseId) return [];
+  const options = await openBatchesForCourse(a.courseId, await admissionBranchId(a));
+  return options.map(({ batch, seatsLeft }) => ({
+    id: batch.id,
+    name: batch.name,
+    startDate: batch.startDate,
+    seatsLeft,
+  }));
+}
+
+/**
+ * Applies the batch chosen when admitting, inside the admit transaction: `null` admits without a
+ * batch (assigned later in academics), a batch must be in the student's branch and the application's
+ * course (or sets the course), and `undefined` keeps the application's batch.
+ */
+export async function chooseAdmissionBatch(
+  a: AdmissionApplication,
+  batchId: number | null | undefined,
+  branchId: number,
+  transaction: Transaction,
+) {
+  if (batchId === undefined || batchId === a.batchId) return;
+  const courseId = batchId ? await assertAdmissionBatch(batchId, branchId, a.courseId) : a.courseId;
+  await a.update({ batchId, courseId }, { transaction });
+}
+
+/**
  * Marks the application admitted (and its enquiry converted) and, when it names a batch, enrolls the
  * new student's login in it through academics (`batch_students`), inside the admit transaction so a
- * full batch (409 BATCH_FULL) rolls the admission back. `enrol: false` means the caller has already
- * enrolled the student in `a.batchId` (e.g. a course purchase picking a batch with free seats).
+ * batch that can't take the student (409 BATCH_FULL / BATCH_CLOSED) rolls the admission back.
+ * `enrol: false` means the caller has already enrolled the student in `a.batchId` (e.g. a course
+ * purchase picking a batch with free seats). Returns the student user ids newly added to the batch.
  */
 export async function completeAdmission(
   a: AdmissionApplication,
@@ -274,7 +346,7 @@ export async function completeAdmission(
   branchId: number,
   transaction: Transaction,
   opts: { enrol?: boolean } = {},
-) {
+): Promise<{ batchEnrolment: AdmissionBatchEnrolment; enrolled: number[] }> {
   const studentId = student.id;
   const { userId } = requireTenantContext();
   await leaveWaitlist(a, transaction);
@@ -282,12 +354,24 @@ export async function completeAdmission(
     { status: 'admitted', studentId, decidedByUserId: userId ?? null, decidedAt: new Date() },
     { transaction },
   );
-  let batchEnrolment: 'enrolled' | 'no_login' | null = null;
+  let batchEnrolment: AdmissionBatchEnrolment = null;
+  let enrolled: number[] = [];
   if (a.batchId) {
     // Siblings sharing a mobile get no login of their own and can't be enrolled by user id yet.
     if (student.userId) {
-      if (opts.enrol !== false)
-        await enrollStudentsInBatch(a.batchId, [student.userId], { branchId, transaction });
+      if (opts.enrol !== false) {
+        // Same rules as any batch choice for a course: open, in the course and branch, a free seat.
+        if (a.courseId) {
+          const { reason } = await batchAvailability(a.batchId, {
+            courseId: a.courseId,
+            branchId,
+            studentUserId: student.userId,
+            transaction,
+          });
+          if (reason) throw batchUnavailableError(reason);
+        }
+        ({ enrolled } = await enrollStudentsInBatch(a.batchId, [student.userId], { branchId, transaction }));
+      }
       batchEnrolment = 'enrolled';
     } else batchEnrolment = 'no_login';
   }
@@ -306,6 +390,7 @@ export async function completeAdmission(
       { status: 'converted', studentId },
       { where: { instituteId: a.instituteId, id: a.enquiryId }, transaction },
     );
+  return { batchEnrolment, enrolled };
 }
 
 /**

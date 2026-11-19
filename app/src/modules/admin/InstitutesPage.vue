@@ -1,7 +1,9 @@
 <template>
   <AppPage title="Institutes" :on-refresh="load">
     <template #actions>
-      <ion-button @click="openCreate"><ion-icon slot="icon-only" :icon="add" /></ion-button>
+      <ion-button aria-label="New institute" @click="openCreate"
+        ><ion-icon slot="icon-only" :icon="add"
+      /></ion-button>
     </template>
 
     <ion-searchbar v-model="search" :debounce="400" placeholder="Search name or slug" @ion-input="load" />

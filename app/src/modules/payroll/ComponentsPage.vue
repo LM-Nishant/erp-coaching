@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Statutory & custom components" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'payroll.configure'" @click="edit()"
+      <ion-button v-can="'payroll.configure'" aria-label="New component" @click="edit()"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>

@@ -2,10 +2,10 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type { Readable } from 'node:stream';
 import { Op } from 'sequelize';
 import type {
   CreateReportExportInput,
-  ReportDownloadDto,
   ReportExportDto,
   ReportExportFormat,
   ReportResultDto,
@@ -13,18 +13,19 @@ import type {
 import type { Job } from '../../infrastructure/jobs/job.model';
 import { enqueueJob } from '../../infrastructure/jobs/queue';
 import { logger } from '../../infrastructure/logger';
+import { getStorage } from '../../infrastructure/storage';
 import { audit } from '../../shared/audit/audit.service';
 import { getContext, requireTenantContext, runWithContext } from '../../shared/context';
 import { AppError, NotFound } from '../../shared/errors';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { FileObject } from '../files/file.model';
-import { deleteFile, saveUploadedFile, signedUrlFor } from '../files/files.service';
+import { deleteFile, saveUploadedFile } from '../files/files.service';
 import { Institute } from '../institutes/institute.model';
 import { notify } from '../notifications/api';
 import { REPORT_DEFINITIONS, prepareReport, runReport } from './definitions';
 import { cleanFilters } from './filters';
 import { ReportExport } from './models';
-import { renderReport } from './render';
+import { EXPORT_MIME_TYPES, renderReport } from './render';
 import { fromStoredRequest, toStoredRequest } from './scope';
 
 /** Row limits per table (mutable so tests can exercise the background path with small data). */
@@ -36,8 +37,6 @@ export const exportLimits = {
 };
 /** How long an export file is kept before the expiry job deletes it. */
 export const EXPORT_TTL_MS = 24 * 60 * 60 * 1000;
-/** Lifetime of a download link; each download is signed (and audited) separately. */
-export const DOWNLOAD_URL_TTL_SECONDS = 300;
 /** Queued or running exports a user may have at once (counting the last hour). */
 export const MAX_ACTIVE_EXPORTS = 3;
 
@@ -268,8 +267,18 @@ export async function getExport(id: number): Promise<ReportExportDto> {
   return exportDto(await ownExport(id));
 }
 
-/** A short-lived signed link to a ready export (409 while pending or failed, 410 once expired). */
-export async function downloadExport(id: number): Promise<ReportDownloadDto> {
+export interface ExportDownload {
+  stream: Readable;
+  size: number;
+  fileName: string;
+  mimeType: string;
+}
+
+/**
+ * Opens a ready export for download; every download is audited (409 while pending or failed, 410
+ * once expired).
+ */
+export async function openExportDownload(id: number): Promise<ExportDownload> {
   const exp = await ownExport(id);
   if (exp.status === 'queued' || exp.status === 'running') {
     throw new AppError(409, 'EXPORT_NOT_READY', 'The export is still being prepared');
@@ -281,8 +290,10 @@ export async function downloadExport(id: number): Promise<ReportDownloadDto> {
     !isExpired(exp) && exp.fileId
       ? await FileObject.findOne({ where: { id: exp.fileId, instituteId: exp.instituteId } })
       : null;
-  if (!file) throw new AppError(410, 'EXPORT_EXPIRED', 'This download has expired. Export the report again.');
-  const signed = signedUrlFor(file, DOWNLOAD_URL_TTL_SECONDS);
+  const stat = file ? await getStorage().stat(file.storageKey) : null;
+  if (!file || !stat) {
+    throw new AppError(410, 'EXPORT_EXPIRED', 'This download has expired. Export the report again.');
+  }
   await audit({
     action: 'report.export_downloaded',
     entityType: 'report_export',
@@ -290,8 +301,9 @@ export async function downloadExport(id: number): Promise<ReportDownloadDto> {
     metadata: { report: exp.reportKey, format: exp.format, fileName: exp.fileName },
   });
   return {
-    url: signed.url,
-    expiresAt: signed.expiresAt.toISOString(),
+    stream: await getStorage().getStream(file.storageKey),
+    size: stat.size,
     fileName: exp.fileName ?? file.originalName,
+    mimeType: `${EXPORT_MIME_TYPES[exp.format]}${exp.format === 'csv' ? '; charset=utf-8' : ''}`,
   };
 }

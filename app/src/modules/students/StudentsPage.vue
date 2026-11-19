@@ -1,10 +1,10 @@
 <template>
   <AppPage title="Students" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'students.configure'" router-link="/students/settings"
+      <ion-button v-can="'students.configure'" router-link="/students/settings" aria-label="Student settings"
         ><ion-icon slot="icon-only" :icon="settingsOutline"
       /></ion-button>
-      <ion-button v-can="'students.create'" @click="openCreate"
+      <ion-button v-can="'students.create'" aria-label="New student" @click="openCreate"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>

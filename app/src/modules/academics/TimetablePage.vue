@@ -4,7 +4,7 @@
       <ion-button v-can="'academics.create'" @click="gen = { from: isoToday(), to: addDays(isoToday(), 27) }"
         >Generate</ion-button
       >
-      <ion-button v-can="'academics.create'" @click="openSchedule()"
+      <ion-button v-can="'academics.create'" aria-label="New weekly slot" @click="openSchedule()"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
@@ -32,7 +32,12 @@
             </p>
             <p>from {{ s.effectiveFrom }}{{ s.effectiveTo ? ` to ${s.effectiveTo}` : '' }}</p>
           </ion-label>
-          <ion-button slot="end" v-can="'academics.edit'" fill="clear" @click="openSchedule(s)"
+          <ion-button
+            slot="end"
+            v-can="'academics.edit'"
+            fill="clear"
+            aria-label="Edit slot"
+            @click="openSchedule(s)"
             ><ion-icon slot="icon-only" :icon="createOutline"
           /></ion-button>
           <ion-button
@@ -40,6 +45,7 @@
             v-can="'academics.delete'"
             fill="clear"
             color="danger"
+            aria-label="Delete slot"
             @click="removeSchedule(s)"
             ><ion-icon slot="icon-only" :icon="trashOutline"
           /></ion-button>

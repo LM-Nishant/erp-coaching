@@ -222,7 +222,7 @@ Deployment, TLS, backups and scaling are covered in [docs/deployment.md](docs/de
   - Super admins record manual payments and adjustments and issue credit notes.
 - **Enforcement.** `subscriptionAccessGuard` is registered with `addTenantRequestGuard` and answers **402**:
   - `SUBSCRIPTION_RESTRICTED` for writes while restricted;
-  - `SUBSCRIPTION_SUSPENDED` while suspended, for everything except `/api/auth`, `/api/subscription` and `/api/tenant-data`.
+  - `SUBSCRIPTION_SUSPENDED` while suspended, for everything except `/api/auth`, `/api/subscription`, `/api/tenant-data` and the member device routes (`/api/users/devices`, `/api/users/:id/devices[/:deviceId]`), which stay open in every state so a lost device can always be signed out.
   - Super admins, including while impersonating, are never blocked.
 - **Reports.** `subscriptions/api.ts` exports `revenueByMonth`, `subscriptionsByState`, `subscriptionsByPlan`, `saasBillingKpis` and `usageSummary` for the SaaS-wide dashboard.
 

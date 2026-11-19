@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Classrooms" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'academics.create'" @click="openEditor()"
+      <ion-button v-can="'academics.create'" aria-label="New classroom" @click="openEditor()"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
@@ -23,10 +23,21 @@
           </h2>
           <p>{{ branchName(c.branchId) }} · capacity {{ c.capacity }}</p>
         </ion-label>
-        <ion-button slot="end" v-can="'academics.edit'" fill="clear" @click="openEditor(c)"
+        <ion-button
+          slot="end"
+          v-can="'academics.edit'"
+          fill="clear"
+          :aria-label="`Edit ${c.name}`"
+          @click="openEditor(c)"
           ><ion-icon slot="icon-only" :icon="createOutline"
         /></ion-button>
-        <ion-button slot="end" v-can="'academics.delete'" fill="clear" color="danger" @click="remove(c)"
+        <ion-button
+          slot="end"
+          v-can="'academics.delete'"
+          fill="clear"
+          color="danger"
+          :aria-label="`Delete ${c.name}`"
+          @click="remove(c)"
           ><ion-icon slot="icon-only" :icon="trashOutline"
         /></ion-button>
       </ion-item>

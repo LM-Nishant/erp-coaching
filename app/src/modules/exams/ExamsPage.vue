@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Exams" :on-refresh="reload">
     <template #actions>
-      <ion-button v-can="'exams.create'" router-link="/exams/new"
+      <ion-button v-can="'exams.create'" router-link="/exams/new" aria-label="New exam"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>

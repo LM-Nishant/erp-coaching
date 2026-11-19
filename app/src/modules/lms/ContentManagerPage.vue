@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Learning content" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'lms.create'" router-link="/lms/content/new"
+      <ion-button v-can="'lms.create'" router-link="/lms/content/new" aria-label="New content"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
