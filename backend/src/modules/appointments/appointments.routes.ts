@@ -81,7 +81,13 @@ const approveBody = z
   .object({
     note: note(1000),
     location: note(200),
-    meetingUrl: z.string().url().max(500).nullable().optional(),
+    meetingUrl: z
+      .string()
+      .url()
+      .max(500)
+      .regex(/^https?:\/\//i, 'Use an http(s) meeting link')
+      .nullable()
+      .optional(),
   })
   .strict();
 const reasonBody = z.object({ reason }).strict();

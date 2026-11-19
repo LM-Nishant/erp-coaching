@@ -15,6 +15,7 @@ export * from './fees';
 export * from './lms';
 export * from './live-classes';
 export * from './appointments';
+export * from './calendar';
 export * from './parent-portal';
 export * from './institutes';
 export * from './reports';

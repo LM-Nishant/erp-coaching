@@ -39,6 +39,8 @@ export const EXPORT_EXCLUDED_TABLES: ReadonlySet<string> = new Set([
   // Download links for generated report files that expire after 24 hours; `report.exported` audit
   // events (exported) already record who exported what.
   'report_exports',
+  // Single-use Google consent attempts that expire after 10 minutes (calendar module).
+  'calendar_oauth_states',
 ]);
 
 /** Secrets, credentials and hashes are never exported. */
