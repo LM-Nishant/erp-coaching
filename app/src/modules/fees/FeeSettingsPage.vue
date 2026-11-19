@@ -186,7 +186,9 @@
             <h3>{{ GATEWAY_LABELS[g] }}</h3>
             <p v-if="gw(g)">
               {{ gw(g)?.enabled ? 'Enabled' : 'Disabled' }}<span v-if="gw(g)?.isDefault"> · default</span>
-              <span v-if="gw(g)?.keyHint"> · key …{{ gw(g)?.keyHint }}</span>
+              <span v-if="g !== 'mock'"> · {{ gw(g)?.sandbox ? 'test mode' : 'live mode' }}</span>
+              <span v-if="gw(g)?.platformManaged"> · platform account</span>
+              <span v-if="gw(g)?.keyHint"> · key {{ gw(g)?.keyHint }}</span>
             </p>
             <p v-if="gw(g)" class="muted selectable">Webhook: {{ gw(g)?.webhookUrl }}</p>
           </ion-label>
@@ -196,37 +198,92 @@
       <form v-if="gwForm" @submit.prevent="saveGateway">
         <ion-list>
           <ion-list-header>{{ GATEWAY_LABELS[gwForm.gateway] }}</ion-list-header>
+          <p class="muted gw-note">{{ gwFields.hint }}</p>
+          <p v-if="gwSaved?.platformManaged" class="muted gw-note">
+            Payments now go to the platform's {{ GATEWAY_LABELS[gwForm.gateway] }} account. Enter your own
+            keys to collect into your account.
+          </p>
           <ion-item><ion-toggle v-model="gwForm.enabled">Enabled</ion-toggle></ion-item>
           <ion-item><ion-toggle v-model="gwForm.isDefault">Default for online payments</ion-toggle></ion-item>
-          <ion-item><ion-toggle v-model="gwForm.sandbox">Sandbox / test mode</ion-toggle></ion-item>
           <ion-item v-if="gwForm.gateway !== 'mock'">
-            <ion-input v-model="gwForm.merchantId" label="Merchant / key id" label-placement="stacked" />
+            <ion-select v-model="gwForm.sandbox" label="Mode" label-placement="stacked" interface="popover">
+              <ion-select-option :value="true">Test (sandbox)</ion-select-option>
+              <ion-select-option :value="false">Live (production)</ion-select-option>
+            </ion-select>
           </ion-item>
-          <ion-item v-if="gwForm.gateway !== 'mock'">
+          <ion-item v-if="gwFields.merchantId">
+            <ion-input
+              v-model="gwForm.merchantId"
+              :label="gwFields.merchantId"
+              label-placement="stacked"
+              autocomplete="off"
+              :maxlength="100"
+            />
+          </ion-item>
+          <ion-item v-if="gwFields.secretKey">
             <ion-input
               v-model="gwForm.secretKey"
               type="password"
-              label="Secret key (leave blank to keep)"
+              :label="gwFields.secretKey"
               label-placement="stacked"
+              autocomplete="off"
+              :placeholder="savedSecretHint(gwSaved?.hasSecret, gwSaved?.keyHint)"
             />
           </ion-item>
-          <ion-item>
+          <ion-item v-if="gwFields.webhookSecret">
             <ion-input
               v-model="gwForm.webhookSecret"
               type="password"
-              label="Webhook secret (leave blank to keep)"
+              :label="gwFields.webhookSecret"
               label-placement="stacked"
+              autocomplete="off"
+              :placeholder="savedSecretHint(gwSaved?.hasWebhookSecret)"
+            />
+          </ion-item>
+          <ion-item v-if="gwFields.website">
+            <ion-input
+              v-model="gwForm.website"
+              :label="gwFields.website"
+              label-placement="stacked"
+              autocomplete="off"
+              :maxlength="60"
+              placeholder="Blank: WEBSTAGING (test) or DEFAULT (live)"
             />
           </ion-item>
         </ion-list>
-        <ion-button expand="block" type="submit">Save gateway</ion-button>
+        <div v-if="gwSecretAgain" class="notice warning">
+          Test and live modes use different keys: enter the {{ gwFields.secretKey?.toLowerCase() }} for
+          {{ gwForm.sandbox ? 'test' : 'live' }} mode.
+        </div>
+        <p v-if="gwSaved" class="gw-note">
+          Webhook URL for the {{ GATEWAY_LABELS[gwForm.gateway] }} dashboard:
+          <code class="selectable">{{ gwSaved.webhookUrl }}</code>
+          <ion-button
+            size="small"
+            fill="clear"
+            aria-label="Copy webhook URL"
+            @click="copyWebhook(gwSaved.webhookUrl)"
+            >Copy</ion-button
+          >
+        </p>
+        <p v-else class="muted gw-note">Save to get the webhook URL to add in the gateway's dashboard.</p>
+        <div v-if="gwTest" class="notice" :class="gwTest.ok ? 'ok' : 'danger'" role="status">
+          {{ gwTest.ok ? 'Test passed' : 'Test failed' }}: {{ gwTest.message }}
+        </div>
+        <div class="gw-actions">
+          <ion-button fill="clear" :disabled="gwBusy" @click="closeGateway">Close</ion-button>
+          <ion-button v-if="gwCanTest" fill="outline" :disabled="gwBusy" @click="testGateway"
+            >Test saved keys</ion-button
+          >
+          <ion-button type="submit" :disabled="gwBusy">Save gateway</ion-button>
+        </div>
       </form>
     </template>
   </AppPage>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import {
   IonButton,
   IonCheckbox,
@@ -251,14 +308,15 @@ import {
 import AppPage from '@/components/AppPage.vue';
 import { toast, toastError } from '@/core/toast';
 import { rupees } from '../hr/api';
-import { feesApi, toPaise, type ConcessionRule } from './api';
-
-const GATEWAY_LABELS: Record<PaymentGatewayKey, string> = {
-  mock: 'Mock gateway (testing)',
-  paytm: 'Paytm',
-  razorpay: 'Razorpay',
-  cashfree: 'Cashfree',
-};
+import {
+  GATEWAY_FIELDS,
+  GATEWAY_LABELS,
+  feesApi,
+  savedSecretHint,
+  toPaise,
+  type ConcessionRule,
+  type GatewayTestResult,
+} from './api';
 
 const tab = ref<'general' | 'heads' | 'rules' | 'gateways'>('general');
 const s = ref<FeeSettings | null>(null);
@@ -284,8 +342,23 @@ const gwForm = ref<{
   merchantId: string;
   secretKey: string;
   webhookSecret: string;
+  website: string;
 } | null>(null);
+const gwTest = ref<GatewayTestResult | null>(null);
+const gwBusy = ref(false);
 const gw = (g: PaymentGatewayKey) => gateways.value.find((x) => x.gateway === g);
+const gwSaved = computed(() => (gwForm.value ? gw(gwForm.value.gateway) : undefined));
+const gwFields = computed(() => GATEWAY_FIELDS[gwForm.value?.gateway ?? 'mock']);
+// The server refuses to reuse a saved key in the other mode (SECRET_REQUIRED).
+const gwSecretAgain = computed(() => {
+  const f = gwForm.value;
+  const s = gwSaved.value;
+  return !!f && !!s?.hasSecret && f.gateway !== 'mock' && f.sandbox !== s.sandbox && !f.secretKey.trim();
+});
+const gwCanTest = computed(() => {
+  const s = gwSaved.value;
+  return !!s && s.gateway !== 'mock' && !s.platformManaged && s.hasSecret;
+});
 
 async function load() {
   try {
@@ -359,9 +432,8 @@ const addRule = () =>
 const patchRule = (r: ConcessionRule, b: Partial<ConcessionRule>) =>
   act(() => feesApi.saveRule(b, r.id), 'Saved');
 
-function editGateway(g: PaymentGatewayKey) {
-  const c = gw(g);
-  gwForm.value = {
+function gatewayForm(g: PaymentGatewayKey, c?: GatewayConfigDto) {
+  return {
     gateway: g,
     enabled: c?.enabled ?? false,
     isDefault: c?.isDefault ?? false,
@@ -369,22 +441,85 @@ function editGateway(g: PaymentGatewayKey) {
     merchantId: c?.merchantId ?? '',
     secretKey: '',
     webhookSecret: '',
+    website: c?.website ?? '',
   };
 }
-const saveGateway = () =>
-  act(async () => {
-    const f = gwForm.value;
-    if (!f) return;
-    await feesApi.saveGateway(f.gateway, {
+function editGateway(g: PaymentGatewayKey) {
+  gwForm.value = gatewayForm(g, gw(g));
+  gwTest.value = null;
+}
+function closeGateway() {
+  gwForm.value = null;
+  gwTest.value = null;
+}
+async function saveGateway() {
+  const f = gwForm.value;
+  if (!f) return;
+  const fields = GATEWAY_FIELDS[f.gateway];
+  gwBusy.value = true;
+  try {
+    const saved = await feesApi.saveGateway(f.gateway, {
       enabled: f.enabled,
       isDefault: f.isDefault,
       sandbox: f.sandbox,
-      merchantId: f.merchantId || null,
-      ...(f.secretKey ? { secretKey: f.secretKey } : {}),
-      ...(f.webhookSecret ? { webhookSecret: f.webhookSecret } : {}),
+      ...(fields.merchantId ? { merchantId: f.merchantId.trim() || null } : {}),
+      ...(f.secretKey.trim() ? { secretKey: f.secretKey.trim() } : {}),
+      ...(f.webhookSecret.trim() ? { webhookSecret: f.webhookSecret.trim() } : {}),
+      ...(fields.website ? { website: f.website.trim() || null } : {}),
     });
-    gwForm.value = null;
-  }, 'Gateway saved');
+    await toast('Gateway saved');
+    // Stays open so the admin can copy the webhook URL and test the keys.
+    gwForm.value = gatewayForm(saved.gateway, saved);
+    gwTest.value = null;
+    await load();
+  } catch (e) {
+    void toastError(e);
+  } finally {
+    gwBusy.value = false;
+  }
+}
+async function testGateway() {
+  const g = gwForm.value?.gateway;
+  if (!g) return;
+  gwBusy.value = true;
+  try {
+    gwTest.value = await feesApi.testGateway(g);
+  } catch (e) {
+    void toastError(e);
+  } finally {
+    gwBusy.value = false;
+  }
+}
+async function copyWebhook(url: string) {
+  try {
+    await navigator.clipboard.writeText(url);
+    await toast('Webhook URL copied');
+  } catch {
+    await toast('Copy failed; select the URL instead', 'warning');
+  }
+}
 
 onMounted(load);
 </script>
+
+<style scoped>
+.gw-note {
+  margin: 8px 16px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.notice {
+  margin: 8px 16px;
+}
+.notice.ok {
+  background: rgba(var(--ion-color-success-rgb), 0.12);
+  color: var(--ion-color-success-shade);
+}
+.gw-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 16px;
+}
+</style>

@@ -277,6 +277,8 @@ interface GatewaySettings {
   useForInstitutes: boolean;
   sandbox: boolean;
   merchantId: string | null;
+  /** Paytm's website name (WEBSTAGING / DEFAULT unless Paytm assigned another). */
+  website: string | null;
 }
 
 function gatewaySettings(row: PlatformIntegration | undefined): GatewaySettings {
@@ -286,11 +288,21 @@ function gatewaySettings(row: PlatformIntegration | undefined): GatewaySettings 
     useForInstitutes: !!s.useForInstitutes,
     sandbox: s.sandbox ?? true,
     merchantId: s.merchantId ?? null,
+    website: s.website ?? null,
   };
 }
 
 const gatewayFingerprint = (gateway: string, s: GatewaySettings, secrets: Secrets, key?: string) =>
-  fingerprint({ provider: gateway, sandbox: s.sandbox, merchantId: s.merchantId, secrets }, key);
+  fingerprint(
+    {
+      provider: gateway,
+      sandbox: s.sandbox,
+      merchantId: s.merchantId,
+      ...(s.website ? { website: s.website } : {}),
+      secrets,
+    },
+    key,
+  );
 
 /** The mock gateway accepts forged payments by design: never usable in production. */
 const usableGateway = (gateway: string) => !(gateway === 'mock' && config.isProd);
@@ -314,6 +326,7 @@ function gatewayDto(gateway: PaymentGatewayName): PlatformGatewayDto {
     useForInstitutes: s.useForInstitutes,
     sandbox: s.sandbox,
     merchantId: s.merchantId,
+    website: s.website,
     hasSecret: !!secretKey,
     keyHint: secretKey ? maskSecret(secretKey) : null,
     hasWebhookSecret: !!e?.secrets.webhookSecret,
@@ -328,6 +341,7 @@ function gatewayCredentials(s: GatewaySettings, secrets: Secrets): GatewayCreden
     merchantId: s.merchantId ?? undefined,
     secretKey: secrets.secretKey || undefined,
     webhookSecret: secrets.webhookSecret || undefined,
+    ...(s.website ? { extra: { website: s.website } } : {}),
     sandbox: s.sandbox,
   };
 }
@@ -337,15 +351,7 @@ const entryCredentials = (e: Entry) => gatewayCredentials(gatewaySettings(e.row)
 async function testGateway(gateway: PaymentGatewayName, creds: GatewayCredentials): Promise<TestOutcome> {
   if (!usableGateway(gateway)) return { ok: false, message: 'The mock gateway cannot be used in production' };
   try {
-    const order = await createPaymentGateway(gateway, creds).createOrder({
-      orderId: `platform-test-${randomToken(9)}`,
-      amountPaise: 100,
-      currency: 'INR',
-      customer: { name: 'Connection test', mobile: '9999999999' },
-      callbackUrl: `${config.API_PUBLIC_URL}/api/subscriptions/public/payment-test`,
-      metadata: { purpose: 'connection-test' },
-    });
-    return { ok: true, message: `Created test order ${order.gatewayOrderId}` };
+    return await createPaymentGateway(gateway, creds).testConnection();
   } catch (err) {
     return { ok: false, message: errorMessage(err) };
   }
@@ -360,6 +366,7 @@ function mergeGateway(gateway: PaymentGatewayName, input: Partial<PlatformGatewa
     useForInstitutes: input.useForInstitutes ?? saved.useForInstitutes,
     sandbox: input.sandbox ?? saved.sandbox,
     merchantId: input.merchantId === undefined ? saved.merchantId : input.merchantId?.trim() || null,
+    website: input.website === undefined ? saved.website : input.website?.trim() || null,
   };
   // Sandbox and live are different gateway endpoints: switching needs the secret key again.
   assertStoredSecretReusable(

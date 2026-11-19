@@ -1,13 +1,18 @@
+import { CashfreeGateway } from './cashfree.gateway';
 import { MockPaymentGateway } from './mock.gateway';
-import { CashfreeGateway, PaytmGateway, RazorpayGateway } from './vendor.gateways';
+import { PaytmGateway } from './paytm.gateway';
+import { RazorpayGateway } from './razorpay.gateway';
 import type { GatewayCredentials, PaymentGateway, PaymentGatewayName } from './types';
 
 export * from './types';
+export { GATEWAY_LABELS, setPaymentGatewayHttp } from './http';
+export type { GatewayHttp, GatewayHttpRequest, GatewayHttpResponse } from './http';
 export { MOCK_SIGNATURE_HEADER, MockPaymentGateway, signMockWebhook } from './mock.gateway';
 
 /**
- * Builds the adapter for a gateway with the institute's own (decrypted) merchant credentials.
- * Business modules load and decrypt credentials; vendor SDK/HTTP details stay in this folder.
+ * Builds the adapter for a gateway with the owner's (decrypted) merchant credentials: the
+ * institute's own, or the platform-managed ones. Business modules load and decrypt credentials;
+ * vendor HTTP details stay in this folder.
  */
 export function createPaymentGateway(
   name: PaymentGatewayName,
@@ -25,9 +30,4 @@ export function createPaymentGateway(
     default:
       throw new Error(`Payment gateway "${name as string}" is not supported`);
   }
-}
-
-/** @deprecated Use `createPaymentGateway(name, institute credentials)`. */
-export function getPaymentGateway(_instituteId: number, name: PaymentGatewayName = 'mock'): PaymentGateway {
-  return createPaymentGateway(name);
 }

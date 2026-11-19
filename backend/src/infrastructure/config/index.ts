@@ -132,6 +132,8 @@ const schema = z.object({
   EMAIL_PROVIDER: z.enum(['console']).default('console'),
   PUSH_PROVIDER: z.enum(['console']).default('console'),
   PAYMENT_GATEWAY: z.enum(['mock']).default('mock'),
+  /** Minutes between gateway status checks of open online payments and refunds (missed webhooks). */
+  PAYMENT_RECONCILE_INTERVAL_MINUTES: z.coerce.number().int().min(1).max(1440).default(10),
   STREAMING_PROVIDER: z.enum(['mock']).default('mock'),
   BIOMETRIC_PROVIDER: z.enum(['mock']).default('mock'),
   /** Largest biometric device push (KB). Bigger bodies get 413 before they are parsed. */

@@ -4,7 +4,7 @@
  * referral attribution).
  */
 import { Op } from 'sequelize';
-import type { CheckoutOrderDto, CourseQuoteDto, PaymentGatewayKey } from '@erp/shared';
+import type { CheckoutOrderDto, CheckoutReturnInput, CourseQuoteDto, PaymentGatewayKey } from '@erp/shared';
 import { webAppBaseUrl } from '../../shared/public-urls';
 import { requireTenantContext } from '../../shared/context';
 import { Conflict, NotFound } from '../../shared/errors';
@@ -241,6 +241,8 @@ export async function startCoursePurchase(input: {
   referralCode?: string | null;
   gateway?: PaymentGatewayKey;
   idempotencyKey?: string | null;
+  returnTo?: CheckoutReturnInput | null;
+  payer?: boolean;
 }): Promise<CheckoutOrderDto> {
   const { instituteId } = requireTenantContext();
   const batchId = input.batchId ?? null;
@@ -272,5 +274,7 @@ export async function startCoursePurchase(input: {
     idempotencyKey: input.idempotencyKey ?? null,
     couponCode: input.couponCode ?? null,
     referralCode: input.referralCode ?? null,
+    returnTo: input.returnTo,
+    payer: input.payer,
   });
 }

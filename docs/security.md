@@ -113,7 +113,7 @@ draft-8 `RateLimit` headers.
 | `public-form` | anonymous writes: website forms, coupons, checkout, referral clicks, student self-registration | 60 / 15 min  | `RATE_LIMIT_PUBLIC_FORM_MAX`         |
 | `device`      | biometric device pushes                                                                        | 120 / min    | `RATE_LIMIT_DEVICE_PER_MIN`          |
 | `adms`        | ZKTeco/eSSL biometric devices: ADMS pushes and command polls on `/iclock/*`                    | 600 / min    | `RATE_LIMIT_ADMS_PER_MIN`            |
-| `webhook`     | payment gateway webhooks (the signature is verified in the handler)                            | 300 / min    | `RATE_LIMIT_WEBHOOK_PER_MIN`         |
+| `webhook`     | payment gateway webhooks and checkout returns (signatures are verified in the handlers)        | 300 / min    | `RATE_LIMIT_WEBHOOK_PER_MIN`         |
 
 Some limits sit outside the limiters:
 
