@@ -111,7 +111,8 @@ function vouchersOf(xml: string) {
     out.set(/REMOTEID="([^"]+)"/.exec(block)![1], block);
   return out;
 }
-const tag = (block: string, name: string) => new RegExp(`<${name}>([^<]*)</${name}>`).exec(block)?.[1] ?? null;
+const tag = (block: string, name: string) =>
+  new RegExp(`<${name}>([^<]*)</${name}>`).exec(block)?.[1] ?? null;
 /** [ledger, ISDEEMEDPOSITIVE, AMOUNT] of each ledger entry. */
 const entriesOf = (block: string) =>
   [
@@ -256,18 +257,15 @@ describe('Tally accounting export', () => {
       .send({ kind: 'expense', name: rent });
     expect(category.status).toBe(201);
     categoryId = category.body.id;
-    const expense = await request(app)
-      .post('/api/fees/finance/entries')
-      .set(bearer(accountant))
-      .send({
-        kind: 'expense',
-        categoryId,
-        amount: 250_000,
-        mode: 'cash',
-        date: '2032-02-15',
-        branchId: K,
-        party: 'Landlord & Co <Pune>',
-      });
+    const expense = await request(app).post('/api/fees/finance/entries').set(bearer(accountant)).send({
+      kind: 'expense',
+      categoryId,
+      amount: 250_000,
+      mode: 'cash',
+      date: '2032-02-15',
+      branchId: K,
+      party: 'Landlord & Co <Pune>',
+    });
     expect(expense.status).toBe(201);
     expenseId = expense.body.id;
   });
@@ -330,8 +328,12 @@ describe('Tally accounting export', () => {
     expect(z.status).toBe(200);
     expect(z.body.effective.companyName).not.toBe(company);
     expect(
-      (await request(app).put('/api/tally/settings').set(bearer(zenith)).send({ branchId: K, companyName: 'Z' }))
-        .status,
+      (
+        await request(app)
+          .put('/api/tally/settings')
+          .set(bearer(zenith))
+          .send({ branchId: K, companyName: 'Z' })
+      ).status,
     ).toBe(404);
   });
 
@@ -355,7 +357,9 @@ describe('Tally accounting export', () => {
       parentGroup: 'Duties & Taxes',
     });
 
-    expect((await putMapping({ items: [{ account: 'cash', tallyName: 'X' }] }, branchAdmin)).status).toBe(403);
+    expect((await putMapping({ items: [{ account: 'cash', tallyName: 'X' }] }, branchAdmin)).status).toBe(
+      403,
+    );
     const inst = await putMapping({ items: [{ account: 'cash', tallyName: 'Cash Box' }] });
     expect(inst.status).toBe(200);
     expect(itemOf(inst.body, 'cash')).toMatchObject({
@@ -448,7 +452,10 @@ describe('Tally accounting export', () => {
       tallyParent: 'Cash-in-Hand',
       cashOrBank: true,
     });
-    expect(itemOf(mapping, 'fee_income')).toMatchObject({ existsInTally: true, tallyParent: 'Fee Collections' });
+    expect(itemOf(mapping, 'fee_income')).toMatchObject({
+      existsInTally: true,
+      tallyParent: 'Fee Collections',
+    });
     expect(itemOf(mapping, 'student_receivable').existsInTally).toBe(false);
 
     const z = await request(app).get('/api/tally/known-ledgers').set(bearer(zenith));
@@ -478,7 +485,11 @@ describe('Tally accounting export', () => {
       credit: 135_000,
     });
     expect(totals.get('Output SGST')).toMatchObject({ debit: 0, credit: 135_000 });
-    expect(totals.get('Cash Box')).toMatchObject({ parent: 'Cash-in-Hand', debit: 1_180_000, credit: 250_000 });
+    expect(totals.get('Cash Box')).toMatchObject({
+      parent: 'Cash-in-Hand',
+      debit: 1_180_000,
+      credit: 250_000,
+    });
     expect(totals.get('Baner Cheques in Hand')).toMatchObject({ debit: 590_000, credit: 0 });
     expect(totals.get('Fee Income')).toMatchObject({
       parent: 'Fee Collections',
@@ -504,16 +515,18 @@ describe('Tally accounting export', () => {
       byType: { Journal: 2, Receipt: 1, Payment: 1 },
     });
     for (const q of ['branchId=all', `branchId=${B}`])
-      expect((await request(app).get(`/api/tally/preview?${PERIOD}&${q}`).set(bearer(branchAdmin))).status).toBe(
-        403,
-      );
+      expect(
+        (await request(app).get(`/api/tally/preview?${PERIOD}&${q}`).set(bearer(branchAdmin))).status,
+      ).toBe(403);
     expect((await request(app).get(`/api/tally/preview?${PERIOD}`).set(bearer(teacher))).status).toBe(403);
     for (const [q, status] of [
       [`from=${TO}&to=${FROM}`, 400],
       [`from=2031-01-01&to=${TO}`, 400],
       ['from=2032-2-1&to=2032-02-29', 422],
     ] as const)
-      expect((await request(app).get(`/api/tally/preview?${q}`).set(bearer(accountant))).status, q).toBe(status);
+      expect((await request(app).get(`/api/tally/preview?${q}`).set(bearer(accountant))).status, q).toBe(
+        status,
+      );
   });
 
   it('exports masters and vouchers files with stable ids and balanced vouchers', async () => {
@@ -544,7 +557,9 @@ describe('Tally accounting export', () => {
     expect(detail.status).toBe(200);
     expect(detail.body.masters).toHaveLength(5);
     expect(detail.body.skipped).toEqual([]);
-    expect(detail.body.totals.find((t: Total) => t.ledger === 'Output CGST')).toMatchObject({ credit: 135_000 });
+    expect(detail.body.totals.find((t: Total) => t.ledger === 'Output CGST')).toMatchObject({
+      credit: 135_000,
+    });
     const list = await request(app).get('/api/tally/exports').set(bearer(accountant));
     expect(list.body.items[0]).toMatchObject({ id: exportId, voucherCount: 7 });
 
@@ -552,7 +567,9 @@ describe('Tally accounting export', () => {
     expect(masters.status).toBe(200);
     expect(masters.headers['content-type']).toBe('application/xml; charset=utf-8');
     expect(masters.headers['content-disposition']).toMatch(/^attachment;/);
-    expect(masters.headers['content-disposition']).toContain(`tally-${exportId}-${FROM}-to-${TO}-masters.xml`);
+    expect(masters.headers['content-disposition']).toContain(
+      `tally-${exportId}-${FROM}-to-${TO}-masters.xml`,
+    );
     expect(masters.headers['cache-control']).toBe('no-store');
     expect(masters.headers['x-content-type-options']).toBe('nosniff');
     const mastersXml = masters.body as string;
@@ -567,7 +584,9 @@ describe('Tally accounting export', () => {
 
     const vouchers = await download(`/exports/${exportId}/vouchers.xml`, accountant);
     expect(vouchers.status).toBe(200);
-    expect(vouchers.headers['content-disposition']).toContain(`tally-${exportId}-${FROM}-to-${TO}-vouchers.xml`);
+    expect(vouchers.headers['content-disposition']).toContain(
+      `tally-${exportId}-${FROM}-to-${TO}-vouchers.xml`,
+    );
     const xml = vouchers.body as string;
     expect(xml).toMatch(/^[\t\r\n\x20-\x7e]*$/);
     expect(xml).toContain('<REPORTNAME>Vouchers</REPORTNAME>');
@@ -613,7 +632,9 @@ describe('Tally accounting export', () => {
     expect(expense).toContain('VCHTYPE="Payment"');
     expect(tag(expense, 'DATE')).toBe('20320215');
     expect(tag(expense, 'VOUCHERNUMBER')).toBe(`FIN-${expenseId}`);
-    expect(tag(expense, 'NARRATION')).toBe(`${rent} &#8211; Landlord &amp; Co &lt;Pune&gt; [finance:${expenseId}]`);
+    expect(tag(expense, 'NARRATION')).toBe(
+      `${rent} &#8211; Landlord &amp; Co &lt;Pune&gt; [finance:${expenseId}]`,
+    );
 
     expect((await download(`/exports/${exportId}/vouchers.xml`, teacher)).status).toBe(403);
     expect((await download(`/exports/${exportId}/vouchers.xml`, zenith)).status).toBe(404);
@@ -634,14 +655,22 @@ describe('Tally accounting export', () => {
 
   it('flags entries added, reversed, changed or removed after an export', async () => {
     const fresh = await reconcile();
-    expect(fresh).toMatchObject({ inSync: true, items: [], exportedTotal: 4_650_000, currentTotal: 4_650_000 });
+    expect(fresh).toMatchObject({
+      inSync: true,
+      items: [],
+      exportedTotal: 4_650_000,
+      currentTotal: 4_650_000,
+    });
     expect(fresh.counts).toEqual({ new: 0, changed: 0, removed: 0, reversed: 0, mapping: 0 });
     expect(fresh.totals.every((t) => t.difference === 0)).toBe(true);
 
     const later = await pay(aB, 118_000, 'cash', '2032-02-20');
     let r = await reconcile();
     expect(r.inSync).toBe(false);
-    expect(flagged(r, 'new').map((i) => i.journalKey)).toEqual([`payment-gst:${later.id}`, `payment:${later.id}`]);
+    expect(flagged(r, 'new').map((i) => i.journalKey)).toEqual([
+      `payment-gst:${later.id}`,
+      `payment:${later.id}`,
+    ]);
     expect(r.export.laterEntries).toBe(2);
     expect(r.currentTotal).toBe(4_650_000 + 118_000 + 18_000);
 
@@ -685,7 +714,9 @@ describe('Tally accounting export', () => {
     ]);
 
     // Renaming a ledger changes the vouchers Tally holds without changing the journal.
-    const renamed = await putMapping({ items: [{ account: 'gst_payable:cgst', tallyName: 'Output CGST 9%' }] });
+    const renamed = await putMapping({
+      items: [{ account: 'gst_payable:cgst', tallyName: 'Output CGST 9%' }],
+    });
     expect(renamed.status).toBe(200);
     r = await reconcile();
     expect(
@@ -694,7 +725,9 @@ describe('Tally accounting export', () => {
         .sort(),
     ).toEqual([`payment-gst:${pB}`, `payment-gst:${pK}`].sort());
     expect(r.counts).toEqual({ new: 2, changed: 1, removed: 1, reversed: 2, mapping: 2 });
-    expect((await putMapping({ items: [{ account: 'gst_payable:cgst', tallyName: null }] })).status).toBe(200);
+    expect((await putMapping({ items: [{ account: 'gst_payable:cgst', tallyName: null }] })).status).toBe(
+      200,
+    );
 
     for (const token of [branchAdmin, zenith])
       expect(
@@ -704,7 +737,12 @@ describe('Tally accounting export', () => {
 
   it('keeps branch exports to the branch', async () => {
     const preview = await request(app).get(`/api/tally/preview?${PERIOD}`).set(bearer(branchAdmin));
-    expect(preview.body.counts).toEqual({ vouchers: 4, alreadyExported: 3, changedSinceExport: 1, skipped: 0 });
+    expect(preview.body.counts).toEqual({
+      vouchers: 4,
+      alreadyExported: 3,
+      changedSinceExport: 1,
+      skipped: 0,
+    });
     const onlyNew = await request(app).get(`/api/tally/preview?${PERIOD}&onlyNew=1`).set(bearer(branchAdmin));
     expect(onlyNew.body.counts).toMatchObject({ vouchers: 1, alreadyExported: 3, changedSinceExport: 1 });
 
@@ -738,7 +776,9 @@ describe('Tally accounting export', () => {
     expect(await ids(`/exports?branchId=${K}`, admin)).not.toContain(exportId);
     expect(await ids('/exports?branchId=all', admin)).toEqual(expect.arrayContaining([exportId]));
     expect(await ids('/exports?branchId=all', admin)).not.toContain(branchExport);
-    expect((await request(app).get(`/api/tally/exports/${exportId}`).set(bearer(branchAdmin))).status).toBe(404);
+    expect((await request(app).get(`/api/tally/exports/${exportId}`).set(bearer(branchAdmin))).status).toBe(
+      404,
+    );
     const scoped = (id: number) =>
       request(app).get(`/api/tally/exports/${id}`).set(bearer(admin)).set('X-Branch-Id', String(K));
     expect((await scoped(exportId)).status).toBe(404);
@@ -749,15 +789,18 @@ describe('Tally accounting export', () => {
     const preview = await request(app).get(`/api/tally/preview?${PERIOD}`).set(bearer(zenith));
     expect(preview.status).toBe(200);
     expect(preview.body.counts.vouchers).toBe(0);
-    const none = await request(app).post('/api/tally/exports').set(bearer(zenith)).send({ from: FROM, to: TO });
+    const none = await request(app)
+      .post('/api/tally/exports')
+      .set(bearer(zenith))
+      .send({ from: FROM, to: TO });
     expect(none.status).toBe(400);
     expect(none.body.error.code).toBe('TALLY_NOTHING_TO_EXPORT');
     const list = await request(app).get('/api/tally/exports').set(bearer(zenith));
     expect(list.status).toBe(200);
     expect(list.body.items.some((e: ExportRow) => e.id === exportId)).toBe(false);
-    expect((await request(app).get(`/api/tally/preview?${PERIOD}&branchId=${K}`).set(bearer(zenith))).status).toBe(
-      404,
-    );
+    expect(
+      (await request(app).get(`/api/tally/preview?${PERIOD}&branchId=${K}`).set(bearer(zenith))).status,
+    ).toBe(404);
   });
 
   it('clears the Tally ledger list and audits every change', async () => {
@@ -788,8 +831,8 @@ describe('Tally accounting export', () => {
     expect(
       events.find((e) => e.action === 'tally.export.created' && e.entityId === String(exportId))?.metadata,
     ).toMatchObject({ branchId: null, from: FROM, to: TO, vouchers: 7, totalAmount: 4_650_000 });
-    expect(
-      events.filter((e) => e.action === 'tally.export.downloaded').map((e) => e.metadata?.file),
-    ).toEqual(expect.arrayContaining(['masters', 'vouchers']));
+    expect(events.filter((e) => e.action === 'tally.export.downloaded').map((e) => e.metadata?.file)).toEqual(
+      expect.arrayContaining(['masters', 'vouchers']),
+    );
   });
 });

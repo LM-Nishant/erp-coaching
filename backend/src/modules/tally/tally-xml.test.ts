@@ -231,7 +231,11 @@ describe('Tally vouchers from fee journals', () => {
       [L.GST_PAYABLE, -180_000],
     ]);
     const [split] = build(gst);
-    expect(split).toMatchObject({ typeKey: 'journal', voucherType: 'Journal', voucherNumber: 'INV/2026/0001' });
+    expect(split).toMatchObject({
+      typeKey: 'journal',
+      voucherType: 'Journal',
+      voucherNumber: 'INV/2026/0001',
+    });
     expect(linesOf(split)).toEqual([
       ['Fee Income', 180_000],
       ['Output CGST', -90_000],
@@ -327,11 +331,16 @@ describe('Tally vouchers from fee journals', () => {
     const overrides = new Map([[0, new Map([[L.CASH, { name: 'Petty Cash', group: 'Cash-in-Hand' }]])]]);
     const [v] = build(payment(), { known, overrides });
     expect(v.typeKey).toBe('receipt');
-    expect(mastersFor([v], known).map((m) => m.name)).toEqual(['Student Fee Advances', 'Student Fees Receivable']);
+    expect(mastersFor([v], known).map((m) => m.name)).toEqual([
+      'Student Fee Advances',
+      'Student Fees Receivable',
+    ]);
   });
 
   it('leaves out journals that net to zero in Tally or do not balance', () => {
-    const overrides = new Map([[0, new Map([[L.LATE_FEE_INCOME, { name: 'Fee Income', group: 'Direct Incomes' }]])]]);
+    const overrides = new Map([
+      [0, new Map([[L.LATE_FEE_INCOME, { name: 'Fee Income', group: 'Direct Incomes' }]])],
+    ]);
     const [zero, unbalanced] = build(
       [
         ...journal('adjustment:3', [
@@ -382,7 +391,11 @@ describe('Tally vouchers from fee journals', () => {
     ]))
       builder.build(j);
     expect(builder.conflicts()).toEqual([
-      { tallyName: 'fee income', groups: ['Cash-in-Hand', 'Direct Incomes'], accounts: [L.CASH, L.FEE_INCOME] },
+      {
+        tallyName: 'fee income',
+        groups: ['Cash-in-Hand', 'Direct Incomes'],
+        accounts: [L.CASH, L.FEE_INCOME],
+      },
     ]);
   });
 
@@ -392,11 +405,13 @@ describe('Tally vouchers from fee journals', () => {
     expect(number).toHaveLength(50);
     expect(number).toMatch(/^ADJ-9+-[0-9a-f]{8}$/);
     expect(voucherNumber(key, undefined)).toBe(number);
-    expect(voucherNumber('payment:11', { number: 'R\u0007 1', invoiceNumber: null, cgst: 0, sgst: 0, igst: 0 })).toBe(
-      'R 1',
-    );
+    expect(
+      voucherNumber('payment:11', { number: 'R\u0007 1', invoiceNumber: null, cgst: 0, sgst: 0, igst: 0 }),
+    ).toBe('R 1');
 
-    expect(partyLedgerName({ name: '  Asha \n Rao ', admissionNumber: 'ADM-001' }, 7)).toBe('Asha Rao (ADM-001)');
+    expect(partyLedgerName({ name: '  Asha \n Rao ', admissionNumber: 'ADM-001' }, 7)).toBe(
+      'Asha Rao (ADM-001)',
+    );
     expect(partyLedgerName({ name: 'Asha Rao', admissionNumber: null }, 7)).toBe('Asha Rao (ST-7)');
     const long = partyLedgerName({ name: 'N'.repeat(300), admissionNumber: 'ADM-001' }, 7);
     expect(long).toHaveLength(100);
@@ -432,7 +447,8 @@ describe('Tally vouchers from fee journals', () => {
     expect(entries).toHaveLength(3);
     for (const voucher of entries) {
       expect(voucher.reduce((s, [, , amount]) => s + paise(amount), 0)).toBe(0);
-      for (const [, deemedPositive, amount] of voucher) expect(deemedPositive === 'Yes').toBe(paise(amount) < 0);
+      for (const [, deemedPositive, amount] of voucher)
+        expect(deemedPositive === 'Yes').toBe(paise(amount) < 0);
     }
     expect(totalsFor(vouchers, null)).toEqual([
       { ledger: 'Cash', parent: 'Cash-in-Hand', debit: 500_000, credit: 150_000 },
@@ -484,7 +500,9 @@ describe('Tally ledger list import', () => {
     expect(decodeTallyFile(Buffer.concat([Buffer.from([0xff, 0xfe]), le]))).toBe(sample);
     expect(decodeTallyFile(Buffer.concat([Buffer.from([0xfe, 0xff]), be]))).toBe(sample);
     expect(decodeTallyFile(le)).toBe(sample);
-    expect(decodeTallyFile(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(sample)]))).toBe(sample);
+    expect(decodeTallyFile(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(sample)]))).toBe(
+      sample,
+    );
     expect(decodeTallyFile(Buffer.from(sample))).toBe(sample);
   });
 });

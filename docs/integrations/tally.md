@@ -287,10 +287,10 @@ also count there.
   reads only names and groups.
 - **Payroll isn't exported.** Payroll doesn't post accounting entries in the app yet, so record salaries in Tally.
   Exporting payroll is a follow-up.
-- **No deposits or settlements.** The app records neither banking cheques nor gateway settlements, so `Cheques in
-Hand` and the gateway clearing ledgers keep growing in Tally. Record the transfers to your bank in Tally as Contra
-  vouchers, or map those accounts straight to the bank ledger. The bank statement matching in Accounting posts no
-  entries.
+- **No deposits or settlements.** The app records neither banking cheques nor gateway settlements, so
+  `Cheques in Hand` and the gateway clearing ledgers keep growing in Tally. Record the transfers to your bank in Tally
+  as Contra vouchers, or map those accounts straight to the bank ledger. The bank statement matching in Accounting
+  posts no entries.
 - **GST returns.** GST is recorded as journals at receipt time, not as sales vouchers with GST details (party GSTIN,
   SAC, place of supply), so Tally's GSTR-1 and GSTR-3B don't include the app's fees. Use the app's receipts and
   invoices for GST filing.
