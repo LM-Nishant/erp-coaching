@@ -435,7 +435,7 @@ describe('admissions', () => {
 
   it('admits into a batch chosen when admitting, enrolling the student through academics', async () => {
     const app = await getApp();
-    const { id } = await apply({ courseId: courseA });
+    const { id, mobile: familyMobile } = await apply({ courseId: courseA });
     const options = await request(app).get(`/api/admissions/applications/${id}/batches`).set(bearer(apex));
     expect(options.status).toBe(200);
     const offered = options.body as { id: number; seatsLeft: number }[];
@@ -488,6 +488,19 @@ describe('admissions', () => {
     expect(unplaced.body).toMatchObject({
       batchEnrolment: null,
       application: { status: 'admitted', courseId: courseA, batchId: null },
+    });
+    expect(await BatchStudent.count({ where: { instituteId: 1, batchId: roomyBatch } })).toBe(0);
+
+    // A sibling sharing the first student's mobile gets no login of their own yet, so they are
+    // admitted with the batch noted but can't be enrolled in it.
+    const sibling = await apply({ name: 'Edit Sibling', mobile: familyMobile, courseId: courseA });
+    expect((await admit(sibling.id, { batchId: roomyBatch })).body.error.code).toBe('DUPLICATE_STUDENT');
+    const shared = await admit(sibling.id, { batchId: roomyBatch, allowDuplicate: true });
+    expect(shared.status).toBe(201);
+    expect(shared.body).toMatchObject({
+      batchEnrolment: 'no_login',
+      student: { userId: null },
+      application: { status: 'admitted', batchId: roomyBatch },
     });
     expect(await BatchStudent.count({ where: { instituteId: 1, batchId: roomyBatch } })).toBe(0);
   });
