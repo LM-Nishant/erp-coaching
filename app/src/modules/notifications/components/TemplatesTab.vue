@@ -17,10 +17,23 @@
           <p v-if="t.subject">{{ t.subject }}</p>
           <p>{{ t.body }}</p>
         </ion-label>
-        <ion-button slot="end" v-can="'notifications.edit'" fill="clear" @click="openEditor(t)">
+        <ion-button
+          slot="end"
+          v-can="'notifications.edit'"
+          fill="clear"
+          aria-label="Edit template"
+          @click="openEditor(t)"
+        >
           <ion-icon slot="icon-only" :icon="createOutline" />
         </ion-button>
-        <ion-button slot="end" v-can="'notifications.edit'" fill="clear" color="danger" @click="remove(t)">
+        <ion-button
+          slot="end"
+          v-can="'notifications.edit'"
+          fill="clear"
+          color="danger"
+          aria-label="Delete template"
+          @click="remove(t)"
+        >
           <ion-icon slot="icon-only" :icon="trashOutline" />
         </ion-button>
       </ion-item>

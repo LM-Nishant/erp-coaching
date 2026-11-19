@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Salary structures" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'payroll.create'" @click="openEditor()"
+      <ion-button v-can="'payroll.create'" aria-label="New salary structure" @click="openEditor()"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>

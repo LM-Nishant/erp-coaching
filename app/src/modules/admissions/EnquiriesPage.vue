@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Enquiries" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'admissions.create'" @click="openCreate"
+      <ion-button v-can="'admissions.create'" aria-label="New enquiry" @click="openCreate"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>

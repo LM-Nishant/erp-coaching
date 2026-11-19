@@ -70,10 +70,10 @@
           </ion-label>
           <ion-badge slot="end" :color="STATUS_COLORS[p.status]">{{ p.status.replace('_', ' ') }}</ion-badge>
           <ion-buttons v-if="p.receiptId" slot="end">
-            <ion-button title="Download receipt" @click="pdf(p.receiptId)"
+            <ion-button title="Download receipt" aria-label="Download receipt" @click="pdf(p.receiptId)"
               ><ion-icon slot="icon-only" :icon="downloadOutline"
             /></ion-button>
-            <ion-button title="Send to WhatsApp" @click="share(p.receiptId)"
+            <ion-button title="Send to WhatsApp" aria-label="Send to WhatsApp" @click="share(p.receiptId)"
               ><ion-icon slot="icon-only" :icon="logoWhatsapp"
             /></ion-button>
           </ion-buttons>

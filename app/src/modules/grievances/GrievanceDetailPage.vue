@@ -64,6 +64,7 @@
               fill="clear"
               size="small"
               :color="n <= rating ? 'warning' : 'medium'"
+              :aria-label="`Rate ${n} out of 5`"
               @click="rating = n"
               ><ion-icon slot="icon-only" :icon="n <= rating ? star : starOutline"
             /></ion-button>
@@ -211,6 +212,7 @@ import {
   type GrievanceUserRef,
 } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import { openFileLink } from '@/core/downloads';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import { PRIORITY_COLORS, STATUS_COLORS, formatDate, grievancesApi, isOverdue, statusLabel } from './api';
@@ -349,7 +351,7 @@ const confirm = () =>
 async function openAttachment(attachmentId: number) {
   try {
     const { url } = await grievancesApi.attachmentUrl(id.value, attachmentId);
-    window.open(url, '_blank');
+    openFileLink(url);
   } catch (e) {
     await toastError(e);
   }

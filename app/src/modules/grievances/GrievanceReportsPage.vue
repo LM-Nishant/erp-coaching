@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Grievance reports" :on-refresh="load">
     <template #actions>
-      <ion-button :disabled="downloading" @click="download"
+      <ion-button :disabled="downloading" aria-label="Download CSV" @click="download"
         ><ion-icon slot="icon-only" :icon="downloadOutline"
       /></ion-button>
     </template>
@@ -75,6 +75,7 @@ import { downloadOutline } from 'ionicons/icons';
 import type { GrievanceCategoryDto, GrievanceReportSummary } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import StatCard from '@/components/StatCard.vue';
+import { saveFile } from '@/core/downloads';
 import { toastError } from '@/core/toast';
 import { grievancesApi, statusLabel, type ReportFilters } from './api';
 
@@ -106,12 +107,7 @@ async function download() {
   downloading.value = true;
   try {
     const csv = await grievancesApi.exportCsv(query());
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `grievances-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await saveFile(csv, `grievances-${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv');
   } catch (e) {
     await toastError(e);
   } finally {

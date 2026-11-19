@@ -8,7 +8,9 @@ export default defineAppModule({
       path: '/users/devices',
       name: 'member-devices',
       component: () => import('./MemberDevicesPage.vue'),
-      meta: { permission: 'users.view' },
+      // Uses /users/devices and /users/:id/devices only, which the API allows while suspended, so
+      // admins can still sign out a member's lost device.
+      meta: { permission: 'users.view', allowWhenSuspended: true },
     },
   ],
   menu: [

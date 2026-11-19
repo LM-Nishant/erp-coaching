@@ -4,7 +4,7 @@
       <ion-button v-can="'academics.configure'" @click="promo = { fromBatchId: null, toBatchId: null }"
         >Promote</ion-button
       >
-      <ion-button v-can="'academics.create'" @click="openEditor()"
+      <ion-button v-can="'academics.create'" aria-label="New academic session" @click="openEditor()"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
@@ -27,10 +27,21 @@
           @click="makeCurrent(s)"
           >Make current</ion-button
         >
-        <ion-button slot="end" v-can="'academics.edit'" fill="clear" @click="openEditor(s)"
+        <ion-button
+          slot="end"
+          v-can="'academics.edit'"
+          fill="clear"
+          :aria-label="`Edit ${s.name}`"
+          @click="openEditor(s)"
           ><ion-icon slot="icon-only" :icon="createOutline"
         /></ion-button>
-        <ion-button slot="end" v-can="'academics.delete'" fill="clear" color="danger" @click="remove(s)"
+        <ion-button
+          slot="end"
+          v-can="'academics.delete'"
+          fill="clear"
+          color="danger"
+          :aria-label="`Delete ${s.name}`"
+          @click="remove(s)"
           ><ion-icon slot="icon-only" :icon="trashOutline"
         /></ion-button>
       </ion-item>

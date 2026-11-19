@@ -194,7 +194,7 @@ Current wiring:
 | guardians → grievances                            | `guardians/integrations.ts`     | `setLinkedStudentsResolver`: a parent's children with a login (`{ id: studentUserId, name }`)                                                                                                                                                                            |
 | academics → notifications                         | `academics/integrations.ts`     | resolver `batchMembers` (batch campaign audiences, `batchMembersOf()`)                                                                                                                                                                                                   |
 | academics → payroll                               | `payroll/integrations.ts`       | `onClassSessionCompleted` → one `lecture` work unit per completed class (`externalRef academics:class-session:<id>`) for the teacher's HR employee                                                                                                                       |
-| admissions → academics                            | `admissions.service.ts`         | admitting an application with `batchId` enrols the student via `enrollStudentsInBatch` in the admit transaction; `admissions.confirmed` is sent to student + guardians                                                                                                   |
+| admissions → academics                            | `admissions.service.ts`         | admitting enrols the student in the application's batch (or the one chosen at admit) via `batchAvailability` + `enrollStudentsInBatch` in the admit transaction; `admissions.confirmed` is sent to student + guardians                                                   |
 | academics, grievances, admissions → notifications | `notify()`                      | `classes.cancelled/rescheduled/substituted` (students, their guardians, teachers), `grievances.activity`, `admissions.follow-up-due`                                                                                                                                     |
 | hr → subscriptions                                | `hr.service.ts`                 | `assertTeacherSeat()` enforces the plan's `maxTeachers` (non-exited employees with `isTeacher`)                                                                                                                                                                          |
 | hr → attendance                                   | `hr/integrations.ts`            | `setStaffPunchProvider` (`attendance/api`): biometric device PINs mapped to employees (`biometricEnrolmentId`) record staff attendance; first punch of the day = check-in, last = check-out; manual and leave days are skipped                                           |
@@ -228,6 +228,11 @@ Current wiring:
 | authentication → live-classes (events)            | `live-classes/integrations.ts`  | `onDeviceRevoked('live-classes.sockets')` disconnects the revoked device's live-class sockets                                                                                                                                                                            |
 
 Identity note: academics rosters and grievances key students by **login user id**; students/guardians use `students.id` (`students.user_id` is nullable — siblings sharing a mobile have no login). Use `getStudentUserId`, `getLinkedStudentUsers`, `getGuardianUserIdsForStudentUsers` from `guardians/guardian-access` to convert.
+
+Admission applications (`admissions/admissions.routes.ts`, `admissions.service.ts`):
+
+- **Editing.** `PATCH /admissions/applications/:id` (`admissions.edit`) changes an open (pending, waitlisted or approved) application, checked like a new one: custom-form answers against the application's form, and branch, course and batch through `resolveAdmissionPlacement`. Moving the branch or course without naming a batch clears the batch, and a waitlisted application that moves joins the end of its new list. A self-registered student's application takes its name, mobile, email and branch from their profile, so changing those is refused (400). Edits are audited as `application.updated` with the changed fields and the placement before and after.
+- **Admitting.** `POST …/:id/admit` takes an optional `batchId`: omitted keeps the application's batch, `null` admits without one (assigned later in academics), and an id must be a batch of the application's course in the student's branch (it sets the course if the application has none). The batch must be open with a free seat (`batchAvailability`, 409) or the admission rolls back. `GET …/:id/batches` (`admissions.approve`) lists the batches on offer. The response is `AdmitApplicationResultDto`; `batchEnrolment` is `'no_login'` when the student has no login of their own yet (a sibling sharing a mobile), so they're admitted but not added to the batch.
 
 Course purchases (`fees/course-enrolment.ts`):
 
@@ -303,7 +308,7 @@ The `reports` module owns the catalogue, filters, scoping, role dashboards and e
 - **Exports.**
   - `POST /api/reports/:key/exports` renders CSV, XLSX or PDF during the request when every table fits in 2,000 rows. Otherwise it queues the `reports.export` job, which allows up to 50,000 rows per table and notifies `reports.export-ready`.
   - Files use the `reports` purpose, count toward the storage quota, and expire after 24 hours.
-  - Each download is a separately audited, 5-minute signed link (`POST /api/reports/exports/:id/download`).
+  - `GET /api/reports/exports/:id/download` sends the file to its creator as an attachment with its own type (`text/csv; charset=utf-8`, XLSX or PDF), never inline. The app saves it with `api.download()`, like other exports.
   - Requests and downloads are audited as `report.exported` and `report.export_downloaded`.
 - **SaaS dashboard.**
   - `GET /api/admin/reports/dashboard` (super admin) aggregates every institute.
@@ -380,7 +385,7 @@ export default defineAppModule({
   - Route paths are prefixed with the module id.
   - Always lazy-load pages.
   - Set `meta.permission` (or `meta.superAdmin` for platform screens).
-  - A suspended institute can only open routes with `meta.allowWhenSuspended: true`, such as sign-in, Subscription & billing and data export. Set it only when every API call the page makes is still allowed while suspended.
+  - A suspended institute can only open routes with `meta.allowWhenSuspended: true`, such as sign-in, Subscription & billing, data export and Member devices. Set it only when every API call the page makes is still allowed while suspended (`ALWAYS_ALLOWED` in `subscriptions/access-guard.ts`).
 - **Pages.** Wrap every page in `<AppPage title="…">`, which provides the header, menu button and pull-to-refresh.
 - **UI.** Use Ionic components so the app works on web, Android and iOS.
 - **Permissions.** Hide actions with `v-can="'students.create'"`, or use `auth.can('students.create')` in script.
@@ -388,6 +393,7 @@ export default defineAppModule({
 - **API calls.**
   - Go through `core/api.ts` only, never raw `fetch` or axios. It handles tokens, refresh and `X-Branch-Id`.
   - For endpoints that respond with a file attachment, use `api.download(path, query)`. It returns `{ blob, fileName }`; `fileName` is null when the browser can't read `Content-Disposition` cross-origin.
+  - Save files with `saveFile(data, fileName)` from `core/downloads.ts`, and open signed links with `openFileLink(url)`. The web gets a browser download or a new tab. The Android and iOS apps get the share sheet or the system browser, because their WebView ignores `<a download>` and blob URLs. `downloads.guard.test.ts` fails on `window.open`, `<a download>` or `URL.createObjectURL` anywhere else.
   - Show errors with `errorMessage(e)` and `toast`.
   - Pass `{ background: true }` for automatic polls (unread counts, status refreshes) so they don't count as activity for the inactivity timeout.
 - **Branding.** Use Ionic colour variables (`var(--ion-color-primary)`) and never hard-code brand colours.
@@ -509,7 +515,7 @@ Critical and high findings are fixed, never listed. Entries naming routes that d
 
 ### Browser E2E
 
-`e2e/` drives the critical workflows of spec §7 in Chromium against the real API, web app and MySQL (`npm run e2e`; see [e2e/README.md](e2e/README.md)). If your change touches a covered workflow, run its spec. For downloads and new-tab documents use `trapWindowOpen`/`fetchDownload` from `e2e/support/downloads.ts`. To cover a new workflow, follow ["Adding a workflow spec"](e2e/README.md#adding-a-workflow-spec): one spec per workflow, setup through the API with the builders in `e2e/support/data.ts` (mobiles `9459…`), the user-facing steps in the browser, and an institute of its own for every spec.
+`e2e/` drives the critical workflows of spec §7 in Chromium against the real API, web app and MySQL (`npm run e2e`; see [e2e/README.md](e2e/README.md)). If your change touches a covered workflow, run its spec. For signed links and new-tab documents use `trapWindowOpen`/`fetchDownload` from `e2e/support/downloads.ts`, and `savedDownload` for files the app fetches and saves itself (`api.download()`). To cover a new workflow, follow ["Adding a workflow spec"](e2e/README.md#adding-a-workflow-spec): one spec per workflow, setup through the API with the builders in `e2e/support/data.ts` (mobiles `9459…`), the user-facing steps in the browser, and an institute of its own for every spec.
 
 ### Load tests
 

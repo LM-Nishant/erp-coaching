@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Website builder" :on-refresh="load">
     <template #actions>
-      <ion-button v-if="site" :href="site.publicUrl" target="_blank" rel="noopener">
+      <ion-button v-if="site" :href="site.publicUrl" target="_blank" rel="noopener" aria-label="Open website">
         <ion-icon slot="icon-only" :icon="openOutline" />
       </ion-button>
     </template>
@@ -17,7 +17,7 @@
     <ion-list>
       <ion-list-header>
         <ion-label>Pages</ion-label>
-        <ion-button v-if="auth.can('website.create')" @click="openNew"
+        <ion-button v-if="auth.can('website.create')" aria-label="New page" @click="openNew"
           ><ion-icon slot="icon-only" :icon="add"
         /></ion-button>
       </ion-list-header>

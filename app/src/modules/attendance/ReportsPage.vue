@@ -120,17 +120,10 @@ import type {
   StudentAttendanceSummaryDto,
 } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import { saveFile } from '@/core/downloads';
 import { toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
-import {
-  attendanceApi,
-  downloadText,
-  localDate,
-  pct,
-  type BranchRef,
-  type ReportFilters,
-  type ReportKind,
-} from './api';
+import { attendanceApi, localDate, pct, type BranchRef, type ReportFilters, type ReportKind } from './api';
 
 const auth = useAuthStore();
 const kind = ref<ReportKind>('students');
@@ -172,7 +165,7 @@ async function download(format: 'csv' | 'xls') {
   busy.value = true;
   try {
     const text = await attendanceApi.exportReport(kind.value, { ...filters }, format);
-    downloadText(
+    await saveFile(
       text,
       `attendance-${kind.value}-${filters.from}-${filters.to}.${format}`,
       format === 'csv' ? 'text/csv' : 'application/vnd.ms-excel',
