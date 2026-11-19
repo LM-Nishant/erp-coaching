@@ -14,8 +14,8 @@ export interface BiometricParseOptions {
 }
 
 /**
- * Biometric device adapter (spec §4.6). Device make/protocol is still open, so only the
- * interface and a mock exist. Real adapters translate vendor payloads (push or pull) to punches.
+ * Biometric device adapter (spec §4.6). Adapters translate vendor payloads (push or pull) to
+ * punches: the mock backs the generic punch API, `adms` parses ZKTeco/eSSL ADMS pushes (./adms).
  */
 export interface BiometricAdapter {
   readonly name: string;
@@ -49,3 +49,5 @@ export class MockBiometricAdapter implements BiometricAdapter {
 
 const adapter = new MockBiometricAdapter();
 export const getBiometricAdapter = (): BiometricAdapter => adapter;
+
+export * from './adms';

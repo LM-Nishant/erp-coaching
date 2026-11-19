@@ -6,11 +6,14 @@ import type {
   AttendanceSettingsDto,
   AttendanceStatus,
   BatchDto,
-  BiometricEnrolmentDto,
   CheckInOptionsDto,
   CheckInResult,
+  DeviceCommandDto,
   DeviceEventDto,
   DeviceIngestResult,
+  DevicePinDto,
+  DevicePinUpdate,
+  DeviceProtocol,
   GroupAttendanceReportRow,
   Paginated,
   QrTokenDto,
@@ -18,7 +21,7 @@ import type {
   StudentAttendanceSummaryDto,
   StudentLeaveRequestDto,
 } from '@erp/shared';
-import { api } from '@/core/api';
+import { api, API_URL } from '@/core/api';
 
 const A = '/attendance';
 
@@ -35,6 +38,27 @@ export interface ReportFilters {
   branchId?: number | null;
 }
 export type RequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+
+export interface DeviceSettingsInput {
+  name?: string;
+  branchId?: number | null;
+  /** ADMS devices only. */
+  timeZone?: string | null;
+  ipAllowlist?: string[];
+  allowHttp?: boolean;
+}
+
+export type DeviceCommandInput =
+  | { kind: 'sync_clock' | 'device_info' | 'fetch_users' }
+  | { kind: 'fetch_user'; pin: string }
+  | { kind: 'fetch_logs'; from: string; to: string };
+
+/** What to enter on a ZKTeco/eSSL device: it calls `/iclock/*` on the API host, at the server root. */
+export function admsServer() {
+  const u = new URL(API_URL);
+  const https = u.protocol === 'https:';
+  return { host: u.hostname, port: u.port || (https ? '443' : '80'), https };
+}
 
 export const attendanceApi = {
   settings: () => api.get<AttendanceSettingsDto>(`${A}/settings`),
@@ -75,20 +99,22 @@ export const attendanceApi = {
     api.get<StudentAttendanceSummaryDto>(`${A}/reports/students/${studentUserId}`, { year }),
 
   devices: () => api.get<AttendanceDeviceDto[]>(`${A}/devices`),
-  createDevice: (b: { name: string; serial: string; branchId?: number | null }) =>
+  createDevice: (b: DeviceSettingsInput & { name: string; serial: string; protocol?: DeviceProtocol }) =>
     api.post<AttendanceDeviceDto>(`${A}/devices`, b),
-  updateDevice: (id: number, b: { name?: string; active?: boolean; branchId?: number | null }) =>
+  updateDevice: (id: number, b: DeviceSettingsInput & { active?: boolean }) =>
     api.patch<AttendanceDeviceDto>(`${A}/devices/${id}`, b),
   rotateDeviceKey: (id: number) => api.post<AttendanceDeviceDto>(`${A}/devices/${id}/rotate-key`),
   removeDevice: (id: number) => api.delete(`${A}/devices/${id}`),
+  deviceCommands: (id: number) => api.get<DeviceCommandDto[]>(`${A}/devices/${id}/commands`),
+  sendDeviceCommand: (id: number, cmd: DeviceCommandInput) =>
+    api.post<DeviceCommandDto>(`${A}/devices/${id}/commands`, cmd),
   importDeviceEvents: (id: number, payload: unknown) =>
     api.post<DeviceIngestResult>(`${A}/devices/${id}/events`, payload),
   deviceEvents: (status?: string) =>
     api.get<Paginated<DeviceEventDto>>(`${A}/device-events`, { status, pageSize: 50 }),
-  enrolments: () => api.get<BiometricEnrolmentDto[]>(`${A}/enrolments`),
-  saveEnrolment: (studentUserId: number, enrolmentId: string) =>
-    api.put<BiometricEnrolmentDto>(`${A}/enrolments`, { studentUserId, enrolmentId }),
-  removeEnrolment: (id: number) => api.delete(`${A}/enrolments/${id}`),
+  devicePins: () => api.get<DevicePinDto[]>(`${A}/device-pins`),
+  setDevicePin: (b: DevicePinUpdate) =>
+    api.put<{ reapplied: DeviceIngestResult | null }>(`${A}/device-pins`, b),
 
   checkInOptions: () => api.get<CheckInOptionsDto>(`${A}/me/check-in-options`),
   checkIn: (b: {

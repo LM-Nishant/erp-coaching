@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { discoverModules } from '../../src/infrastructure/module-loader';
 import { describeRoutes, type RouteInfo } from '../../src/infrastructure/route-registry';
 import {
+  DEVICE_AUTHENTICATED_ROUTES,
   KNOWN_UNCOVERED,
   OWNER_STATUS,
   PORTAL_SHARED,
@@ -17,7 +18,8 @@ import { routeKey } from './crawler';
 let cache: RouteInfo[] | undefined;
 const allRoutes = async () => (cache ??= describeRoutes(await discoverModules()));
 
-const ANONYMOUS_LIMITERS = new Set(['auth', 'token', 'media', 'webhook', 'public-form', 'device']);
+const DEVICE_LIMITERS = new Set(['device', 'adms']);
+const ANONYMOUS_LIMITERS = new Set(['auth', 'token', 'media', 'webhook', 'public-form', ...DEVICE_LIMITERS]);
 
 describe('route registry', () => {
   it('lists every module route with its guards', async () => {
@@ -63,9 +65,24 @@ describe('route registry', () => {
     expect(offenders, 'use publicFormRateLimit (or another dedicated limiter)').toEqual([]);
   });
 
+  it('device-authenticated routes are listed with how the device is identified', async () => {
+    const device = (await allRoutes())
+      .filter((r) => !r.authenticated && r.rateLimits.some((l) => DEVICE_LIMITERS.has(l)))
+      .map(routeKey);
+    expect(
+      device.filter((k) => !DEVICE_AUTHENTICATED_ROUTES[k]),
+      'add it to DEVICE_AUTHENTICATED_ROUTES with how the device is identified',
+    ).toEqual([]);
+    expect(
+      Object.keys(DEVICE_AUTHENTICATED_ROUTES).filter((k) => !device.includes(k)),
+      'DEVICE_AUTHENTICATED_ROUTES entry without a public device route behind the device or adms limiter',
+    ).toEqual([]);
+  });
+
   it('allow-lists and exceptions only name existing routes', async () => {
     const keys = new Set((await allRoutes()).map(routeKey));
     const lists = {
+      DEVICE_AUTHENTICATED_ROUTES,
       SELF_SERVICE_ROUTES,
       PUBLIC_OUTSIDE_PUBLIC_PREFIX,
       PORTAL_SHARED,

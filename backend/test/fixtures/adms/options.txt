@@ -1,0 +1,1 @@
+~DeviceName=SpeedFace-V5L,MAC=00:17:61:12:34:56,TransactionCount=346,~MaxAttLogCount=10,UserCount=12,~MaxUserCount=100,FPCount=10,~MaxFingerCount=10,FaceCount=15,IPAddress=192.168.1.201,FWVersion=Ver 6.60 Apr 28 2021,~Platform=ZMM220_TFT,~OEMVendor=ZKTeco Inc.

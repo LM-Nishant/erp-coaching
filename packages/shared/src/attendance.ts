@@ -174,16 +174,99 @@ export interface StudentAttendanceSummaryDto {
   }[];
 }
 
+/**
+ * How a device sends punches: `api` = the generic punch API (serial + API key, any device or
+ * middleware); `adms` = ZKTeco/eSSL ADMS push (`/iclock/*`, identified by serial number).
+ */
+export const DEVICE_PROTOCOLS = ['api', 'adms'] as const;
+export type DeviceProtocol = (typeof DEVICE_PROTOCOLS)[number];
+
+/** What an ADMS device reports about itself. */
+export interface DeviceInfoDto {
+  deviceName?: string;
+  firmware?: string;
+  platform?: string;
+  vendor?: string;
+  users?: number;
+  fingerprints?: number;
+  faces?: number;
+  attLogs?: number;
+  ip?: string;
+  mac?: string;
+  pushVersion?: string;
+}
+
 export interface AttendanceDeviceDto {
   id: number;
   branchId: number | null;
   name: string;
   serial: string;
   adapter: string;
+  protocol: DeviceProtocol;
   active: boolean;
   lastSeenAt: string | null;
-  /** Returned once, on create or key rotation. */
+  /** Returned once, on create or key rotation (punch API devices only). */
   apiKey?: string;
+  /** Zone of the device clock (IANA); null = the institute's zone. */
+  timeZone: string | null;
+  /** IPs/CIDRs allowed to push (ADMS); empty = any. */
+  ipAllowlist: string[];
+  /** Accept plain-HTTP pushes (ADMS devices without HTTPS firmware). */
+  allowHttp: boolean;
+  lastIp: string | null;
+  info: DeviceInfoDto | null;
+  lastError: string | null;
+  lastErrorAt: string | null;
+}
+
+/** Commands queued for an ADMS device, delivered when it next polls. */
+export const DEVICE_COMMAND_KINDS = [
+  'sync_clock',
+  'device_info',
+  'fetch_users',
+  'fetch_user',
+  'fetch_logs',
+] as const;
+export type DeviceCommandKind = (typeof DEVICE_COMMAND_KINDS)[number];
+export type DeviceCommandStatus = 'pending' | 'sent' | 'done' | 'failed' | 'expired';
+
+export interface DeviceCommandDto {
+  id: number;
+  deviceId: number;
+  kind: DeviceCommandKind;
+  command: string;
+  status: DeviceCommandStatus;
+  /** Device return code (0 = success). */
+  returnCode: number | null;
+  createdAt: string;
+  sentAt: string | null;
+  completedAt: string | null;
+}
+
+/** Who a device user PIN belongs to. */
+export type DevicePinTarget =
+  { type: 'student'; studentUserId: number } | { type: 'employee'; employeeId: number };
+
+/** A device user PIN with its mapping, merged from device user lists, mappings and punches. */
+export interface DevicePinDto {
+  pin: string;
+  /** Name stored on the device, when a device reported its user list. */
+  deviceName: string | null;
+  deviceIds: number[];
+  student: { userId: number; name: string } | null;
+  /** Employee name is included only for users who can view HR. */
+  employee: { id: number; name: string | null } | null;
+  /** Mapped to a student or employee outside the caller's branches (who is not shown). */
+  hidden: boolean;
+  /** Unmatched punches with this PIN within the backfill window (`ADMS_BACKFILL_DAYS`). */
+  unmatchedPunches: number;
+  lastPunchAt: string | null;
+}
+
+/** Change a PIN's mapping; `target: null` unmaps it. */
+export interface DevicePinUpdate {
+  pin: string;
+  target: DevicePinTarget | null;
 }
 
 export interface DeviceIngestResult {
