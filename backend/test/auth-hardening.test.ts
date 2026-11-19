@@ -2,12 +2,14 @@ import crypto from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 import bcrypt from 'bcryptjs';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { config } from '../src/infrastructure/config';
 import { getMessagingProvider, setMessagingProvider } from '../src/infrastructure/messaging';
 import { consoleOutbox } from '../src/infrastructure/messaging/console.provider';
 import { hashPassword, verifyPassword } from '../src/infrastructure/password';
+import { closeRedis, getRedis } from '../src/infrastructure/redis';
 import { confirmAccountPassword, signInLocks } from '../src/modules/authentication/api';
+import { guardSignIn, tagSubject } from '../src/modules/authentication/sign-in-lock';
 import { User } from '../src/modules/users/user.model';
 import { AuditEvent } from '../src/shared/audit/audit-event.model';
 import { type TestDevice, bearer, getApp, lastOtpFor, login, newDevice } from './helpers';
@@ -187,6 +189,37 @@ describe('sign-in lockout', () => {
     const outcomes = res.map(outcome);
     expect(outcomes.filter((o) => o === INVALID)).toHaveLength(4);
     expect(outcomes.filter((o) => o === LOCKED)).toHaveLength(6);
+  });
+
+  it('keeps the gate of an attempt that took over from one that overran it', async () => {
+    const subject = tagSubject(crypto.randomBytes(8).toString('hex'));
+    const pending = () => {
+      let finish!: () => void;
+      const done = new Promise<void>((resolve) => (finish = resolve));
+      return { run: () => done, finish: () => finish() };
+    };
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const first = pending();
+      const firstDone = guardSignIn(subject, first.run);
+      await sleep(20);
+      vi.setSystemTime(Date.now() + 11_000); // past the first attempt's 10-second gate
+      const second = pending();
+      const secondDone = guardSignIn(subject, second.run);
+      await sleep(20);
+      first.finish();
+      await firstDone;
+
+      // The second attempt still holds the gate: a third one waits, then gives up.
+      const third = guardSignIn(subject, async () => 'ran');
+      vi.setSystemTime(Date.now() + 4_000);
+      await expect(third).rejects.toMatchObject({ status: 429, code: 'SIGN_IN_BUSY' });
+      second.finish();
+      await secondDone;
+      expect(await guardSignIn(subject, async () => 'ran')).toBe('ran');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('counts wrong passwords given to attach an existing account to a registration', async () => {
@@ -379,5 +412,56 @@ describe('biometric unlock', () => {
 
     expect((await send(superAdmin, 'DELETE', `/api/admin/users/${user.id}/sign-in-lock`)).status).toBe(204);
     expect(await unlock({})).toBe('200 authenticated');
+  });
+});
+
+describe.skipIf(!process.env.TEST_REDIS_URL)('sign-in lockout with Redis', () => {
+  const accounts: string[] = [];
+  const subject = () => {
+    const s = tagSubject(crypto.randomBytes(8).toString('hex'));
+    accounts.push(s.account);
+    return s;
+  };
+
+  beforeAll(async () => {
+    config.REDIS_URL = process.env.TEST_REDIS_URL;
+    await vi.waitFor(() => expect(getRedis()?.isReady).toBe(true));
+  });
+
+  afterAll(async () => {
+    await getRedis()?.del(accounts.flatMap((a) => [`signin:${a}`, `signin-gate:${a}:0`]));
+    await closeRedis();
+    config.REDIS_URL = undefined;
+  });
+
+  it('keeps the failures and the lock in Redis', async () => {
+    const s = subject();
+    const fail = () => guardSignIn(s, (attempt) => attempt.failed('password'));
+    for (let i = 0; i < 4; i++) await fail();
+    await expect(fail()).rejects.toMatchObject({ code: 'ACCOUNT_LOCKED' });
+    const [failures, lockedUntil] = (await getRedis()!.hGet(`signin:${s.account}`, '0'))!
+      .split(':')
+      .map(Number);
+    expect(failures).toBe(5);
+    expect(lockedUntil).toBeGreaterThan(Date.now());
+  });
+
+  it('releases only a gate the attempt still holds', async () => {
+    const s = subject();
+    const redis = getRedis()!;
+    const gate = `signin-gate:${s.account}:0`;
+    let finish!: () => void;
+    const done = guardSignIn(s, () => new Promise<void>((resolve) => (finish = resolve)));
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    expect(await redis.get(gate)).toMatch(/^[0-9a-f-]{36}$/);
+
+    await redis.set(gate, 'later-attempt'); // the gate expired and another attempt took it
+    finish();
+    await done;
+    expect(await redis.get(gate)).toBe('later-attempt');
+
+    await redis.del(gate);
+    await guardSignIn(s, async () => undefined);
+    expect(await redis.get(gate)).toBeNull();
   });
 });

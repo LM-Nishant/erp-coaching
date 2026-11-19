@@ -113,8 +113,10 @@ interface Backend {
   read(account: string): Promise<Map<string, ScopeState>>;
   write(account: string, scope: string, state: ScopeState): Promise<void>;
   clear(account: string, scope?: string): Promise<void>;
-  acquire(gate: string): Promise<boolean>;
-  release(gate: string): Promise<void>;
+  /** Takes the gate for GATE_MS unless someone holds it; `token` identifies the holder. */
+  acquire(gate: string, token: string): Promise<boolean>;
+  /** Frees the gate if `token` still holds it: after GATE_MS another attempt may have taken it over. */
+  release(gate: string, token: string): Promise<void>;
 }
 
 const encode = (s: ScopeState) => `${s.failures}:${s.lockedUntil}:${s.lastFailureAt}`;
@@ -127,7 +129,7 @@ function decode(raw: string): ScopeState | null {
 
 class MemoryBackend implements Backend {
   private accounts = new Map<string, { expires: number; scopes: Map<string, ScopeState> }>();
-  private gates = new Map<string, number>();
+  private gates = new Map<string, { token: string; expires: number }>();
 
   async read(account: string) {
     const a = this.accounts.get(account);
@@ -153,17 +155,19 @@ class MemoryBackend implements Backend {
     else this.accounts.get(account)?.scopes.delete(scope);
   }
 
-  async acquire(gate: string) {
+  async acquire(gate: string, token: string) {
     const now = Date.now();
-    if ((this.gates.get(gate) ?? 0) > now) return false;
-    this.gates.set(gate, now + GATE_MS);
+    if ((this.gates.get(gate)?.expires ?? 0) > now) return false;
+    this.gates.set(gate, { token, expires: now + GATE_MS });
     return true;
   }
 
-  async release(gate: string) {
-    this.gates.delete(gate);
+  async release(gate: string, token: string) {
+    if (this.gates.get(gate)?.token === token) this.gates.delete(gate);
   }
 }
+
+const RELEASE_GATE = `if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end return 0`;
 
 class RedisBackend implements Backend {
   constructor(private readonly client: RedisClient) {}
@@ -194,16 +198,16 @@ class RedisBackend implements Backend {
     else await this.client.hDel(this.key(account), scope);
   }
 
-  async acquire(gate: string) {
-    const ok = await this.client.set(`signin-gate:${gate}`, '1', {
+  async acquire(gate: string, token: string) {
+    const ok = await this.client.set(`signin-gate:${gate}`, token, {
       condition: 'NX',
       expiration: { type: 'PX', value: GATE_MS },
     });
     return ok === 'OK';
   }
 
-  async release(gate: string) {
-    await this.client.del(`signin-gate:${gate}`);
+  async release(gate: string, token: string) {
+    await this.client.eval(RELEASE_GATE, { keys: [`signin-gate:${gate}`], arguments: [token] });
   }
 }
 
@@ -227,10 +231,10 @@ async function store<T>(op: (b: Backend) => Promise<T>): Promise<T> {
 
 // ------------------------------------------------------------------ attempts
 
-async function acquireGate(gate: string): Promise<boolean> {
+async function acquireGate(gate: string, token: string): Promise<boolean> {
   const deadline = Date.now() + GATE_WAIT_MS;
   for (let delay = 20; ; delay = Math.min(delay * 2, 250)) {
-    if (await store((b) => b.acquire(gate))) return true;
+    if (await store((b) => b.acquire(gate, token))) return true;
     if (Date.now() + delay > deadline) return false;
     await sleep(delay * (0.5 + Math.random()));
   }
@@ -250,7 +254,8 @@ export async function guardSignIn<T>(
   if (!threshold) return run(NO_LOCK);
   const scope = String(subject.scope);
   const gate = `${subject.account}:${scope}`;
-  if (!(await acquireGate(gate))) throw busyError();
+  const token = crypto.randomUUID();
+  if (!(await acquireGate(gate, token))) throw busyError();
   try {
     const state = (await store((b) => b.read(subject.account))).get(scope);
     if (state && state.lockedUntil > Date.now()) throw lockedError(state.lockedUntil - Date.now());
@@ -290,7 +295,7 @@ export async function guardSignIn<T>(
       },
     });
   } finally {
-    await store((b) => b.release(gate)).catch(() => undefined);
+    await store((b) => b.release(gate, token)).catch(() => undefined);
   }
 }
 
