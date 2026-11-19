@@ -35,6 +35,11 @@ export interface AppModule {
    */
   wipeUserData?: (userId: number | null) => Promise<void>;
   /**
+   * Runs when the user signs out, while the session still works: undo what ties this device to the user (e.g. the push
+   * token). Best effort; signing out goes ahead when it fails. See core/session.ts.
+   */
+  beforeSignOut?: () => Promise<void>;
+  /**
    * Run after the login and permission checks of every signed-in navigation. Return `true` to
    * continue or a location to redirect to (e.g. a suspended institute goes to billing).
    */
@@ -91,6 +96,10 @@ export const toolbarItems: Component[] = appModules.flatMap((m) => m.toolbarItem
 /** Runs every module's `wipeUserData`; one failing module doesn't stop the others. */
 export async function wipeUserData(userId: number | null) {
   await Promise.all(appModules.map((m) => m.wipeUserData?.(userId).catch(() => undefined)));
+}
+/** Runs every module's `beforeSignOut`; failures are ignored. */
+export async function beforeSignOut() {
+  await Promise.all(appModules.map((m) => m.beforeSignOut?.().catch(() => undefined)));
 }
 export const navigationGuards: AppNavigationGuard[] = appModules.flatMap((m) => m.navigationGuards ?? []);
 

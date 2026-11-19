@@ -13,6 +13,7 @@ import { sha256 } from '../../infrastructure/crypto';
 import { findEvent } from './catalogue';
 import { NotificationMessage, NotificationPreference, PushToken } from './models';
 import { messageRepo, unreadCount } from './notify.service';
+import { resolveProvider } from './providers.service';
 
 const prefRepo = new TenantRepository(NotificationPreference, { entity: 'Preference' });
 const tokenRepo = new TenantRepository(PushToken, { entity: 'Push token' });
@@ -21,6 +22,22 @@ const me = () => {
   const { userId } = requireTenantContext();
   return userId!;
 };
+
+async function preferenceDtos(userId: number): Promise<NotificationPreferenceDto[]> {
+  const rows = await prefRepo.findAll({ where: { userId } });
+  const items: NotificationPreferenceDto[] = rows.map((p) => ({
+    channel: p.channel,
+    eventKey: p.eventKey === '*' ? null : p.eventKey,
+    enabled: p.enabled,
+  }));
+  // WhatsApp business messages need the user's opt-in: off until they turn it on.
+  if (
+    !items.some((p) => p.channel === 'whatsapp' && p.eventKey === null) &&
+    (await resolveProvider('whatsapp')).provider.requiresOptIn
+  )
+    items.push({ channel: 'whatsapp', eventKey: null, enabled: false });
+  return items;
+}
 
 const inboxWhere = (extra: Record<string | symbol, unknown> = {}) => ({
   userId: me(),
@@ -95,13 +112,7 @@ export function inboxRoutes(r: Router) {
   });
 
   r.get('/preferences', view, async (_req, res) => {
-    const rows = await prefRepo.findAll({ where: { userId: me() } });
-    const items: NotificationPreferenceDto[] = rows.map((p) => ({
-      channel: p.channel,
-      eventKey: p.eventKey === '*' ? null : p.eventKey,
-      enabled: p.enabled,
-    }));
-    res.json(items);
+    res.json(await preferenceDtos(me()));
   });
 
   r.put('/preferences', edit, async (req, res) => {
@@ -128,14 +139,7 @@ export function inboxRoutes(r: Router) {
       entityId: userId,
       metadata: { preferences: body.preferences },
     });
-    const rows = await prefRepo.findAll({ where: { userId } });
-    res.json(
-      rows.map((p) => ({
-        channel: p.channel,
-        eventKey: p.eventKey === '*' ? null : p.eventKey,
-        enabled: p.enabled,
-      })),
-    );
+    res.json(await preferenceDtos(userId));
   });
 
   r.post('/push-tokens', edit, async (req, res) => {

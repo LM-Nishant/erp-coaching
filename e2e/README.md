@@ -16,6 +16,7 @@ sending an enquiry) are driven in the browser.
 | `appointment-booking.spec.ts`     | Parent-teacher appointment                                | Parent requests a 16:00 slot. Teacher approves it from Pending with a note. Parent sees the confirmation, note, history and notification     |
 | `website-enquiry.spec.ts`         | Website publish → enquiry → lead                          | Admin publishes the site. A visitor submits the public enquiry form. Staff find the enquiry in Admissions                                    |
 | `live-class.spec.ts`              | Live class → notification → join → recording in the LMS   | Teacher schedules and goes live. Student sees the notification and joins: chat, Q&A, poll, mic allowed. Recording listed, opened in the LMS  |
+| `academic-promotion-fees.spec.ts` | Academic promotion → new-session fees                     | Admin promotes a batch into the next session with "Apply new-session fees" on and a due date. Sees 2 promoted and billed, 1 already enrolled |
 
 Each spec also checks the server-side outcome where it matters, for example:
 

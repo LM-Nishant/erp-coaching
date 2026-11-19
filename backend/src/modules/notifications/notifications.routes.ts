@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import express, { Router, type Request, type Response } from 'express';
 import { Op } from 'sequelize';
 import { z } from 'zod';
 import {
@@ -13,6 +13,7 @@ import {
 import { parse } from '../../shared/utilities/validation';
 import { idParam, paginated, paginationSchema, toLimitOffset } from '../../shared/utilities/pagination';
 import { authenticate } from '../../shared/middleware/authenticate';
+import { webhookRateLimit } from '../../shared/middleware/security';
 import { requirePermission } from '../../shared/middleware/authorize';
 import { requireTenantContext } from '../../shared/context';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
@@ -27,10 +28,12 @@ import {
   resolveProvider,
   saveProvider,
   toProviderDto,
+  verifyProvider,
 } from './providers.service';
 import { campaignRepo, createCampaign, effectiveRule, retryMessage } from './notify.service';
 import { renderTemplate, sampleVars } from './templates';
 import { inboxRoutes } from './inbox.routes';
+import { processMessagingWebhook, whatsappHandshake, type MessagingWebhookVendor } from './webhooks.service';
 
 export const templateRepo = new TenantRepository(NotificationTemplate, { entity: 'Template' });
 const ruleRepo = new TenantRepository(NotificationRule, { entity: 'Rule' });
@@ -212,13 +215,23 @@ export function notificationAdminRoutes(r: Router) {
 
   r.post('/providers/:channel/test', can('configure'), async (req, res) => {
     const { channel } = parse(z.object({ channel: externalChannelEnum }), req.params);
-    const { to } = parse(z.object({ to: z.string().trim().min(3).max(512) }), req.body);
+    const { to, templateId, body } = parse(
+      z.object({
+        to: z.string().trim().min(3).max(512),
+        /** Vendor template: WhatsApp `name:language` (e.g. `hello_world:en_US`), a DLT or Content template id. */
+        templateId: z.string().trim().max(190).optional(),
+        /** Text of an approved SMS template (DLT requires the exact wording). */
+        body: z.string().trim().min(1).max(1000).optional(),
+      }),
+      req.body,
+    );
     const { provider } = await resolveProvider(channel);
     try {
       const result = await provider.send({
         to,
         subject: 'Test message',
-        body: 'Test message from your ERP.',
+        body: body ?? 'Test message from your ERP.',
+        templateId: templateId || undefined,
       });
       res.json({ ok: result.status !== 'failed', provider: provider.name, ...result });
     } catch (err) {
@@ -228,6 +241,12 @@ export function notificationAdminRoutes(r: Router) {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  });
+
+  /** Checks the saved credentials with the vendor without sending a message (where the vendor allows it). */
+  r.post('/providers/:channel/verify', can('configure'), async (req, res) => {
+    const { channel } = parse(z.object({ channel: externalChannelEnum }), req.params);
+    res.json(await verifyProvider(channel));
   });
 
   // Templates ---------------------------------------------------------------------------
@@ -459,7 +478,42 @@ export function notificationAdminRoutes(r: Router) {
   });
 }
 
+const webhookKeyParams = z.object({ webhookKey: z.string().min(10).max(80) });
+const rawBody = express.raw({ type: () => true, limit: '1mb' });
+
+/**
+ * Vendor delivery-status and inbound-message webhooks. Unauthenticated: the provider is resolved from
+ * the secret key in the URL and the vendor's signature is verified before anything is trusted.
+ */
+function publicWebhookRoutes(api: Router) {
+  const base = '/notifications/public/webhooks';
+  const handle = (vendor: MessagingWebhookVendor) => async (req: Request, res: Response) => {
+    const { webhookKey } = parse(webhookKeyParams, req.params);
+    const raw =
+      req.rawBody ?? (Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body ?? {})));
+    const query = req.originalUrl.indexOf('?');
+    const result = await processMessagingWebhook({
+      vendor,
+      webhookKey,
+      rawBody: raw,
+      headers: req.headers,
+      search: query >= 0 ? req.originalUrl.slice(query) : '',
+    });
+    // Twilio treats the response to an inbound message as TwiML; an empty one sends no reply.
+    if (vendor === 'twilio') res.type('text/xml').send('<Response></Response>');
+    else res.json({ received: true, ...result });
+  };
+  api.get(`${base}/whatsapp-cloud/:webhookKey`, webhookRateLimit, async (req, res) => {
+    const { webhookKey } = parse(webhookKeyParams, req.params);
+    res.type('text/plain').send(await whatsappHandshake(webhookKey, req.query as Record<string, unknown>));
+  });
+  api.post(`${base}/whatsapp-cloud/:webhookKey`, webhookRateLimit, rawBody, handle('whatsapp-cloud'));
+  api.post(`${base}/twilio/:webhookKey`, webhookRateLimit, rawBody, handle('twilio'));
+  api.post(`${base}/msg91/:webhookKey`, webhookRateLimit, rawBody, handle('msg91'));
+}
+
 export function notificationRoutes(api: Router) {
+  publicWebhookRoutes(api);
   const r = Router();
   r.use(authenticate);
   inboxRoutes(r);

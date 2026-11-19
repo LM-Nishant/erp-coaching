@@ -1,6 +1,7 @@
 import {
   MESSAGING_PROVIDER_KINDS,
   PROVIDER_FIELDS,
+  providerFieldsFor,
   type ExternalChannel,
   type IntegrationTestResultDto,
   type IntegrationTestStatus,
@@ -22,9 +23,18 @@ import {
   hmac,
   maskSecret,
   randomToken,
+  safeEqual,
 } from '../../infrastructure/crypto';
 import { logger } from '../../infrastructure/logger';
-import { createMessagingProvider, type MessagingProvider } from '../../infrastructure/messaging';
+import {
+  createMessagingProvider,
+  hasMessagingWebhook,
+  messagingWebhook,
+  otpSms,
+  type MessagingProvider,
+  type OutboundMessage,
+  type WebhookProviderMatch,
+} from '../../infrastructure/messaging';
 import {
   createPaymentGateway,
   PAYMENT_GATEWAY_NAMES,
@@ -246,7 +256,7 @@ function rowFingerprint(row: PlatformIntegration, key?: string): string {
   const secrets = readSecrets(row);
   if (row.kind === 'gateway') return gatewayFingerprint(row.slot, gatewaySettings(row), secrets, key);
   if (row.kind === 'messaging')
-    return fingerprint({ provider: row.provider, fields: row.settings, secrets }, key);
+    return fingerprint({ provider: row.provider, fields: messagingFields(row), secrets }, key);
   return storageFingerprint(row.provider as StorageDriverKey, storageSettings(row), secrets, key);
 }
 
@@ -470,6 +480,21 @@ export function assertChannel(name: string): ExternalChannel {
   return name as ExternalChannel;
 }
 
+/**
+ * The webhook key of vendors with delivery webhooks is kept next to the provider fields; it is
+ * neither a connection field (fingerprint) nor shown as a setting.
+ */
+const WEBHOOK_KEY = 'webhookKey';
+
+function messagingFields(row: PlatformIntegration | undefined): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries((row?.settings ?? {}) as Record<string, string>).filter(([k]) => k !== WEBHOOK_KEY),
+  );
+}
+
+const messagingWebhookKey = (row: PlatformIntegration | undefined): string | null =>
+  ((row?.settings ?? {}) as Record<string, string>)[WEBHOOK_KEY] || null;
+
 function messagingDto(channel: ExternalChannel): PlatformMessagingDto {
   const e = snapshot.get(keyOf('messaging', channel));
   const provider = (e?.row.provider ?? 'console') as MessagingProviderKind;
@@ -480,10 +505,11 @@ function messagingDto(channel: ExternalChannel): PlatformMessagingDto {
     channel,
     provider,
     enabled: e?.row.enabled ?? false,
-    settings: (e?.row.settings ?? {}) as Record<string, string>,
+    settings: messagingFields(e?.row),
     secretHints,
     configured: !!e,
     updatedAt: e ? new Date(e.row.updatedAt).toISOString() : null,
+    webhook: messagingWebhook(provider, messagingWebhookKey(e?.row)),
     ...testStatus(e?.row),
   };
 }
@@ -499,7 +525,9 @@ function mergeMessaging(
     throw BadRequest(`${kind.label} does not support ${channel}`);
   const e = snapshot.get(keyOf('messaging', channel));
   const previous = e && e.row.provider === input.provider ? e.secrets : {};
-  const providerFields = PROVIDER_FIELDS[input.provider as MessagingProviderKind];
+  const providerFields = providerFieldsFor(input.provider as MessagingProviderKind, channel, {
+    platform: true,
+  });
   assertStoredSecretReusable(
     providerFields.some((f) => f.secret && !(input.settings[f.key] ?? '').trim() && previous[f.key]),
     changedDestinationFields(
@@ -530,21 +558,57 @@ function mergeMessaging(
   };
 }
 
+export interface MessagingTestOptions {
+  /** Vendor template to send (WhatsApp: an approved template such as `hello_world:en_US`). */
+  templateId?: string;
+  body?: string;
+}
+
+/**
+ * SMS tests send the login OTP message (DLT / OTP template of the settings), so a passing test
+ * means OTP login works; other channels send a plain message or the given vendor template.
+ */
+function testMessage(channel: ExternalChannel, to: string, options: MessagingTestOptions): OutboundMessage {
+  if (channel === 'sms' && !options.templateId && !options.body)
+    return { ...otpSms(to, '123456', config.OTP_TTL_SECONDS), data: { purpose: 'connection-test' } };
+  return {
+    to,
+    subject: 'Test message',
+    body: options.body || `Test message: the platform's default ${channel} provider is working.`,
+    ...(options.templateId ? { templateId: options.templateId, variables: [] } : {}),
+    data: { purpose: 'connection-test' },
+  };
+}
+
 async function testMessaging(
   channel: ExternalChannel,
   provider: string,
   connection: Record<string, string>,
   to: string,
+  options: MessagingTestOptions = {},
 ): Promise<TestOutcome> {
   try {
-    const result = await createMessagingProvider(provider, channel, connection).send({
-      to,
-      subject: 'Test message',
-      body: `Test message: the platform's default ${channel} provider is working.`,
-      data: { purpose: 'connection-test' },
-    });
+    const result = await createMessagingProvider(provider, channel, connection).send(
+      testMessage(channel, to, options),
+    );
     if (result.status === 'failed') return { ok: false, message: result.error || 'Delivery failed' };
     return { ok: true, message: `Test message ${result.status} to ${to}` };
+  } catch (err) {
+    return { ok: false, message: errorMessage(err) };
+  }
+}
+
+/** Key check: asks the vendor to accept the credentials without messaging anyone. */
+async function verifyMessaging(
+  channel: ExternalChannel,
+  provider: string,
+  connection: Record<string, string>,
+): Promise<TestOutcome> {
+  if (provider === 'console')
+    return { ok: true, message: 'The console provider only logs messages; it has no keys.' };
+  try {
+    const adapter = createMessagingProvider(provider, channel, connection);
+    return { ok: true, message: adapter.verify ? await adapter.verify() : 'This provider has no key check.' };
   } catch (err) {
     return { ok: false, message: errorMessage(err) };
   }
@@ -564,10 +628,14 @@ export async function saveMessaging(
     print,
     to ? () => testMessaging(channel, input.provider, { ...fields, ...secrets }, to) : null,
   );
+  // Kept across saves of the same vendor so the URL pasted into its dashboard stays valid.
+  const webhookKey = hasMessagingWebhook(input.provider)
+    ? ((existing?.provider === input.provider ? messagingWebhookKey(existing) : null) ?? randomToken(24))
+    : null;
   await upsertRow('messaging', channel, {
     provider: input.provider,
     enabled: input.enabled,
-    settings: fields,
+    settings: webhookKey ? { ...fields, [WEBHOOK_KEY]: webhookKey } : fields,
     secretsEncrypted: encryptSecrets(secrets),
     updatedBy: userId,
     ...tests,
@@ -575,22 +643,40 @@ export async function saveMessaging(
   return messagingDto(channel);
 }
 
-export async function testMessagingConfig(
+/** The form's (or else the saved) connection of a channel, validated like a save. */
+async function messagingConnection(
   channel: ExternalChannel,
   input: Partial<Pick<PlatformMessagingInput, 'provider' | 'settings'>>,
-  to: string,
-): Promise<IntegrationTestResultDto> {
+) {
   await loadIntegrations(true);
   const saved = snapshot.get(keyOf('messaging', channel));
   const provider = input.provider ?? saved?.row.provider;
   if (!provider) throw BadRequest('Choose a provider to test');
-  const savedFields =
-    saved && saved.row.provider === provider ? (saved.row.settings as Record<string, string>) : {};
-  const { existing, fields, secrets, print } = mergeMessaging(channel, {
+  const savedFields = saved && saved.row.provider === provider ? messagingFields(saved.row) : {};
+  return {
     provider,
-    settings: { ...savedFields, ...(input.settings ?? {}) },
-  });
-  const outcome = await testMessaging(channel, provider, { ...fields, ...secrets }, to);
+    ...mergeMessaging(channel, { provider, settings: { ...savedFields, ...(input.settings ?? {}) } }),
+  };
+}
+
+export async function testMessagingConfig(
+  channel: ExternalChannel,
+  input: Partial<Pick<PlatformMessagingInput, 'provider' | 'settings'>>,
+  to: string,
+  options: MessagingTestOptions = {},
+): Promise<IntegrationTestResultDto> {
+  const { provider, existing, fields, secrets, print } = await messagingConnection(channel, input);
+  const outcome = await testMessaging(channel, provider, { ...fields, ...secrets }, to, options);
+  return recordTest(existing, print, outcome);
+}
+
+/** Key check of the form's (or saved) credentials; a pass counts as the connection test. */
+export async function verifyMessagingConfig(
+  channel: ExternalChannel,
+  input: Partial<Pick<PlatformMessagingInput, 'provider' | 'settings'>>,
+): Promise<IntegrationTestResultDto> {
+  const { provider, existing, fields, secrets, print } = await messagingConnection(channel, input);
+  const outcome = await verifyMessaging(channel, provider, { ...fields, ...secrets });
   return recordTest(existing, print, outcome);
 }
 
@@ -604,10 +690,30 @@ export async function removeMessaging(channel: ExternalChannel): Promise<boolean
 export async function defaultMessagingProvider(channel: ExternalChannel): Promise<MessagingProvider | null> {
   const e = await entry('messaging', channel);
   if (!e?.row.enabled) return null;
-  return createMessagingProvider(e.row.provider, channel, {
-    ...((e.row.settings ?? {}) as Record<string, string>),
-    ...e.secrets,
-  });
+  return createMessagingProvider(
+    e.row.provider,
+    channel,
+    { ...messagingFields(e.row), ...e.secrets },
+    { webhookUrl: messagingWebhook(e.row.provider, messagingWebhookKey(e.row))?.url },
+  );
+}
+
+/** The platform provider whose delivery webhook carries this key (disabled ones too: late reports). */
+export async function platformMessagingWebhook(
+  vendor: string,
+  webhookKey: string,
+): Promise<WebhookProviderMatch | null> {
+  await loadIntegrations();
+  for (const e of entries('messaging')) {
+    const key = messagingWebhookKey(e.row);
+    if (e.row.provider === vendor && key && safeEqual(key, webhookKey))
+      return {
+        channel: e.row.slot as ExternalChannel,
+        kind: e.row.provider,
+        settings: { ...messagingFields(e.row), ...e.secrets },
+      };
+  }
+  return null;
 }
 
 // ------------------------------------------------------------------ storage

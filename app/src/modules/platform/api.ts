@@ -30,8 +30,15 @@ export const platformApi = {
     api.put<PlatformMessagingDto>(`${base}/messaging/${channel}`, b),
   testMessaging: (
     channel: ExternalChannel,
-    b: Partial<Pick<PlatformMessagingInput, 'provider' | 'settings'>> & { to: string },
+    b: Partial<Pick<PlatformMessagingInput, 'provider' | 'settings'>> & {
+      to: string;
+      templateId?: string;
+    },
   ) => api.post<IntegrationTestResultDto>(`${base}/messaging/${channel}/test`, b),
+  verifyMessaging: (
+    channel: ExternalChannel,
+    b: Partial<Pick<PlatformMessagingInput, 'provider' | 'settings'>>,
+  ) => api.post<IntegrationTestResultDto>(`${base}/messaging/${channel}/verify`, b),
   removeMessaging: (channel: ExternalChannel) =>
     api.delete<PlatformMessagingDto>(`${base}/messaging/${channel}`),
   saveStorage: (b: PlatformStorageInput) => api.put<PlatformStorageDto>(`${base}/storage`, b),

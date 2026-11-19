@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { config } from '../src/infrastructure/config';
-import { getMessagingProvider, setMessagingProvider } from '../src/infrastructure/messaging';
+import { MessagingError, getMessagingProvider, setMessagingProvider } from '../src/infrastructure/messaging';
 import { consoleOutbox } from '../src/infrastructure/messaging/console.provider';
 import { hashPassword, verifyPassword } from '../src/infrastructure/password';
 import { closeRedis, getRedis } from '../src/infrastructure/redis';
@@ -336,13 +336,14 @@ describe('OTP', () => {
     const user = await createUser();
     expect(outcome(await signIn(user.mobile, PASSWORD))).toBe('200 authenticated');
     const sms = getMessagingProvider('sms');
-    setMessagingProvider({ channel: 'sms', name: 'down', send: () => Promise.reject(new Error('SMS down')) });
+    const down = () => Promise.reject(new MessagingError('SMS down', { code: 'DOWN', transient: true }));
+    setMessagingProvider({ channel: 'sms', name: 'down', send: down });
     try {
       const res = await requestOtp(user.mobile, newDevice());
       expect(outcome(res)).toBe('200 otp_required');
       expect(res.body).toMatchObject({ reason: 'otp_login', challengeId: expect.any(String) });
       // A new device after the right password: the caller knows the account, so the failure shows.
-      expect((await signIn(user.mobile, PASSWORD)).status).toBeGreaterThanOrEqual(500);
+      expect(outcome(await signIn(user.mobile, PASSWORD))).toBe('503 MESSAGE_NOT_SENT');
     } finally {
       setMessagingProvider(sms);
     }

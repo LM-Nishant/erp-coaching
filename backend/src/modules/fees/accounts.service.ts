@@ -13,7 +13,7 @@ import { requireTenantContext } from '../../shared/context';
 import { Student } from '../students/api';
 import { Batch, BatchStudent, Course } from '../academics/api';
 import { FeeAccount, FeeAdjustment, FeeConcessionRule, FeeInstalment, FeeStructure } from './models';
-import { buildSchedule, findStructureFor, structureRepo } from './structures.service';
+import { buildSchedule, findStructureFor, structureRepo, type ScheduleLine } from './structures.service';
 import { L, postJournal } from './ledger';
 import { getFeeSettings } from './settings.service';
 import { today, withLockRetry, auditFee } from './util';
@@ -181,6 +181,13 @@ export interface GenerateAccountInput {
   batchId?: number | null;
 }
 
+/**
+ * `sourceRef` of a student's account for a batch (one per structure family). Shared by "generate for
+ * batch" and promotions, so neither bills a student twice for the same batch.
+ */
+export const batchSourceRef = (batchId: number, structure: FeeStructure, studentId: number) =>
+  `batch:${batchId}:${structure.familyId ?? structure.id}:${studentId}`;
+
 /** Creates a student fee account with its instalment schedule and the receivable journal. */
 export async function generateAccount(
   input: GenerateAccountInput,
@@ -202,50 +209,12 @@ export async function generateAccount(
     ? { ...structure.instalmentPlan, firstDueDate: input.firstDueDate }
     : structure.instalmentPlan;
   const schedule = buildSchedule(structure.total, plan, await today());
-  const taxableGross = structure.components.filter((c) => c.taxable).reduce((s, c) => s + c.amount, 0);
   try {
     return await withLockRetry(() =>
-      getSequelize().transaction(async (transaction) => {
-        const account = await accountRepo.create(
-          {
-            branchId: student.branchId,
-            studentId: student.id,
-            studentUserId: student.userId ?? null,
-            structureId: structure.id,
-            courseId: structure.courseId,
-            batchId: input.batchId ?? structure.batchId,
-            subjectId: structure.subjectId,
-            academicSessionId: structure.academicSessionId,
-            title: input.title ?? structure.name,
-            gross: structure.total,
-            taxableGross,
-            source: input.source ?? 'manual',
-            sourceRef: input.sourceRef ?? null,
-          },
-          { transaction },
-        );
-        const instalments = await FeeInstalment.bulkCreate(
-          schedule.map((s) => ({ ...s, instituteId, accountId: account.id })),
-          { transaction },
-        );
-        await postJournal(
-          {
-            key: `charge:${account.id}`,
-            branchId: account.branchId,
-            feeAccountId: account.id,
-            refType: 'account',
-            refId: account.id,
-            narration: `Fees: ${account.title}`,
-            lines: [
-              { account: L.RECEIVABLE, debit: structure.total },
-              { account: L.FEE_INCOME, credit: structure.total },
-            ],
-          },
-          transaction,
-        );
-        if (structure.total === 0) await evaluateEntitlement(account, instalments, transaction);
-        return { account, created: true };
-      }),
+      getSequelize().transaction(async (transaction) => ({
+        account: await insertAccount(student, structure, schedule, input, transaction),
+        created: true,
+      })),
     );
   } catch (err) {
     if ((err as { name?: string }).name === 'SequelizeUniqueConstraintError' && input.sourceRef) {
@@ -254,6 +223,60 @@ export async function generateAccount(
     }
     throw err;
   }
+}
+
+/**
+ * Inserts an account, its instalments and the receivable journal in the caller's transaction. The
+ * caller has checked the student's branch and that the active structure may bill the student.
+ */
+export async function insertAccount(
+  student: Student,
+  structure: FeeStructure,
+  schedule: ScheduleLine[],
+  input: Pick<GenerateAccountInput, 'title' | 'source' | 'sourceRef' | 'batchId'>,
+  transaction: Transaction,
+): Promise<FeeAccount> {
+  const { instituteId } = requireTenantContext();
+  const taxableGross = structure.components.filter((c) => c.taxable).reduce((s, c) => s + c.amount, 0);
+  const account = await accountRepo.create(
+    {
+      branchId: student.branchId,
+      studentId: student.id,
+      studentUserId: student.userId ?? null,
+      structureId: structure.id,
+      courseId: structure.courseId,
+      batchId: input.batchId ?? structure.batchId,
+      subjectId: structure.subjectId,
+      academicSessionId: structure.academicSessionId,
+      title: input.title ?? structure.name,
+      gross: structure.total,
+      taxableGross,
+      source: input.source ?? 'manual',
+      sourceRef: input.sourceRef ?? null,
+    },
+    { transaction },
+  );
+  const instalments = await FeeInstalment.bulkCreate(
+    schedule.map((s) => ({ ...s, instituteId, accountId: account.id })),
+    { transaction },
+  );
+  await postJournal(
+    {
+      key: `charge:${account.id}`,
+      branchId: account.branchId,
+      feeAccountId: account.id,
+      refType: 'account',
+      refId: account.id,
+      narration: `Fees: ${account.title}`,
+      lines: [
+        { account: L.RECEIVABLE, debit: structure.total },
+        { account: L.FEE_INCOME, credit: structure.total },
+      ],
+    },
+    transaction,
+  );
+  if (structure.total === 0) await evaluateEntitlement(account, instalments, transaction);
+  return account;
 }
 
 /** Generates accounts for every active student of a batch who doesn't have one for it yet. */
@@ -278,7 +301,7 @@ export async function generateForBatch(batchId: number, structureId?: number, fi
       structureId: structure.id,
       firstDueDate,
       source: 'batch',
-      sourceRef: `batch:${batchId}:${structure.familyId ?? structure.id}:${s.id}`,
+      sourceRef: batchSourceRef(batchId, structure, s.id),
       batchId,
     });
     if (r.created) created++;

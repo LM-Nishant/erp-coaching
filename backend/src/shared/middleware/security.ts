@@ -84,5 +84,8 @@ export const deviceRateLimit = limiter('device', MINUTE, config.RATE_LIMIT_DEVIC
 /** ZKTeco/eSSL ADMS devices (`/iclock/*`, identified by registered serial number). */
 export const admsRateLimit = limiter('adms', MINUTE, config.RATE_LIMIT_ADMS_PER_MIN);
 
-/** Payment gateway webhooks (signature verified in the handler). */
+/**
+ * Payment gateway and messaging vendor webhooks, and gateway checkout returns (the handlers verify
+ * signatures, or the secret key in the URL).
+ */
 export const webhookRateLimit = limiter('webhook', MINUTE, config.RATE_LIMIT_WEBHOOK_PER_MIN);

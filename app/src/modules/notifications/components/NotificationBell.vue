@@ -7,19 +7,23 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { IonBadge, IonButton, IonIcon } from '@ionic/vue';
 import { notificationsOutline } from 'ionicons/icons';
 import { useAuthStore } from '@/stores/auth';
 import { refreshUnread, registerPush, unread } from '../push';
 
 const auth = useAuthStore();
+const router = useRouter();
 const enabled = computed(() => !!auth.me?.institute && auth.can('notification-inbox.view'));
 let timer: ReturnType<typeof setInterval> | null = null;
 
 onMounted(() => {
   if (!enabled.value) return;
   void refreshUnread();
-  if (auth.can('notification-inbox.edit')) void registerPush(auth.me!.user.id);
+  // An impersonating admin's device must not take over the user's pushes.
+  if (auth.can('notification-inbox.edit') && !auth.me!.impersonatedBy)
+    void registerPush(auth.me!.user.id, () => void router.push({ name: 'notifications-inbox' }));
   timer = setInterval(refreshUnread, 60_000);
 });
 onUnmounted(() => timer && clearInterval(timer));

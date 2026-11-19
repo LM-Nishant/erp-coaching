@@ -12,7 +12,7 @@ import { config } from '../../infrastructure/config';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { randomDigits, randomToken, sha256, safeEqual } from '../../infrastructure/crypto';
 import { captureError } from '../../infrastructure/error-tracking';
-import { getDefaultMessagingProvider } from '../../infrastructure/messaging';
+import { getDefaultMessagingProvider, otpSms } from '../../infrastructure/messaging';
 import { logger } from '../../infrastructure/logger';
 import { hashPassword, verifyPassword } from '../../infrastructure/password';
 import { windowCounter } from '../../infrastructure/rate-store';
@@ -220,11 +220,7 @@ async function createChallenge(
     // OTPs are platform messages: the super admin's global SMS provider, else the built-in one.
     await (
       await getDefaultMessagingProvider('sms')
-    ).send({
-      to: mobile,
-      body: `${code} is your verification code. It expires in ${Math.round(config.OTP_TTL_SECONDS / 60)} minutes.`,
-      data: { otp: code, purpose },
-    });
+    ).send({ ...otpSms(mobile, code, config.OTP_TTL_SECONDS), data: { otp: code, purpose } });
   } catch (err) {
     if (purpose !== 'login') throw err;
     logger.error({ err, purpose }, 'OTP SMS not sent');

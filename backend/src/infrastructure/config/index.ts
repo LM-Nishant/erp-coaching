@@ -127,6 +127,13 @@ const schema = z.object({
   // Dev/test only: use the built-in mock provider while no API key is configured. Ignored in production.
   AI_MOCK_FALLBACK: bool(true),
 
+  /** Messaging vendors (SMS, WhatsApp, email, push) are configured in the app; see docs/integrations/messaging.md. */
+  MESSAGING_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
+  /** Country calling code added to mobiles stored without one (10 digits) before they go to a vendor. */
+  MESSAGING_DEFAULT_COUNTRY_CODE: z
+    .string()
+    .regex(/^\d{1,4}$/)
+    .default('91'),
   SMS_PROVIDER: z.enum(['console']).default('console'),
   WHATSAPP_PROVIDER: z.enum(['console']).default('console'),
   EMAIL_PROVIDER: z.enum(['console']).default('console'),

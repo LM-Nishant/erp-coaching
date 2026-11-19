@@ -1,14 +1,17 @@
 import {
   MESSAGING_PROVIDER_KINDS,
-  PROVIDER_FIELDS,
+  providerFieldsFor,
   type ExternalChannel,
   type MessagingProviderKind,
   type NotificationProviderDto,
+  type ProviderVerifyResultDto,
 } from '@erp/shared';
-import { decryptSecret, encryptSecret, maskSecret } from '../../infrastructure/crypto';
+import { decryptSecret, encryptSecret, maskSecret, randomToken } from '../../infrastructure/crypto';
 import {
   createMessagingProvider,
   getDefaultMessagingProvider,
+  hasMessagingWebhook,
+  messagingWebhook,
   type MessagingProvider,
 } from '../../infrastructure/messaging';
 import { getContext } from '../../shared/context';
@@ -58,6 +61,7 @@ export function toProviderDto(
     retryMaxAttempts: row.retryMaxAttempts,
     retryBaseDelaySeconds: row.retryBaseDelaySeconds,
     updatedAt: row.updatedAt.toISOString(),
+    webhook: messagingWebhook(row.provider, row.webhookKey),
   };
 }
 
@@ -83,13 +87,12 @@ export async function saveProvider(channel: ExternalChannel, input: ProviderInpu
   if (!(kind.channels as readonly string[]).includes(channel))
     throw BadRequest(`${kind.label} does not support ${channel}`);
 
+  const fields = providerFieldsFor(input.provider, channel);
   const existing = await providerRepo.findOne({ where: { channel } });
   const previousSecrets = existing && existing.provider === input.provider ? readSecrets(existing) : {};
   // Kept secrets only go to the server they were saved for (e.g. the SMTP host).
   assertStoredSecretReusable(
-    PROVIDER_FIELDS[input.provider].some(
-      (f) => f.secret && !(input.settings[f.key] ?? '').trim() && previousSecrets[f.key],
-    ),
+    fields.some((f) => f.secret && !(input.settings[f.key] ?? '').trim() && previousSecrets[f.key]),
     changedDestinationFields(
       existing?.settings ?? {},
       input.settings,
@@ -100,7 +103,7 @@ export async function saveProvider(channel: ExternalChannel, input: ProviderInpu
   const settings: Record<string, string> = {};
   const secrets: Record<string, string> = {};
   const missing: string[] = [];
-  for (const f of PROVIDER_FIELDS[input.provider]) {
+  for (const f of fields) {
     const value = (input.settings[f.key] ?? '').trim();
     if (f.secret) {
       const v = value || previousSecrets[f.key] || '';
@@ -119,6 +122,11 @@ export async function saveProvider(channel: ExternalChannel, input: ProviderInpu
     isActive: input.isActive,
     settings,
     secretsEncrypted: Object.keys(secrets).length ? encryptSecret(JSON.stringify(secrets)) : null,
+    // Kept across saves of the same vendor so the URL pasted into its dashboard stays valid; another
+    // vendor gets a new key, so an old vendor's URL never authenticates the new vendor's webhook.
+    webhookKey: hasMessagingWebhook(input.provider)
+      ? ((existing?.provider === input.provider ? existing.webhookKey : null) ?? randomToken(24))
+      : null,
     retryMaxAttempts: input.retryMaxAttempts ?? existing?.retryMaxAttempts ?? DEFAULT_RETRY.maxAttempts,
     retryBaseDelaySeconds:
       input.retryBaseDelaySeconds ?? existing?.retryBaseDelaySeconds ?? DEFAULT_RETRY.baseDelaySeconds,
@@ -148,11 +156,45 @@ export async function resolveProvider(channel: ExternalChannel): Promise<Resolve
     };
   }
   return {
-    provider: createMessagingProvider(row.provider, channel, {
-      ...(row.settings ?? {}),
-      ...readSecrets(row),
-    }),
+    provider: buildProvider(row),
     retryMaxAttempts: row.retryMaxAttempts,
     retryBaseDelaySeconds: row.retryBaseDelaySeconds,
   };
+}
+
+/** The adapter for a saved institute provider row. */
+export function buildProvider(row: NotificationProvider): MessagingProvider {
+  const webhook = messagingWebhook(row.provider, row.webhookKey);
+  return createMessagingProvider(
+    row.provider,
+    row.channel,
+    { ...(row.settings ?? {}), ...readSecrets(row) },
+    { webhookUrl: webhook?.url },
+  );
+}
+
+/** Decrypted settings of a saved provider (webhook signature checks). */
+export const providerSettings = (row: NotificationProvider): Record<string, string> => ({
+  ...(row.settings ?? {}),
+  ...readSecrets(row),
+});
+
+const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err)).slice(0, 480);
+
+/** Checks the saved provider's keys with the vendor without messaging anyone. */
+export async function verifyProvider(channel: ExternalChannel): Promise<ProviderVerifyResultDto> {
+  const row = await providerRepo.findOne({ where: { channel } });
+  if (!row || row.provider === 'console')
+    return {
+      ok: true,
+      provider: 'console',
+      message: 'The console provider only logs messages; it has no keys.',
+    };
+  try {
+    const provider = buildProvider(row);
+    const message = provider.verify ? await provider.verify() : 'This provider has no key check.';
+    return { ok: true, provider: row.provider, message };
+  } catch (err) {
+    return { ok: false, provider: row.provider, message: errorText(err) };
+  }
 }

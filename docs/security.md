@@ -113,7 +113,7 @@ draft-8 `RateLimit` headers.
 | `public-form` | anonymous writes: website forms, coupons, checkout, referral clicks, student self-registration | 60 / 15 min  | `RATE_LIMIT_PUBLIC_FORM_MAX`         |
 | `device`      | biometric device pushes                                                                        | 120 / min    | `RATE_LIMIT_DEVICE_PER_MIN`          |
 | `adms`        | ZKTeco/eSSL biometric devices: ADMS pushes and command polls on `/iclock/*`                    | 600 / min    | `RATE_LIMIT_ADMS_PER_MIN`            |
-| `webhook`     | payment gateway webhooks and checkout returns (signatures are verified in the handlers)        | 300 / min    | `RATE_LIMIT_WEBHOOK_PER_MIN`         |
+| `webhook`     | payment gateway and messaging webhooks, checkout returns (signature or URL key verified)       | 300 / min    | `RATE_LIMIT_WEBHOOK_PER_MIN`         |
 
 Some limits sit outside the limiters:
 
@@ -148,11 +148,15 @@ Redis is unreachable, each process counts in memory ([deployment.md](deployment.
 - **Unknown numbers.** An OTP request for a number without an active account stores and sends
   nothing, but answers like a real one: a challenge id of the same shape, the time a real code
   takes, the same per-number limit, and wrong codes count towards the same attempts and lockout.
-- **Failed SMS.** When the SMS provider fails to send a login code, the operator gets an error log
-  and an error-tracking event, and the client gets the usual answer: an outage, or a vendor
-  refusing one number (for example after its owner replied STOP), must not reveal that the number
-  has an account. The user gets no code and can try again. A failed new-device code, sent after a
-  correct password, is reported to the client, because the password already proved the account.
+- **Failed SMS.** OTPs are sent while the request waits, through the platform SMS provider. When a
+  code can't be sent (a vendor outage, or a vendor refusing one number, for example Twilio after
+  its owner replied STOP), the operator always gets an error log and an error-tracking event, and
+  the client's answer depends on the code:
+  - **login code** (`POST /api/auth/otp/request`): the usual `200 otp_required` with a challenge id,
+    so the response doesn't reveal that the number has an account. The user gets no code and can
+    request another.
+  - **new-device code** (after a correct password on a new device): `503 MESSAGE_NOT_SENT`, naming
+    no vendor. The password already proved the account, so the failure reveals nothing new.
 - **Sign-in lockout** (`authentication/sign-in-lock.ts`). Failed passwords, OTP codes and
   biometric unlocks count per account and scope:
   - each device the user has signed in on (until it's revoked) is a scope of its own, and every

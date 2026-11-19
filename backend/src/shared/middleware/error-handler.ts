@@ -8,6 +8,7 @@ import {
 import { AppError } from '../errors';
 import { logger, redactUrl } from '../../infrastructure/logger';
 import { captureError } from '../../infrastructure/error-tracking';
+import { MessagingError } from '../../infrastructure/messaging/errors';
 
 export const notFoundHandler: RequestHandler = (req, res) => {
   res
@@ -39,6 +40,10 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   else if (err?.type === 'entity.parse.failed') e = new AppError(400, 'INVALID_JSON', 'Malformed JSON body');
   else if (err?.type === 'entity.too.large')
     e = new AppError(413, 'PAYLOAD_TOO_LARGE', 'Request body too large');
+  // A synchronous vendor send (a new-device OTP SMS) failed; the vendor's reason is logged, not returned.
+  // A failed login OTP never gets here: it answers as usual (docs/security.md).
+  else if (err instanceof MessagingError)
+    e = new AppError(503, 'MESSAGE_NOT_SENT', 'The message could not be sent. Try again in a minute.');
   else e = new AppError(500, 'INTERNAL_ERROR', 'Something went wrong');
 
   if (e.status >= 500) {
