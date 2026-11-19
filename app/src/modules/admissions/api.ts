@@ -1,8 +1,10 @@
 import type {
   AdmissionFormDto,
   AdmissionFormPurpose,
+  AdmitApplicationResultDto,
   ApplicationDto,
   ApplicationStatus,
+  CourseBatchOptionDto,
   DuplicateMatch,
   EnquiryDto,
   EnquiryFollowUpDto,
@@ -38,6 +40,9 @@ export interface ApplicationInput {
   formData?: Record<string, unknown> | null;
   waitlist?: boolean;
 }
+
+/** Changes to an open application; a self-registered student's keeps their profile's name, mobile, email and branch. */
+export type ApplicationPatch = Partial<Omit<ApplicationInput, 'enquiryId' | 'formId' | 'waitlist'>>;
 
 export interface FormInput {
   name: string;
@@ -90,6 +95,11 @@ export const admissionsApi = {
   applications: (q: { page?: number; search?: string; status?: ApplicationStatus }) =>
     api.get<Page<ApplicationDto>>('/admissions/applications', { ...q }),
   createApplication: (b: ApplicationInput) => api.post<ApplicationDto>('/admissions/applications', b),
+  updateApplication: (id: number, b: ApplicationPatch) =>
+    api.patch<ApplicationDto>(`/admissions/applications/${id}`, b),
+  /** Open batches of the application's course, with free seats, it can be admitted into. */
+  applicationBatches: (id: number) =>
+    api.get<CourseBatchOptionDto[]>(`/admissions/applications/${id}/batches`),
   waitlist: (id: number) => api.post<ApplicationDto>(`/admissions/applications/${id}/waitlist`, {}),
   move: (id: number, position: number) =>
     api.post<ApplicationDto>(`/admissions/applications/${id}/move`, { position }),
@@ -99,10 +109,12 @@ export const admissionsApi = {
     api.post<ApplicationDto>(`/admissions/applications/${id}/reject`, { remarks }),
   withdraw: (id: number, remarks?: string) =>
     api.post<ApplicationDto>(`/admissions/applications/${id}/withdraw`, { remarks }),
-  admit: (id: number, b: { allowDuplicate?: boolean } = {}) =>
-    api.post<{ application: ApplicationDto; student: StudentDto }>(`/admissions/applications/${id}/admit`, b),
+  /** `batchId` replaces the application's batch (null admits without one); omit it to keep the batch. */
+  admit: (id: number, b: { allowDuplicate?: boolean; batchId?: number | null } = {}) =>
+    api.post<AdmitApplicationResultDto>(`/admissions/applications/${id}/admit`, b),
 
   forms: () => api.get<AdmissionFormDto[]>('/admissions/forms'),
+  form: (id: number) => api.get<AdmissionFormDto>(`/admissions/forms/${id}`),
   activeForm: (purpose: AdmissionFormPurpose, branchId?: number) =>
     api.get<AdmissionFormDto | null>('/admissions/forms/active', { purpose, branchId }),
   createForm: (b: FormInput) => api.post<AdmissionFormDto>('/admissions/forms', b),
