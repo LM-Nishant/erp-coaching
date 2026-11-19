@@ -1,8 +1,34 @@
-import { registerUsageCounter } from '../subscriptions/api';
-import { teacherCount } from './hr.service';
+import { Forbidden } from '../../shared/errors';
+import { requireTenantContext } from '../../shared/context';
+import { setStaffPunchProvider } from '../attendance/api';
+import { isModuleEnabled, registerUsageCounter } from '../subscriptions/api';
+import {
+  applyBiometricPunches,
+  employeeRepo,
+  employeesByPins,
+  setEmployeePin,
+  teacherCount,
+} from './hr.service';
+
+const hrEnabled = () => isModuleEnabled(requireTenantContext().instituteId, 'hr');
 
 /** Registers HR with provider modules; called from `onReady`. */
 export function registerHrIntegrations(): void {
   // Billable teacher seats use the same rule as the `maxTeachers` plan-limit check.
   registerUsageCounter('teachers', () => teacherCount());
+
+  // Staff punches on the attendance module's biometric devices become staff attendance.
+  setStaffPunchProvider({
+    findByPins: async (pins) => ((await hrEnabled()) ? employeesByPins(pins) : []),
+    isVisible: async (employeeId) =>
+      (await hrEnabled()) && (await employeeRepo.count({ id: employeeId })) > 0,
+    setPin: async (employeeId, pin) => {
+      if (!(await hrEnabled())) throw Forbidden('HR is not enabled for this institute', 'MODULE_DISABLED');
+      await setEmployeePin(employeeId, pin);
+    },
+    ingest: async (punches) =>
+      (await hrEnabled())
+        ? applyBiometricPunches(punches)
+        : { outcomes: punches.map(() => 'unknown' as const) },
+  });
 }
