@@ -6,10 +6,19 @@ import {
   type NotificationChannel,
   type RecipientType,
 } from '@erp/shared';
+import { sha256 } from '../../infrastructure/crypto';
 import { enqueueJob } from '../../infrastructure/jobs/queue';
 import { logger } from '../../infrastructure/logger';
+import {
+  MessagingError,
+  isTransientError,
+  type DeliveryReceipt,
+  type OutboundMessage,
+} from '../../infrastructure/messaging';
 import { getContext, requireTenantContext } from '../../shared/context';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
+import { FileObject } from '../files/file.model';
+import { signedUrlFor } from '../files/files.service';
 import { Institute } from '../institutes/institute.model';
 import { User } from '../users/user.model';
 import { getEvent } from './catalogue';
@@ -22,15 +31,17 @@ import {
   NotificationTemplate,
   PushToken,
 } from './models';
-import { resolveProvider, DEFAULT_RETRY } from './providers.service';
+import { resolveProvider, DEFAULT_RETRY, type ResolvedProvider } from './providers.service';
 import { hasRecipientResolver, resolveAudience, resolveRecipients, type RecipientSpec } from './recipients';
 import { BadRequest } from '../../shared/errors';
-import { renderTemplate } from './templates';
+import { renderTemplate, templateParams } from './templates';
 
 export const DELIVER_JOB = 'notifications.deliver';
 export const CAMPAIGN_JOB = 'notifications.campaign';
 /** Upper bound for the exponential retry delay. */
 const MAX_RETRY_DELAY_MS = 6 * 60 * 60 * 1000;
+/** Vendors download a WhatsApp document or email attachment when the message is sent. */
+const ATTACHMENT_URL_TTL_SECONDS = 3600;
 
 export const messageRepo = new TenantRepository(NotificationMessage, { entity: 'Message' });
 export const campaignRepo = new TenantRepository(NotificationCampaign, {
@@ -47,7 +58,11 @@ export interface NotifyInput {
   /** Catalogue event key, e.g. `fees.receipt`. */
   event: string;
   recipients: RecipientSpec[];
-  /** Template variables, e.g. `{ student: { name }, amount, receiptNo }`. Also stored on in-app items. */
+  /**
+   * Template variables, e.g. `{ student: { name }, amount, receiptNo }`. Also stored on in-app items.
+   * `attachment: { fileId, filename? }` (a stored file of this institute) is sent as a WhatsApp document
+   * or email attachment, with a fresh signed link at each attempt.
+   */
   data?: Record<string, unknown>;
   /** Branch the event belongs to (delivery history is branch-scoped). Defaults to the active branch. */
   branchId?: number | null;
@@ -135,13 +150,21 @@ interface DispatchInput {
   };
 }
 
-/** Whether the user's preferences allow this event on the channel (event-level beats channel-level). */
+/**
+ * Whether the user's preferences allow this event on the channel: event-level beats channel-level,
+ * except that a STOP reply (source `<channel>-stop`) turns the whole channel off.
+ */
 function allowedByPreferences(prefs: NotificationPreference[], channel: string, eventKey: string): boolean {
+  const channelWide = prefs.find((p) => p.channel === channel && p.eventKey === '*');
+  if (channelWide && !channelWide.enabled && channelWide.source === `${channel}-stop`) return false;
   const specific = prefs.find((p) => p.channel === channel && p.eventKey === eventKey);
   if (specific) return specific.enabled;
-  const channelWide = prefs.find((p) => p.channel === channel && p.eventKey === '*');
   return channelWide ? channelWide.enabled : true;
 }
+
+/** WhatsApp business messages need the user's explicit opt-in: a channel-wide preference turned on. */
+const hasOptedIn = (prefs: NotificationPreference[], channel: string) =>
+  prefs.some((p) => p.channel === channel && p.eventKey === '*' && p.enabled);
 
 async function dispatch(input: DispatchInput): Promise<NotifyResult> {
   const ctx = requireTenantContext();
@@ -154,10 +177,13 @@ async function dispatch(input: DispatchInput): Promise<NotifyResult> {
     input.channels.includes('push') ? tokenRepo.findAll({ where: { userId: userIds } }) : Promise.resolve([]),
     Institute.findByPk(ctx.instituteId),
   ]);
-  const retry = new Map<NotificationChannel, number>();
+  const providers = new Map<NotificationChannel, ResolvedProvider>();
   for (const c of input.channels) {
-    if (c !== 'in_app') retry.set(c, (await resolveProvider(c)).retryMaxAttempts);
+    if (c !== 'in_app') providers.set(c, await resolveProvider(c));
   }
+  const whatsappOptIn = !!providers.get('whatsapp')?.provider.requiresOptIn;
+  // Browser installs register mock tokens that only the console provider accepts.
+  const vendorPush = (providers.get('push')?.provider.name ?? 'console') !== 'console';
 
   const branchId = input.branchId !== undefined ? input.branchId : (ctx.activeBranchId ?? null);
   const now = new Date();
@@ -184,8 +210,9 @@ async function dispatch(input: DispatchInput): Promise<NotifyResult> {
         data: Object.keys(input.data).length ? input.data : null,
         provider: null,
         providerTemplateId: tpl.providerTemplateId,
+        templateParams: tpl.providerTemplateId ? templateParams(tpl.body, vars) : null,
         providerMessageId: null,
-        maxAttempts: retry.get(channel) ?? DEFAULT_RETRY.maxAttempts,
+        maxAttempts: providers.get(channel)?.retryMaxAttempts ?? DEFAULT_RETRY.maxAttempts,
         nextAttemptAt: null,
         lastError: null as string | null,
         campaignId: input.campaignId ?? null,
@@ -200,13 +227,19 @@ async function dispatch(input: DispatchInput): Promise<NotifyResult> {
         skip('Recipient opted out');
         continue;
       }
+      if (channel === 'whatsapp' && whatsappOptIn && !hasOptedIn(userPrefs, channel)) {
+        skip('No WhatsApp opt-in');
+        continue;
+      }
       if (channel === 'in_app') {
         rows.push({ ...base, recipientAddress: null, status: 'delivered', sentAt: now, deliveredAt: now });
         continue;
       }
       const addresses =
         channel === 'push'
-          ? tokens.filter((t) => t.userId === user.id).map((t) => t.token)
+          ? tokens
+              .filter((t) => t.userId === user.id && !(vendorPush && t.platform === 'web'))
+              .map((t) => t.token)
           : [channel === 'email' ? user.email : user.mobile].filter((a): a is string => !!a);
       if (!addresses.length) {
         skip(channel === 'push' ? 'No registered device' : `No ${channel === 'email' ? 'email' : 'mobile'}`);
@@ -244,6 +277,8 @@ export async function deliverMessage(payload: { messageId: number }): Promise<vo
       body: msg.body,
       subject: msg.subject ?? undefined,
       templateId: msg.providerTemplateId ?? undefined,
+      variables: msg.templateParams ?? undefined,
+      document: await attachmentOf(msg),
       data: { ...(msg.data ?? {}), messageId: msg.id, eventKey: msg.eventKey },
     });
     if (result.status === 'failed') throw new Error(result.error ?? 'Provider reported failure');
@@ -278,9 +313,18 @@ export async function deliverMessage(payload: { messageId: number }): Promise<vo
       error,
       durationMs: Date.now() - started,
     });
-    const retry = attemptNo < msg.maxAttempts;
+    // Only transient errors (timeouts, rate limits, vendor outages) are retried; a rejected
+    // recipient, template or credential fails the same way on every attempt.
+    const retry = isTransientError(err) && attemptNo < msg.maxAttempts;
+    const vendorDelay = err instanceof MessagingError ? (err.retryAfterMs ?? 0) : 0;
     const nextAttemptAt = retry
-      ? new Date(Date.now() + retryDelayMs(attemptNo, retryBaseDelaySeconds))
+      ? new Date(
+          Date.now() +
+            Math.min(
+              Math.max(retryDelayMs(attemptNo, retryBaseDelaySeconds), vendorDelay),
+              MAX_RETRY_DELAY_MS,
+            ),
+        )
       : null;
     await msg.update({
       status: retry ? 'queued' : 'failed',
@@ -291,8 +335,34 @@ export async function deliverMessage(payload: { messageId: number }): Promise<vo
     });
     if (nextAttemptAt)
       await enqueueJob(DELIVER_JOB, { messageId: msg.id }, { runAt: nextAttemptAt, maxAttempts: 1 });
-    logger.warn({ messageId: msg.id, attemptNo, retry }, `Notification delivery failed: ${error}`);
+    if (
+      msg.channel === 'push' &&
+      err instanceof MessagingError &&
+      err.invalidRecipient &&
+      msg.recipientAddress
+    ) {
+      // The device uninstalled the app or the token expired: stop sending to it.
+      await PushToken.destroy({
+        where: { instituteId: msg.instituteId, tokenHash: sha256(msg.recipientAddress) },
+      });
+    }
+    logger.warn(
+      { messageId: msg.id, attemptNo, retry, code: err instanceof MessagingError ? err.code : undefined },
+      `Notification delivery failed: ${error}`,
+    );
   }
+}
+
+/** `data.attachment = { fileId, filename }`: a fresh link to the stored file for the vendor to download. */
+async function attachmentOf(msg: NotificationMessage): Promise<OutboundMessage['document']> {
+  const attachment = (msg.data as { attachment?: { fileId?: unknown; filename?: unknown } } | null)
+    ?.attachment;
+  if (!attachment || typeof attachment.fileId !== 'number') return undefined;
+  const file = await FileObject.findOne({ where: { instituteId: msg.instituteId, id: attachment.fileId } });
+  if (!file) return undefined;
+  const filename =
+    typeof attachment.filename === 'string' && attachment.filename ? attachment.filename : file.originalName;
+  return { url: signedUrlFor(file, ATTACHMENT_URL_TTL_SECONDS).url, filename };
 }
 
 /** Manually re-queues a failed message for another round of attempts. */
@@ -305,26 +375,82 @@ export async function retryMessage(id: number) {
 }
 
 /**
- * Applies a provider delivery receipt (from a webhook). Webhooks carry no tenant, so the message is
- * looked up by provider id across institutes — platform code, hence `tenantBypass`.
+ * Whether a vendor status moves the message forward. Receipts arrive late, twice or out of order:
+ * delivered beats everything, failed beats queued/sent, and nothing moves a message backwards.
  */
+function receiptApplies(current: MessageStatus, next: DeliveryReceipt['status']): boolean {
+  if (current === next || current === 'skipped' || current === 'delivered') return false;
+  if (next === 'delivered') return true;
+  if (next === 'failed') return current === 'queued' || current === 'sent';
+  return current === 'queued';
+}
+
+/**
+ * Applies vendor delivery receipts (from the signed webhooks) to the messages sent with that vendor.
+ * `instituteId = null` (platform provider) matches messages of every institute by the vendor's message
+ * id. Idempotent; returns how many messages matched.
+ */
+export async function applyDeliveryReceipts(input: {
+  provider: string;
+  instituteId: number | null;
+  receipts: DeliveryReceipt[];
+}): Promise<{ matched: number; updated: number }> {
+  let matched = 0;
+  let updated = 0;
+  for (const receipt of input.receipts) {
+    const ids = [...new Set(receipt.ids.filter((id) => id && id.length <= 190))].slice(0, 10);
+    if (!ids.length) continue;
+    const messages = await NotificationMessage.findAll({
+      where: {
+        provider: input.provider,
+        providerMessageId: ids,
+        ...(input.instituteId !== null ? { instituteId: input.instituteId } : {}),
+      },
+      limit: 20,
+      tenantBypass: true,
+    } as Parameters<typeof NotificationMessage.findAll>[0]);
+    for (const msg of messages) {
+      matched++;
+      if (!receiptApplies(msg.status, receipt.status)) continue;
+      const error = receipt.status === 'failed' ? (receipt.error ?? 'Delivery failed').slice(0, 4000) : null;
+      await msg.update(
+        receipt.status === 'delivered'
+          ? { status: 'delivered', deliveredAt: new Date(), nextAttemptAt: null }
+          : receipt.status === 'failed'
+            ? { status: 'failed', lastError: error, nextAttemptAt: null }
+            : { status: 'sent' },
+      );
+      if (receipt.status !== 'sent') {
+        const attempt = await DeliveryAttempt.findOne({
+          where: {
+            instituteId: msg.instituteId,
+            messageId: msg.id,
+            providerMessageId: msg.providerMessageId,
+          },
+          order: [['id', 'DESC']],
+        });
+        if (attempt && attempt.status !== 'delivered')
+          await attempt.update({ status: receipt.status, error });
+      }
+      updated++;
+    }
+  }
+  return { matched, updated };
+}
+
+/** Applies one delivery receipt to the message with that vendor id (any institute). */
 export async function recordDeliveryReceipt(input: {
   provider: string;
   providerMessageId: string;
   status: Extract<MessageStatus, 'delivered' | 'failed'>;
   error?: string;
 }): Promise<boolean> {
-  const msg = await NotificationMessage.findOne({
-    where: { provider: input.provider, providerMessageId: input.providerMessageId },
-    tenantBypass: true,
-  } as Parameters<typeof NotificationMessage.findOne>[0]);
-  if (!msg) return false;
-  await msg.update(
-    input.status === 'delivered'
-      ? { status: 'delivered', deliveredAt: new Date() }
-      : { status: 'failed', lastError: input.error ?? 'Delivery failed' },
-  );
-  return true;
+  const { matched } = await applyDeliveryReceipts({
+    provider: input.provider,
+    instituteId: null,
+    receipts: [{ ids: [input.providerMessageId], status: input.status, error: input.error }],
+  });
+  return matched > 0;
 }
 
 /** Job handler: expands a bulk/scheduled campaign into messages. */

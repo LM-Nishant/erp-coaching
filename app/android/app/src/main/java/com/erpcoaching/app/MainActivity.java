@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         // The app's own plugins; they must be registered before the bridge starts.
         registerPlugin(PaymentCheckoutPlugin.class);
+        registerPlugin(PushConfigPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

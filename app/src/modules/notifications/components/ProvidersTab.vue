@@ -20,15 +20,12 @@
               }}</ion-select-option>
             </ion-select>
           </ion-item>
-          <ion-item v-for="f in PROVIDER_FIELDS[p.provider]" :key="f.key">
-            <ion-input
-              v-model="p.values[f.key]"
-              :label="f.label + (f.required ? ' *' : '')"
-              label-placement="stacked"
-              :type="f.secret ? 'password' : 'text'"
-              :placeholder="f.secret && p.secretHints[f.key] ? `Saved (${p.secretHints[f.key]})` : ''"
-            />
-          </ion-item>
+          <ProviderFields
+            v-model="p.values"
+            :kind="p.provider"
+            :channel="p.channel"
+            :secret-hints="p.provider === p.savedProvider ? p.secretHints : {}"
+          />
           <ion-item>
             <ion-input
               v-model.number="p.retryMaxAttempts"
@@ -51,8 +48,19 @@
           </ion-item>
           <ion-item><ion-toggle v-model="p.isActive">Active</ion-toggle></ion-item>
         </ion-list>
+        <MessagingWebhook
+          v-if="p.webhook && p.provider === p.savedProvider"
+          :kind="p.provider"
+          :webhook="p.webhook"
+        />
         <ion-button :disabled="saving" @click="save(p)">Save</ion-button>
         <ion-button fill="outline" @click="test(p.channel)">Send test</ion-button>
+        <ion-button
+          v-if="p.updatedAt && p.savedProvider !== 'console'"
+          fill="outline"
+          @click="verify(p.channel)"
+          >Check keys</ion-button
+        >
         <ion-button v-if="p.updatedAt" fill="clear" color="medium" @click="reset(p.channel)"
           >Reset</ion-button
         >
@@ -80,15 +88,21 @@ import {
 } from '@ionic/vue';
 import {
   MESSAGING_PROVIDER_KINDS,
-  PROVIDER_FIELDS,
+  providerFieldsFor,
   type ExternalChannel,
   type MessagingProviderKind,
   type NotificationProviderDto,
 } from '@erp/shared';
+import MessagingWebhook from '@/components/MessagingWebhook.vue';
+import ProviderFields from '@/components/ProviderFields.vue';
 import { toast, toastError } from '@/core/toast';
 import { CHANNEL_LABELS, commsApi, formatDate } from '../api';
 
-type ProviderForm = NotificationProviderDto & { values: Record<string, string> };
+/** Saved secrets and the webhook belong to the saved provider (`savedProvider`). */
+type ProviderForm = NotificationProviderDto & {
+  values: Record<string, string>;
+  savedProvider: MessagingProviderKind;
+};
 
 const forms = ref<ProviderForm[]>([]);
 const saving = ref(false);
@@ -98,7 +112,11 @@ const kindsFor = (channel: ExternalChannel) =>
     (MESSAGING_PROVIDER_KINDS[k].channels as readonly ExternalChannel[]).includes(channel),
   );
 
-const toForm = (p: NotificationProviderDto): ProviderForm => ({ ...p, values: { ...p.settings } });
+const toForm = (p: NotificationProviderDto): ProviderForm => ({
+  ...p,
+  values: { ...p.settings },
+  savedProvider: p.provider,
+});
 
 async function load() {
   try {
@@ -115,7 +133,7 @@ async function save(p: ProviderForm) {
       provider: p.provider,
       isActive: p.isActive,
       settings: Object.fromEntries(
-        PROVIDER_FIELDS[p.provider].map((f) => [f.key, String(p.values[f.key] ?? '')]),
+        providerFieldsFor(p.provider, p.channel).map((f) => [f.key, String(p.values[f.key] ?? '')]),
       ),
       retryMaxAttempts: Number(p.retryMaxAttempts),
       retryBaseDelaySeconds: Number(p.retryBaseDelaySeconds),
@@ -138,23 +156,36 @@ async function reset(channel: ExternalChannel) {
   }
 }
 
+/** WhatsApp sends approved templates only; Indian SMS must match a DLT template. */
+const TEST_TEMPLATE_HINT: Partial<Record<ExternalChannel, string>> = {
+  whatsapp: 'Approved template, e.g. hello_world:en_US',
+  sms: 'DLT template id (optional)',
+};
+
 async function test(channel: ExternalChannel) {
+  const template = TEST_TEMPLATE_HINT[channel];
   const alert = await alertController.create({
     header: `Send a test ${CHANNEL_LABELS[channel]}`,
+    message: 'Uses the active provider (saved settings).',
     inputs: [
       {
         name: 'to',
         placeholder:
           channel === 'email' ? 'Email address' : channel === 'push' ? 'Device token' : 'Mobile number',
       },
+      ...(template ? [{ name: 'templateId', placeholder: template }] : []),
+      ...(channel === 'sms' ? [{ name: 'body', placeholder: 'Text of that template (optional)' }] : []),
     ],
     buttons: [
       { text: 'Cancel', role: 'cancel' },
       {
         text: 'Send',
-        handler: async (v: { to: string }) => {
+        handler: async (v: { to: string; templateId?: string; body?: string }) => {
           try {
-            const r = await commsApi.testProvider(channel, v.to);
+            const r = await commsApi.testProvider(channel, v.to, {
+              templateId: v.templateId?.trim() || undefined,
+              body: v.body?.trim() || undefined,
+            });
             await toast(
               r.ok ? `Sent via ${r.provider}` : `Failed: ${r.error ?? 'unknown error'}`,
               r.ok ? 'success' : 'danger',
@@ -167,6 +198,15 @@ async function test(channel: ExternalChannel) {
     ],
   });
   await alert.present();
+}
+
+async function verify(channel: ExternalChannel) {
+  try {
+    const r = await commsApi.verifyProvider(channel);
+    await toast(r.message, r.ok ? 'success' : 'danger');
+  } catch (e) {
+    await toastError(e);
+  }
 }
 
 onMounted(load);

@@ -1,4 +1,4 @@
-import { setDefaultMessagingResolver } from '../../infrastructure/messaging';
+import { setDefaultMessagingResolver, setPlatformWebhookResolver } from '../../infrastructure/messaging';
 import { config } from '../../infrastructure/config';
 import { logger } from '../../infrastructure/logger';
 import { setSaasGatewayResolver } from '../subscriptions/api';
@@ -8,6 +8,7 @@ import {
   instituteGatewayCredentials,
   loadIntegrations,
   offeredInstituteGateway,
+  platformMessagingWebhook,
   resolveSaasGateway,
 } from './platform.service';
 
@@ -20,6 +21,7 @@ const REFRESH_MS = 60_000;
 export async function registerPlatformIntegrations(): Promise<void> {
   setSaasGatewayResolver(resolveSaasGateway);
   setDefaultMessagingResolver(defaultMessagingProvider);
+  setPlatformWebhookResolver(platformMessagingWebhook);
   setPlatformFeesGatewayProvider({
     offered: offeredInstituteGateway,
     credentials: instituteGatewayCredentials,

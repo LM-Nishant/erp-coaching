@@ -1,4 +1,5 @@
 /** SaaS billing (spec §4.1): plans, subscription lifecycle, usage metering, invoices and payments. */
+import type { MessagingWebhookDto } from './notifications';
 import type { PlanLimits, SubscriptionStatus } from './plans';
 
 export type BillingCycle = 'monthly' | 'yearly';
@@ -454,6 +455,8 @@ export interface PlatformMessagingDto extends IntegrationTestStatus {
   /** False when nothing is saved: the built-in console provider is the default. */
   configured: boolean;
   updatedAt: string | null;
+  /** Saved vendor providers that report delivery status. */
+  webhook?: MessagingWebhookDto;
 }
 
 export interface PlatformMessagingInput {

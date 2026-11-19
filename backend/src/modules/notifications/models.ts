@@ -27,6 +27,8 @@ export class NotificationProvider extends Model<Attrs<NotificationProvider>, Cre
   declare provider: string;
   declare settings: Record<string, string> | null;
   declare secretsEncrypted: string | null;
+  /** Identifies the provider in its public delivery-webhook URL (vendors that report status). */
+  declare webhookKey: CreationOptional<string | null>;
   declare isActive: CreationOptional<boolean>;
   declare retryMaxAttempts: CreationOptional<number>;
   declare retryBaseDelaySeconds: CreationOptional<number>;
@@ -125,6 +127,8 @@ export class NotificationMessage extends Model<Attrs<NotificationMessage>, Creat
   declare status: MessageStatus;
   declare provider: string | null;
   declare providerTemplateId: string | null;
+  /** Rendered `{{ }}` values in order of appearance, for vendor templates (DLT, WhatsApp). */
+  declare templateParams: CreationOptional<{ name: string; value: string }[] | null>;
   declare providerMessageId: string | null;
   declare attempts: CreationOptional<number>;
   declare maxAttempts: CreationOptional<number>;
@@ -165,6 +169,7 @@ export function initNotificationModels(sequelize: Sequelize) {
       provider: str(30, false),
       settings: DataTypes.JSON,
       secretsEncrypted: DataTypes.TEXT,
+      webhookKey: { type: DataTypes.STRING(64), allowNull: true, unique: true },
       isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
       retryMaxAttempts: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 3 },
       retryBaseDelaySeconds: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 60 },
@@ -263,6 +268,7 @@ export function initNotificationModels(sequelize: Sequelize) {
       status: str(20, false),
       provider: str(30),
       providerTemplateId: str(120),
+      templateParams: DataTypes.JSON,
       providerMessageId: str(190),
       attempts: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
       maxAttempts: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 3 },
