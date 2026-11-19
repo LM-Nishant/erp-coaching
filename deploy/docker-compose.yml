@@ -112,6 +112,9 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       # Institute subdomains (<subdomain>.SITES_DOMAIN) resolve only under this parent domain.
       SITES_DOMAIN: ${SITES_DOMAIN:-}
+      # Node's thread pool runs password hashing (scrypt), file reads and DNS lookups. An empty value
+      # would mean a single thread, so blank falls back to Node's default of 4.
+      UV_THREADPOOL_SIZE: ${UV_THREADPOOL_SIZE:-4}
     volumes:
       - storage:/var/lib/erp/storage
       - api-tmp:/srv/erp/backend/tmp

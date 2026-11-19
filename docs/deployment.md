@@ -479,14 +479,15 @@ to. Keep at least the previous release's images on the server.
    - `ERP_IMAGE_TAG`;
    - `SERVER_NAME` and `PUBLIC_URL`;
    - `SITES_DOMAIN`, or leave it empty;
-   - `DB_PASSWORD`, `JWT_ACCESS_SECRET`, `ENCRYPTION_KEY` and `FILE_URL_SECRET`;
+   - `DB_PASSWORD`, `JWT_ACCESS_SECRET`, `ENCRYPTION_KEY`, `FILE_URL_SECRET` and `OTP_HASH_SECRET`;
    - `SEED_SUPERADMIN_MOBILE`: the super admin's login mobile number.
 
    Generate the secrets, paste them into `.env` and save them in your vault:
 
    ```sh
-   printf 'DB_PASSWORD=%s\nJWT_ACCESS_SECRET=%s\nENCRYPTION_KEY=%s\nFILE_URL_SECRET=%s\n' \
-     "$(openssl rand -hex 24)" "$(openssl rand -base64 48)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)"
+   printf 'DB_PASSWORD=%s\nJWT_ACCESS_SECRET=%s\nENCRYPTION_KEY=%s\nFILE_URL_SECRET=%s\nOTP_HASH_SECRET=%s\n' \
+     "$(openssl rand -hex 24)" "$(openssl rand -base64 48)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" \
+     "$(openssl rand -hex 32)"
    ```
 
 3. Build or pull the images ([building images](#building-images)).

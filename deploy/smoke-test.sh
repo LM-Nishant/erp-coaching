@@ -201,6 +201,7 @@ ADMIN_PASSWORD="Smoke-$(openssl rand -hex 10)-Aa1!"
     JWT_ACCESS_SECRET "$(openssl rand -base64 48 | tr -d '\n')" \
     ENCRYPTION_KEY "$(openssl rand -base64 32)" \
     FILE_URL_SECRET "$(openssl rand -hex 32)" \
+    OTP_HASH_SECRET "$(openssl rand -hex 32)" \
     LOG_LEVEL info \
     SEED_DEMO_DATA false
 } >"$WORK/smoke.env"
