@@ -520,12 +520,13 @@ export function googleIdentity(idToken: string | null, clientId: string, now = D
   const invalid = (why: string) =>
     new CalendarProviderError('invalid', `Google identity token rejected: ${why}`);
   if (!idToken) throw invalid('missing');
-  let claims: Record<string, unknown>;
+  let claims: Record<string, unknown> | null;
   try {
     claims = JSON.parse(Buffer.from(idToken.split('.')[1] ?? '', 'base64url').toString('utf8'));
   } catch {
     throw invalid('malformed');
   }
+  if (!claims || typeof claims !== 'object') throw invalid('malformed');
   const aud = claims.aud;
   if (!(aud === clientId || (Array.isArray(aud) && aud.includes(clientId)))) throw invalid('audience');
   if (!GOOGLE_ISSUERS.has(String(claims.iss))) throw invalid('issuer');
