@@ -170,6 +170,7 @@ Format rules:
 | `ERROR_TRACKING_PROVIDER`, `ERROR_TRACKING_WEBHOOK_URL`                                                                                                                  | [Error tracking](#error-tracking)                                                                                                                                                                                 |
 | `RATE_LIMIT_*`                                                                                                                                                           | [Rate limiting](#rate-limiting-behind-the-proxy)                                                                                                                                                                  |
 | `JOBS_WORKER_ENABLED`, `JOBS_POLL_INTERVAL_MS`                                                                                                                           | [Background jobs](#background-jobs)                                                                                                                                                                               |
+| `PAYMENT_RECONCILE_INTERVAL_MINUTES`                                                                                                                                     | Minutes between checks of open gateway payments, 10 by default ([payment gateways](integrations/payments.md#reconciliation-and-idempotency))                                                                      |
 | `ADMS_ALLOW_HTTP`, `ADMS_MAX_BODY_KB`, `ADMS_MAX_RECORDS`, `ADMS_BACKFILL_DAYS`                                                                                          | ZKTeco/eSSL biometric devices ([biometric.md](integrations/biometric.md#server-setup)). `ADMS_ALLOW_HTTP=true` also serves `/iclock/` on `HTTP_PORT`, for firmware without HTTPS                                  |
 | `AI_BASE_URL`, `AI_MODEL`, `AI_API_KEY`, `AI_TIMEOUT_MS`                                                                                                                 | Defaults for the AI features; the Super Admin can override them in the app                                                                                                                                        |
 | `SMS_PROVIDER`, `WHATSAPP_PROVIDER`, `EMAIL_PROVIDER`, `PUSH_PROVIDER`, `PAYMENT_GATEWAY`, `STREAMING_PROVIDER`, `BIOMETRIC_PROVIDER`                                    | Integration adapters. This release only has `console` and `mock` implementations ([before going live](#before-going-live))                                                                                        |
@@ -494,7 +495,9 @@ This release only ships development adapters for the external integrations:
   production the console adapters deliver nothing and log only the channel and a masked recipient, never the message
   body. So OTP login, the OTP for a user's additional devices, and notifications don't reach users until real adapters
   are implemented. Password login on a user's first device needs no OTP.
-- **Payments:** `PAYMENT_GATEWAY=mock` doesn't charge anyone.
+- **Payments:** the mock gateway (`PAYMENT_GATEWAY=mock`) doesn't charge anyone, and production won't use it.
+  Institutes and the platform take real payments once they enter their Paytm, Razorpay or Cashfree keys in the app
+  ([payment gateways](integrations/payments.md)).
 - **Live classes:** `STREAMING_PROVIDER=mock` is the peer-to-peer WebRTC transport ([live classes](#live-classes)).
 - **Biometrics:** ZKTeco and eSSL devices connect directly over ADMS push
   ([biometric.md](integrations/biometric.md)). `BIOMETRIC_PROVIDER=mock` is only the payload format of the punch API,
@@ -712,7 +715,7 @@ The limits apply per client IP:
 | `RATE_LIMIT_PUBLIC_FORM_MAX` | 60/15 min  | Public forms: enquiries, checkout, coupons, self-registration |
 | `RATE_LIMIT_DEVICE_PER_MIN`  | 120/min    | Biometric device pushes                                       |
 | `RATE_LIMIT_ADMS_PER_MIN`    | 600/min    | ZKTeco/eSSL device pushes and command polls (`/iclock/`)      |
-| `RATE_LIMIT_WEBHOOK_PER_MIN` | 300/min    | Payment gateway webhooks                                      |
+| `RATE_LIMIT_WEBHOOK_PER_MIN` | 300/min    | Payment gateway webhooks and checkout returns                 |
 
 Over the limit, the API answers 429 with the standard `RateLimit` headers.
 
@@ -774,13 +777,18 @@ without `includeSubDomains`, so an institute's other subdomains are not forced o
 The CSP is sent as `Content-Security-Policy-Report-Only` until you enforce it. The default policy is:
 
 ```text
-default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:;
-media-src 'self' blob:; font-src 'self' data:; connect-src 'self' blob: data: wss://SERVER_NAME;
-frame-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self';
-form-action 'self'; frame-ancestors 'self'
+default-src 'self'; script-src 'self' https://checkout.razorpay.com https://sdk.cashfree.com PAYTM;
+style-src 'self' 'unsafe-inline' PAYTM; img-src 'self' data: blob: https:; media-src 'self' blob:;
+font-src 'self' data:; connect-src 'self' blob: data: wss://SERVER_NAME https://lumberjack.razorpay.com GATEWAYS;
+frame-src 'self' blob: GATEWAYS; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self';
+form-action 'self' https://api.razorpay.com PAYTM https://securegw.paytmpayments.in
+https://securegw-stage.paytmpayments.in; frame-ancestors 'self'
 ```
 
-Ionic's components set inline styles, which is why `style-src` needs `'unsafe-inline'`.
+where `PAYTM` is `https://secure.paytmpayments.com https://securestage.paytmpayments.com` and `GATEWAYS` is
+`https://api.razorpay.com https://checkout.razorpay.com https://*.cashfree.com PAYTM`: the hosts of the payment
+gateways' checkouts ([payment gateways](integrations/payments.md)). Ionic's components set inline styles, which is why
+`style-src` needs `'unsafe-inline'`.
 
 To enforce the policy:
 

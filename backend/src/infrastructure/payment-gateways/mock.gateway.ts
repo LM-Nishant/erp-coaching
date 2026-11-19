@@ -1,10 +1,16 @@
 import crypto from 'node:crypto';
+import { safeEqual } from './http';
 import {
   WebhookSignatureError,
+  type ConnectionTestResult,
   type CreateOrderInput,
   type GatewayCredentials,
   type GatewayOrder,
+  type GatewayWebhookEvent,
   type PaymentGateway,
+  type RefundInput,
+  type RefundLookup,
+  type RefundResult,
   type VerifiedPayment,
 } from './types';
 
@@ -18,6 +24,7 @@ interface MockOrder {
 
 // Shared across instances so orders survive per-request adapter construction (process memory only).
 const orders = new Map<string, MockOrder>();
+const refunds = new Map<string, number>();
 
 /** HMAC-SHA256 (hex) of the raw webhook body, like Razorpay/Cashfree style signed webhooks. */
 export function signMockWebhook(secret: string, rawBody: string | Buffer): string {
@@ -42,6 +49,7 @@ export class MockPaymentGateway implements PaymentGateway {
     return {
       gatewayOrderId,
       checkout: {
+        provider: 'mock',
         mock: true,
         gatewayOrderId,
         amountPaise: input.amountPaise,
@@ -97,15 +105,9 @@ export class MockPaymentGateway implements PaymentGateway {
   async verifyWebhook(
     headers: Record<string, string | string[] | undefined>,
     rawBody: Buffer,
-  ): Promise<VerifiedPayment> {
+  ): Promise<GatewayWebhookEvent> {
     const sig = String(headers[MOCK_SIGNATURE_HEADER] ?? '');
-    const expected = signMockWebhook(this.secret, rawBody);
-    if (
-      !sig ||
-      sig.length !== expected.length ||
-      !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))
-    )
-      throw new WebhookSignatureError();
+    if (!sig || !safeEqual(sig, signMockWebhook(this.secret, rawBody))) throw new WebhookSignatureError();
     const body = JSON.parse(rawBody.toString('utf8')) as {
       eventId?: string;
       gatewayOrderId: string;
@@ -115,6 +117,7 @@ export class MockPaymentGateway implements PaymentGateway {
       status: VerifiedPayment['status'];
     };
     return {
+      kind: 'payment',
       gatewayOrderId: body.gatewayOrderId,
       gatewayPaymentId: body.gatewayPaymentId,
       status: body.status,
@@ -125,10 +128,26 @@ export class MockPaymentGateway implements PaymentGateway {
     };
   }
 
-  async refund(_paymentId: string, _amountPaise: number, idempotencyKey: string) {
+  /** Refunds complete immediately; the same reference always returns the same refund. */
+  async refund(input: RefundInput): Promise<RefundResult> {
+    if (!refunds.has(input.refundId)) refunds.set(input.refundId, input.amountPaise);
+    return this.refundResult(input.refundId);
+  }
+
+  async fetchRefundStatus(lookup: RefundLookup): Promise<RefundResult | null> {
+    return refunds.has(lookup.refundId) ? this.refundResult(lookup.refundId) : null;
+  }
+
+  private refundResult(refundId: string): RefundResult {
     return {
-      refundId: `rf_${crypto.createHash('sha1').update(idempotencyKey).digest('hex').slice(0, 12)}`,
-      status: 'processed' as const,
+      refundId,
+      gatewayRefundId: `rf_${crypto.createHash('sha1').update(refundId).digest('hex').slice(0, 12)}`,
+      status: 'processed',
+      amountPaise: refunds.get(refundId) ?? 0,
     };
+  }
+
+  async testConnection(): Promise<ConnectionTestResult> {
+    return { ok: true, message: 'Created test order (mock gateway, no money moves)' };
   }
 }

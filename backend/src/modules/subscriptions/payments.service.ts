@@ -1,5 +1,6 @@
 import { Op, type Transaction, type WhereOptions } from 'sequelize';
 import type {
+  CheckoutReturnInput,
   SaasCheckoutDto,
   SaasCreditNoteDto,
   SaasInvoiceDetailDto,
@@ -13,9 +14,12 @@ import { getSequelize } from '../../infrastructure/database/sequelize';
 import { logger } from '../../infrastructure/logger';
 import {
   createPaymentGateway,
+  GatewayConfigError,
+  GatewayRequestError,
   PAYMENT_GATEWAY_NAMES,
   WebhookSignatureError,
   type GatewayCredentials,
+  type GatewayWebhookEvent,
   type MockPaymentGateway,
   type PaymentGatewayName,
   type VerifiedPayment,
@@ -23,6 +27,7 @@ import {
 import { audit } from '../../shared/audit/audit.service';
 import { runWithContext } from '../../shared/context';
 import { AppError, BadRequest, Conflict, NotFound } from '../../shared/errors';
+import { checkoutReturnUrl } from '../../shared/utilities/checkout-return';
 import {
   SubscriptionCreditNote,
   SubscriptionInvoice,
@@ -204,7 +209,14 @@ async function applyToInvoice(
 }
 
 export type SaasWebhookOutcome =
-  'paid' | 'failed' | 'duplicate' | 'already_processed' | 'unmatched' | 'amount_mismatch' | 'pending';
+  | 'paid'
+  | 'failed'
+  | 'duplicate'
+  | 'already_processed'
+  | 'unmatched'
+  | 'amount_mismatch'
+  | 'pending'
+  | 'ignored';
 
 interface AppliedResult {
   outcome: SaasWebhookOutcome;
@@ -331,6 +343,13 @@ function replay(p: SubscriptionPayment, inv: SubscriptionInvoice): SaasCheckoutD
 
 const RECENT_CHECKOUT_MS = 30 * 60_000;
 
+/** The operator pastes this into the gateway dashboard; Cashfree also gets it per order. */
+export const saasWebhookUrl = (gateway: string) =>
+  `${config.API_PUBLIC_URL}/api/subscriptions/public/webhooks/${gateway}`;
+
+const gatewayUnavailable = () =>
+  new AppError(502, 'GATEWAY_ERROR', 'The payment gateway is unavailable; please try again');
+
 /**
  * Starts (or resumes) an online payment of an open invoice's balance. Retries with the same
  * idempotency key, and repeated clicks within 30 minutes, return the same gateway order.
@@ -342,6 +361,7 @@ export async function startCheckout(
     idempotencyKey?: string | null;
     userId: number | null;
     customer: { name: string; mobile: string; email?: string };
+    returnTo?: CheckoutReturnInput | null;
   },
 ): Promise<SaasCheckoutDto> {
   const inv = await findInvoice(invoiceId, instituteId);
@@ -399,15 +419,25 @@ export async function startCheckout(
       orderId: `saas_${payment.id}`,
       amountPaise: amount,
       currency: 'INR',
-      customer: opts.customer,
-      callbackUrl: `/subscription?invoice=${inv.id}`,
+      customer: { id: `inst${instituteId}`, ...opts.customer },
+      callbackUrl: checkoutReturnUrl(
+        'saas',
+        { instituteId, paymentId: payment.id },
+        opts.returnTo ?? undefined,
+        '/subscription',
+      ),
+      notifyUrl: saasWebhookUrl(cfg.gateway),
+      description: `Subscription invoice ${inv.number}`.slice(0, 80),
       metadata: { invoiceNumber: inv.number, instituteId: String(instituteId) },
     });
     await payment.update({ gatewayOrderId: order.gatewayOrderId, checkoutPayload: order.checkout });
   } catch (err) {
-    logger.error({ err, paymentId: payment.id }, 'SaaS checkout order could not be created');
+    logger.error(
+      { paymentId: payment.id, gateway: cfg.gateway, reason: (err as Error).message },
+      'SaaS checkout order could not be created',
+    );
     await payment.update({ status: 'failed', note: 'The gateway order could not be created' });
-    throw new AppError(502, 'GATEWAY_ERROR', 'The payment gateway is unavailable; please try again');
+    throw gatewayUnavailable();
   }
   return {
     invoice: toInvoiceDto(inv),
@@ -430,17 +460,21 @@ export async function processWebhook(
   } catch {
     throw NotFound('Webhook');
   }
-  let verified: VerifiedPayment;
+  let event: GatewayWebhookEvent;
   try {
-    verified = await createPaymentGateway(cfg.gateway, cfg.credentials).verifyWebhook(headers, rawBody);
+    event = await createPaymentGateway(cfg.gateway, cfg.credentials).verifyWebhook(headers, rawBody);
   } catch (err) {
     if (err instanceof WebhookSignatureError)
       throw new AppError(401, 'INVALID_SIGNATURE', 'Invalid webhook signature');
+    if (err instanceof GatewayRequestError && err.retryable)
+      throw new AppError(503, 'GATEWAY_UNAVAILABLE', 'Gateway status check failed; retry later');
+    logger.warn({ gateway: cfg.gateway, reason: (err as Error).message }, 'SaaS payment webhook rejected');
     throw new AppError(400, 'INVALID_WEBHOOK', (err as Error).message);
   }
-  const eventKey =
-    verified.eventId ?? `${verified.gatewayPaymentId || verified.gatewayOrderId}:${verified.status}`;
-  return applyVerified(cfg.gateway, verified, eventKey);
+  // SaaS refunds are settled outside the gateway flow (credit notes); other events are not ours.
+  if (event.kind !== 'payment') return { outcome: 'ignored', paymentId: null };
+  const eventKey = event.eventId ?? `${event.gatewayPaymentId || event.gatewayOrderId}:${event.status}`;
+  return applyVerified(cfg.gateway, event, eventKey);
 }
 
 /** Development/test only: simulates the mock gateway's hosted checkout and delivers its webhook. */
@@ -459,18 +493,109 @@ export async function completeMockCheckout(
   return { outcome: result.outcome, payment: toPaymentDto(await loadPayment(paymentId, instituteId)) };
 }
 
+async function checkStatus(cfg: SaasGatewayConfig, gatewayOrderId: string): Promise<SaasWebhookOutcome> {
+  const v = await createPaymentGateway(cfg.gateway, cfg.credentials).fetchStatus(gatewayOrderId);
+  if (v.status === 'pending') return 'pending';
+  return (await applyVerified(cfg.gateway, v, `status:${v.gatewayPaymentId || v.gatewayOrderId}:${v.status}`))
+    .outcome;
+}
+
 /** Server-side status check, for a missed webhook (`instituteId` null: super admin). */
 export async function syncPayment(instituteId: number | null, paymentId: number) {
   const p = await loadPayment(paymentId, instituteId);
   if (p.method !== 'gateway' || !p.gateway || !p.gatewayOrderId) throw BadRequest('Not an online payment');
   const cfg = await resolveGateway(p.gateway, 'verify');
-  const v = await createPaymentGateway(cfg.gateway, cfg.credentials).fetchStatus(p.gatewayOrderId);
-  const outcome =
-    v.status === 'pending'
-      ? 'pending'
-      : (await applyVerified(cfg.gateway, v, `status:${v.gatewayPaymentId || v.gatewayOrderId}:${v.status}`))
-          .outcome;
+  let outcome: SaasWebhookOutcome;
+  try {
+    outcome = await checkStatus(cfg, p.gatewayOrderId);
+  } catch (err) {
+    if (!(err instanceof GatewayRequestError) && !(err instanceof GatewayConfigError)) throw err;
+    logger.warn({ paymentId, gateway: cfg.gateway, reason: err.message }, 'SaaS payment status check failed');
+    throw gatewayUnavailable();
+  }
   return { outcome, payment: toPaymentDto(await loadPayment(paymentId, instituteId)) };
+}
+
+/** The payer is back from a redirect checkout (signed return link): confirm with the gateway now. */
+export async function syncReturnedSaasPayment(instituteId: number | null, paymentId: number): Promise<void> {
+  const p = await SubscriptionPayment.findOne(platform({ where: { id: paymentId } }));
+  if (!p || p.instituteId !== instituteId || p.method !== 'gateway' || !p.gateway || !p.gatewayOrderId)
+    return;
+  if (p.status !== 'pending' && p.status !== 'failed') return;
+  await checkStatus(await resolveGateway(p.gateway, 'verify'), p.gatewayOrderId);
+}
+
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+
+/**
+ * Asks the gateway about open online subscription payments (missed webhooks), backing off with
+ * age: every run in the first hour, hourly for a day, then every six hours up to three days. The
+ * outcome goes through the same idempotent path as webhooks, so nothing is applied twice.
+ */
+export async function reconcileSaasPayments(
+  now = new Date(),
+): Promise<{ checked: number; settled: number; errors: number }> {
+  const ago = (ms: number) => new Date(now.getTime() - ms);
+  const rows = await SubscriptionPayment.findAll(
+    platform({
+      where: {
+        method: 'gateway',
+        gateway: { [Op.ne]: null },
+        gatewayOrderId: { [Op.ne]: null },
+        [Op.or]: [
+          {
+            status: 'pending',
+            [Op.or]: [
+              { createdAt: { [Op.lte]: ago(2 * MINUTE), [Op.gt]: ago(HOUR) } },
+              {
+                createdAt: { [Op.lte]: ago(HOUR), [Op.gt]: ago(24 * HOUR) },
+                updatedAt: { [Op.lte]: ago(HOUR) },
+              },
+              {
+                createdAt: { [Op.lte]: ago(24 * HOUR), [Op.gt]: ago(72 * HOUR) },
+                updatedAt: { [Op.lte]: ago(6 * HOUR) },
+              },
+            ],
+          },
+          // A failed attempt can be followed by a successful one on the same order.
+          { status: 'failed', updatedAt: { [Op.gt]: ago(HOUR) } },
+        ],
+      },
+      order: [['id', 'ASC']] as [string, string][],
+      limit: 200,
+    }),
+  );
+  const stats = { checked: 0, settled: 0, errors: 0 };
+  for (const p of rows) {
+    stats.checked++;
+    try {
+      const cfg = await resolveGateway(p.gateway!, 'verify');
+      const young = now.getTime() - p.createdAt.getTime() < 30 * MINUTE;
+      const v = await createPaymentGateway(cfg.gateway, cfg.credentials).fetchStatus(p.gatewayOrderId!);
+      // The payer may still be retrying inside the checkout: young failures are left to webhooks.
+      const outcome =
+        v.status === 'pending' || (v.status === 'failed' && young)
+          ? 'pending'
+          : (
+              await applyVerified(
+                cfg.gateway,
+                v,
+                `status:${v.gatewayPaymentId || v.gatewayOrderId}:${v.status}`,
+              )
+            ).outcome;
+      if (outcome === 'paid' || outcome === 'failed') stats.settled++;
+      else if (outcome === 'pending' && p.status === 'pending')
+        await SubscriptionPayment.update(
+          { status: 'pending' },
+          platform({ where: { id: p.id, status: 'pending' } }),
+        );
+    } catch (err) {
+      stats.errors++;
+      logger.warn({ paymentId: p.id, reason: (err as Error).message }, 'SaaS payment reconciliation failed');
+    }
+  }
+  return stats;
 }
 
 // ------------------------------------------------------------------ super admin adjustments

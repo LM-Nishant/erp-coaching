@@ -6,6 +6,7 @@ import type {
   BillingOverviewDto,
   BillingPolicyDto,
   BillingProfileDto,
+  CheckoutReturnInput,
   Paginated,
   PlanChangePreviewDto,
   SaasCheckoutDto,
@@ -95,10 +96,10 @@ export const billingApi = {
   payments: (q: Omit<PaymentQuery, 'instituteId'> = {}) =>
     api.get<Paginated<SaasPaymentDto>>('/subscription/payments', { ...q }),
   /** Retries with the same key resume the same gateway order instead of starting another. */
-  checkout: (invoiceId: number, idempotencyKey: string) =>
+  checkout: (invoiceId: number, idempotencyKey: string, returnTo?: CheckoutReturnInput) =>
     api.post<SaasCheckoutDto>(
       `/subscription/invoices/${invoiceId}/checkout`,
-      {},
+      { returnTo },
       { headers: { 'Idempotency-Key': idempotencyKey } },
     ),
   mockComplete: (paymentId: number, outcome: 'success' | 'failed') =>

@@ -151,7 +151,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import {
   IonBadge,
   IonButton,
@@ -174,6 +174,7 @@ import {
   type SubscriptionAddonDto,
 } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import { settlePayment, takeReturnedPayment, withoutReturnQuery } from '@/core/payment-checkout';
 import { toast, toastError } from '@/core/toast';
 import { rupees } from '@/modules/hr/api';
 import { useAuthStore } from '@/stores/auth';
@@ -195,10 +196,11 @@ import {
   limitsSummary,
   planPrice,
 } from './format';
-import { shareSubscriptionStatus } from './status';
+import { loadSubscriptionStatus, shareSubscriptionStatus } from './status';
 
 const auth = useAuthStore();
 const route = useRoute();
+const router = useRouter();
 
 const o = ref<BillingOverviewDto | null>(null);
 const failed = ref(false);
@@ -309,10 +311,34 @@ async function paid() {
   await load();
 }
 
+/** Back from the gateway's checkout page: the API checks the payment with the gateway. */
+async function settleReturned(paymentId: number) {
+  try {
+    const { payment } = await settlePayment(
+      () => billingApi.sync(paymentId),
+      (r) => r.payment.status === 'pending',
+    );
+    if (payment.status === 'success') {
+      await toast('Payment successful. Thank you!', 'success');
+      void loadSubscriptionStatus(true).catch(() => undefined);
+      await load();
+    } else if (payment.status === 'failed') {
+      await toast('Payment failed. You can try again.', 'danger');
+    } else {
+      await toast('The payment is still pending. Check again in a moment.', 'medium');
+    }
+  } catch (e) {
+    void toastError(e);
+  }
+}
+
 onMounted(async () => {
+  const returned = takeReturnedPayment('/subscription', route.query);
+  if (route.query.payment !== undefined) await router.replace({ query: withoutReturnQuery(route.query) });
   await load();
   const invoice = Number(route.query.invoice);
   if (Number.isInteger(invoice) && invoice > 0) openInvoiceId.value = invoice;
+  if (returned) await settleReturned(returned);
 });
 </script>
 
