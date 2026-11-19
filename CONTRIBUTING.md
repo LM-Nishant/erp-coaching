@@ -112,6 +112,7 @@ Every `/api` request passes the app-wide `apiRateLimit`, so authenticated routes
 | `tokenRateLimit`      | routes whose credential is a refresh token (refresh, logout)                  | 600 per 15 min (`RATE_LIMIT_TOKEN_MAX`)      |
 | `webhookRateLimit`    | payment and provider webhooks; verify the signature in the handler            | 300 per min (`RATE_LIMIT_WEBHOOK_PER_MIN`)   |
 | `deviceRateLimit`     | pushes from hardware authenticated by a device key (biometric punches)        | 120 per min (`RATE_LIMIT_DEVICE_PER_MIN`)    |
+| `admsRateLimit`       | ZKTeco/eSSL devices on `/iclock/*`, identified by serial number (ADMS push)   | 600 per min (`RATE_LIMIT_ADMS_PER_MIN`)      |
 | `mediaRateLimit`      | token-authorised media (signed file URLs, HLS); exempt from `apiRateLimit`    | 3000 per min (`RATE_LIMIT_MEDIA_PER_MIN`)    |
 
 `apiRateLimit` allows 600 requests per minute per IP (`RATE_LIMIT_API_PER_MIN`). Counters are kept in memory, so each API process counts separately; see [docs/security.md](docs/security.md).
@@ -196,6 +197,7 @@ Current wiring:
 | admissions → academics                            | `admissions.service.ts`         | admitting an application with `batchId` enrols the student via `enrollStudentsInBatch` in the admit transaction; `admissions.confirmed` is sent to student + guardians                                                                                                   |
 | academics, grievances, admissions → notifications | `notify()`                      | `classes.cancelled/rescheduled/substituted` (students, their guardians, teachers), `grievances.activity`, `admissions.follow-up-due`                                                                                                                                     |
 | hr → subscriptions                                | `hr.service.ts`                 | `assertTeacherSeat()` enforces the plan's `maxTeachers` (non-exited employees with `isTeacher`)                                                                                                                                                                          |
+| hr → attendance                                   | `hr/integrations.ts`            | `setStaffPunchProvider` (`attendance/api`): biometric device PINs mapped to employees (`biometricEnrolmentId`) record staff attendance; first punch of the day = check-in, last = check-out; manual and leave days are skipped                                           |
 | admissions → fees                                 | `fees/integrations.ts`          | `onAdmissionCompleted` (from `admissions/api`, emitted in a job after admit) → fee account generated from the matching structure; idempotent per admission; skipped if it has `feeAccountId`                                                                             |
 | fees → admissions, academics                      | `fees/course-enrolment.ts`      | `fees.course-enrolment` job (purchase entitlement granted/lost) → `admitForCoursePurchase`/`releaseCoursePurchaseBatch` (`admissions/api`) → `enrollStudentsInBatch`/`leaveBatch`; see below                                                                             |
 | academics → admissions, fees (direct calls)       | `academics/api.ts`              | `openBatchesForCourse` (seats left, earliest start first), `batchAvailability`/`batchUnavailableError` (`not_found`, `other_course`, `other_branch`, `closed`, `full`), `activeBatchForCourse`, `leaveBatch`                                                             |
@@ -332,6 +334,7 @@ Set a per-checkout `TEST_DB_NAME` in `backend/.env` (e.g. `erp_coaching_test_<mo
 | `9458…`          | load runs (`load/`)                                                                                                                            |
 | `9459…`          | browser E2E (`e2e/`)                                                                                                                           |
 | `951…`           | messaging vendors: adapters, delivery webhooks, OTP through the platform provider                                                              |
+| `955…`           | `biometric-adms.test.ts`                                                                                                                       |
 
 Commands:
 

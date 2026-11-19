@@ -119,15 +119,16 @@
       <ion-list>
         <ion-list-header>
           <ion-label>Devices</ion-label>
-          <ion-button @click="addDevice">Add</ion-button>
+          <ion-button @click="openForm(null)">Add</ion-button>
         </ion-list-header>
         <ion-item v-for="d in devices" :key="d.id">
           <ion-label>
             {{ d.name }} <ion-note>{{ d.serial }}</ion-note>
             <p>
-              {{ branchName(d.branchId) }} · last seen
-              {{ d.lastSeenAt ? new Date(d.lastSeenAt).toLocaleString() : 'never' }}
+              {{ d.protocol === 'adms' ? 'ZKTeco/eSSL push' : 'Punch API' }} · {{ branchName(d.branchId) }} ·
+              last seen {{ d.lastSeenAt ? new Date(d.lastSeenAt).toLocaleString() : 'never' }}
             </p>
+            <p v-if="d.lastError" class="ion-text-wrap device-error">{{ d.lastError }}</p>
           </ion-label>
           <ion-toggle
             slot="end"
@@ -135,28 +136,19 @@
             aria-label="Active"
             @ion-change="toggleDevice(d, $event.detail.checked)"
           />
-          <ion-button slot="end" fill="clear" @click="rotate(d)">New key</ion-button>
-          <ion-button slot="end" fill="clear" color="danger" @click="removeDevice(d)">Delete</ion-button>
+          <ion-button slot="end" fill="clear" @click="detail = d">Manage</ion-button>
         </ion-item>
-        <ion-item lines="none">
+        <ion-item v-if="!devices.length" lines="none">
           <ion-note class="ion-text-wrap"
-            >Devices push punches to <code>POST /api/attendance/public/device-events</code> with
-            <code>X-Device-Serial</code> and <code>X-Device-Key</code> headers.</ion-note
+            >No devices yet. Add a ZKTeco or eSSL device by its serial number, or a device or middleware that
+            calls the punch API.</ion-note
           >
         </ion-item>
+      </ion-list>
 
-        <ion-list-header>
-          <ion-label>Student enrolments</ion-label>
-          <ion-button @click="addEnrolment">Map</ion-button>
-        </ion-list-header>
-        <ion-item v-for="e in enrolments" :key="e.id">
-          <ion-label>{{ e.studentName }}</ion-label>
-          <ion-note slot="end">{{ e.enrolmentId }}</ion-note>
-          <ion-button slot="end" fill="clear" color="danger" @click="removeEnrolment(e.id)"
-            >Remove</ion-button
-          >
-        </ion-item>
+      <DevicePinsList :pins="pins" :devices="devices" @changed="load" />
 
+      <ion-list>
         <ion-list-header><ion-label>Recent punches</ion-label></ion-list-header>
         <ion-item v-for="ev in events" :key="ev.id">
           <ion-label>
@@ -170,6 +162,15 @@
           }}</ion-badge>
         </ion-item>
       </ion-list>
+
+      <DeviceFormModal
+        :open="formOpen"
+        :device="editing"
+        :branches="branches"
+        @close="formOpen = false"
+        @saved="onSaved"
+      />
+      <DeviceDetailModal :device="detail" @close="detail = null" @edit="openForm" @changed="load" />
     </template>
   </AppPage>
 </template>
@@ -198,13 +199,15 @@ import {
   type AttendanceDeviceDto,
   type AttendanceMethod,
   type AttendanceSettingsDto,
-  type BiometricEnrolmentDto,
   type DeviceEventDto,
+  type DevicePinDto,
 } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
-import { api } from '@/core/api';
 import { toast, toastError } from '@/core/toast';
 import { attendanceApi, type BranchRef } from './api';
+import DeviceDetailModal from './DeviceDetailModal.vue';
+import DeviceFormModal from './DeviceFormModal.vue';
+import DevicePinsList from './DevicePinsList.vue';
 import { currentPosition } from './scanner';
 
 const METHOD_LABEL: Record<AttendanceMethod, string> = {
@@ -218,9 +221,12 @@ const tab = ref<'rules' | 'devices'>('rules');
 const s = ref<AttendanceSettingsDto | null>(null);
 const branches = ref<BranchRef[]>([]);
 const devices = ref<AttendanceDeviceDto[]>([]);
-const enrolments = ref<BiometricEnrolmentDto[]>([]);
+const pins = ref<DevicePinDto[]>([]);
 const events = ref<DeviceEventDto[]>([]);
 const busy = ref(false);
+const formOpen = ref(false);
+const editing = ref<AttendanceDeviceDto | null>(null);
+const detail = ref<AttendanceDeviceDto | null>(null);
 
 const branchName = (id: number | null) =>
   id ? (branches.value.find((b) => b.id === id)?.name ?? '') : 'All branches';
@@ -241,14 +247,17 @@ async function load() {
     if (tab.value === 'rules') {
       [s.value, branches.value] = await Promise.all([attendanceApi.settings(), attendanceApi.branches()]);
     } else {
-      const [d, e, ev] = await Promise.all([
+      const [d, p, ev, b] = await Promise.all([
         attendanceApi.devices(),
-        attendanceApi.enrolments(),
+        attendanceApi.devicePins(),
         attendanceApi.deviceEvents(),
+        branches.value.length ? branches.value : attendanceApi.branches(),
       ]);
       devices.value = d;
-      enrolments.value = e;
+      pins.value = p;
       events.value = ev.items;
+      branches.value = b;
+      if (detail.value) detail.value = d.find((x) => x.id === detail.value?.id) ?? null;
     }
   } catch (e) {
     await toastError(e);
@@ -268,76 +277,37 @@ async function save() {
   }
 }
 
-async function prompt(header: string, inputs: { name: string; placeholder: string }[]) {
-  const a = await alertController.create({
-    header,
-    inputs: inputs.map((i) => ({ ...i, type: 'text' as const })),
-    buttons: [
-      { text: 'Cancel', role: 'cancel' },
-      { text: 'OK', role: 'confirm' },
-    ],
-  });
-  await a.present();
-  const r = await a.onDidDismiss<{ values: Record<string, string> }>();
-  return r.role === 'confirm' ? (r.data?.values ?? null) : null;
+function openForm(d: AttendanceDeviceDto | null) {
+  detail.value = null;
+  editing.value = d;
+  formOpen.value = true;
 }
 
-async function showKey(d: AttendanceDeviceDto) {
-  const a = await alertController.create({
-    header: 'Device API key',
-    message: `Configure ${d.serial} with this key. It is shown only once: ${d.apiKey}`,
-    buttons: ['Done'],
-  });
-  await a.present();
-}
-
-async function addDevice() {
-  const v = await prompt('Add biometric device', [
-    { name: 'name', placeholder: 'Name (e.g. Main gate)' },
-    { name: 'serial', placeholder: 'Device serial' },
-  ]);
-  if (!v?.name || !v.serial) return;
-  try {
-    await showKey(await attendanceApi.createDevice({ name: v.name, serial: v.serial }));
-    await load();
-  } catch (e) {
-    await toastError(e);
+async function onSaved(d: AttendanceDeviceDto) {
+  const created = !editing.value;
+  formOpen.value = false;
+  if (created && d.apiKey) {
+    const a = await alertController.create({
+      header: 'Device API key',
+      message: `Configure ${d.serial} with this key. It is shown only once: ${d.apiKey}`,
+      buttons: ['Done'],
+    });
+    await a.present();
+  } else if (created) {
+    // the detail view shows the server settings to enter on the device
+    detail.value = d;
+  } else {
+    await toast('Device saved');
   }
+  await load();
 }
 
 async function toggleDevice(d: AttendanceDeviceDto, active: boolean) {
-  await attendanceApi.updateDevice(d.id, { active }).catch(toastError);
-}
-async function rotate(d: AttendanceDeviceDto) {
   try {
-    await showKey(await attendanceApi.rotateDeviceKey(d.id));
+    Object.assign(d, await attendanceApi.updateDevice(d.id, { active }));
   } catch (e) {
     await toastError(e);
   }
-}
-async function removeDevice(d: AttendanceDeviceDto) {
-  await attendanceApi.removeDevice(d.id).then(load, toastError);
-}
-
-async function addEnrolment() {
-  const v = await prompt('Map student to device id', [
-    { name: 'search', placeholder: 'Student name or mobile' },
-    { name: 'enrolmentId', placeholder: 'Enrolment id on the device' },
-  ]);
-  if (!v?.search || !v.enrolmentId) return;
-  try {
-    const found = await api.get<{ id: number; name: string }[]>('/academics/students', { search: v.search });
-    if (found.length !== 1)
-      return toast(found.length ? 'Several students match; be more specific' : 'No student found', 'warning');
-    await attendanceApi.saveEnrolment(found[0].id, v.enrolmentId);
-    await toast(`Mapped ${found[0].name}`);
-    await load();
-  } catch (e) {
-    await toastError(e);
-  }
-}
-async function removeEnrolment(id: number) {
-  await attendanceApi.removeEnrolment(id).then(load, toastError);
 }
 
 onMounted(load);
@@ -350,5 +320,8 @@ watch(tab, load);
 }
 .radius {
   max-width: 80px;
+}
+.device-error {
+  color: var(--ion-color-danger);
 }
 </style>
