@@ -1,4 +1,7 @@
 export class AppError extends Error {
+  /** Sent as the `Retry-After` header. */
+  retryAfterSeconds?: number;
+
   constructor(
     public readonly status: number,
     public readonly code: string,

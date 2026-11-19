@@ -17,9 +17,11 @@ import {
 } from '@erp/shared';
 import { config } from '../src/infrastructure/config';
 import { processDueJobs } from '../src/infrastructure/jobs/queue';
+import { hashPassword } from '../src/infrastructure/password';
 import { Job } from '../src/infrastructure/jobs/job.model';
 import { LiveKitStreamingProvider, setStreamingProvider } from '../src/infrastructure/streaming';
 import { presignS3Url } from '../src/infrastructure/streaming/s3-presign';
+import { Device } from '../src/modules/authentication/models';
 import { Branch } from '../src/modules/branches/branch.model';
 import { User } from '../src/modules/users/user.model';
 import {
@@ -36,8 +38,14 @@ import {
   IMPORT_RECORDING_JOB,
 } from '../src/modules/live-classes/live-classes.service';
 import { LiveParticipant, LiveRecording } from '../src/modules/live-classes/models';
-import { attachLiveSockets, closeLiveSockets } from '../src/modules/live-classes/realtime';
+import {
+  attachLiveSockets,
+  closeLiveSockets,
+  recheckLiveSockets,
+} from '../src/modules/live-classes/realtime';
 import { LmsResource, LmsResourceBatch } from '../src/modules/lms/models';
+import { getSystemRole } from '../src/modules/permissions/catalog.service';
+import { UserRole } from '../src/modules/permissions/models';
 import { FfmpegTranscoder, setVideoTranscoder } from '../src/modules/lms/transcoder';
 import { runWithContext } from '../src/shared/context';
 import {
@@ -47,12 +55,16 @@ import {
   getApp,
   idWatermarks,
   login,
+  newDevice,
   purgeAcademicFixtures,
   purgeCreatedSince,
   purgeRows,
+  stableDevice,
 } from './helpers';
 
 const STUDENT = { mobile: '9100000005', password: DEMO_PASSWORD };
+/** Created here: it signs in on devices of its own (at most two are active per user). */
+const STUDENT3 = { mobile: '9540000002', password: DEMO_PASSWORD };
 const API_KEY = 'APIlk-test-key';
 const API_SECRET = 'lk-test-secret-0123456789abcdefghijklmnopqrstuvwxyz';
 const ACTIVE = new Set(['EGRESS_STARTING', 'EGRESS_ACTIVE']);
@@ -71,6 +83,8 @@ function fakeLiveKit() {
   const calls: TwirpCall[] = [];
   const failures = new Map<string, { status: number; body: Json }>();
   const egress: Json[] = [];
+  /** Connected participants, by `<room>/<identity>`. */
+  const participants = new Map<string, Json>();
   const s3: { method: string; url: URL }[] = [];
   let seq = 0;
   const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -113,12 +127,21 @@ function fakeLiveKit() {
       }
       case 'ListRooms':
         return Response.json({ rooms: [{ name: 'erp-1-1' }, { name: 'erp-1-2' }] });
+      case 'GetParticipant':
+      case 'RemoveParticipant': {
+        const key = `${body.room}/${body.identity}`;
+        const p = participants.get(key);
+        if (!p) return Response.json({ code: 'not_found', msg: 'participant not found' }, { status: 404 });
+        if (method === 'GetParticipant') return Response.json(p);
+        participants.delete(key);
+        return Response.json({});
+      }
       default:
         return Response.json({});
     }
   }) as typeof fetch;
   const lastCall = (method: string) => [...calls].reverse().find((c) => c.method === method);
-  return { calls, failures, egress, s3, fetch: fetchImpl, lastCall };
+  return { calls, failures, egress, participants, s3, fetch: fetchImpl, lastCall };
 }
 
 describe('LiveKit streaming provider', () => {
@@ -130,6 +153,7 @@ describe('LiveKit streaming provider', () => {
   let teacherId: number;
   let studentId: number;
   let student2Id: number;
+  let student3Id: number;
   let batchId: number;
   let classSessionId: number;
   let liveId: number;
@@ -196,7 +220,7 @@ describe('LiveKit streaming provider', () => {
   /** Protobuf JSON as LiveKit sends it: int64 fields are strings. */
   const participantEvent = (
     event: 'participant_joined' | 'participant_left' | 'participant_connection_aborted',
-    p: { userId: number; sid: string; joinedAt: number; at: number; role?: string | null },
+    p: { userId: number; sid: string; joinedAt: number; at: number; role?: string | null; deviceId?: number },
   ) => ({
     id: `EV_${run}_${++eventSeq}`,
     event,
@@ -209,7 +233,14 @@ describe('LiveKit streaming provider', () => {
       state: event === 'participant_joined' ? 'ACTIVE' : 'DISCONNECTED',
       joinedAt: String(p.joinedAt),
       joinedAtMs: String(p.joinedAt * 1000),
-      ...(p.role === null ? {} : { metadata: JSON.stringify({ role: p.role ?? 'viewer' }) }),
+      ...(p.role === null
+        ? {}
+        : {
+            metadata: JSON.stringify({
+              role: p.role ?? 'viewer',
+              ...(p.deviceId ? { deviceId: p.deviceId } : {}),
+            }),
+          }),
     },
   });
   const egressEnded = (egressId: string, filename: string, status = 'EGRESS_COMPLETE') => ({
@@ -250,6 +281,21 @@ describe('LiveKit streaming provider', () => {
         lastLoginAt: null,
       })
     ).id;
+    student3Id = (
+      await User.create({
+        name: 'LiveKit Device Student',
+        mobile: STUDENT3.mobile,
+        email: null,
+        passwordHash: await hashPassword(STUDENT3.password),
+        lastLoginAt: null,
+      })
+    ).id;
+    await UserRole.create({
+      userId: student3Id,
+      roleId: (await getSystemRole('student')).id,
+      instituteId: 1,
+      branchId,
+    });
 
     await runWithContext({ system: true, instituteId: 1, allowedBranchIds: null }, async () => {
       const instituteId = 1;
@@ -284,7 +330,7 @@ describe('LiveKit streaming provider', () => {
         })
       ).id;
       await BatchTeacher.create({ instituteId, batchId, subjectId: null, teacherUserId: teacherId });
-      for (const studentUserId of [studentId, student2Id])
+      for (const studentUserId of [studentId, student2Id, student3Id])
         await BatchStudent.create({
           instituteId,
           batchId,
@@ -324,7 +370,7 @@ describe('LiveKit streaming provider', () => {
     setVideoTranscoder(new FfmpegTranscoder());
     await purgeAcademicFixtures({ batchIds: [batchId], ...academic });
     await purgeCreatedSince(marks);
-    await purgeRows('users', [student2Id]);
+    await purgeRows('users', [student2Id, student3Id]);
     fs.rmSync(recDir, { recursive: true, force: true });
   });
 
@@ -376,7 +422,9 @@ describe('LiveKit streaming provider', () => {
     });
     const viewer = jwt.verify(join.body.token, API_SECRET, { issuer: API_KEY }) as jwt.JwtPayload;
     expect(viewer.sub).toBe(`user-${studentId}`);
-    expect(JSON.parse(viewer.metadata)).toEqual({ role: 'viewer' });
+    const studentDevice = await Device.findOne({ where: { deviceUid: stableDevice(STUDENT.mobile).uid } });
+    // The device it was issued to, so signing that device out can remove it from the room.
+    expect(JSON.parse(viewer.metadata)).toEqual({ role: 'viewer', deviceId: studentDevice!.id });
     expect(viewer.video).toEqual({
       room,
       roomJoin: true,
@@ -577,6 +625,97 @@ describe('LiveKit streaming provider', () => {
     );
     t.disconnect();
     s.disconnect();
+  });
+
+  it('removes a device that signs out, is revoked or loses access from the media room', async () => {
+    const t0 = Math.floor(Date.now() / 1000) - 600;
+    const identity = `user-${student3Id}`;
+    const connected = () => lk.participants.has(`${room}/${identity}`);
+    /** LiveKit has the connection before it reports it. */
+    const connect = async (deviceId: number, sid: string, at: number) => {
+      lk.participants.set(`${room}/${identity}`, {
+        sid,
+        identity,
+        metadata: JSON.stringify({ role: 'viewer', deviceId }),
+      });
+      const joined = participantEvent('participant_joined', {
+        userId: student3Id,
+        sid,
+        joinedAt: at,
+        at,
+        deviceId,
+      });
+      expect((await hook(joined)).body).toEqual({ received: true });
+    };
+    const leave = async (deviceId: number, sid: string, joinedAt: number, at: number) => {
+      const left = participantEvent('participant_left', { userId: student3Id, sid, joinedAt, at, deviceId });
+      expect((await hook(left)).body).toEqual({ received: true });
+    };
+    const removals = () => lk.calls.filter((c) => c.method === 'RemoveParticipant' && c.body.room === room);
+    const deviceIdOf = async (uid: string) => (await Device.findOne({ where: { deviceUid: uid } }))!.id;
+
+    const phone = await login(STUDENT3, newDevice('android'));
+    const phoneId = await deviceIdOf(phone.device.uid);
+    const join = await request(app).post(`/api/live-classes/${liveId}/join`).set(bearer(phone.accessToken));
+    const claims = jwt.verify(join.body.token, API_SECRET) as jwt.JwtPayload;
+    expect(JSON.parse(claims.metadata)).toEqual({ role: 'viewer', deviceId: phoneId });
+    await connect(phoneId, 'PA_p1', t0);
+    const s = await sock(phone.accessToken);
+    expect((await emit(s, C.join, { sessionId: liveId })).ok).toBe(true);
+    expect(await participant(student3Id)).toMatchObject({ isOnline: true, joinCount: 1 });
+
+    // Signing out drops the device's classroom socket and its media connection (device event job).
+    const signedOut = new Promise<string>((resolve) => s.once('disconnect', resolve));
+    const logout = await request(app).post('/api/auth/logout').send({ refreshToken: phone.refreshToken });
+    expect(logout.status).toBe(204);
+    await processDueJobs();
+    expect(await signedOut).toBe('io server disconnect');
+    expect(lk.lastCall('GetParticipant')).toMatchObject({
+      body: { room, identity },
+      grant: { roomAdmin: true, room },
+    });
+    expect(removals()).toHaveLength(1);
+    expect(removals()[0]).toMatchObject({ body: { room, identity }, grant: { roomAdmin: true, room } });
+    expect(connected()).toBe(false);
+    await leave(phoneId, 'PA_p1', t0, t0 + 60);
+    expect(await participant(student3Id)).toMatchObject({ isOnline: false, joinCount: 1, totalSeconds: 60 });
+
+    // Its join token still lets it connect for a while: LiveKit's join is refused and adds no visit.
+    await connect(phoneId, 'PA_p2', t0 + 120);
+    expect(removals()).toHaveLength(2);
+    expect(connected()).toBe(false);
+    await leave(phoneId, 'PA_p2', t0 + 120, t0 + 180);
+    expect(await participant(student3Id)).toMatchObject({ isOnline: false, joinCount: 1, totalSeconds: 60 });
+
+    // The minute re-check drops a socket whose user lost access, and that seat's media connection.
+    const laptop = await login(STUDENT3, newDevice('web'));
+    const laptopId = await deviceIdOf(laptop.device.uid);
+    await connect(laptopId, 'PA_l1', t0 + 240);
+    const l = await sock(laptop.accessToken);
+    expect((await emit(l, C.join, { sessionId: liveId })).ok).toBe(true);
+    await User.update({ status: 'inactive' }, { where: { id: student3Id } });
+    try {
+      const deactivated = new Promise<string>((resolve) => l.once('disconnect', resolve));
+      expect(await recheckLiveSockets()).toBe(1);
+      expect(await deactivated).toBe('io server disconnect');
+      expect(removals()).toHaveLength(3);
+      expect(connected()).toBe(false);
+    } finally {
+      await User.update({ status: 'active' }, { where: { id: student3Id } });
+    }
+
+    // Revoking a device removes only a connection made with that device's token.
+    await connect(laptopId, 'PA_l2', t0 + 300);
+    const revoke = (deviceId: number) =>
+      request(app).delete(`/api/auth/devices/${deviceId}`).set(bearer(laptop.accessToken));
+    expect((await revoke(phoneId)).status).toBe(204);
+    await processDueJobs();
+    expect(removals()).toHaveLength(3);
+    expect(connected()).toBe(true);
+    expect((await revoke(laptopId)).status).toBe(204);
+    await processDueJobs();
+    expect(removals()).toHaveLength(4);
+    expect(connected()).toBe(false);
   });
 
   it('imports finished recordings into storage, links them to the batch and course, and streams HLS', async () => {

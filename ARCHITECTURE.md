@@ -47,7 +47,7 @@ backend/src/
 5. Then `jobs` handlers are registered.
 6. Finally `onReady()`. Modules use it for cross-module wiring: each provider module's `integrations.ts` registers into consumer extension points (notification recipient resolvers, grievance linked students, academics class-completed listeners). See CONTRIBUTING → "Cross-module wiring".
 
-After `listen()`, `server.ts` calls each module's optional `attachServer(server)`. Use it for protocols that need the raw HTTP server, such as Socket.IO in `live-classes/realtime.ts`. Mount on a module-prefixed path and authenticate every connection.
+After `listen()`, `server.ts` calls each module's optional `attachServer(server)`. Use it for protocols that need the raw HTTP server, such as Socket.IO in `live-classes/realtime.ts`. Mount on a module-prefixed path and authenticate every connection. A connection outlives its access token, so re-check it while it stays open (`recheckSession` in `shared/middleware/authenticate.ts`). With `REDIS_URL` set, live classes use the Socket.IO Redis adapter and keep room state in Redis (`getRedis()` and `newRedisConnection()` from `infrastructure/redis.ts`), so a class can span API processes.
 
 **Adding a module never requires editing a shared file.**
 
@@ -71,6 +71,8 @@ helmet → cors → json (raw body kept for webhook signatures) → access log (
 → requirePermission('module','action') / requireModule('module') → handler (zod parse → service → TenantRepository)
 → errorHandler → { error: { code, message, details? } } (5xx also go to the error tracker)
 ```
+
+`json` skips routes that read their body only after identifying the caller, with a smaller limit (`ownJsonBody` in `shared/middleware/body.ts`, e.g. biometric pushes). `apiRateLimit` skips signed media and the public website (`OWN_LIMITER_PATH`), whose routes have limiters of their own.
 
 The route registry (`infrastructure/route-registry.ts`) lists every mounted route with its module, authentication, permissions and rate limiters. The tests in `backend/test/security/` use it to probe every route (see CONTRIBUTING.md › Authorization and tenant-isolation suite).
 
@@ -97,7 +99,7 @@ Deployment, TLS, backups and scaling are covered in [docs/deployment.md](docs/de
 - **Where the tenant comes from.** The institute is taken from the verified access token only: `authenticate` puts it into context. Users with several memberships pick one via `POST /api/auth/select-institute`, which issues a new token. Clients never send an `instituteId`, and any value they send is ignored or overwritten.
 - **Branch scope.** A user's allowed branches are either `user_branches`, or all branches when they hold an institute-wide role. The `X-Branch-Id` header narrows to one active branch and is validated against the allowed list.
 - **`TenantRepository`** adds `instituteId` (and branch constraints) to every query, and overwrites `instituteId` on create. A row from another institute surfaces as **404**, never 403, so ids aren't leaked.
-- **`registerTenantModel()` safety net.** It installs Sequelize hooks that **throw** on any find, count, bulk update or bulk destroy against a tenant model without an `instituteId` condition. Platform code must explicitly pass `{ tenantBypass: true }`.
+- **`registerTenantModel()` safety net.** It installs Sequelize hooks that **throw** on any find, count, bulk update or bulk destroy against a tenant model without an `instituteId` condition, and on any write (create, save, bulk create, upsert, update, destroy) for another institute than the one in context. Platform code must explicitly pass `{ tenantBypass: true }`.
 - **Tenant model registry.** `listTenantModels()` enumerates every registered model, so institute export and deletion (`tenant-data`) cover each module's tables without extra wiring. Tables with an `institute_id` column that are not registered models are listed in `UNREGISTERED_INSTITUTE_TABLES` (`tenant-data/catalog.ts`). `test/tenant-data.test.ts` fails when a table is in neither.
 - **Tests.** `backend/test/tenancy.test.ts` proves cross-tenant reads and writes and branch-restricted access are blocked.
 
@@ -111,7 +113,10 @@ Deployment, TLS, backups and scaling are covered in [docs/deployment.md](docs/de
 
 ## Auth and devices
 
-- **Login methods:** password, or OTP (6 digits, hashed, TTL and attempt limits).
+- **Login methods:** password, or OTP (6 digits, TTL and attempt limits). Details in [docs/security.md](docs/security.md#passwords-otps-and-sign-in-lockout):
+  - Passwords are hashed with scrypt on libuv's thread pool (`infrastructure/password.ts`). bcrypt hashes from earlier releases are checked in a worker thread and replaced at the next successful sign-in.
+  - OTPs are stored as an HMAC keyed with `OTP_HASH_SECRET`. A request for a number without an account stores and sends nothing but gets the same answer, so it can't reveal which numbers have accounts. Requests are limited per number, with a separate budget for each of the account's devices.
+  - Failed passwords, OTP codes and biometric unlocks lock the account for a while, per device (`authentication/sign-in-lock.ts`). Every lock ends by itself. Admins clear locks with `DELETE /users/:id/sign-in-lock`, the super admin with `DELETE /admin/users/:id/sign-in-lock`.
 - **Tokens:** access JWT of 15 minutes. Refresh tokens are opaque, stored as a sha256 hash, rotated on every refresh, and bound to a device.
 - **Devices:**
   - A device is identified by a client-generated id (Capacitor `Device.getId()`) plus its platform.
@@ -119,11 +124,12 @@ Deployment, TLS, backups and scaling are covered in [docs/deployment.md](docs/de
   - A user's first device is trusted. Any further new device must pass OTP.
   - When the limit is reached, login returns `device_limit_reached` with the active device list.
 - **Device sessions** (spec 4.18): every authenticated request checks the device row, so a revoked device gets 401 `SESSION_REVOKED` at once (its unexpired access tokens included) and a deactivated account gets `ACCOUNT_INACTIVE`.
+- **Device-bound credentials.** Offline download links (10 minutes) and live-class join tokens carry the device id and work only while that device is active, has a session open and isn't idle (`isDeviceSignedIn`), so signing out, revoking the device or the inactivity timeout stops them. Open live-class sockets are re-checked every minute and when the institute's subscription or status changes. A device that signs out or is revoked loses its live-class sockets and LiveKit connections within seconds; LiveKit joins from a device that isn't signed in are removed as they're reported.
 - **Revoking a device:**
   - Users: their own devices, `GET`/`DELETE /auth/devices`.
   - Institute admins: `GET /users/devices` (members with sign-ins), `GET /users/:id/devices`, `DELETE /users/:id/devices/:deviceId` (`users.view` to list, `users.edit` to revoke). Institute-wide admins manage any member. Branch admins manage only members limited to branches they share. Anyone else (institute-wide members for a branch admin, super-admin accounts, other institutes' users) is 404.
   - Super admin: anyone, `GET /admin/users?search=`, `GET /admin/users/:id/devices`, `DELETE /admin/users/:id/devices/:deviceId`.
-  - Revoking ends the device's refresh tokens and biometric unlock, is audited (`device.revoked`), notifies the user when an admin did it, and emits `onDeviceRevoked` (`authentication/api`): LMS revokes the device's offline licences, notifications drop its push tokens.
+  - Revoking ends the device's refresh tokens and biometric unlock, is audited (`device.revoked`), notifies the user when an admin did it, and emits `onDeviceRevoked` (`authentication/api`): LMS revokes the device's offline licences, notifications drop its push tokens, live classes drop its sockets and media connections. Ending a device's sessions without revoking it (sign-out, the inactivity sign-out, refresh-token reuse) emits `onDeviceSignedOut`, which live classes handle the same way unless the device has signed in again.
 - **Inactivity logout:**
   - Institute setting `security.idle_timeout_minutes` (Institute profile → Security; 0 = never, 5–1440; `GET/PATCH /institute` field `idleTimeoutMinutes`). `SESSION_IDLE_TIMEOUT_MINUTES` (default 0) applies to institutes without the setting and to sessions without an institute.
   - The device's `lastSeenAt` is the last user activity: any request except background polls (`X-Background-Request: 1`), plus the app's heartbeat `POST /auth/activity`. After the timeout, requests and `/auth/refresh` return 401 `SESSION_IDLE` (`shared/session-policy.ts`). Impersonation tokens have their own expiry and are exempt.
@@ -134,7 +140,10 @@ Deployment, TLS, backups and scaling are covered in [docs/deployment.md](docs/de
 
 | Need                             | Use                                                                                                                                                                                                                                                                         |
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Audit trail                      | `audit({ action: 'students.create', entityType, entityId, before?, after?, metadata? })` from `shared/audit/audit.service` (context adds actor, institute, IP, impersonator)                                                                                                |
+| Audit trail                      | `audit({ action: 'student.updated', entityType, entityId, branchId?, metadata? })` from `shared/audit/audit.service`; `branchId` decides which branch users see it (see CONTRIBUTING.md); context adds actor, institute, IP, impersonator                                   |
+| Passwords                        | `hashPassword()` and `verifyPassword()` from `infrastructure/password` (scrypt on the thread pool); save a new hash when `verifyPassword` says `needsRehash`                                                                                                                |
+| Stored secrets                   | `encryptSecret()` and `decryptSecret()` from `infrastructure/crypto`; register the column with `registerEncryptedColumns()` (`infrastructure/database/encrypted-columns`) so `secrets:reencrypt` moves it to a new key                                                      |
+| Counters outside Express         | `windowCounter(name, windowMs)` from `infrastructure/rate-store`: in Redis when `REDIS_URL` is set, so every API process shares it, otherwise in memory                                                                                                                     |
 | Validation                       | `parse(zodSchema, req.body)` from `shared/utilities/validation` → 400 `VALIDATION_ERROR` with `details: [{path,message}]`                                                                                                                                                   |
 | Errors                           | `BadRequest`, `Forbidden`, `NotFound`, `Conflict`, `LimitExceeded`, `AppError` from `shared/errors`                                                                                                                                                                         |
 | Plan limits                      | `assertWithinLimit(instituteId, 'maxStudents', currentCount)`; `requireModule('<module>')` route gate                                                                                                                                                                       |
@@ -153,7 +162,7 @@ Deployment, TLS, backups and scaling are covered in [docs/deployment.md](docs/de
 - Uploads go to `POST /api/files` (multipart `file`, `module`, optional `branchId`). Size limit is `MAX_UPLOAD_MB`, plus the plan storage quota.
 - Bytes are stored by the active `StorageAdapter`. The super admin picks the driver under Integrations → Storage. `local` (under `backend/storage/`) is implemented; the S3/R2 adapter is a stub for later.
 - Metadata goes to `files`.
-- Downloads use `GET /api/files/:id/url`, which returns a signed URL that is HMAC-signed and expires after `SIGNED_URL_TTL_SECONDS`. That URL is served by `/api/files/signed/:token`, which supports Range requests for video. Files are never served from a public static directory.
+- Downloads use `GET /api/files/:id/url`, which returns a signed URL that is HMAC-signed and expires after `SIGNED_URL_TTL_SECONDS`. That URL is served by `/api/files/signed/:token`, which supports Range requests for video. It is rate limited per IP (`mediaRateLimit`) and per token (`mediaTokenRateLimit`) instead of by `apiRateLimit`, and a link signed for a device (offline downloads) works only while that device is signed in. Files are never served from a public static directory.
 - **Serving policy** (`shared/utilities/file-response.ts`). Uploads are served from the API origin with a type the client declared, so the type isn't trusted:
   - images, video, audio and PDF are shown inline with their type, and text as `text/plain`; anything else is downloaded as `application/octet-stream`;
   - every response has `nosniff`, and everything but media and PDF gets a sandbox CSP, so an SVG opened directly can't run script;
@@ -163,7 +172,7 @@ Deployment, TLS, backups and scaling are covered in [docs/deployment.md](docs/de
 
 ## AI configuration
 
-- **Storage.** `ai_settings` is a singleton platform row holding provider, base URL, model, JSON mode, optional prices (`inputUsdPer1M`, `outputUsdPer1M`) and an encrypted key. The key is AES-256-GCM encrypted with `ENCRYPTION_KEY`.
+- **Storage.** `ai_settings` is a singleton platform row holding provider, base URL, model, JSON mode, optional prices (`inputUsdPer1M`, `outputUsdPer1M`) and an encrypted key. The key is AES-256-GCM encrypted with `ENCRYPTION_KEY` and tagged with that key's id, so the key can be [rotated](docs/deployment.md#rotating-the-encryption-key).
 - **Defaults.** Env `AI_BASE_URL`, `AI_MODEL` and `AI_API_KEY` apply until a super admin saves settings.
 - **Key handling.** The API returns only `keyHint` (for example `AQ….Sf9Q`) and `keySource` (`database | env | none`). An empty key on save keeps the existing one; `DELETE /api/admin/ai/settings/key` removes it.
 - **Test connection.** `POST /api/admin/ai/settings/test` makes a tiny chat-completions call with the unsaved form values, falling back to the stored key.
@@ -228,7 +237,7 @@ Deployment, TLS, backups and scaling are covered in [docs/deployment.md](docs/de
 
 ## Global integrations (`platform`)
 
-- **Storage of settings.** `platform_integrations` holds the super admin's payment gateways, notification providers (SMS, WhatsApp, email, push) and file storage. Secrets are AES-256-GCM encrypted with `ENCRYPTION_KEY`, as AI keys are, and the API returns only hints.
+- **Storage of settings.** `platform_integrations` holds the super admin's payment gateways, notification providers (SMS, WhatsApp, email, push) and file storage. Secrets are AES-256-GCM encrypted with `ENCRYPTION_KEY`, as AI keys are, and the API returns only hints. After a [key rotation](docs/deployment.md#rotating-the-encryption-key), `secrets:reencrypt` moves them to the new key and re-keys the fingerprints of tested settings.
 - **Precedence.** Institute settings come first. An institute's own fee gateway or notification provider is used when it has one; the global configuration is the fallback (`setPlatformFeesGatewayProvider`, `setDefaultMessagingResolver`). SaaS subscription payments always use the global gateways (`setSaasGatewayResolver`). The wiring lives in `platform/integrations.ts`.
 - **Storage driver.** The chosen storage driver is applied to each API and worker process with `setStorage()` and refreshed every 60 seconds.
 
@@ -283,7 +292,7 @@ app/src/
 
 **Offline content** (LMS downloads, app only):
 
-- A download needs an unlocked entitlement for an offline-enabled lecture and an offline licence bound to the device (app only). The licence lasts the lecture's offline hours, capped by the learner's access. The copy is encrypted with AES-256-GCM and its key is kept in secure storage.
+- A download needs an unlocked entitlement for an offline-enabled lecture and an offline licence bound to the device (app only). The licence lasts the lecture's offline hours, capped by the learner's access. The download link lasts 10 minutes and is bound to the device (see [Auth and devices](#auth-and-devices)). The copy is encrypted with AES-256-GCM and its key is kept in secure storage.
 - Each copy belongs to the account that downloaded it. Signing out keeps downloads, but no other account on the device can see or delete them.
 - When online, a copy's licence is checked with the server (server time) before it plays, and when the offline list or the library opens. The server revokes licences whose access ended or whose lecture was unpublished or is no longer offline-enabled; the app deletes copies whose licence was revoked or has expired.
 - Revoking a device revokes its licences. The app deletes the user's copies as soon as it hears of it (401 `SESSION_REVOKED` or `ACCOUNT_INACTIVE` runs every module's `wipeUserData`).

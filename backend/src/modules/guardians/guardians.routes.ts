@@ -74,10 +74,16 @@ export function guardianRoutes(api: Router) {
   const g = Router();
   g.use(authenticate, requireTenant, requireModule('students'));
 
+  /** Branches whose students the user may see (the selected one, if any); null = all. */
+  function visibleBranches(): number[] | null {
+    const { allowedBranchIds, activeBranchId } = requireTenantContext();
+    return activeBranchId ? [activeBranchId] : allowedBranchIds;
+  }
+
   /** Guardians with at least one child in the user's allowed branches. */
   async function visibleGuardianIds(): Promise<number[] | null> {
-    const { instituteId, allowedBranchIds, activeBranchId } = requireTenantContext();
-    const branches = activeBranchId ? [activeBranchId] : allowedBranchIds;
+    const { instituteId } = requireTenantContext();
+    const branches = visibleBranches();
     if (branches === null) return null;
     const links = await StudentGuardian.findAll({
       where: { instituteId },
@@ -87,6 +93,23 @@ export function guardianRoutes(api: Router) {
       attributes: ['guardianId'],
     });
     return [...new Set(links.map((l) => l.guardianId))];
+  }
+
+  /** Guardians' children by id → name, leaving out children in branches the user cannot see. */
+  async function childNames(guardians: Guardian[]): Promise<Map<number, string>> {
+    const { instituteId } = requireTenantContext();
+    const branches = visibleBranches();
+    const ids = [...new Set(guardians.flatMap((r) => (r.links ?? []).map((l) => l.studentId)))];
+    if (!ids.length) return new Map();
+    const students = await Student.findAll({
+      where: {
+        instituteId,
+        id: { [Op.in]: ids },
+        ...(branches ? { branchId: { [Op.in]: branches } } : {}),
+      },
+      attributes: ['id', 'name'],
+    });
+    return new Map(students.map((st) => [st.id, st.name]));
   }
 
   g.get('/', requirePermission('guardians', 'view'), async (req, res) => {
@@ -119,17 +142,11 @@ export function guardianRoutes(api: Router) {
       order: [['name', 'ASC']],
       ...toLimitOffset(q),
     });
-    const studentIds = [...new Set(rows.flatMap((r) => (r.links ?? []).map((l) => l.studentId)))];
-    const students = studentIds.length
-      ? await Student.findAll({
-          where: { instituteId, id: { [Op.in]: studentIds } },
-          attributes: ['id', 'name'],
-        })
-      : [];
-    const names = new Map(students.map((st) => [st.id, st.name]));
+    const names = await childNames(rows);
+    const scoped = visible !== null;
     res.json(
       paginated(
-        rows.map((r) => toGuardianDto(r, names)),
+        rows.map((r) => toGuardianDto(r, names, scoped)),
         count,
         q,
       ),
@@ -146,11 +163,7 @@ export function guardianRoutes(api: Router) {
       include: [{ model: StudentGuardian, as: 'links' }],
     });
     if (!guardian) throw NotFound('Guardian');
-    const ids = (guardian.links ?? []).map((l) => l.studentId);
-    const students = ids.length
-      ? await Student.findAll({ where: { instituteId, id: { [Op.in]: ids } }, attributes: ['id', 'name'] })
-      : [];
-    res.json(toGuardianDto(guardian, new Map(students.map((st) => [st.id, st.name]))));
+    res.json(toGuardianDto(guardian, await childNames([guardian]), visible !== null));
   });
 
   g.patch('/:id', requirePermission('guardians', 'edit'), async (req, res) => {

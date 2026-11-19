@@ -94,9 +94,16 @@ export const MODULE_OWNED_FILE_PURPOSES: ReadonlySet<string> = new Set([
 
 export const isModuleOwnedPurpose = (purpose: string) => MODULE_OWNED_FILE_PURPOSES.has(purpose);
 
-/** Short-lived URL usable directly in <img>/<video>/download links. */
-export function signedUrlFor(file: FileObject, ttlSeconds = config.SIGNED_URL_TTL_SECONDS) {
-  const { token, expiresAt } = signFileToken(file.id, file.instituteId, ttlSeconds);
+/**
+ * Short-lived URL usable directly in <img>/<video>/download links. With `deviceId`, it works only while that
+ * device is signed in (offline downloads).
+ */
+export function signedUrlFor(
+  file: FileObject,
+  ttlSeconds = config.SIGNED_URL_TTL_SECONDS,
+  opts: { deviceId?: number } = {},
+) {
+  const { token, expiresAt } = signFileToken(file.id, file.instituteId, ttlSeconds, opts.deviceId);
   return { url: `${config.API_PUBLIC_URL}/api/files/signed/${token}`, expiresAt };
 }
 

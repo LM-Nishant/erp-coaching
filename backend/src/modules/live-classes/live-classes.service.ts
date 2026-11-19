@@ -23,6 +23,7 @@ import type {
 import { LIVE_SOCKET_NAMESPACE, LIVE_SOCKET_PATH } from '@erp/shared';
 import {
   getStreamingProvider,
+  type JoinTokenClaims,
   type LiveRoom,
   type ProviderRecording,
   type StreamingRole,
@@ -31,8 +32,10 @@ import { logger } from '../../infrastructure/logger';
 import { getContext, hasPermission, requireTenantContext } from '../../shared/context';
 import { audit } from '../../shared/audit/audit.service';
 import { AppError, BadRequest, Conflict, Forbidden, NotFound } from '../../shared/errors';
+import { isDeviceSignedIn } from '../../shared/middleware/authenticate';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { User } from '../users/user.model';
+import { membershipInstituteIds } from '../permissions/access.service';
 import { FileObject } from '../files/file.model';
 import { deleteFile, saveUploadedFile, signedUrlFor } from '../files/files.service';
 import { Batch, BatchStudent, BatchTeacher, ClassSession, getBatchMemberUserIds } from '../academics/api';
@@ -60,7 +63,10 @@ export const ENSURE_RECORDING_JOB = 'live-classes.ensure-recording';
 const COLLECT_DELAY_MS = 15 * 60_000;
 const COLLECT_MAX_ATTEMPTS = 4;
 const WEBHOOK_EVENT_RETENTION_MS = 7 * 24 * 3600_000;
-const JOIN_TOKEN_TTL_SECONDS = 4 * 3600;
+const JOIN_TOKEN_MIN_SECONDS = 15 * 60;
+const JOIN_TOKEN_MAX_SECONDS = 4 * 3600;
+/** A join token outlives the scheduled end by this much, so a class that overruns a little is not cut short. */
+const JOIN_TOKEN_GRACE_SECONDS = 30 * 60;
 const HISTORY_LIMIT = 200;
 
 export const repos = {
@@ -484,7 +490,19 @@ export async function endSession(id: number) {
   return getSessionDto(id);
 }
 
-/** Provider media credentials, only for the class teacher, batch teachers/managers and enrolled students. */
+/**
+ * Seconds a join token lasts: until 30 minutes after the scheduled end, at least 15 minutes and at most 4 hours.
+ * A client renews it with `POST /:id/join` before `expiresAt`; a vendor checks it when a participant connects.
+ */
+export function joinTokenTtlSeconds(scheduledEndAt: Date, now = Date.now()): number {
+  const untilEnd = Math.ceil((scheduledEndAt.getTime() - now) / 1000) + JOIN_TOKEN_GRACE_SECONDS;
+  return Math.min(JOIN_TOKEN_MAX_SECONDS, Math.max(JOIN_TOKEN_MIN_SECONDS, untilEnd));
+}
+
+/**
+ * Provider media credentials, only for the class teacher, batch teachers/managers and enrolled students. The
+ * token is bound to the requesting device (see `verifyJoinCredentials`).
+ */
 export async function joinInfo(id: number): Promise<LiveJoinInfo> {
   const { session, role } = await loadSession(id);
   if (session.status !== 'live') throw Conflict('The class is not live', 'NOT_LIVE');
@@ -494,12 +512,15 @@ export async function joinInfo(id: number): Promise<LiveJoinInfo> {
   const user = await User.findByPk(me(), { attributes: ['id', 'name'] });
   const streamingRole: StreamingRole =
     role === 'host' ? 'host' : role === 'moderator' ? 'moderator' : 'viewer';
+  const { deviceId } = getContext();
+  if (!deviceId) throw Forbidden();
   const creds = await provider.issueJoinToken({
     roomId: session.roomId ?? `live-${id}`,
     userId: me(),
+    deviceId,
     displayName: user?.name ?? '',
     role: streamingRole,
-    ttlSeconds: JOIN_TOKEN_TTL_SECONDS,
+    ttlSeconds: joinTokenTtlSeconds(session.scheduledEndAt),
   });
   return {
     sessionId: id,
@@ -514,6 +535,16 @@ export async function joinInfo(id: number): Promise<LiveJoinInfo> {
     socketNamespace: LIVE_SOCKET_NAMESPACE,
     expiresAt: creds.expiresAt.toISOString(),
   };
+}
+
+/**
+ * Verifies a join token for a media relay or webhook: the adapter's signature and expiry, then that the device it
+ * was issued to is still signed in (null otherwise). Needs an adapter with `verifyJoinToken`.
+ */
+export async function verifyJoinCredentials(token: string): Promise<JoinTokenClaims | null> {
+  const claims = getStreamingProvider().verifyJoinToken?.(token) ?? null;
+  if (!claims) return null;
+  return (await isDeviceSignedIn(claims.deviceId)) ? claims : null;
 }
 
 async function safeNotify(fn: () => Promise<unknown>) {
@@ -572,6 +603,69 @@ export async function setMicPermission(liveSessionId: number, userId: number, al
   }
 }
 
+/** Who joined which live class from which device (a classroom socket, or a device's possible media rooms). */
+export interface MediaSeat {
+  instituteId: number;
+  liveSessionId: number;
+  userId: number;
+  deviceId: number;
+}
+
+/**
+ * Every class live on the media provider in the user's institutes, as seats of `deviceId`: a device that signed
+ * out or was revoked may be connected to any of them, also without a classroom socket. Empty when the provider
+ * cannot remove participants.
+ */
+export async function liveSeatsOf(userId: number, deviceId: number): Promise<MediaSeat[]> {
+  const provider = getStreamingProvider();
+  if (!provider.removeParticipant) return [];
+  const instituteIds = await membershipInstituteIds(userId);
+  if (!instituteIds.length) return [];
+  const live = await LiveSession.findAll({
+    where: { instituteId: instituteIds, status: 'live', provider: provider.name, roomId: { [Op.ne]: null } },
+    attributes: ['id', 'instituteId'],
+  });
+  return live.map((s) => ({ instituteId: s.instituteId, liveSessionId: s.id, userId, deviceId }));
+}
+
+/**
+ * Removes the seats' media connections (vendor SFUs that support it): the user's connection to the class, but only
+ * one that joined with a token issued to the seat's device. Classes that are no longer live on the current
+ * provider are skipped. Runs without a request context (device events, socket re-checks). Returns how many were
+ * removed; after trying every seat, throws the first provider error so a device event job retries.
+ */
+export async function removeFromMedia(seats: MediaSeat[]): Promise<number> {
+  const provider = getStreamingProvider();
+  if (!provider.removeParticipant || !seats.length) return 0;
+  const unique = [...new Map(seats.map((s) => [`${s.liveSessionId}:${s.userId}:${s.deviceId}`, s])).values()];
+  const live = await LiveSession.findAll({
+    where: {
+      instituteId: [...new Set(unique.map((s) => s.instituteId))],
+      id: [...new Set(unique.map((s) => s.liveSessionId))],
+      status: 'live',
+      provider: provider.name,
+      roomId: { [Op.ne]: null },
+    },
+    attributes: ['id', 'instituteId', 'roomId'],
+  });
+  const rooms = new Map(live.map((s) => [`${s.instituteId}:${s.id}`, s.roomId as string]));
+  let removed = 0;
+  let failure: unknown;
+  for (const seat of unique) {
+    const roomId = rooms.get(`${seat.instituteId}:${seat.liveSessionId}`);
+    if (!roomId) continue;
+    try {
+      if (await provider.removeParticipant({ roomId, userId: seat.userId, deviceId: seat.deviceId }))
+        removed++;
+    } catch (err) {
+      failure ??= err;
+      logger.warn({ err, ...seat }, 'Could not remove a device from the live class media room');
+    }
+  }
+  if (failure) throw failure;
+  return removed;
+}
+
 /* ------------------------------------------------------------------ participation */
 
 async function closeInterval(p: LiveParticipant, at = new Date()) {
@@ -606,20 +700,31 @@ export async function markJoined(
   if (socketPresenceIgnored(opts)) return;
   const at = opts.joinedAt ?? opts.at ?? new Date();
   const ref = opts.connectionRef ?? null;
-  const existing = await repos.participants.findOne({ where: { liveSessionId, userId } });
+  let existing = await repos.participants.findOne({ where: { liveSessionId, userId } });
   if (!existing) {
-    await repos.participants.create({
-      liveSessionId,
-      userId,
-      role,
-      firstJoinedAt: at,
-      lastJoinedAt: at,
-      lastLeftAt: null,
-      joinCount: 1,
-      isOnline: true,
-      connectionRef: ref,
-    });
-  } else if (ref && existing.connectionRef === ref) {
+    const created = await repos.participants
+      .create({
+        liveSessionId,
+        userId,
+        role,
+        firstJoinedAt: at,
+        lastJoinedAt: at,
+        lastLeftAt: null,
+        joinCount: 1,
+        isOnline: true,
+        connectionRef: ref,
+      })
+      .then(() => true)
+      .catch((err: unknown) => {
+        // The user's first socket or webhook on another API instance created it at the same moment.
+        if (!(err instanceof UniqueConstraintError)) throw err;
+        return false;
+      });
+    if (created) return;
+    existing = await repos.participants.findOne({ where: { liveSessionId, userId } });
+    if (!existing) return;
+  }
+  if (ref && existing.connectionRef === ref) {
     // A repeated event, or this connection's leave was processed first.
   } else if (existing.isOnline) {
     // A new connection replaced the previous one (reconnect) before that one's leave arrived.

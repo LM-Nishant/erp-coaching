@@ -28,6 +28,7 @@ import type {
   OfflinePaymentMode,
   PaymentGatewayKey,
 } from '@erp/shared';
+import { registerEncryptedColumns } from '../../infrastructure/database/encrypted-columns';
 import { registerTenantModel } from '../../shared/tenancy/tenant-model';
 import { Student } from '../students/api';
 
@@ -577,6 +578,7 @@ export function initFeeModels(sequelize: Sequelize) {
     webhookKey: S(64, false),
     platformManaged: B(false),
   });
+  registerEncryptedColumns(PaymentGatewayConfig, ['secretEncrypted']);
   init(BankAccount, sequelize, 'bank_accounts', {
     branchId: OPT_FK(),
     name: S(120, false),

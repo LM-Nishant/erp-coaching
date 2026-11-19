@@ -1,11 +1,4 @@
 {
   "$comment": "Advisories that fail scripts/audit-check.mjs but were triaged as having no fixed release and not being reachable. Each entry expires so it is re-checked; see docs/security.md › Dependency scanning.",
-  "advisories": [
-    {
-      "id": "GHSA-fc5q-39xc-vjpf",
-      "package": "picomatch",
-      "reason": "ReDoS on crafted glob patterns; no fixed release yet (every version up to 4.0.7, the latest, is affected). Production reaches picomatch only through umzug → tinyglobby, and the API hands umzug an explicit migration list, so no glob is evaluated at runtime and no user input ever becomes a pattern. Dev tooling (vite, vitest, tsup, typescript-eslint, vue-tsc) only globs repository paths. Drop this entry once Dependabot proposes the fixed version.",
-      "expires": "2027-02-15"
-    }
-  ]
+  "advisories": []
 }

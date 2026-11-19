@@ -1176,20 +1176,22 @@ async function afterRefundChanged(refundId: number, outcome: WebhookOutcome) {
   const { instituteId } = requireTenantContext();
   const r = await FeeRefund.findOne({ where: { instituteId, id: refundId } });
   if (!r) return;
+  const p = await FeePayment.findOne({
+    where: { instituteId, id: r.paymentId },
+    include: ['student', 'receipt'],
+  });
   await auditFee({
     action: 'fees.payment.refund.update',
     entityType: 'fee_payment',
     entityId: r.paymentId,
+    // No user acts here, so the payment's branch is the event's branch.
+    branchId: p?.branchId,
     after: { refundId: r.id, amount: r.amount, status: r.status, gatewayRefundId: r.gatewayRefundId },
   });
   if (outcome === 'refund_failed') {
     logger.warn({ instituteId, refundId: r.id, paymentId: r.paymentId }, 'Gateway refund failed');
     return;
   }
-  const p = await FeePayment.findOne({
-    where: { instituteId, id: r.paymentId },
-    include: ['student', 'receipt'],
-  });
   if (p?.student)
     await notifyStudent(
       'fees.refund',

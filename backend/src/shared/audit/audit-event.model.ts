@@ -10,6 +10,8 @@ import {
 export class AuditEvent extends Model<InferAttributes<AuditEvent>, InferCreationAttributes<AuditEvent>> {
   declare id: CreationOptional<number>;
   declare instituteId: number | null;
+  /** Branch the event belongs to; null = institute-wide (or platform) event. */
+  declare branchId: number | null;
   declare actorUserId: number | null;
   declare impersonatorUserId: number | null;
   declare action: string;
@@ -25,6 +27,7 @@ export class AuditEvent extends Model<InferAttributes<AuditEvent>, InferCreation
       {
         id: { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
         instituteId: DataTypes.INTEGER.UNSIGNED,
+        branchId: DataTypes.INTEGER.UNSIGNED,
         actorUserId: DataTypes.INTEGER.UNSIGNED,
         impersonatorUserId: DataTypes.INTEGER.UNSIGNED,
         action: { type: DataTypes.STRING(120), allowNull: false },

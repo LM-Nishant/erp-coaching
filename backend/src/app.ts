@@ -7,6 +7,7 @@ import { logger, redactUrl } from './infrastructure/logger';
 import { readiness } from './infrastructure/health';
 import { contextMiddleware, resolveRequestId } from './shared/middleware/context';
 import { apiRateLimit } from './shared/middleware/security';
+import { jsonBody } from './shared/middleware/body';
 import { errorHandler, notFoundHandler } from './shared/middleware/error-handler';
 import type { ModuleDefinition } from './shared/module';
 
@@ -36,15 +37,7 @@ export function createApp(modules: ModuleDefinition[]) {
       exposedHeaders: ['X-Request-Id', 'Content-Range', 'Accept-Ranges', 'Content-Disposition'],
     }),
   );
-  app.use(
-    express.json({
-      limit: '1mb',
-      // Keep the exact bytes so payment webhooks can verify vendor signatures.
-      verify: (req, _res, buf) => {
-        (req as express.Request).rawBody = buf;
-      },
-    }),
-  );
+  app.use(jsonBody);
   if (!config.isTest)
     app.use(
       pinoHttp({

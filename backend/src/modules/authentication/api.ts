@@ -4,6 +4,12 @@
  *   import { onDeviceRevoked } from '../authentication/api';
  *   onDeviceRevoked('lms.offline', async (e) => revokeOfflineLicencesOf(e.deviceId));
  */
-export { onDeviceRevoked, type DeviceRevokedEvent } from './device-events';
+export {
+  onDeviceRevoked,
+  onDeviceSignedOut,
+  type DeviceRevokedEvent,
+  type DeviceSignedOutEvent,
+} from './device-events';
 export { listUserDevices, revokeDevice, toDeviceDto } from './devices.service';
 export { Device } from './models';
+export { clearSignInLock, confirmAccountPassword, signInLocks } from './sign-in-lock';

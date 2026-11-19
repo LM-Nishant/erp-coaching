@@ -65,6 +65,11 @@ export interface DeviceUserDto {
   email: string | null;
   status: string;
   activeDevices: number;
+  /**
+   * End of the user's sign-in lock after repeated failed attempts (on some device, or for new devices), if
+   * one is running. `DELETE …/users/:id/sign-in-lock` clears it.
+   */
+  signInLockedUntil: string | null;
 }
 
 /** `GET /admin/users` (super admin): platform-wide user search for device management. */

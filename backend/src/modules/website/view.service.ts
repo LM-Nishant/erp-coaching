@@ -43,6 +43,7 @@ export interface LiveSite {
     theme: WebsiteSite['theme'];
     seo: WebsiteSeo;
     indexable: boolean;
+    /** The verified custom domain (an unverified one isn't served). */
     customDomain: string | null;
     baseUrl: string;
     admissionUrl: string;
@@ -89,7 +90,7 @@ export function loadLiveSite(): Promise<LiveSite> {
         theme: site.theme ?? {},
         seo: site.seo ?? {},
         indexable: site.indexable,
-        customDomain: site.customDomain,
+        customDomain: site.verifiedDomain,
         baseUrl: base,
         admissionUrl: admissionUrl(site, inst),
         appUrl: appBaseUrl(site),

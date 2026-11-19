@@ -50,7 +50,11 @@ const grantRepo = new TenantRepository(LmsAccessGrant, { entity: 'Access grant' 
 const MAX_WATCH_DELTA = 120;
 const COMPLETE_AT_PERCENT = 90;
 export const MAX_ACTIVE_OFFLINE_LICENSES = 25;
-const OFFLINE_DOWNLOAD_URL_TTL = 3600;
+/**
+ * Seconds the offline source URL can be opened: the app opens it at once (and asks for a new licence if that
+ * fails), and the download route checks the link only when a download starts, so a long download is not cut off.
+ */
+const OFFLINE_DOWNLOAD_URL_TTL = 600;
 const NATIVE_PLATFORMS = new Set(['android', 'ios']);
 
 export const isStaff = () => hasPermission('lms.edit');
@@ -777,7 +781,8 @@ async function assertNativeDevice() {
 
 /**
  * Issues an offline licence: a per-download AES key the app uses to encrypt its private copy, plus a
- * one-hour signed source URL. The copy stops playing at `expiresAt` (licence hours, capped by access).
+ * 10-minute signed source URL bound to this device (it stops working once the device signs out or is
+ * revoked). The copy stops playing at `expiresAt` (licence hours, capped by access).
  */
 export async function issueOfflineLicense(id: number): Promise<LmsOfflineLicenseDto> {
   const ctx = requireTenantContext();
@@ -822,7 +827,7 @@ export async function issueOfflineLicense(id: number): Promise<LmsOfflineLicense
     contentKey: encryptSecret(key),
     expiresAt,
   });
-  const signed = signedUrlFor(r.file, OFFLINE_DOWNLOAD_URL_TTL);
+  const signed = signedUrlFor(r.file, OFFLINE_DOWNLOAD_URL_TTL, { deviceId: device.id });
   await audit({
     action: 'lms.offline.issued',
     entityType: 'lms_resource',

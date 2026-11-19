@@ -9,8 +9,9 @@ import {
 import { logger } from '../../infrastructure/logger';
 import { getContext, runWithContext } from '../../shared/context';
 import { BadRequest, NotFound, Unauthorized } from '../../shared/errors';
+import { isDeviceSignedIn } from '../../shared/middleware/authenticate';
 import { BatchStudent, BatchTeacher } from '../academics/api';
-import { LiveSession, LiveWebhookEvent } from './models';
+import { LiveParticipant, LiveSession, LiveWebhookEvent } from './models';
 import {
   closeOnlineParticipants,
   ENSURE_RECORDING_JOB,
@@ -90,6 +91,16 @@ async function apply(session: LiveSession, event: StreamingWebhookEvent) {
     case 'participant-left': {
       // Before start and after the end, attendance is closed (endSession closes open visits).
       if (session.status !== 'live') return;
+      if (event.deviceId && !(await isDeviceSignedIn(event.deviceId))) {
+        // A join token outlived its device's sign-in (sign-out, revocation, idle): no media and no visit. A
+        // leave still closes the visit the device opened while it was signed in.
+        if (event.kind === 'participant-joined') return refuseMedia(session, event.userId, event.deviceId);
+        const visit = await LiveParticipant.findOne({
+          where: { instituteId: session.instituteId, liveSessionId: session.id, userId: event.userId },
+          attributes: ['isOnline', 'connectionRef'],
+        });
+        if (!visit?.isOnline || !event.connectionRef || visit.connectionRef !== event.connectionRef) return;
+      }
       const role = await classroomRole(session, event.userId, event.role);
       const opts = {
         source: 'provider' as const,
@@ -122,6 +133,19 @@ async function apply(session: LiveSession, event: StreamingWebhookEvent) {
     default:
       return;
   }
+}
+
+/** Removes a device that is no longer signed in from the media room; throws for a redelivery when that fails. */
+async function refuseMedia(session: LiveSession, userId: number, deviceId: number) {
+  const removed = await getStreamingProvider().removeParticipant?.({
+    roomId: session.roomId as string,
+    userId,
+    deviceId,
+  });
+  logger.info(
+    { liveSessionId: session.id, userId, deviceId, removed },
+    'Removed a media join from a device that is not signed in',
+  );
 }
 
 async function classroomRole(

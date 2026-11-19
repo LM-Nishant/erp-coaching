@@ -45,7 +45,7 @@ The module loader picks up the folder automatically, and the migrator picks up `
 
 ### 3. Tenancy
 
-- **Register the model.** Call `registerTenantModel(Model)` in `initModel`. Any query without `instituteId` then throws, as a safety net.
+- **Register the model.** Call `registerTenantModel(Model)` in `initModel`. Any query without `instituteId` then throws, as a safety net, and so does any write for another institute than the one in context.
 - **Use the repository.** Do all tenant data access through `new TenantRepository(Model, { entity: 'Student', branchScoped: true })`.
   - Use `findAll`, `findById`, `findOne`, `findAndCountAll`, `count`, `create`, `update`, `destroy`, `scope(where)` and `assertBranchAllowed(branchId)`.
 - **Institute-wide rows.** For branch data that may also be institute-wide (`branch_id` NULL, e.g. files, notices), pass `instituteWideRows: true`. Every user of the institute can then read NULL-branch rows, but only institute-level users can change them (`repo.assertRowWritable(row)` is applied by `update`/`destroy`). Rows created by branch-restricted users always get a branch: their active or only branch, otherwise 400 `BRANCH_REQUIRED`.
@@ -103,26 +103,30 @@ Register the public router before the authenticated one when they share a prefix
 
 #### Rate limiters
 
-Every `/api` request passes the app-wide `apiRateLimit`, so authenticated routes need nothing more. Anonymous routes other than `GET` must also use one of the dedicated limiters in `shared/middleware/security.ts`, or `test/security/route-registry.test.ts` fails. Each limiter keeps its own per-IP budget, so one kind of traffic can't use up another's:
+Every `/api` request passes the app-wide `apiRateLimit`, so authenticated routes need nothing more. Anonymous routes other than `GET` must also use one of the dedicated limiters in `shared/middleware/security.ts`, or `test/security/route-registry.test.ts` fails. So must every route under `OWN_LIMITER_PATH` (signed media and the public website), which `apiRateLimit` skips. Each limiter keeps its own budget, per client IP unless noted, so one kind of traffic can't use up another's:
 
-| Limiter               | Use it for                                                                    | Default budget (env)                         |
-| --------------------- | ----------------------------------------------------------------------------- | -------------------------------------------- |
-| `publicFormRateLimit` | anonymous writes from public pages: enquiry forms, checkout, coupons, sign-up | 60 per 15 min (`RATE_LIMIT_PUBLIC_FORM_MAX`) |
-| `authRateLimit`       | password login and OTP request/verify                                         | 30 per 15 min (`RATE_LIMIT_AUTH_MAX`)        |
-| `tokenRateLimit`      | routes whose credential is a refresh token (refresh, logout)                  | 600 per 15 min (`RATE_LIMIT_TOKEN_MAX`)      |
-| `webhookRateLimit`    | payment and provider webhooks; verify the signature in the handler            | 300 per min (`RATE_LIMIT_WEBHOOK_PER_MIN`)   |
-| `deviceRateLimit`     | pushes from hardware authenticated by a device key (biometric punches)        | 120 per min (`RATE_LIMIT_DEVICE_PER_MIN`)    |
-| `admsRateLimit`       | ZKTeco/eSSL devices on `/iclock/*`, identified by serial number (ADMS push)   | 600 per min (`RATE_LIMIT_ADMS_PER_MIN`)      |
-| `mediaRateLimit`      | token-authorised media (signed file URLs, HLS); exempt from `apiRateLimit`    | 3000 per min (`RATE_LIMIT_MEDIA_PER_MIN`)    |
+| Limiter               | Use it for                                                                                                                   | Default budget (env)                               |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `publicFormRateLimit` | anonymous writes from public pages: enquiry forms, checkout, coupons, sign-up                                                | 60 per 15 min (`RATE_LIMIT_PUBLIC_FORM_MAX`)       |
+| `authRateLimit`       | password login and OTP request/verify                                                                                        | 30 per 15 min (`RATE_LIMIT_AUTH_MAX`)              |
+| `tokenRateLimit`      | routes whose credential is a refresh token (refresh, logout)                                                                 | 600 per 15 min (`RATE_LIMIT_TOKEN_MAX`)            |
+| `webhookRateLimit`    | payment and provider webhooks; verify the signature in the handler                                                           | 300 per min (`RATE_LIMIT_WEBHOOK_PER_MIN`)         |
+| `deviceRateLimit`     | pushes from hardware authenticated by a device key (biometric punches)                                                       | 120 per min (`RATE_LIMIT_DEVICE_PER_MIN`)          |
+| `admsRateLimit`       | ZKTeco/eSSL devices on `/iclock/*`, identified by serial number (ADMS push)                                                  | 600 per min (`RATE_LIMIT_ADMS_PER_MIN`)            |
+| `mediaRateLimit`      | token-authorised media (signed file URLs, HLS); exempt from `apiRateLimit`                                                   | 3000 per min (`RATE_LIMIT_MEDIA_PER_MIN`)          |
+| `mediaTokenRateLimit` | the same routes when the URL has a `:token`: counts per token, whatever the IP, so a leaked link can't be replayed at volume | 300 per min (`RATE_LIMIT_MEDIA_PER_TOKEN_PER_MIN`) |
+| `websiteRateLimit`    | public website pages, sitemap, `robots.txt` and redirects (`/api/public/sites`); exempt from `apiRateLimit`                  | 300 per min (`RATE_LIMIT_WEBSITE_PER_MIN`)         |
 
-`apiRateLimit` allows 600 requests per minute per IP (`RATE_LIMIT_API_PER_MIN`). Counters are kept in memory, so each API process counts separately; see [docs/security.md](docs/security.md).
+`apiRateLimit` allows 600 requests per minute per IP (`RATE_LIMIT_API_PER_MIN`). With `REDIS_URL`, the counters live in Redis and every API process shares them; without it, or while Redis is unreachable, each process counts in memory ([docs/deployment.md](docs/deployment.md#rate-limits)). For a counter outside Express, such as one keyed by account, use `windowCounter(name, windowMs)` from `infrastructure/rate-store.ts`: it follows the same Redis-or-memory rule.
 
 ### 5. Request handling
 
 - Validate input with zod using `parse(schema, req.body | req.query | req.params)`. Use `idParam` and the pagination helpers from `shared/utilities`.
 - Throw the helpers from `shared/errors` (`NotFound`, `Forbidden`, `Conflict`, `BadRequest`, `LimitExceeded`). Never `res.status(500)` by hand. Express 5 forwards async errors on its own.
 - Error shape is always `{ error: { code, message, details? } }`. List endpoints return `{ items, total, page, pageSize }`.
-- Call `audit({ action: 'students.create', entityType: 'Student', entityId, after })` for every create, update, delete, approve or publish of business data. Include `before` for updates and deletes.
+- Call `audit({ action: 'student.updated', entityType: 'student', entityId, branchId, metadata })` for every create, update, delete, approve or publish of business data. Put what changed in `metadata` (`before` and `after`, or the changed fields).
+  - Pass the row's `branchId`, or `null` for institute-wide data. Branch-restricted users see only their branches' events in the audit log, and `null` events show only to users with access to every branch.
+  - Without `branchId`, it comes from `metadata` (`after`, `before` or top level), else from a branch-restricted actor's selected or only branch, else `null`.
 - Check plan limits with `assertWithinLimit(instituteId, 'maxStudents', currentCount)` before creating limited entities.
 - **Raw SQL dates.** In `sequelize.query(sql, { replacements })`, Sequelize formats a `Date` in the server's local time and ignores the `timezone: '+00:00'` option. Pass UTC strings such as `'2026-01-01 00:00:00'`, or use model queries, which convert correctly.
 
@@ -141,6 +145,8 @@ Every `/api` request passes the app-wide `apiRateLimit`, so authenticated routes
   - Register the handler in the module's `jobs` map.
   - Handlers run with the job's tenant context.
   - Jobs left `running` after a crash are reclaimed automatically (lock older than the lease → back to pending, or failed when out of attempts). If a job owns a status row (like report exports), use `registerJobFailureHandler` to mark it failed when the job finally fails.
+- **Passwords**: `hashPassword()` and `verifyPassword()` from `infrastructure/password.ts` (scrypt on libuv's thread pool). Never call bcrypt or `crypto.scrypt` yourself. When `verifyPassword` returns `needsRehash`, save a new hash once the sign-in succeeds.
+- **Stored secrets**: encrypt with `encryptSecret()` from `infrastructure/crypto.ts` into a column named `*Encrypted`, and register it next to the model with `registerEncryptedColumns(Model, ['fooEncrypted'])` (`infrastructure/database/encrypted-columns.ts`), so `npm run secrets:reencrypt` moves it to a new key ([rotation](docs/deployment.md#rotating-the-encryption-key)). `test/secrets-rotation.test.ts` fails for an unregistered `*Encrypted` attribute.
 - **Provider secrets**: provider test and save endpoints must not reuse a stored API key when a field that decides where it is sent (provider, base URL, host, endpoint, bucket) changes; check with `shared/utilities/secret-reuse.ts` (400 `SECRET_REQUIRED`).
 - **Links**: links into the web app use `webAppBaseUrl()` (`shared/public-urls.ts`, `PUBLIC_WEB_URL`); links to API-served resources use `API_PUBLIC_URL`. Never build links from `CORS_ORIGINS`.
 - **PDFs**: measure text with `shared/pdf-metrics.ts` (real Helvetica widths) when right-aligning or wrapping.
@@ -226,7 +232,7 @@ Current wiring:
 | students, hr → subscriptions                      | `<module>/integrations.ts`      | `registerUsageCounter('students' \| 'teachers')`: billable seats for usage snapshots, counted with the same rule as their plan-limit checks                                                                                                                              |
 | students → branches                               | `students/integrations.ts`      | `registerBranchClosureGuard`: a branch with active or suspended students can't be closed until they are transferred                                                                                                                                                      |
 | subscriptions → every tenant request              | `subscriptions/index.ts`        | `addTenantRequestGuard('subscription-access')`: 402 `SUBSCRIPTION_RESTRICTED` / `SUBSCRIPTION_SUSPENDED` once the grace period ends (see ARCHITECTURE.md)                                                                                                                |
-| authentication → live-classes (events)            | `live-classes/integrations.ts`  | `onDeviceRevoked('live-classes.sockets')` disconnects the revoked device's live-class sockets                                                                                                                                                                            |
+| authentication → live-classes (events)            | `live-classes/integrations.ts`  | `onDeviceRevoked('live-classes.sockets')` and `onDeviceSignedOut('live-classes.sockets')` drop the device's live-class sockets and media connections (`removeParticipant`); a sign-out is skipped if the device has signed in again                                      |
 
 Identity note: academics rosters and grievances key students by **login user id**; students/guardians use `students.id` (`students.user_id` is nullable — siblings sharing a mobile have no login). Use `getStudentUserId`, `getLinkedStudentUsers`, `getGuardianUserIdsForStudentUsers` from `guardians/guardian-access` to convert.
 
@@ -339,12 +345,15 @@ Set a per-checkout `TEST_DB_NAME` in `backend/.env` (e.g. `erp_coaching_test_<mo
 | `9454…`          | `release-readiness.test.ts`                                                                                                                    |
 | `9458…`          | load runs (`load/`)                                                                                                                            |
 | `9459…`          | browser E2E (`e2e/`)                                                                                                                           |
+| `950…`           | security hardening: `security-hardening.test.ts` 9500, `auth-hardening.test.ts` 9501, `live-sockets.test.ts` 9502                              |
 | `951…`           | messaging vendors: adapters, delivery webhooks, OTP through the platform provider                                                              |
 | `952…`           | `payment-gateways.test.ts` (payment gateway flows)                                                                                             |
 | `954…`           | `livekit-streaming.test.ts`                                                                                                                    |
 | `955…`           | `biometric-adms.test.ts`                                                                                                                       |
 | `956…`           | `tally.test.ts` (Tally accounting export)                                                                                                      |
 | `957…`           | `promotion-fees.test.ts`                                                                                                                       |
+
+**Redis.** The backend runs without Redis. Tests that need two API instances sharing Redis (`live-sockets.test.ts`, `rate-store.test.ts`) run only when `TEST_REDIS_URL` is set in the shell, for example `TEST_REDIS_URL=redis://127.0.0.1:6379 npm test -w backend`, and are skipped otherwise. The `backend-tests` CI job sets it. They use their own key prefixes and delete their keys, so any local Redis will do; don't point it at a production Redis.
 
 Commands:
 
@@ -462,7 +471,7 @@ To add a new slot, extend `WidgetSlotProps` in `core/modules.ts` with the slot's
 | ---------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
 | `quality`        | lint, format, typecheck and build of every workspace                                                   | `npm run lint && npm run format:check && npm run typecheck && npm run build`                                   |
 | `app-tests`      | shared package and app unit tests                                                                      | `npm run test -w app`                                                                                          |
-| `backend-tests`  | the backend suite against MySQL 8.4; nightly also in reverse and shuffled file order                   | `npm test -w backend`; repeat a shuffled order with `TEST_FILE_SEED` from the job log                          |
+| `backend-tests`  | the backend suite against MySQL 8.4 and Redis; nightly also in reverse and shuffled file order         | `npm test -w backend`; repeat a shuffled order with `TEST_FILE_SEED` from the job log                          |
 | `audit`          | known vulnerabilities in dependencies                                                                  | `node scripts/audit-check.mjs`                                                                                 |
 | `secrets`        | credentials anywhere in the git history (gitleaks)                                                     | `gitleaks git --redact .`                                                                                      |
 | `e2e`            | the browser workflows against MySQL 8.4                                                                | `npm run e2e`                                                                                                  |

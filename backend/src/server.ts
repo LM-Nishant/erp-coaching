@@ -5,6 +5,7 @@ import { logger } from './infrastructure/logger';
 import { captureError, getErrorTracker } from './infrastructure/error-tracking';
 import { startJobWorker, stopJobWorker } from './infrastructure/jobs/queue';
 import { closeSequelize } from './infrastructure/database/sequelize';
+import { closeRedis } from './infrastructure/redis';
 
 process.on('unhandledRejection', (reason) => {
   logger.error({ err: reason }, 'unhandled promise rejection');
@@ -37,6 +38,7 @@ async function main() {
     stopJobWorker();
     server.close();
     await closeSequelize();
+    await closeRedis();
     await getErrorTracker().flush();
     process.exit(0);
   };

@@ -785,14 +785,21 @@ describe('vendor messaging', () => {
     expect(verified.status).toBe(200);
     expect(verified.body).toMatchObject({ status: 'authenticated', accessToken: expect.any(String) });
 
-    // A vendor outage is a plain 503 that names no vendor.
+    // A vendor outage answers a login OTP request as usual, so it doesn't reveal that the number has an
+    // account (docs/security.md); the operator gets the error. A new-device code answers 503.
     httpOverride = (call) =>
       call.url.hostname === 'api.twilio.com'
         ? { status: 500, body: { code: 20500, message: 'Internal Server Error', status: 500 } }
         : undefined;
+    const sent = calls.length;
     const down = await request(app).post('/api/auth/otp/request').send({ mobile: ADMIN_MOBILE, device });
-    expect(down.status).toBe(503);
-    expect(down.body.error.code).toBe('MESSAGE_NOT_SENT');
+    expect(calls.slice(sent).some((c) => c.url.hostname === 'api.twilio.com')).toBe(true);
+    expect(down.status).toBe(200);
+    expect(down.body).toMatchObject({
+      status: 'otp_required',
+      reason: 'otp_login',
+      challengeId: expect.any(String),
+    });
     expect(JSON.stringify(down.body)).not.toMatch(/twilio/i);
   });
 

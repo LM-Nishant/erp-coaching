@@ -40,6 +40,8 @@ const testEnv = {
   SESSION_IDLE_TIMEOUT_MINUTES: '0',
   STORAGE_LOCAL_ROOT: `./tmp/test-storage/${dbName}`,
   AI_API_KEY: '',
+  // Cheap password hashes; production defaults to 15 (see config).
+  PASSWORD_HASH_COST: '10',
 };
 Object.assign(process.env, testEnv);
 

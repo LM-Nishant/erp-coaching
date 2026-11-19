@@ -29,8 +29,16 @@ Socket.IO is attached through the generic `attachServer(server)` module hook (`s
   (`403 LIVE_NOT_ENTITLED`). The default allows. Fees registers it so a course with an active fee structure needs the
   fee entitlement or an LMS manual grant.
 - Everyone else gets 404. Join tokens (`POST /:id/join`) are issued only to these roles while the session is `live`.
+  A join token is bound to the device that asked for it and lasts until 30 minutes after the scheduled end (at least
+  15 minutes, at most 4 hours; LiveKit's last 15 minutes and LiveKit renews them while connected). Clients ask for a
+  new one before `expiresAt`.
 - The socket handshake reuses the HTTP `authenticate` middleware (access token + `branchId`), so tenant, branch,
-  device-session and module checks are identical to REST. Every room action re-checks the role.
+  device-session and module checks are identical to REST. A device that signed out is refused (`401 SIGNED_OUT`) even
+  though its access token has not expired yet. Every room action re-checks the role.
+- Open sockets are re-checked every minute and when the institute's subscription or status changes: a revoked, idle or
+  signed-out device, an inactive user or institute, a suspended subscription or a lost permission drops them. A device
+  that signs out or is revoked is dropped within seconds by the device event's job (`dropDevice` in `realtime.ts`):
+  its sockets, and its connections to the provider's media rooms.
 
 ## Dev WebRTC transport (default, no vendor keys)
 
@@ -61,8 +69,11 @@ LiveKit Cloud) and signs join tokens with per-role grants. LiveKit's signed webh
 `POST /api/live-classes/public/livekit/webhook` (`provider-webhooks.ts`): participant joins and leaves become
 `live_participants` rows (source `provider`), `room_finished` closes open visits, and `egress_ended` enqueues
 `live-classes.import-recording`. Events are idempotent through `live_webhook_events`. Mic grants call
-`setParticipantPublish` (LiveKit `UpdateParticipant`). The app uses `livekit-client` (`useLiveKitMedia.ts`) for
-`transport: 'vendor-sdk'`. Setup, ports and operations: [docs/integrations/live-streaming.md](../../../../docs/integrations/live-streaming.md).
+`setParticipantPublish` (LiveKit `UpdateParticipant`). Join tokens carry the device id in the participant metadata
+(`{ role, deviceId }`; the identity is `user-<id>`). `removeParticipant` (LiveKit `GetParticipant`, then
+`RemoveParticipant` if the metadata names that device) drops a device's connection, and the webhook removes a join
+reported from a device that is no longer signed in (`isDeviceSignedIn`) without recording it. The app uses
+`livekit-client` (`useLiveKitMedia.ts`) for `transport: 'vendor-sdk'`. Setup, ports and operations: [docs/integrations/live-streaming.md](../../../../docs/integrations/live-streaming.md).
 
 ## Plugging in another provider (100ms, Agora, Jitsi…)
 
@@ -71,7 +82,15 @@ LiveKit Cloud) and signs join tokens with per-role grants. LiveKit's signed webh
    - `transport = 'vendor-sdk'`.
    - `createRoom`: create the vendor room.
    - `issueJoinToken`: mint a vendor token with publish rights for `host`/`speaker` and subscribe-only for `viewer`, and
-     return the SFU `url`.
+     return the SFU `url`. Use `ttlSeconds` as given (or a shorter cap if the vendor renews tokens of connected
+     participants), and put `deviceId` in the participant identity or metadata the participant can't change.
+   - `removeParticipant` (optional, but without it a vendor connection lasts until it leaves or the class ends):
+     vendors check the token only when a participant connects, so implement it to disconnect the user's connection
+     made with a token of `deviceId`. `dropDevice` calls it when the device signs out or is
+     revoked, and the socket re-check for the seats of the sockets it drops. Report `deviceId` on webhook participant
+     events too, so joins from signed-out devices are refused.
+   - `verifyJoinToken` (optional): check the signature and expiry of a token the adapter issued. A media relay or
+     webhook calls `verifyJoinCredentials` (from `api.ts`), which also checks that the device is still signed in.
    - `startRecording`: start vendor egress/composite recording and return `{ mode: 'provider' }`.
    - `endRoom`: close the room and return finished files as `ProviderRecording` (`ref` is used for idempotency).
    - Optional: `setParticipantPublish` (live mic grants), `reportsPresence` + `parseWebhook` (attendance and
@@ -84,8 +103,9 @@ LiveKit Cloud) and signs join tokens with per-role grants. LiveKit's signed webh
    the vendor signature): the public route `/api/live-classes/public/:provider/webhook` applies the returned events
    idempotently.
 4. App: `LiveRoomPage.vue` checks `joinInfo.transport`. For `vendor-sdk`, mount the vendor SDK component with
-   `joinInfo.url` + `joinInfo.token` in place of `useTeacherMedia`/`useViewerMedia`. Chat, Q&A, polls, hands, whiteboard
-   and attendance still use the live socket, and mic grants map to the vendor's publish permission.
+   `joinInfo.url` + `joinInfo.token` in place of `useTeacherMedia`/`useViewerMedia`, and fetch new credentials before
+   `joinInfo.expiresAt` so reconnects keep working. Chat, Q&A, polls, hands, whiteboard and attendance still use the
+   live socket, and mic grants map to the vendor's publish permission.
 
 ## Socket protocol
 

@@ -67,11 +67,13 @@ export interface LiveJoinInfo {
   /** `socket-webrtc`: media is negotiated peer-to-peer over the live socket (dev adapter). `vendor-sdk`: use `url` + `token` with the vendor SDK. */
   transport: 'socket-webrtc' | 'vendor-sdk';
   roomId: string;
+  /** Bound to the device that asked for it: it stops working once that device signs out or is revoked. */
   token: string;
   url: string | null;
   iceServers: { urls: string | string[]; username?: string; credential?: string }[];
   socketPath: string;
   socketNamespace: string;
+  /** When `token` expires: 30 minutes after the scheduled end (15 minutes to 4 hours away). Ask again before then. */
   expiresAt: string;
 }
 
