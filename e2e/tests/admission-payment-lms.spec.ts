@@ -2,15 +2,17 @@
  * Spec §7 — Admission → online fee payment (mock gateway) → LMS access.
  *
  * Setup (API, institute admin): a course and batch, an active ₹12,000 one-time course fee
- * structure, the mock payment gateway, a published paid lecture, and a pending application.
- * Browser: the admin admits the applicant (the fee account follows from the structure); the new
- * student signs in with a mobile OTP and finds the lecture locked, pays through the mock checkout
- * (a declined attempt first, then a successful one) and can then open the lecture. Replaying the
- * gateway's signed result must not post the payment twice.
+ * structure, the mock payment gateway, a published paid lecture, and a pending application taken
+ * with a misspelt name and no batch.
+ * Browser: the admin corrects the application and picks the batch, then admits the applicant into
+ * it (the fee account follows from the structure); the new student signs in with a mobile OTP and
+ * finds the lecture locked, pays through the mock checkout (a declined attempt first, then a
+ * successful one) and can then open the lecture. Replaying the gateway's signed result must not
+ * post the payment twice.
  */
 import { expect, test } from '../support/fixtures';
 import { createBatch, createInstitute, uniqueMobile } from '../support/data';
-import { actionSheet, activePage, expectToast, modal, signInWithOtp } from '../support/ui';
+import { actionSheet, activePage, chooseOption, expectToast, modal, signInWithOtp } from '../support/ui';
 
 const FEE_PAISE = 1_200_000;
 const FEE = '₹12,000.00';
@@ -57,17 +59,51 @@ test('admission → mock gateway fee payment → paid LMS lecture unlocks', asyn
   });
   await api.post(`/lms/resources/${lecture.id}/publish`);
   const applicant = { name: 'Aarav Applicant', mobile: uniqueMobile() };
-  await api.post('/admissions/applications', { ...applicant, batchId: batch.batchId });
+  // Taken at the front desk with a misspelt name and no batch yet.
+  const misspelt = 'Aarav Aplicant';
+  await api.post('/admissions/applications', { ...applicant, name: misspelt });
 
-  const studentId = await test.step('admin admits the applicant', async () => {
+  await test.step('admin corrects the name and picks the batch on the application', async () => {
+    const page = await openAs(institute.admin, '/admissions/applications');
+    const list = activePage(page);
+    await list
+      .locator('ion-item')
+      .filter({ hasText: misspelt })
+      .getByRole('button', { name: `Actions for ${misspelt}` })
+      .click();
+    await actionSheet(page).getByRole('button', { name: 'Edit details' }).click();
+    const edit = modal(page);
+    await expect(edit.getByText('Edit application')).toBeVisible();
+    await edit.getByLabel('Name *', { exact: true }).fill(applicant.name);
+    await chooseOption(
+      edit.locator('ion-select').filter({ hasText: 'Batch (enrolled on admission)' }),
+      `${batch.batchName} (B-`,
+    );
+    // A batch belongs to one course, so choosing it chooses the course too.
+    await expect(edit.locator('ion-select').filter({ hasText: 'Course' })).toContainText(batch.courseName);
+    await edit.getByRole('button', { name: 'Save changes' }).click();
+    await expectToast(page, 'Application updated');
+    await expect(list.locator('ion-item').filter({ hasText: applicant.name })).toContainText(
+      `${batch.courseName} · ${batch.batchName}`,
+    );
+  });
+  const studentId = await test.step('admin admits the applicant into the chosen batch', async () => {
     const page = await openAs(institute.admin, '/admissions/applications');
     const row = activePage(page).locator('ion-item').filter({ hasText: applicant.name });
     await expect(row.getByText('Pending')).toBeVisible();
-    // The row's actions button is icon-only (no accessible name).
-    await row.locator('ion-button').click();
+    await row.getByRole('button', { name: `Actions for ${applicant.name}` }).click();
     await actionSheet(page).getByRole('button', { name: 'Admit as student' }).click();
+    // The application's batch is open with free seats, so it is offered and already chosen.
+    const admit = modal(page);
+    await expect(
+      admit.getByRole('radio', { name: new RegExp(`^${batch.batchName} · from .* · 50 seats left$`) }),
+    ).toBeChecked();
+    await expect(admit.getByRole('radio', { name: /^No batch/ })).not.toBeChecked();
+    await admit.getByRole('button', { name: 'Admit', exact: true }).click();
     await expectToast(page, `Admitted ${applicant.name} (`);
     await expect(page).toHaveURL(/\/students\/\d+$/);
+    const roster = await api.get<{ status: string }[]>(`/academics/batches/${batch.batchId}/students`);
+    expect(roster).toEqual([expect.objectContaining({ status: 'active' })]);
     return Number(new URL(page.url()).pathname.split('/').pop());
   });
 

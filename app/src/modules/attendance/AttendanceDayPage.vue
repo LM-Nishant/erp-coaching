@@ -1,7 +1,10 @@
 <template>
   <AppPage title="Take attendance" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'attendance.view'" router-link="/attendance/requests"
+      <ion-button
+        v-can="'attendance.view'"
+        router-link="/attendance/requests"
+        aria-label="Attendance requests"
         ><ion-icon slot="icon-only" :icon="documentTextOutline"
       /></ion-button>
     </template>

@@ -38,7 +38,13 @@
 
     <div v-if="pages.length" class="thumbs">
       <div v-for="(p, i) in pages" :key="p.id" class="thumb">
-        <a :href="p.url" target="_blank" rel="noopener" class="thumb-img">
+        <a
+          :href="p.url"
+          target="_blank"
+          rel="noopener"
+          class="thumb-img"
+          :aria-label="`Open page ${p.pageNo}`"
+        >
           <img v-if="!broken[p.id]" :src="p.url" :alt="`Page ${p.pageNo}`" @error="broken[p.id] = true" />
           <ion-icon v-else :icon="documentOutline" class="doc-icon" />
         </a>

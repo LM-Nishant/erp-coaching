@@ -65,6 +65,7 @@ import { cloudDownloadOutline, downloadOutline } from 'ionicons/icons';
 import type { LmsLearnerResourceDto, LmsPlaybackDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import SecureView from '@/components/SecureView.vue';
+import { openFileLink } from '@/core/downloads';
 import { hlsPlayable, useVideoSource, type VideoSource } from '@/core/hls';
 import { useSessionHold } from '@/core/idle';
 import { toast, toastError } from '@/core/toast';
@@ -233,7 +234,7 @@ async function markComplete() {
 async function download() {
   try {
     const { url } = await lmsApi.download(id.value);
-    window.open(url, '_blank', 'noopener');
+    openFileLink(url);
   } catch (e) {
     await toastError(e);
   }

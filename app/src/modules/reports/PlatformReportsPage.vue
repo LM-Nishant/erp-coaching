@@ -48,8 +48,9 @@ import { IonButton, IonIcon, IonProgressBar } from '@ionic/vue';
 import { downloadOutline } from 'ionicons/icons';
 import type { SaasDashboardDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import { saveFile } from '@/core/downloads';
 import { toast, toastError } from '@/core/toast';
-import { reportsApi, saveFile } from './api';
+import { reportsApi } from './api';
 import MetricGrid from './components/MetricGrid.vue';
 import ReportFilters from './components/ReportFilters.vue';
 import ReportTable from './components/ReportTable.vue';
@@ -116,8 +117,7 @@ async function exportOverview() {
   try {
     const file = await reportsApi.saasExport(format, period());
     const name = file.fileName ?? saasExportFileName(dash.value, format);
-    const savedTo = await saveFile(file.blob, name);
-    await toast(savedTo ? `Saved ${name} to Documents` : `Downloaded ${name}`);
+    if ((await saveFile(file.blob, name)) === 'downloaded') await toast(`Downloaded ${name}`);
   } catch (e) {
     void toastError(e);
   } finally {

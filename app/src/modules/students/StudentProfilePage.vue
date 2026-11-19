@@ -1,7 +1,7 @@
 <template>
   <AppPage :title="student?.name ?? 'Student'" back-href="/students" :on-refresh="load">
     <template #actions>
-      <ion-button v-if="student" v-can="'students.edit'" @click="openEdit"
+      <ion-button v-if="student" v-can="'students.edit'" aria-label="Edit student" @click="openEdit"
         ><ion-icon slot="icon-only" :icon="createOutline"
       /></ion-button>
     </template>
@@ -80,7 +80,13 @@
             @click="setLink(g, 'active')"
             >Approve</ion-button
           >
-          <ion-button slot="end" v-can="'guardians.delete'" fill="clear" color="danger" @click="unlink(g)"
+          <ion-button
+            slot="end"
+            v-can="'guardians.delete'"
+            fill="clear"
+            color="danger"
+            :aria-label="`Unlink ${g.name}`"
+            @click="unlink(g)"
             ><ion-icon slot="icon-only" :icon="trashOutline"
           /></ion-button>
         </ion-item>
@@ -105,6 +111,7 @@
             v-can="'students.edit'"
             fill="clear"
             color="danger"
+            aria-label="Delete document"
             @click="removeDocument(d.id)"
             ><ion-icon slot="icon-only" :icon="trashOutline"
           /></ion-button>
@@ -135,6 +142,7 @@
             v-can="'students.edit'"
             fill="clear"
             color="danger"
+            aria-label="Delete academic record"
             @click="removeRecord(r.id)"
             ><ion-icon slot="icon-only" :icon="trashOutline"
           /></ion-button>

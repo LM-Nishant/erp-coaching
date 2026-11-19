@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Fee accounts" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'fees.create'" @click="openCreate"
+      <ion-button v-can="'fees.create'" aria-label="Assign fees" @click="openCreate"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>

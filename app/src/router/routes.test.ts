@@ -11,6 +11,7 @@ describe('pages reachable while the subscription is suspended', () => {
     'select-institute',
     'forbidden',
     'devices',
+    'member-devices',
     'subscription-billing',
     'subscription-suspended',
     'tenant-data',
@@ -19,7 +20,7 @@ describe('pages reachable while the subscription is suspended', () => {
   });
 
   it('keeps institute data pages blocked', () => {
-    for (const name of ['home', 'member-devices', 'students'])
+    for (const name of ['home', 'branches', 'students'])
       expect(routes.find((r) => r.name === name)?.meta?.allowWhenSuspended).toBeFalsy();
   });
 });

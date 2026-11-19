@@ -8,8 +8,8 @@ import type {
   StructureItem,
   WorkUnitType,
 } from '@erp/shared';
-import { API_URL, ApiError, api } from '@/core/api';
-import { loadSession } from '@/core/token-storage';
+import { api } from '@/core/api';
+import { openFileLink, saveFile } from '@/core/downloads';
 import type { Page } from '../hr/api';
 
 export interface SalaryStructure {
@@ -105,26 +105,13 @@ export const payrollApi = {
   myPayslipPdf: (id: number) => api.get<SignedUrl>(`/payroll/me/payslips/${id}/pdf`),
 };
 
-/** Downloads a CSV/Excel export with the session's auth headers and saves it via a Blob link. */
+/** Downloads a CSV/Excel export and saves it (a browser download, or the share sheet on a device). */
 export async function downloadReport(kind: ReportKind, query: Record<string, number>, format: 'csv' | 'xls') {
-  const session = await loadSession();
-  const url = new URL(`${API_URL}/api/payroll/reports/${kind}`);
-  Object.entries({ ...query, format }).forEach(([k, v]) => url.searchParams.set(k, String(v)));
-  const headers: Record<string, string> = {};
-  if (session?.accessToken) headers.Authorization = `Bearer ${session.accessToken}`;
-  if (session?.branchId) headers['X-Branch-Id'] = String(session.branchId);
-  const res = await fetch(url, { headers });
-  if (!res.ok) throw new ApiError(res.status, 'HTTP_ERROR', `Export failed (${res.status})`);
-  const name =
-    /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? `${kind}.${format}`;
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(await res.blob());
-  link.download = name;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  const file = await api.download(`/payroll/reports/${kind}`, { ...query, format });
+  await saveFile(file.blob, file.fileName ?? `${kind}.${format}`);
 }
 
-export const openSigned = (s: SignedUrl) => window.open(s.url, '_blank');
+export const openSigned = (s: SignedUrl) => openFileLink(s.url);
 export const PAY_TYPE_LABELS: Record<PayType, string> = {
   fixed_monthly: 'Fixed monthly',
   per_lecture: 'Per lecture',

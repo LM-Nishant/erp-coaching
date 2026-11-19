@@ -80,6 +80,7 @@ import {
 } from '@ionic/vue';
 import { downloadOutline, trashOutline } from 'ionicons/icons';
 import type { DataExportDto } from '@erp/shared';
+import { openFileLink } from '@/core/downloads';
 import { toast, toastError } from '@/core/toast';
 import {
   EXPORT_STATUS_COLORS,
@@ -87,7 +88,6 @@ import {
   exportDetail,
   exportInProgress,
   formatWhen,
-  openDownload,
   type TenantDataScope,
 } from '../api';
 
@@ -135,7 +135,7 @@ async function start() {
 async function download(x: DataExportDto) {
   busy.value = true;
   try {
-    openDownload((await props.scope.exportLink(x.id)).url);
+    openFileLink((await props.scope.exportLink(x.id)).url);
   } catch (e) {
     await toastError(e);
     await load(true);

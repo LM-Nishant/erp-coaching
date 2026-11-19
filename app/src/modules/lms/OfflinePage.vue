@@ -15,7 +15,13 @@
           <h3>{{ i.title }}</h3>
           <p>{{ formatBytes(i.sizeBytes) }} · expires {{ fmtDateTime(i.expiresAt) }}</p>
         </ion-label>
-        <ion-button slot="end" fill="clear" color="danger" @click.prevent.stop="remove(i)">
+        <ion-button
+          slot="end"
+          fill="clear"
+          color="danger"
+          :aria-label="`Delete ${i.title}`"
+          @click.prevent.stop="remove(i)"
+        >
           <ion-icon slot="icon-only" :icon="trashOutline" />
         </ion-button>
       </ion-item>

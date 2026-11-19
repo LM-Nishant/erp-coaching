@@ -103,7 +103,11 @@
               <ion-button size="small" @click="openPicker(s.id)"
                 ><ion-icon slot="start" :icon="add" />Questions</ion-button
               >
-              <ion-button size="small" fill="clear" @click="renameSection(s)"
+              <ion-button
+                size="small"
+                fill="clear"
+                :aria-label="`Rename ${s.title}`"
+                @click="renameSection(s)"
                 ><ion-icon slot="icon-only" :icon="createOutline"
               /></ion-button>
               <ion-button
@@ -111,6 +115,7 @@
                 size="small"
                 fill="clear"
                 color="danger"
+                :aria-label="`Delete ${s.title}`"
                 @click="removeSection(s.id)"
               >
                 <ion-icon slot="icon-only" :icon="trashOutline" />
@@ -135,11 +140,19 @@
                 fill="clear"
                 size="small"
                 title="Re-copy the latest version from the bank"
+                aria-label="Re-copy the latest version from the bank"
                 @click="refresh(eq.id)"
               >
                 <ion-icon slot="icon-only" :icon="refreshOutline" />
               </ion-button>
-              <ion-button slot="end" fill="clear" size="small" color="danger" @click="removeQuestion(eq.id)">
+              <ion-button
+                slot="end"
+                fill="clear"
+                size="small"
+                color="danger"
+                aria-label="Remove question"
+                @click="removeQuestion(eq.id)"
+              >
                 <ion-icon slot="icon-only" :icon="closeOutline" />
               </ion-button>
             </template>

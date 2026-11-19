@@ -1,10 +1,15 @@
 <template>
   <AppPage :title="bank?.name ?? 'Question bank'" back-href="/question-bank" :on-refresh="reload">
     <template #actions>
-      <ion-button v-can="'question-bank.create'" :router-link="`/question-bank/banks/${bankId}/questions/new`"
+      <ion-button
+        v-can="'question-bank.create'"
+        :router-link="`/question-bank/banks/${bankId}/questions/new`"
+        aria-label="New question"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
-      <ion-button @click="menuOpen = true"><ion-icon slot="icon-only" :icon="ellipsisVertical" /></ion-button>
+      <ion-button aria-label="More actions" @click="menuOpen = true"
+        ><ion-icon slot="icon-only" :icon="ellipsisVertical"
+      /></ion-button>
     </template>
 
     <ion-card v-if="bank">

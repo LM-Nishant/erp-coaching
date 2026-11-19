@@ -1,9 +1,12 @@
 /**
- * Signed download links (invoice PDFs, data exports, report exports) are opened with `window.open`.
- * Instead of chasing a new tab that turns into a download, the specs record the URL the app opens
- * and fetch it over HTTP, so they can check the file itself.
+ * Signed download links (invoice PDFs, data exports) are opened with `openFileLink`, which calls
+ * `window.open` in a browser. Instead of chasing a new tab that turns into a download, the specs
+ * record the URL the app opens and fetch it over HTTP, so they can check the file itself. Files the
+ * app fetches itself (`api.download`, e.g. report exports) go through `saveFile`, which uses an
+ * `<a download>` link in a browser: `savedDownload` captures those.
  */
-import { expect, type APIRequestContext, type APIResponse, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import { expect, type APIRequestContext, type APIResponse, type Page, type Response } from '@playwright/test';
 
 type Trapped = Window & { __e2eOpened?: string[] };
 
@@ -33,4 +36,26 @@ export async function fetchDownload(http: APIRequestContext, url: string): Promi
   const response = await http.get(url, { failOnStatusCode: false });
   expect(response.status(), `GET ${url}`).toBe(200);
   return response;
+}
+
+/**
+ * Runs `trigger`, which makes the app fetch a file from a URL matching `url` and save it, and
+ * returns the API response (for its headers) and the file the browser saved.
+ */
+export async function savedDownload(
+  page: Page,
+  url: RegExp,
+  trigger: () => Promise<unknown>,
+): Promise<{ response: Response; fileName: string; text: string }> {
+  const [response, download] = await Promise.all([
+    page.waitForResponse((r) => url.test(r.url()) && r.request().method() === 'GET'),
+    page.waitForEvent('download'),
+    trigger(),
+  ]);
+  expect(response.status(), `GET ${response.url()}`).toBe(200);
+  return {
+    response,
+    fileName: download.suggestedFilename(),
+    text: await readFile(await download.path(), 'utf8'),
+  };
 }

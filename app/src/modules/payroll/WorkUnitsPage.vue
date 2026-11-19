@@ -24,6 +24,7 @@
           v-can="'payroll.delete'"
           fill="clear"
           color="danger"
+          aria-label="Delete work unit"
           @click="remove(u.id)"
         >
           <ion-icon slot="icon-only" :icon="trashOutline" />
