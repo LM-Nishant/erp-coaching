@@ -166,9 +166,12 @@ Format rules:
 | `TLS_SELF_SIGNED_FALLBACK`                                                                                                                                               | Keep it `true` only until the first real certificate is installed ([TLS](#tls-certificates))                                                                                                                      |
 | `SPA_CSP_MODE`, `SPA_CSP_REPORT_URI`                                                                                                                                     | Content Security Policy of the web app ([security headers](#web-app-security-headers))                                                                                                                            |
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`                                                                                                                                      | Application database and user. The `mysql` container creates them on its first start only; later edits don't change MySQL ([rotation](#rotating-secrets))                                                         |
-| `JWT_ACCESS_SECRET`, `ENCRYPTION_KEY`, `FILE_URL_SECRET`                                                                                                                 | Required: in production the API refuses to start without them ([secrets](#secrets))                                                                                                                               |
+| `JWT_ACCESS_SECRET`, `ENCRYPTION_KEY`, `FILE_URL_SECRET`, `OTP_HASH_SECRET`                                                                                              | Required: in production the API refuses to start without them ([secrets](#secrets))                                                                                                                               |
+| `ENCRYPTION_PREVIOUS_KEYS`                                                                                                                                               | Only while [rotating the encryption key](#rotating-the-encryption-key): the earlier keys, comma separated                                                                                                         |
 | `LOG_LEVEL`                                                                                                                                                              | `info` by default; `debug` for troubleshooting                                                                                                                                                                    |
 | `ACCESS_TOKEN_TTL_SECONDS`, `REFRESH_TOKEN_TTL_DAYS`, `IMPERSONATION_TTL_SECONDS`, `OTP_TTL_SECONDS`, `OTP_MAX_ATTEMPTS`, `MAX_ACTIVE_DEVICES`, `SIGNED_URL_TTL_SECONDS` | Session, OTP, device and signed-URL limits                                                                                                                                                                        |
+| `OTP_REQUESTS_PER_MOBILE`, `LOGIN_LOCKOUT_THRESHOLD`, `LOGIN_LOCKOUT_BASE_SECONDS`, `LOGIN_LOCKOUT_MAX_SECONDS`                                                          | OTP requests per mobile number in 10 minutes, and the [sign-in locks](#sign-in-locks)                                                                                                                             |
+| `PASSWORD_HASH_COST`, `UV_THREADPOOL_SIZE`                                                                                                                               | Password hashing: the scrypt cost of new hashes (15 to 18; each step doubles the time and memory) and the threads that run it ([scaling](#scaling))                                                               |
 | `MAX_UPLOAD_MB`                                                                                                                                                          | The API's upload limit. nginx accepts `MAX_UPLOAD_MB` + 10 MB per request                                                                                                                                         |
 | `ERROR_TRACKING_PROVIDER`, `ERROR_TRACKING_WEBHOOK_URL`                                                                                                                  | [Error tracking](#error-tracking)                                                                                                                                                                                 |
 | `RATE_LIMIT_*`                                                                                                                                                           | [Rate limiting](#rate-limiting-behind-the-proxy)                                                                                                                                                                  |
@@ -176,6 +179,7 @@ Format rules:
 | `JOBS_WORKER_ENABLED`, `JOBS_POLL_INTERVAL_MS`                                                                                                                           | [Background jobs](#background-jobs)                                                                                                                                                                               |
 | `AI_BASE_URL`, `AI_MODEL`, `AI_API_KEY`, `AI_TIMEOUT_MS`                                                                                                                 | Defaults for the AI features; the Super Admin can override them in the app                                                                                                                                        |
 | `SMS_PROVIDER`, `WHATSAPP_PROVIDER`, `EMAIL_PROVIDER`, `PUSH_PROVIDER`, `PAYMENT_GATEWAY`, `STREAMING_PROVIDER`, `BIOMETRIC_PROVIDER`                                    | Integration adapters. This release only has `console` and `mock` implementations ([before going live](#before-going-live))                                                                                        |
+| `BIOMETRIC_PUSH_MAX_KB`                                                                                                                                                  | Largest biometric device push the API reads: 256 KB by default, at most 1024                                                                                                                                      |
 | `SEED_SUPERADMIN_MOBILE`, `SEED_SUPERADMIN_PASSWORD`, `SEED_DEMO_DATA`                                                                                                   | First deployment only ([seeding](#first-deployment))                                                                                                                                                              |
 | `BACKUP_HOST_DIR`, `BACKUP_KEEP_COUNT`, `BACKUP_KEEP_DAYS`, `BACKUP_UID`, `BACKUP_GID`                                                                                   | [backup-restore.md](backup-restore.md)                                                                                                                                                                            |
 
@@ -189,7 +193,8 @@ The compose file sets the following for the API itself, overriding any value in 
 - `PUBLIC_WEB_URL=$PUBLIC_WEB_URL`, or `$PUBLIC_URL` when blank (also for `migrate`: the API refuses to start in
   production without it);
 - `CORS_ORIGINS=$PUBLIC_URL,$CORS_EXTRA_ORIGINS`;
-- `REDIS_URL=$REDIS_URL`, or `redis://redis:6379` when blank.
+- `REDIS_URL=$REDIS_URL`, or `redis://redis:6379` when blank;
+- `UV_THREADPOOL_SIZE=$UV_THREADPOOL_SIZE`, or 4 when blank.
 
 The image sets `NODE_ENV=production` and `APP_VERSION`.
 
@@ -234,13 +239,14 @@ Relative paths are relative to `deploy/`. `ERP_ENV_FILE` names the env file that
 
 ### Secrets
 
-| Secret                        | Generate with                                | Purpose                                                                                                                                                                          |
-| ----------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DB_PASSWORD`                 | `openssl rand -hex 24`                       | MySQL password of `DB_USER`                                                                                                                                                      |
-| `secrets/mysql_root_password` | `openssl rand -hex 32`                       | MySQL root password, used by `backup` and `restore`. MySQL reads it only on the first start of an empty `mysql-data` volume                                                      |
-| `JWT_ACCESS_SECRET`           | `openssl rand -base64 48`                    | Signs access tokens and live-class join tokens                                                                                                                                   |
-| `ENCRYPTION_KEY`              | `openssl rand -base64 32` (exactly 32 bytes) | Encrypts stored integration credentials: AI keys, payment and notification settings, offline LMS keys. **It is not in the backups.** Without it, those values can't be decrypted |
-| `FILE_URL_SECRET`             | `openssl rand -hex 32`                       | Signs short-lived file and media URLs                                                                                                                                            |
+| Secret                        | Generate with                                | Purpose                                                                                                                                                                                                                     |
+| ----------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DB_PASSWORD`                 | `openssl rand -hex 24`                       | MySQL password of `DB_USER`                                                                                                                                                                                                 |
+| `secrets/mysql_root_password` | `openssl rand -hex 32`                       | MySQL root password, used by `backup` and `restore`. MySQL reads it only on the first start of an empty `mysql-data` volume                                                                                                 |
+| `JWT_ACCESS_SECRET`           | `openssl rand -base64 48`                    | Signs access tokens and live-class join tokens                                                                                                                                                                              |
+| `ENCRYPTION_KEY`              | `openssl rand -base64 32` (exactly 32 bytes) | Encrypts stored integration credentials: AI keys, payment and notification settings, offline LMS keys. **It is not in the backups.** Without it, those values can't be decrypted ([rotation](#rotating-the-encryption-key)) |
+| `FILE_URL_SECRET`             | `openssl rand -hex 32`                       | Signs short-lived file and media URLs                                                                                                                                                                                       |
+| `OTP_HASH_SECRET`             | `openssl rand -hex 32`                       | Keys the stored OTP codes, the OTP counters per mobile number and the sign-in locks of unregistered numbers and emails                                                                                                      |
 
 - **Where secrets live:**
   - on the server, only in `deploy/.env` and `deploy/secrets/` (mode 600, owned by root or the deploy user);
@@ -270,8 +276,43 @@ Relative paths are relative to `deploy/`. `ERP_ENV_FILE` names the env file that
   apps renew their sessions without asking users to sign in.
 - **`FILE_URL_SECRET`:** set the new value and run `docker compose up -d --wait`. Only signed URLs from the last
   `SIGNED_URL_TTL_SECONDS` become invalid.
-- **`ENCRYPTION_KEY`:** can't be rotated in place, because there is no key versioning or re-encryption tool. After a
-  change, the stored integration credentials (AI keys, payment and notification settings) must be entered again.
+- **`ENCRYPTION_KEY`:** follow [rotating the encryption key](#rotating-the-encryption-key).
+- **`OTP_HASH_SECRET`:** set the new value and run `docker compose up -d --wait`. Codes already sent stop working, so
+  users request a new one. The OTP counters per mobile number and the sign-in locks of unregistered numbers and emails
+  start again from zero.
+
+#### Rotating the encryption key
+
+Every encrypted value carries the id of the key that wrote it (`v2:<key id>:…`, derived from the key). `ENCRYPTION_KEY`
+encrypts, and both it and the keys in `ENCRYPTION_PREVIOUS_KEYS` decrypt. Values saved before key ids existed (`v1:`)
+are tried with each key until they are re-encrypted. The stored secrets are the AI keys, payment gateway credentials,
+notification and platform integration settings, and offline LMS content keys.
+
+1. Back up ([backup-restore.md](backup-restore.md)). Keep the old key in your vault as long as you keep backups made
+   before the rotation: they can only be restored with it.
+2. Generate the new key with `openssl rand -base64 32` and save it in your vault.
+3. In `.env`, move the old key to `ENCRYPTION_PREVIOUS_KEYS` (comma separated, after any older key still listed) and
+   set the new one as `ENCRYPTION_KEY`.
+4. Run `docker compose up -d --wait`. Secrets saved from now on use the new key, and the existing ones still decrypt.
+5. Re-encrypt the stored secrets with the new key. The command can run while the API serves traffic:
+
+   ```sh
+   docker compose run --rm migrate node dist/infrastructure/database/cli.js secrets:reencrypt --dry-run
+   docker compose run --rm migrate node dist/infrastructure/database/cli.js secrets:reencrypt
+   ```
+
+   It prints a table per column and exits non-zero if no configured key decrypts some values, listing their ids. Add
+   the missing key to `ENCRYPTION_PREVIOUS_KEYS` and run it again, or enter those secrets again in the app. Until it
+   has run, saving an enabled platform integration repeats its connection test.
+
+6. When a dry run reports `Every stored secret uses the current key`, empty `ENCRYPTION_PREVIOUS_KEYS` and run
+   `docker compose up -d --wait`.
+
+With several API processes, rotate in two phases, so that no process meets a value it can't decrypt: first add the new
+key to `ENCRYPTION_PREVIOUS_KEYS` on every process, then make it `ENCRYPTION_KEY` (with the old key in
+`ENCRYPTION_PREVIOUS_KEYS`) on every process, and only then re-encrypt.
+
+Outside Docker, run `npm run secrets:reencrypt -- --dry-run` and `npm run secrets:reencrypt` in `backend/`.
 
 ## TLS certificates
 
@@ -755,6 +796,24 @@ Over the limit, the API answers 429 with the standard `RateLimit` headers.
   memory ([scaling](#rate-limits)).
 - **Turning them off:** `RATE_LIMIT_ENABLED=false` is only for load tests.
 
+### Sign-in locks
+
+Failed passwords, OTP codes and biometric unlocks lock an account's sign-in:
+
+- **When:** after `LOGIN_LOCKOUT_THRESHOLD` failures (5) the account is locked for `LOGIN_LOCKOUT_BASE_SECONDS` (60 s).
+  Each further failure doubles that, up to `LOGIN_LOCKOUT_MAX_SECONDS` (15 minutes). Attempts during a lock get 429
+  `ACCOUNT_LOCKED` with `Retry-After` and don't extend it.
+- **Where:** each device the user has signed in on before counts on its own until it's revoked, and all other devices
+  share one count. Failures from elsewhere lock only sign-in on new devices, so users keep signing in on their own
+  devices.
+- **Until when:** a successful sign-in clears the count for that device. Failures are forgotten a day after the last
+  one.
+- **Clearing a lock:** institute admins with permission to edit users use the user's devices page (Users), and the
+  super admin uses Admin › Users. A cleared account locks again if the attempts go on, so check the audit log first.
+- **Auditing:** the audit log records every lock (`auth.sign_in_locked`, with the method and device) and every clear
+  (`auth.sign_in_unlocked`).
+- **Turning it off:** `LOGIN_LOCKOUT_THRESHOLD=0`. The per-IP `auth` limit still applies.
+
 ### Background jobs
 
 The jobs worker runs inside the api process (`JOBS_WORKER_ENABLED=true`). It polls the `jobs` table every
@@ -858,9 +917,11 @@ The apps need a publicly trusted certificate on `SERVER_NAME`: self-signed certi
 
 ## Scaling
 
-This release runs one API process. Node.js handles requests on one thread, and that includes password hashing
-(bcryptjs; see [load-testing.md](load-testing.md)). Extra cores mostly help MySQL and ffmpeg. Running several API
-processes or servers needs the following changes:
+This release runs one API process. Node.js handles requests on one thread. Password hashing (scrypt) runs on libuv's
+thread pool instead, so sign-ins use other cores without holding up requests ([load-testing.md](load-testing.md)). The
+pool has `UV_THREADPOOL_SIZE` threads (4 by default), which bounds the sign-ins one process hashes at once, and also
+serves file reads; on a server with more cores, raise it towards the core count. Extra cores also help MySQL and
+ffmpeg. Running several API processes or servers needs the following changes:
 
 | Component       | Today                                                                                | Needed for more than one API process                                               |
 | --------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
@@ -869,20 +930,25 @@ processes or servers needs the following changes:
 | Background jobs | MySQL `jobs` table, `SKIP LOCKED`                                                    | Nothing: several workers are safe                                                  |
 | Media storage   | Local volume `storage`                                                               | A shared file system, or object storage (the S3/R2 adapter is not implemented yet) |
 | Website cache   | In-process, 60 s TTL                                                                 | Nothing: each process may serve 60 s stale site settings                           |
-| Authentication  | JWT access tokens; refresh tokens in MySQL                                           | Nothing                                                                            |
+| Authentication  | JWT access tokens; refresh tokens in MySQL; sign-in locks and OTP counters in Redis  | Nothing                                                                            |
 | Upgrades        | One api container; the site is down during the switch                                | Rolling restarts behind a load balancer, which needs everything above              |
 
 Redis is the stack's `redis` service (AOF persistence, not published on the host). Every API process must use the same
 Redis (`REDIS_URL`); for a Redis outside the stack, use `rediss://` with a password. Its keys:
 
-- `rl:<limiter>:<client>`: rate-limit counters, which expire with their window;
+- `rl:<limiter>:<client>`: rate-limit counters, and the OTP counters (`rl:otp-mobile:*` per mobile number and device,
+  `rl:otp-decoy:*` for the challenges of unregistered numbers), which expire with their window;
+- `signin:<account>`: failed sign-ins and [sign-in locks](#sign-in-locks), which expire a day after the last failure;
+- `signin-gate:<account>:<device>`: the gate that runs one sign-in attempt per account and device at a time (10
+  seconds at most);
 - `live:room:<institute>:<class>:*`: a class's hands, speakers, screen sharing and whiteboard, which expire after 12
   hours;
 - the `socket.io#*` channels: the adapter's publish and subscribe traffic.
 
 While Redis is unreachable, the API keeps working and logs a warning at most once a minute per kind:
 
-- **Rate limits:** each process counts in memory.
+- **Rate limits and OTP counters:** each process counts in memory.
+- **Sign-in locks:** each process keeps failures and locks in memory, so a lock applies only on the process that set it.
 - **Live classes:** each process sees only its own sockets, so participants on other processes miss events. Joining
   works without the hands and the whiteboard; hands, microphones, screen sharing and the whiteboard answer
   `LIVE_STATE_UNAVAILABLE` (503).
@@ -1011,6 +1077,7 @@ The `backup-restore` job runs `deploy/backup/restore-test.sh` against MySQL 8.4;
 | Live classes don't connect                          | `curl 'https://app.example.com/api/live-classes/socket.io/?EIO=4&transport=polling'` must return `0{"sid":…`. A proxy in front must pass WebSocket upgrades. For media failures, see [TURN](#live-classes) |
 | CORS errors in the mobile apps                      | `CORS_ORIGINS` (`docker compose exec api printenv CORS_ORIGINS`) must contain the app's origin                                                                                                             |
 | A certificate error on a custom domain              | `docker compose exec web erp-certs --reload` reports skipped certificates; `openssl s_client -servername <host> -connect <host>:443` shows the certificate in use                                          |
+| A user gets 429 `ACCOUNT_LOCKED` at sign-in         | Repeated failed attempts locked the account ([sign-in locks](#sign-in-locks)). The audit log shows `auth.sign_in_locked`; an admin can clear it                                                            |
 | Clients all share one rate limit                    | A proxy in front of nginx without [real IP](#behind-a-cdn-or-load-balancer) configured                                                                                                                     |
 | Lectures stay "processing"                          | Stale `running` jobs ([background jobs](#background-jobs)), or the image was built with `INSTALL_FFMPEG=false`                                                                                             |
 | Disk full                                           | Docker log rotation, `BACKUP_KEEP_COUNT`/`BACKUP_KEEP_DAYS`, `docker system df`, old images (`docker image prune`)                                                                                         |
@@ -1024,7 +1091,7 @@ There is no password-reset command, and the seeder never changes an existing pas
    ```sh
    ( read -rsp 'New password: ' NEW_PASSWORD && echo && export NEW_PASSWORD &&
      docker compose run --rm --no-deps -e NEW_PASSWORD migrate \
-       node -e "require('bcryptjs').hash(process.env.NEW_PASSWORD, 10).then(console.log)" )
+       node -e "require('./dist/infrastructure/password').hashPassword(process.env.NEW_PASSWORD).then(console.log)" )
    ```
 
 2. Store the hash. Run `docker compose exec mysql mysql -uroot -p erp_coaching`, then:
