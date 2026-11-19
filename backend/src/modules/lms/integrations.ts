@@ -1,8 +1,8 @@
 import { requireTenantContext } from '../../shared/context';
 import { onDeviceRevoked } from '../authentication/api';
-import { onLiveRecordingReady } from '../live-classes/api';
+import { onLiveRecordingReady, setLiveRecordingPlayback } from '../live-classes/api';
 import { isModuleEnabled } from '../subscriptions/subscription.service';
-import { importLiveRecording } from './live-recordings';
+import { importLiveRecording, liveRecordingHls } from './live-recordings';
 import { registerLmsParentPortal } from './parent-portal';
 import { revokeDeviceOfflineLicenses } from './resources.service';
 
@@ -15,6 +15,12 @@ export function registerLmsIntegrations(): void {
     const { instituteId } = requireTenantContext();
     if (!(await isModuleEnabled(instituteId, 'lms'))) return;
     await importLiveRecording(e);
+  });
+  // ...and live class pages stream them through the same signed HLS delivery once transcoded.
+  setLiveRecordingPlayback(async (recordingId) => {
+    const { instituteId } = requireTenantContext();
+    if (!(await isModuleEnabled(instituteId, 'lms'))) return null;
+    return liveRecordingHls(recordingId);
   });
 
   // A revoked device loses its offline copies. Security clean-up, so not gated on the LMS plan.

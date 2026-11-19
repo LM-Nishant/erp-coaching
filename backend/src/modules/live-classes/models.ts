@@ -56,6 +56,8 @@ export class LiveParticipant extends Model<
   declare totalSeconds: CreationOptional<number>;
   declare joinCount: CreationOptional<number>;
   declare isOnline: CreationOptional<boolean>;
+  /** Provider connection of the current/last visit (e.g. LiveKit participant SID); null for socket presence. */
+  declare connectionRef: CreationOptional<string | null>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
   declare user?: NonAttribute<User>;
@@ -137,6 +139,21 @@ export class LiveRecording extends Model<
   declare file?: NonAttribute<FileObject>;
 }
 
+/** Verified media-provider webhook (dedupe key and "last received" for the admin status page). */
+export class LiveWebhookEvent extends Model<
+  InferAttributes<LiveWebhookEvent>,
+  InferCreationAttributes<LiveWebhookEvent>
+> {
+  declare id: CreationOptional<number>;
+  declare instituteId: number;
+  declare provider: string;
+  declare eventId: string;
+  declare event: string;
+  declare liveSessionId: number | null;
+  declare createdAt: CreationOptional<Date>;
+  declare updatedAt: CreationOptional<Date>;
+}
+
 const pk = { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true };
 const uint = (allowNull = true) => ({ type: DataTypes.INTEGER.UNSIGNED, allowNull });
 const str = (len: number, allowNull = false) => ({ type: DataTypes.STRING(len), allowNull });
@@ -186,6 +203,7 @@ export function initLiveModels(sequelize: Sequelize) {
     totalSeconds: { ...uint(false), defaultValue: 0 },
     joinCount: { ...uint(false), defaultValue: 0 },
     isOnline: bool(false),
+    connectionRef: str(64, true),
   });
   define(LiveChatMessage, sequelize, 'live_chat_messages', {
     liveSessionId: uint(false),
@@ -223,6 +241,12 @@ export function initLiveModels(sequelize: Sequelize) {
     durationSeconds: uint(),
     source: str(20),
     providerRef: str(191, true),
+  });
+  define(LiveWebhookEvent, sequelize, 'live_webhook_events', {
+    provider: str(30),
+    eventId: str(120),
+    event: str(40),
+    liveSessionId: uint(),
   });
 }
 

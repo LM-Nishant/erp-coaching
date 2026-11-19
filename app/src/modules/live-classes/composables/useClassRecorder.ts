@@ -128,6 +128,12 @@ export function useClassRecorder(
     if (recording.value || !recordingSupported()) return;
     audioCtx = new AudioContext();
     dest = audioCtx.createMediaStreamDestination();
+    // MediaRecorder writes nothing while the audio track has no samples, which is the case while no
+    // microphone is connected (none yet, or denied): a silent source keeps the recording going.
+    const silence = audioCtx.createConstantSource();
+    silence.offset.value = 0;
+    silence.connect(dest);
+    silence.start();
     draw();
     drawTimer = window.setInterval(draw, 1000 / 15);
     startPart();

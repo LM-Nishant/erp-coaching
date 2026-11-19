@@ -1,7 +1,10 @@
 <template>
   <AppPage title="Live classes" :on-refresh="reload">
     <template #actions>
-      <ion-button v-if="auth.can('live-classes.create')" @click="openSchedule"
+      <ion-button
+        v-if="auth.can('live-classes.create')"
+        aria-label="Schedule live class"
+        @click="openSchedule"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
@@ -36,7 +39,12 @@
     </ion-list>
 
     <ion-list v-else>
-      <ion-item v-for="r in recordings" :key="r.id" button @click="play(r.id)">
+      <ion-item
+        v-for="r in recordings"
+        :key="r.id"
+        button
+        :router-link="`/live-classes/${r.liveSessionId}?recording=${r.id}`"
+      >
         <ion-icon slot="start" :icon="playCircleOutline" />
         <ion-label>
           <h2>{{ r.title }}</h2>
@@ -178,15 +186,6 @@ async function load() {
 const reload = () => load();
 onIonViewWillEnter(reload);
 watch(tab, reload);
-
-async function play(id: number) {
-  try {
-    const { url } = await liveApi.recordingUrl(id);
-    window.open(url, '_blank');
-  } catch (e) {
-    await toastError(e);
-  }
-}
 
 /* scheduling */
 const scheduling = ref(false);

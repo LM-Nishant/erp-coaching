@@ -6,6 +6,7 @@ import type {
   LivePollDto,
   LiveQuestionDto,
   LiveRecordingDto,
+  LiveRecordingUrlDto,
   LiveSessionDto,
   LiveSessionStatus,
   Paginated,
@@ -53,7 +54,9 @@ export const liveApi = {
   polls: (id: number) => api.get<LivePollDto[]>(`${base}/${id}/polls`),
   recordings: (q: { liveSessionId?: number; batchId?: number } = {}) =>
     api.get<LiveRecordingDto[]>(`${base}/recordings`, q),
-  recordingUrl: (id: number) => api.get<{ url: string; expiresAt: string }>(`${base}/recordings/${id}/url`),
+  /** `hls` falls back to the recording file until its HLS copy is ready. */
+  recordingUrl: (id: number, format: 'hls' | 'file' = 'file') =>
+    api.get<LiveRecordingUrlDto>(`${base}/recordings/${id}/url`, { format }),
   uploadRecording: (id: number, blob: Blob, durationSeconds: number) => {
     const form = new FormData();
     form.append('durationSeconds', String(Math.round(durationSeconds)));
