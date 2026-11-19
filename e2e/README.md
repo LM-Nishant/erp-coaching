@@ -15,6 +15,7 @@ sending an enquiry) are driven in the browser.
 | `exam-results-parent.spec.ts`     | Exam → auto-scored attempt → publication → parent portal  | Student takes the MCQ exam. Admin checks the auto score and publishes. Parent sees 8 / 12 (passed) and opens the result                      |
 | `appointment-booking.spec.ts`     | Parent-teacher appointment                                | Parent requests a 16:00 slot. Teacher approves it from Pending with a note. Parent sees the confirmation, note, history and notification     |
 | `website-enquiry.spec.ts`         | Website publish → enquiry → lead                          | Admin publishes the site. A visitor submits the public enquiry form. Staff find the enquiry in Admissions                                    |
+| `live-class.spec.ts`              | Live class → notification → join → recording in the LMS   | Teacher schedules and goes live. Student sees the notification and joins: chat, Q&A, poll, mic allowed. Recording listed, opened in the LMS  |
 
 Each spec also checks the server-side outcome where it matters, for example:
 

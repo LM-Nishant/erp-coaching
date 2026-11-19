@@ -20,8 +20,14 @@ export interface RoomStore {
   /** Returns the hands after the change, oldest first. */
   raiseHand(room: string, user: LiveUserRef): Promise<LiveUserRef[]>;
   lowerHand(room: string, userId: number): Promise<{ removed: boolean; hands: LiveUserRef[] }>;
-  /** One student speaks at a time: replaces the speakers and lowers the speaker's hand. */
-  grantMic(room: string, user: LiveUserRef): Promise<Pick<RoomExtras, 'hands' | 'speakers'>>;
+  /**
+   * One student speaks at a time: replaces the speakers and lowers the speaker's hand. `previous` lists the
+   * speakers it replaced, whose media-server publish permission the caller revokes.
+   */
+  grantMic(
+    room: string,
+    user: LiveUserRef,
+  ): Promise<Pick<RoomExtras, 'hands' | 'speakers'> & { previous: LiveUserRef[] }>;
   revokeMic(room: string, userId: number): Promise<{ removed: boolean; speakers: LiveUserRef[] }>;
   setScreenSharing(room: string, sharing: boolean): Promise<void>;
   addStroke(room: string, stroke: WhiteboardStroke): Promise<void>;
@@ -88,10 +94,11 @@ class MemoryRoomStore implements RoomStore {
 
   async grantMic(name: string, user: LiveUserRef) {
     const r = this.room(name);
+    const previous = MemoryRoomStore.list(r.speakers);
     r.speakers.clear();
     r.speakers.set(user.id, { ...user, at: Date.now() });
     r.hands.delete(user.id);
-    return { hands: MemoryRoomStore.list(r.hands), speakers: MemoryRoomStore.list(r.speakers) };
+    return { hands: MemoryRoomStore.list(r.hands), speakers: MemoryRoomStore.list(r.speakers), previous };
   }
 
   async revokeMic(name: string, userId: number) {
@@ -201,8 +208,10 @@ class RedisRoomStore implements RoomStore {
 
   async grantMic(room: string, user: LiveUserRef) {
     const k = this.keys(room);
-    await this.redis
+    // Read and replace in one transaction, so a grant on another API instance can't slip in between.
+    const [previous] = await this.redis
       .multi()
+      .hGetAll(k.speakers)
       .del(k.speakers)
       .hSet(k.speakers, String(user.id), JSON.stringify({ ...user, at: Date.now() }))
       .hDel(k.hands, String(user.id))
@@ -212,7 +221,11 @@ class RedisRoomStore implements RoomStore {
       this.redis.hGetAll(k.hands),
       this.redis.hGetAll(k.speakers),
     ]);
-    return { hands: RedisRoomStore.list(hands), speakers: RedisRoomStore.list(speakers) };
+    return {
+      hands: RedisRoomStore.list(hands),
+      speakers: RedisRoomStore.list(speakers),
+      previous: RedisRoomStore.list(previous as unknown as Record<string, string>),
+    };
   }
 
   async revokeMic(room: string, userId: number) {

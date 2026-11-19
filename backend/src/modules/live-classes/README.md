@@ -12,7 +12,8 @@ screen share and a whiteboard. The class is recorded automatically and attendanc
 | `live-classes.routes.ts`        | REST under `/api/live-classes`                                                            |
 | `realtime.ts`                   | Socket.IO server (path `/api/live-classes/socket.io`, namespace `/live`), in-memory rooms |
 | `live-events.ts` / `api.ts`     | Cross-module events and helpers (import only `api.ts` from other modules)                 |
-| `infrastructure/streaming/`     | `StreamingProvider` adapter; `DevWebRtcStreamingProvider` is the default (`mock`)         |
+| `provider-webhooks.ts`          | Signed provider webhooks (attendance, recordings), admin status and connection test       |
+| `infrastructure/streaming/`     | `StreamingProvider` adapters: `DevWebRtcStreamingProvider` (default, `mock`), LiveKit     |
 | `app/src/modules/live-classes/` | Class list, detail, teacher console + student view (`LiveRoomPage.vue`)                   |
 
 Socket.IO is attached through the generic `attachServer(server)` module hook (`shared/module.ts`), called by
@@ -21,8 +22,8 @@ Socket.IO is attached through the generic `attachServer(server)` module hook (`s
 ## Access
 
 - Host: the session's teacher. Only the host can start the class, publish media, draw and upload recordings.
-- Moderator: users with `live-classes.configure` (branch admins) in an allowed branch. They can end the class, mark Q&A
-  answered, run polls and grant mics. They can watch, but they can't start the class.
+- Moderator: users with `live-classes.configure` (branch admins) in an allowed branch, and the batch's other teachers.
+  They can end the class, mark Q&A answered, run polls and grant mics. They can watch, but they can't start the class.
 - Student: active enrolment in the batch (academics roster, **student user id**).
 - Paid courses: `setLiveEntitlementProvider(fn)` (from `api.ts`) adds a check before a student gets a join token
   (`403 LIVE_NOT_ENTITLED`). The default allows. Fees registers it so a course with an active fee structure needs the
@@ -51,17 +52,28 @@ When the teacher grants a student the mic, that student's audio arrives on the s
 to everyone else. One speaker at a time; no renegotiation is needed. A student asks for an offer by sending an empty
 signal ("hello") after joining or when the host comes online.
 
-This suits demos and small classes, roughly 15–25 viewers depending on the teacher's uplink. Use a vendor SFU for real
-classes. STUN servers come from `iceServers()`. Add a TURN server there for viewers behind symmetric NAT.
+This suits demos and small classes, roughly 15–25 viewers depending on the teacher's uplink. Use LiveKit (below) for
+real classes. STUN servers come from `iceServers()`. Add a TURN server there for viewers behind symmetric NAT.
 
 **Recording in dev**: `startRecording` returns `client-upload`. The teacher's client draws a 1280×720 composite (video,
 or whiteboard plus camera picture-in-picture) and mixes the teacher and speaking-student audio. It records with
 `MediaRecorder` and uploads each part (rotated every 30 min, plus on End) to `POST /:id/recordings`. Files go through
 the storage service (`saveUploadedFile`). Mobile WebViews without `MediaRecorder`/`captureStream` show a notice instead.
 
-## Plugging in a real provider (LiveKit, 100ms, Agora, Jitsi…)
+## LiveKit (`STREAMING_PROVIDER=livekit`)
 
-1. Implement `StreamingProvider` (`infrastructure/streaming/types.ts`) in `infrastructure/streaming/<vendor>.provider.ts`:
+`infrastructure/streaming/livekit.provider.ts` talks to LiveKit's server API (Twirp JSON over `fetch`; self-hosted or
+LiveKit Cloud) and signs join tokens with per-role grants. LiveKit's signed webhooks arrive at
+`POST /api/live-classes/public/livekit/webhook` (`provider-webhooks.ts`): participant joins and leaves become
+`live_participants` rows (source `provider`), `room_finished` closes open visits, and `egress_ended` enqueues
+`live-classes.import-recording`. Events are idempotent through `live_webhook_events`. Mic grants call
+`setParticipantPublish` (LiveKit `UpdateParticipant`). The app uses `livekit-client` (`useLiveKitMedia.ts`) for
+`transport: 'vendor-sdk'`. Setup, ports and operations: [docs/integrations/live-streaming.md](../../../../docs/integrations/live-streaming.md).
+
+## Plugging in another provider (100ms, Agora, Jitsi…)
+
+1. Implement `StreamingProvider` (`infrastructure/streaming/types.ts`) in `infrastructure/streaming/<vendor>.provider.ts`
+   (LiveKit is the reference):
    - `transport = 'vendor-sdk'`.
    - `createRoom`: create the vendor room.
    - `issueJoinToken`: mint a vendor token with publish rights for `host`/`speaker` and subscribe-only for `viewer`, and
@@ -72,11 +84,15 @@ the storage service (`saveUploadedFile`). Mobile WebViews without `MediaRecorder
      webhook calls `verifyJoinCredentials` (from `api.ts`), which also checks that the device is still signed in.
    - `startRecording`: start vendor egress/composite recording and return `{ mode: 'provider' }`.
    - `endRoom`: close the room and return finished files as `ProviderRecording` (`ref` is used for idempotency).
+   - Optional: `setParticipantPublish` (live mic grants), `reportsPresence` + `parseWebhook` (attendance and
+     recordings from webhooks), `listRecordings`/`fetchRecording`/`discardRecording` (catch-up, private downloads,
+     clean-up), `testConnection`/`describe` (the admin card).
 2. Add the key to the `STREAMING_PROVIDER` enum in `infrastructure/config` and return the adapter from
    `getStreamingProvider()`. Keep secrets in env vars.
-3. Provider recordings are imported by the `live-classes.import-recording` job. It downloads `downloadUrl`, stores the
-   file and emits `live.recording.ready`. If files arrive later through a webhook, add a public route under
-   `/public/live-classes/...` that verifies the vendor signature and enqueues the same job.
+3. Provider recordings are imported by the `live-classes.import-recording` job. It downloads `downloadUrl` (or calls
+   `fetchRecording`), stores the file and emits `live.recording.ready`. For webhooks, implement `parseWebhook` (verify
+   the vendor signature): the public route `/api/live-classes/public/:provider/webhook` applies the returned events
+   idempotently.
 4. App: `LiveRoomPage.vue` checks `joinInfo.transport`. For `vendor-sdk`, mount the vendor SDK component with
    `joinInfo.url` + `joinInfo.token` in place of `useTeacherMedia`/`useViewerMedia`, and fetch new credentials before
    `joinInfo.expiresAt` so reconnects keep working. Chat, Q&A, polls, hands, whiteboard and attendance still use the

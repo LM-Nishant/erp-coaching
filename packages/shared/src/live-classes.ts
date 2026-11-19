@@ -133,6 +133,34 @@ export interface LiveRecordingDto {
   createdAt: string;
 }
 
+/** `GET /live-classes/recordings/:id/url?format=hls|file`: short-lived playback URL. */
+export interface LiveRecordingUrlDto {
+  /** `hls`: signed HLS playlist of the transcoded video; `file`: the signed original file. */
+  kind: 'hls' | 'file';
+  url: string;
+  expiresAt: string;
+  mimeType: string;
+}
+
+/** `GET /admin/live-streaming` (platform admins): the configured media provider. */
+export interface LiveStreamingStatusDto {
+  provider: string;
+  transport: 'socket-webrtc' | 'vendor-sdk';
+  /** Webhook URL to configure at the provider (LiveKit server `webhook.urls` / Cloud project). */
+  webhookUrl: string | null;
+  /** Non-secret provider settings (URLs, masked API key, recording output). */
+  settings: Record<string, string | null>;
+  /** When the last verified provider webhook was processed. */
+  lastWebhookAt: string | null;
+  canTest: boolean;
+}
+
+export interface LiveStreamingTestResultDto {
+  ok: boolean;
+  message: string;
+  testedAt: string;
+}
+
 /* ------------------------------------------------------------ whiteboard */
 
 export interface WhiteboardStroke {

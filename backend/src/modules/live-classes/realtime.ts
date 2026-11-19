@@ -405,7 +405,10 @@ function registerHandlers(nsp: Namespace, socket: LiveSocket, rooms: RoomStore) 
       const hands = await rooms.lowerHand(name, userId);
       if (hands.removed) broadcastHands(name, hands.hands);
       const speakers = await rooms.revokeMic(name, userId);
-      if (speakers.removed) broadcastSpeakers(name, speakers.speakers);
+      if (speakers.removed) {
+        broadcastSpeakers(name, speakers.speakers);
+        void svc.setMicPermission(id, userId, false);
+      }
       if (!(await socketsIn(nsp, name)).length && !(await rooms.hasStrokes(name))) await rooms.drop(name);
     });
   }
@@ -558,17 +561,21 @@ function registerHandlers(nsp: Namespace, socket: LiveSocket, rooms: RoomStore) 
     const [peer] = await socketsIn(nsp, userRoom(inst, id, target));
     if (!peer?.data.user || peer.data.role !== 'student')
       throw Conflict('That student is not in the class', 'NOT_ONLINE');
+    // A media server enforces publish rights: grant there first, so a failure changes nothing here.
+    await svc.setMicPermission(id, target, true);
     // One student speaks at a time: the teacher's client relays the speaker's audio to the class.
-    const { hands, speakers } = await rooms.grantMic(name, peer.data.user);
+    const { hands, speakers, previous } = await rooms.grantMic(name, peer.data.user);
+    for (const p of previous) if (p.id !== target) void svc.setMicPermission(id, p.id, false);
     broadcastSpeakers(name, speakers);
     broadcastHands(name, hands);
   });
 
   on(C.micRevoke, async (payload) => {
-    const { role, name } = current();
+    const { id, role, name } = current();
     const { userId: target } = parse(userSchema, payload);
     if (target !== userId) requireModerator(role);
     broadcastSpeakers(name, (await rooms.revokeMic(name, target)).speakers);
+    void svc.setMicPermission(id, target, false);
   });
 
   /* WebRTC signalling: only teacher ↔ participant (one-way class stream + granted student mic) */

@@ -346,6 +346,7 @@ Set a per-checkout `TEST_DB_NAME` in `backend/.env` (e.g. `erp_coaching_test_<mo
 | `9459…`          | browser E2E (`e2e/`)                                                                                                                           |
 | `950…`           | security hardening: `security-hardening.test.ts` 9500, `auth-hardening.test.ts` 9501, `live-sockets.test.ts` 9502                              |
 | `952…`           | `payment-gateways.test.ts` (payment gateway flows)                                                                                             |
+| `954…`           | `livekit-streaming.test.ts`                                                                                                                    |
 | `955…`           | `biometric-adms.test.ts`                                                                                                                       |
 
 **Redis.** The backend runs without Redis. Tests that need two API instances sharing Redis (`live-sockets.test.ts`, `rate-store.test.ts`) run only when `TEST_REDIS_URL` is set in the shell, for example `TEST_REDIS_URL=redis://127.0.0.1:6379 npm test -w backend`, and are skipped otherwise. The `backend-tests` CI job sets it. They use their own key prefixes and delete their keys, so any local Redis will do; don't point it at a production Redis.

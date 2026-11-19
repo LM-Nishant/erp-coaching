@@ -2,6 +2,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import { Op, UniqueConstraintError, type WhereOptions } from 'sequelize';
 import type {
   CreateLiveSessionInput,
@@ -11,6 +14,7 @@ import type {
   LivePollDto,
   LiveQuestionDto,
   LiveRecordingDto,
+  LiveRecordingUrlDto,
   LiveRole,
   LiveSessionDto,
   LiveSessionStatus,
@@ -20,17 +24,19 @@ import { LIVE_SOCKET_NAMESPACE, LIVE_SOCKET_PATH } from '@erp/shared';
 import {
   getStreamingProvider,
   type JoinTokenClaims,
+  type LiveRoom,
+  type ProviderRecording,
   type StreamingRole,
 } from '../../infrastructure/streaming';
 import { logger } from '../../infrastructure/logger';
 import { getContext, hasPermission, requireTenantContext } from '../../shared/context';
 import { audit } from '../../shared/audit/audit.service';
-import { BadRequest, Conflict, Forbidden, NotFound } from '../../shared/errors';
+import { AppError, BadRequest, Conflict, Forbidden, NotFound } from '../../shared/errors';
 import { isDeviceSignedIn } from '../../shared/middleware/authenticate';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { User } from '../users/user.model';
 import { FileObject } from '../files/file.model';
-import { saveUploadedFile, signedUrlFor } from '../files/files.service';
+import { deleteFile, saveUploadedFile, signedUrlFor } from '../files/files.service';
 import { Batch, BatchStudent, BatchTeacher, ClassSession, getBatchMemberUserIds } from '../academics/api';
 import { batchMembersOf, guardiansOfStudentUsers, notify } from '../notifications/api';
 import {
@@ -41,13 +47,21 @@ import {
   LiveQuestionVote,
   LiveRecording,
   LiveSession,
+  LiveWebhookEvent,
 } from './models';
 import { emitLiveEvent, LIVE_EVENTS } from './live-events';
 import { realtime } from './realtime-bridge';
 import { canJoinLive } from './entitlements';
+import { hlsPlaybackFor } from './playback';
 
 export const MODULE = 'live-classes';
 export const IMPORT_RECORDING_JOB = 'live-classes.import-recording';
+export const COLLECT_RECORDINGS_JOB = 'live-classes.collect-recordings';
+export const ENSURE_RECORDING_JOB = 'live-classes.ensure-recording';
+/** Catch-up for provider recordings whose webhook was missed: first check after the class, then retries. */
+const COLLECT_DELAY_MS = 15 * 60_000;
+const COLLECT_MAX_ATTEMPTS = 4;
+const WEBHOOK_EVENT_RETENTION_MS = 7 * 24 * 3600_000;
 const JOIN_TOKEN_MIN_SECONDS = 15 * 60;
 const JOIN_TOKEN_MAX_SECONDS = 4 * 3600;
 /** A join token outlives the scheduled end by this much, so a class that overruns a little is not cut short. */
@@ -381,8 +395,19 @@ export async function startSession(id: number) {
   if (session.status === 'live') return getSessionDto(id);
   if (session.status !== 'scheduled') throw Conflict(`The class is ${session.status}`, 'INVALID_STATE');
   const provider = getStreamingProvider();
-  const room = await provider.createRoom({ sessionId: String(session.id), title: session.title });
-  if (session.recordingEnabled) await provider.startRecording(room.roomId);
+  const { instituteId } = requireTenantContext();
+  let room: LiveRoom;
+  try {
+    room = await provider.createRoom({ sessionId: String(session.id), title: session.title, instituteId });
+  } catch (err) {
+    logger.error({ err, liveSessionId: id }, 'Streaming provider could not create the room');
+    throw new AppError(
+      503,
+      'STREAMING_UNAVAILABLE',
+      'The live streaming server is not reachable. Try again in a moment.',
+    );
+  }
+  if (session.recordingEnabled) await ensureRecording(room.roomId, id);
   const startedAt = new Date();
   await session.update({ status: 'live', startedAt, roomId: room.roomId, provider: provider.name });
   await audit({ action: 'live_session.started', entityType: 'LiveSession', entityId: id });
@@ -428,6 +453,12 @@ export async function endSession(id: number) {
   const { enqueueJob } = await import('../../infrastructure/jobs/queue');
   for (const r of providerRecordings)
     await enqueueJob(IMPORT_RECORDING_JOB, { liveSessionId: id, ...r } as unknown as Record<string, unknown>);
+  if (getStreamingProvider().listRecordings)
+    await enqueueJob(
+      COLLECT_RECORDINGS_JOB,
+      { liveSessionId: id, attempt: 1 },
+      { runAt: new Date(Date.now() + COLLECT_DELAY_MS) },
+    );
 
   await audit({ action: 'live_session.ended', entityType: 'LiveSession', entityId: id });
 
@@ -523,6 +554,54 @@ async function safeNotify(fn: () => Promise<unknown>) {
   }
 }
 
+/** Starts the provider-side recording unless it is running; a failure must not stop the class. */
+async function ensureRecording(roomId: string, liveSessionId: number) {
+  try {
+    await getStreamingProvider().startRecording(roomId);
+  } catch (err) {
+    logger.warn({ err, liveSessionId }, 'Streaming provider could not start the recording');
+  }
+}
+
+/**
+ * Job, when the teacher joins the media room (provider webhook): (re)starts its recording, e.g. after
+ * the provider closed an empty room or the first start failed. Throws so the runner retries.
+ */
+export async function ensureRecordingJob(payload: Record<string, unknown>) {
+  const { liveSessionId } = payload as { liveSessionId: number };
+  const session = await repos.sessions.findOne({ where: { id: liveSessionId } });
+  const provider = getStreamingProvider();
+  if (session?.status !== 'live' || !session.recordingEnabled || !session.roomId) return;
+  if (session.provider !== provider.name) return;
+  await provider.startRecording(session.roomId);
+}
+
+/**
+ * Applies the teacher's microphone decision on the media server when it enforces publish rights
+ * (vendor SFUs). Granting fails while the student has no media connection; revoking is best effort.
+ */
+export async function setMicPermission(liveSessionId: number, userId: number, allowed: boolean) {
+  const provider = getStreamingProvider();
+  if (!provider.setParticipantPublish) return;
+  try {
+    const session = await repos.sessions.findById(liveSessionId);
+    if (!session.roomId || session.provider !== provider.name) return;
+    await provider.setParticipantPublish({ roomId: session.roomId, userId, microphone: allowed });
+  } catch (err) {
+    // Revoking from someone who already left the media room is expected.
+    const gone = !allowed && (err as { status?: number }).status === 404;
+    logger[gone ? 'debug' : 'warn'](
+      { err, liveSessionId, userId, allowed },
+      'Microphone permission update failed',
+    );
+    if (allowed)
+      throw Conflict(
+        'The student is not connected to the class audio yet. Try again in a moment.',
+        'MEDIA_NOT_CONNECTED',
+      );
+  }
+}
+
 /* ------------------------------------------------------------------ participation */
 
 async function closeInterval(p: LiveParticipant, at = new Date()) {
@@ -531,33 +610,121 @@ async function closeInterval(p: LiveParticipant, at = new Date()) {
   await p.update({ isOnline: false, lastLeftAt: at, totalSeconds: p.totalSeconds + seconds });
 }
 
-export async function markJoined(liveSessionId: number, userId: number, role: LiveRole) {
-  const now = new Date();
-  const existing = await repos.participants.findOne({ where: { liveSessionId, userId } });
+export interface PresenceOptions {
+  /** When it happened (default: now). */
+  at?: Date;
+  /**
+   * `socket`: the live classroom socket. `provider`: media-room webhooks; when the streaming
+   * provider `reportsPresence`, they are the attendance source and socket presence is ignored.
+   */
+  source?: 'socket' | 'provider';
+  /** Provider connection id (one per visit): makes repeated, late and out-of-order events safe. */
+  connectionRef?: string | null;
+  /** When that connection joined, if the provider reports it. */
+  joinedAt?: Date | null;
+}
+
+const socketPresenceIgnored = (opts: PresenceOptions) =>
+  (opts.source ?? 'socket') === 'socket' && !!getStreamingProvider().reportsPresence;
+
+export async function markJoined(
+  liveSessionId: number,
+  userId: number,
+  role: LiveRole,
+  opts: PresenceOptions = {},
+) {
+  if (socketPresenceIgnored(opts)) return;
+  const at = opts.joinedAt ?? opts.at ?? new Date();
+  const ref = opts.connectionRef ?? null;
+  let existing = await repos.participants.findOne({ where: { liveSessionId, userId } });
   if (!existing) {
-    await repos.participants
+    const created = await repos.participants
       .create({
         liveSessionId,
         userId,
         role,
-        firstJoinedAt: now,
-        lastJoinedAt: now,
+        firstJoinedAt: at,
+        lastJoinedAt: at,
         lastLeftAt: null,
         joinCount: 1,
         isOnline: true,
+        connectionRef: ref,
       })
+      .then(() => true)
       .catch((err: unknown) => {
-        // The user's first socket on another API instance joined at the same moment and created it.
+        // The user's first socket or webhook on another API instance created it at the same moment.
         if (!(err instanceof UniqueConstraintError)) throw err;
+        return false;
       });
-  } else if (!existing.isOnline) {
-    await existing.update({ isOnline: true, lastJoinedAt: now, joinCount: existing.joinCount + 1, role });
+    if (created) return;
+    existing = await repos.participants.findOne({ where: { liveSessionId, userId } });
+    if (!existing) return;
+  }
+  if (ref && existing.connectionRef === ref) {
+    // A repeated event, or this connection's leave was processed first.
+  } else if (existing.isOnline) {
+    // A new connection replaced the previous one (reconnect) before that one's leave arrived.
+    if (ref) await existing.update({ connectionRef: ref });
+  } else {
+    const from = existing.lastLeftAt && +existing.lastLeftAt > +at ? existing.lastLeftAt : at;
+    await existing.update({
+      isOnline: true,
+      lastJoinedAt: from,
+      joinCount: existing.joinCount + 1,
+      role,
+      connectionRef: ref,
+    });
   }
 }
 
-export async function markLeft(liveSessionId: number, userId: number) {
+export async function markLeft(
+  liveSessionId: number,
+  userId: number,
+  opts: PresenceOptions & { role?: LiveRole } = {},
+) {
+  if (socketPresenceIgnored(opts)) return;
+  const at = opts.at ?? new Date();
+  const ref = opts.connectionRef ?? null;
   const p = await repos.participants.findOne({ where: { liveSessionId, userId } });
-  if (p) await closeInterval(p);
+  if (p?.isOnline) {
+    // The leave of an older connection, after the user reconnected through a new one.
+    if (ref && p.connectionRef && p.connectionRef !== ref) return;
+    await closeInterval(p, at);
+    return;
+  }
+  // Offline or unknown: a provider leave whose join was lost or is late still records the visit.
+  if (!ref || !opts.joinedAt || !opts.role || p?.connectionRef === ref) return;
+  const from = p?.lastLeftAt && +p.lastLeftAt > +opts.joinedAt ? p.lastLeftAt : opts.joinedAt;
+  if (+at <= +from) return;
+  const seconds = Math.floor((+at - +from) / 1000);
+  if (!p) {
+    await repos.participants.create({
+      liveSessionId,
+      userId,
+      role: opts.role,
+      firstJoinedAt: from,
+      lastJoinedAt: from,
+      lastLeftAt: at,
+      joinCount: 1,
+      isOnline: false,
+      totalSeconds: seconds,
+      connectionRef: ref,
+    });
+  } else {
+    await p.update({
+      lastJoinedAt: from,
+      lastLeftAt: at,
+      joinCount: p.joinCount + 1,
+      totalSeconds: p.totalSeconds + seconds,
+      connectionRef: ref,
+    });
+  }
+}
+
+/** The provider closed the media room: whoever is still marked online left at `at`. */
+export async function closeOnlineParticipants(liveSessionId: number, at: Date) {
+  const online = await repos.participants.findAll({ where: { liveSessionId, isOnline: true } });
+  for (const p of online) if (!p.lastJoinedAt || +p.lastJoinedAt <= +at) await closeInterval(p, at);
 }
 
 export async function listParticipants(liveSessionId: number) {
@@ -755,17 +922,25 @@ async function attachRecording(
   }
   const file = await saveUploadedFile({ ...upload, module: MODULE, branchId: session.branchId });
   const count = await repos.recordings.count({ liveSessionId: session.id });
-  const rec = await repos.recordings.create({
-    branchId: session.branchId,
-    liveSessionId: session.id,
-    batchId: session.batchId,
-    courseId: session.courseId,
-    fileId: file.id,
-    title: count ? `${session.title} (part ${count + 1})` : session.title,
-    durationSeconds: meta.durationSeconds,
-    source: meta.source,
-    providerRef: meta.providerRef ?? null,
-  });
+  let rec: LiveRecording;
+  try {
+    rec = await repos.recordings.create({
+      branchId: session.branchId,
+      liveSessionId: session.id,
+      batchId: session.batchId,
+      courseId: session.courseId,
+      fileId: file.id,
+      title: count ? `${session.title} (part ${count + 1})` : session.title,
+      durationSeconds: meta.durationSeconds,
+      source: meta.source,
+      providerRef: meta.providerRef ?? null,
+    });
+  } catch (err) {
+    // A concurrent import of the same provider recording (webhook and catch-up job) won.
+    if (!(err instanceof UniqueConstraintError) || !meta.providerRef) throw err;
+    await deleteFile(file.id);
+    return null;
+  }
   await audit({
     action: 'live_recording.created',
     entityType: 'LiveRecording',
@@ -819,30 +994,82 @@ export async function uploadRecording(
     await fs.promises.rm(upload.tempPath, { force: true });
     throw err;
   }
-  return attachRecording(session, upload, { durationSeconds, source: 'client-upload' });
+  // Uploads carry no provider ref, so they never lose an import race (null).
+  return (await attachRecording(session, upload, { durationSeconds, source: 'client-upload' }))!;
 }
 
 /** Job: imports a provider-side recording (vendor adapters) into the storage service. Idempotent. */
 export async function importProviderRecording(payload: Record<string, unknown>) {
-  const { liveSessionId, ref, downloadUrl, mimeType, durationSeconds } = payload as {
-    liveSessionId: number;
-    ref: string;
-    downloadUrl: string;
-    mimeType: string;
-    durationSeconds: number | null;
+  const { liveSessionId, ...rec } = payload as unknown as { liveSessionId: number } & ProviderRecording;
+  const provider = getStreamingProvider();
+  const discard = async () => {
+    try {
+      await provider.discardRecording?.(rec);
+    } catch (err) {
+      logger.warn({ err, liveSessionId, ref: rec.ref }, 'Could not delete the provider copy of a recording');
+    }
   };
-  if (await repos.recordings.count({ liveSessionId, providerRef: ref })) return;
-  const session = await repos.sessions.findById(liveSessionId);
-  const res = await fetch(downloadUrl);
-  if (!res.ok || !res.body) throw new Error(`Recording download failed: ${res.status}`);
+  if (await repos.recordings.count({ liveSessionId, providerRef: rec.ref })) return discard();
+  const session = await repos.sessions.findOne({ where: { id: liveSessionId } });
+  // The class was deleted: nothing to attach the recording to.
+  if (!session) return discard();
   const tempPath = path.join(os.tmpdir(), `live-rec-${crypto.randomUUID()}`);
-  await fs.promises.writeFile(tempPath, Buffer.from(await res.arrayBuffer()));
+  try {
+    if (rec.downloadUrl) {
+      const res = await fetch(rec.downloadUrl);
+      if (!res.ok || !res.body) throw new Error(`Recording download failed: ${res.status}`);
+      await pipeline(
+        Readable.fromWeb(res.body as unknown as WebReadableStream<Uint8Array>),
+        fs.createWriteStream(tempPath),
+      );
+    } else if (provider.fetchRecording) {
+      await provider.fetchRecording(rec, tempPath);
+    } else {
+      throw new Error(`The ${provider.name} provider cannot fetch recording ${rec.ref}`);
+    }
+  } catch (err) {
+    await fs.promises.rm(tempPath, { force: true });
+    throw err;
+  }
   const { size } = await fs.promises.stat(tempPath);
   await attachRecording(
     session,
-    { tempPath, originalName: `${ref}.${mimeType.split('/')[1] ?? 'mp4'}`, mimeType, sizeBytes: size },
-    { durationSeconds, source: 'provider', providerRef: ref },
+    {
+      tempPath,
+      originalName: `${rec.ref}.${rec.mimeType.split('/')[1] ?? 'mp4'}`,
+      mimeType: rec.mimeType,
+      sizeBytes: size,
+    },
+    { durationSeconds: rec.durationSeconds, source: 'provider', providerRef: rec.ref },
   );
+  await discard();
+}
+
+/**
+ * Job, after a class ends with a provider that lists recordings: imports finished recordings whose
+ * webhook was missed, checks again while some are still being written, and prunes old webhook events.
+ */
+export async function collectProviderRecordings(payload: Record<string, unknown>) {
+  const { liveSessionId, attempt = 1 } = payload as { liveSessionId: number; attempt?: number };
+  const { instituteId } = requireTenantContext();
+  const provider = getStreamingProvider();
+  if (!provider.listRecordings) return;
+  await LiveWebhookEvent.destroy({
+    where: { instituteId, createdAt: { [Op.lt]: new Date(Date.now() - WEBHOOK_EVENT_RETENTION_MS) } },
+  });
+  const session = await repos.sessions.findOne({ where: { id: liveSessionId } });
+  if (!session?.roomId || session.provider !== provider.name) return;
+  const { recordings, pending } = await provider.listRecordings(session.roomId);
+  const { enqueueJob } = await import('../../infrastructure/jobs/queue');
+  for (const r of recordings)
+    if (!(await repos.recordings.count({ liveSessionId, providerRef: r.ref })))
+      await enqueueJob(IMPORT_RECORDING_JOB, { liveSessionId, ...r } as unknown as Record<string, unknown>);
+  if (pending && attempt < COLLECT_MAX_ATTEMPTS)
+    await enqueueJob(
+      COLLECT_RECORDINGS_JOB,
+      { liveSessionId, attempt: attempt + 1 },
+      { runAt: new Date(Date.now() + COLLECT_DELAY_MS) },
+    );
 }
 
 export async function listRecordings(q: { liveSessionId?: number; batchId?: number }) {
@@ -864,11 +1091,28 @@ export async function listRecordings(q: { liveSessionId?: number; batchId?: numb
   return rows.map(toRecordingDto);
 }
 
-export async function recordingUrl(id: number) {
+/**
+ * Short-lived playback URL. `hls`: the signed HLS stream of the recording's transcoded video
+ * (through the LMS) when there is one, else the file. `file`: always the signed file.
+ */
+export async function recordingUrl(
+  id: number,
+  format: 'hls' | 'file' = 'file',
+): Promise<LiveRecordingUrlDto> {
   const rec = await repos.recordings.findById(id, { include: [{ model: FileObject, as: 'file' }] });
   const session = await repos.sessions.findById(rec.liveSessionId);
   if (!(await roleFor(session))) throw NotFound('Recording');
-  return signedUrlFor(rec.file!);
+  if (format === 'hls') {
+    const hls = await hlsPlaybackFor(rec.id);
+    if (hls) return { kind: 'hls', mimeType: 'application/vnd.apple.mpegurl', ...hls };
+  }
+  const signed = signedUrlFor(rec.file!);
+  return {
+    kind: 'file',
+    url: signed.url,
+    expiresAt: signed.expiresAt.toISOString(),
+    mimeType: rec.file!.mimeType,
+  };
 }
 
 /* ------------------------------------------------------------------ public helpers (api.ts) */

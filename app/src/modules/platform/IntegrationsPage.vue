@@ -4,6 +4,7 @@
       <ion-segment-button value="gateways"><ion-label>Payment gateways</ion-label></ion-segment-button>
       <ion-segment-button value="messaging"><ion-label>Notification providers</ion-label></ion-segment-button>
       <ion-segment-button value="storage"><ion-label>Storage</ion-label></ion-segment-button>
+      <ion-segment-button value="live"><ion-label>Live classes</ion-label></ion-segment-button>
     </ion-segment>
 
     <div v-if="loading && !data" class="center"><ion-spinner /></div>
@@ -24,6 +25,12 @@
           console provider logs messages instead of sending them.
         </p>
         <MessagingCard v-for="m in data.messaging" :key="m.channel" :dto="m" @saved="load" />
+      </template>
+      <template v-else-if="tab === 'live'">
+        <p class="muted hint">
+          The media server that carries live-class audio and video, records classes and reports attendance.
+        </p>
+        <LiveStreamingCard ref="liveCard" />
       </template>
       <template v-else>
         <p class="muted hint">
@@ -46,14 +53,17 @@ import { platformApi } from './api';
 import GatewayCard from './components/GatewayCard.vue';
 import MessagingCard from './components/MessagingCard.vue';
 import StorageCard from './components/StorageCard.vue';
+import LiveStreamingCard from './components/LiveStreamingCard.vue';
 
-type Tab = 'gateways' | 'messaging' | 'storage';
+type Tab = 'gateways' | 'messaging' | 'storage' | 'live';
 const tab = ref<Tab>('gateways');
 const data = ref<PlatformIntegrationsDto | null>(null);
 const loading = ref(false);
+const liveCard = ref<InstanceType<typeof LiveStreamingCard> | null>(null);
 
 async function load() {
   loading.value = true;
+  void liveCard.value?.load();
   try {
     data.value = await platformApi.integrations();
   } catch (e) {

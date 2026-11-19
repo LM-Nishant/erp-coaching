@@ -21,6 +21,7 @@ export { listBatchRecordings, getRecording } from './live-classes.service';
 /** For a media relay or webhook: a join token's claims while its device is still signed in, else null. */
 export { verifyJoinCredentials } from './live-classes.service';
 export { LiveSession, LiveRecording, LiveParticipant } from './models';
+export { setLiveRecordingPlayback, type LiveRecordingPlayback } from './playback';
 export {
   setLiveEntitlementProvider,
   type LiveEntitlementProvider,

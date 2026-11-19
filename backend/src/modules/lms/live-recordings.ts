@@ -1,15 +1,18 @@
 import { UniqueConstraintError } from 'sequelize';
+import { logger } from '../../infrastructure/logger';
 import { requireTenantContext } from '../../shared/context';
+import { AppError } from '../../shared/errors';
 import { Batch, CourseSubject } from '../academics/api';
 import type { LiveRecordingReadyEvent } from '../live-classes/api';
 import { LmsResource } from './models';
-import { createResource, setResourceStatus } from './resources.service';
+import { createResource, play, requestTranscode, setResourceStatus } from './resources.service';
 
 export const liveRecordingSourceRef = (recordingId: number) => `live-recording:${recordingId}`;
 
 /**
  * Publishes a live class recording as an LMS resource on the class's course/subject, restricted
- * to its batch. Idempotent through `sourceRef` (unique per institute). Skips classes with no course.
+ * to its batch, and queues its HLS rendition. Idempotent through `sourceRef` (unique per institute).
+ * Skips classes with no course.
  */
 export async function importLiveRecording(e: LiveRecordingReadyEvent): Promise<LmsResource | null> {
   const { instituteId } = requireTenantContext();
@@ -35,6 +38,7 @@ export async function importLiveRecording(e: LiveRecordingReadyEvent): Promise<L
       subjectId = null;
   }
 
+  const type = e.mimeType.startsWith('video/') ? 'video' : 'document';
   let id: number;
   try {
     id = (
@@ -45,7 +49,7 @@ export async function importLiveRecording(e: LiveRecordingReadyEvent): Promise<L
         batchIds: batch?.courseId === courseId ? [batch.id] : [],
         title: e.title.slice(0, 200),
         description: `Recording of the live class on ${e.recordedAt.slice(0, 10)}`,
-        type: e.mimeType.startsWith('video/') ? 'video' : 'document',
+        type,
         fileId: e.fileId,
         durationSeconds: e.durationSeconds,
         sourceRef,
@@ -58,5 +62,32 @@ export async function importLiveRecording(e: LiveRecordingReadyEvent): Promise<L
     throw err;
   }
   await setResourceStatus(id, 'published');
+  // Recorded classes stream as HLS like uploaded lectures (progressive MP4 until then, or without ffmpeg).
+  if (type === 'video')
+    await requestTranscode(id).catch((err: unknown) =>
+      logger.warn({ err, resourceId: id }, 'Could not queue HLS transcoding of a live recording'),
+    );
   return LmsResource.findOne({ where: { instituteId, id } });
+}
+
+/**
+ * Signed HLS stream of a live recording's LMS video for the current user (live class pages), or
+ * null while it has no HLS rendition or the LMS does not let this user stream it.
+ */
+export async function liveRecordingHls(
+  recordingId: number,
+): Promise<{ url: string; expiresAt: string } | null> {
+  const { instituteId } = requireTenantContext();
+  const r = await LmsResource.findOne({
+    where: { instituteId, sourceRef: liveRecordingSourceRef(recordingId) },
+    attributes: ['id', 'type', 'transcodeStatus', 'hlsPrefix'],
+  });
+  if (!r || r.type !== 'video' || r.transcodeStatus !== 'ready' || !r.hlsPrefix) return null;
+  try {
+    const p = await play(r.id, 'hls');
+    return p.kind === 'hls' && p.expiresAt ? { url: p.url, expiresAt: p.expiresAt } : null;
+  } catch (err) {
+    if (err instanceof AppError && err.status < 500) return null;
+    throw err;
+  }
 }
