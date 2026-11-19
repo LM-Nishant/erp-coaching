@@ -229,7 +229,7 @@ export interface TallyPreviewDto {
     alreadyExported: number;
     /** Journals exported before whose voucher has changed since. */
     changedSinceExport: number;
-    /** Journals that net to zero per Tally ledger and are left out. */
+    /** Journals left out of the file: they net to zero per Tally ledger, don't balance or have an invalid date. */
     skipped: number;
   };
   byType: Record<string, number>;
@@ -253,7 +253,7 @@ export interface TallyExportDto {
   companyName: string | null;
   receivableMode: TallyReceivableMode;
   voucherCount: number;
-  /** Journals that net to zero per Tally ledger (not in the file). */
+  /** Journals left out of the file (see `TallyPreviewDto.counts.skipped`). */
   skippedCount: number;
   /** Journals left out of an "only new" batch because they were exported unchanged before. */
   alreadyExportedCount: number;

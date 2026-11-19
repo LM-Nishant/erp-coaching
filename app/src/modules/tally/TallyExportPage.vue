@@ -48,6 +48,12 @@
               : undefined
           "
         />
+        <StatCard
+          v-if="preview.counts.skipped"
+          label="Left out"
+          :value="preview.counts.skipped"
+          hint="Listed with the reason on the export's page"
+        />
       </div>
       <p v-if="!preview.companyName" class="muted">
         No Tally company name is set, so Tally imports into the company that is open. Set it in Tally
