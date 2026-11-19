@@ -275,7 +275,10 @@ function registerHandlers(nsp: Namespace, socket: LiveSocket) {
     await svc.markLeft(id, userId).catch((err) => logger.warn({ err }, 'live markLeft failed'));
     nsp.to(roomName(inst, id)).emit(S.participantLeft, { userId, role });
     if (r.hands.delete(userId)) broadcastHands(id, r);
-    if (r.speakers.delete(userId)) broadcastSpeakers(id, r);
+    if (r.speakers.delete(userId)) {
+      broadcastSpeakers(id, r);
+      void svc.setMicPermission(id, userId, false);
+    }
     if (role === 'host') {
       r.screenSharing = false;
       nsp.to(roomName(inst, id)).emit(S.hostState, { online: hostOnline(r) });
@@ -429,6 +432,10 @@ function registerHandlers(nsp: Namespace, socket: LiveSocket) {
     const member = room.members.get(target);
     if (!member || member.role !== 'student')
       throw Conflict('That student is not in the class', 'NOT_ONLINE');
+    // A media server enforces publish rights: grant there first, so a failure changes nothing here.
+    await svc.setMicPermission(id, target, true);
+    for (const previous of room.speakers.keys())
+      if (previous !== target) void svc.setMicPermission(id, previous, false);
     // One student speaks at a time: the teacher's client relays the speaker's audio to the class.
     room.speakers.clear();
     room.speakers.set(target, member.user);
@@ -443,6 +450,7 @@ function registerHandlers(nsp: Namespace, socket: LiveSocket) {
     if (target !== userId) requireModerator(role);
     room.speakers.delete(target);
     broadcastSpeakers(id, room);
+    void svc.setMicPermission(id, target, false);
   });
 
   /* WebRTC signalling: only teacher ↔ participant (one-way class stream + granted student mic) */
