@@ -82,9 +82,11 @@ function scan(file: string, source: string): Finding[] {
       fix: rule.fix,
     })),
   );
-  const ast = file.endsWith('.vue')
-    ? (parse(source, { filename: file }).descriptor.template?.ast as unknown as TemplateNode | undefined)
-    : undefined;
+  // Parsing every template is slow, and only a file that mentions `download` can have the attribute.
+  const ast =
+    file.endsWith('.vue') && source.includes('download')
+      ? (parse(source, { filename: file }).descriptor.template?.ast as unknown as TemplateNode | undefined)
+      : undefined;
   for (const line of ast ? downloadAttributes(ast) : [])
     findings.push({ file, line, rule: 'download-attribute', fix: `${SAVE}, or ${OPEN}` });
   return findings;
