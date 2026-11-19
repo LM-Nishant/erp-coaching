@@ -45,7 +45,7 @@ The module loader picks up the folder automatically, and the migrator picks up `
 
 ### 3. Tenancy
 
-- **Register the model.** Call `registerTenantModel(Model)` in `initModel`. Any query without `instituteId` then throws, as a safety net.
+- **Register the model.** Call `registerTenantModel(Model)` in `initModel`. Any query without `instituteId` then throws, as a safety net, and so does any write for another institute than the one in context.
 - **Use the repository.** Do all tenant data access through `new TenantRepository(Model, { entity: 'Student', branchScoped: true })`.
   - Use `findAll`, `findById`, `findOne`, `findAndCountAll`, `count`, `create`, `update`, `destroy`, `scope(where)` and `assertBranchAllowed(branchId)`.
 - **Institute-wide rows.** For branch data that may also be institute-wide (`branch_id` NULL, e.g. files, notices), pass `instituteWideRows: true`. Every user of the institute can then read NULL-branch rows, but only institute-level users can change them (`repo.assertRowWritable(row)` is applied by `update`/`destroy`). Rows created by branch-restricted users always get a branch: their active or only branch, otherwise 400 `BRANCH_REQUIRED`.
@@ -124,7 +124,9 @@ Every `/api` request passes the app-wide `apiRateLimit`, so authenticated routes
 - Validate input with zod using `parse(schema, req.body | req.query | req.params)`. Use `idParam` and the pagination helpers from `shared/utilities`.
 - Throw the helpers from `shared/errors` (`NotFound`, `Forbidden`, `Conflict`, `BadRequest`, `LimitExceeded`). Never `res.status(500)` by hand. Express 5 forwards async errors on its own.
 - Error shape is always `{ error: { code, message, details? } }`. List endpoints return `{ items, total, page, pageSize }`.
-- Call `audit({ action: 'students.create', entityType: 'Student', entityId, after })` for every create, update, delete, approve or publish of business data. Include `before` for updates and deletes.
+- Call `audit({ action: 'student.updated', entityType: 'student', entityId, branchId, metadata })` for every create, update, delete, approve or publish of business data. Put what changed in `metadata` (`before` and `after`, or the changed fields).
+  - Pass the row's `branchId`, or `null` for institute-wide data. Branch-restricted users see only their branches' events in the audit log, and `null` events show only to users with access to every branch.
+  - Without `branchId`, it comes from `metadata` (`after`, `before` or top level), else from a branch-restricted actor's selected or only branch, else `null`.
 - Check plan limits with `assertWithinLimit(instituteId, 'maxStudents', currentCount)` before creating limited entities.
 - **Raw SQL dates.** In `sequelize.query(sql, { replacements })`, Sequelize formats a `Date` in the server's local time and ignores the `timezone: '+00:00'` option. Pass UTC strings such as `'2026-01-01 00:00:00'`, or use model queries, which convert correctly.
 
@@ -143,6 +145,8 @@ Every `/api` request passes the app-wide `apiRateLimit`, so authenticated routes
   - Register the handler in the module's `jobs` map.
   - Handlers run with the job's tenant context.
   - Jobs left `running` after a crash are reclaimed automatically (lock older than the lease → back to pending, or failed when out of attempts). If a job owns a status row (like report exports), use `registerJobFailureHandler` to mark it failed when the job finally fails.
+- **Passwords**: `hashPassword()` and `verifyPassword()` from `infrastructure/password.ts` (scrypt on libuv's thread pool). Never call bcrypt or `crypto.scrypt` yourself. When `verifyPassword` returns `needsRehash`, save a new hash once the sign-in succeeds.
+- **Stored secrets**: encrypt with `encryptSecret()` from `infrastructure/crypto.ts` into a column named `*Encrypted`, and register it next to the model with `registerEncryptedColumns(Model, ['fooEncrypted'])` (`infrastructure/database/encrypted-columns.ts`), so `npm run secrets:reencrypt` moves it to a new key ([rotation](docs/deployment.md#rotating-the-encryption-key)). `test/secrets-rotation.test.ts` fails for an unregistered `*Encrypted` attribute.
 - **Provider secrets**: provider test and save endpoints must not reuse a stored API key when a field that decides where it is sent (provider, base URL, host, endpoint, bucket) changes; check with `shared/utilities/secret-reuse.ts` (400 `SECRET_REQUIRED`).
 - **Links**: links into the web app use `webAppBaseUrl()` (`shared/public-urls.ts`, `PUBLIC_WEB_URL`); links to API-served resources use `API_PUBLIC_URL`. Never build links from `CORS_ORIGINS`.
 - **PDFs**: measure text with `shared/pdf-metrics.ts` (real Helvetica widths) when right-aligning or wrapping.

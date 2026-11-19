@@ -137,10 +137,10 @@ Redis is unreachable, each process counts in memory ([deployment.md](deployment.
 
 - **Password hashing** (`infrastructure/password.ts`). New hashes use scrypt
   (N = 2^`PASSWORD_HASH_COST`, r = 8, p = 3: 32 MiB at the default cost of 15) on libuv's thread
-  pool, so hashing never blocks the event loop. bcrypt hashes from earlier releases are verified in a worker thread and replaced
-  at the user's next successful sign-in, as are scrypt hashes with older parameters. Unknown
-  identifiers and accounts without a password are checked against a dummy hash, so they take as
-  long as a wrong password.
+  pool, so hashing never blocks the event loop. bcrypt hashes from earlier releases are verified
+  in a worker thread and replaced at the user's next successful sign-in, as are scrypt hashes with
+  older parameters. Unknown identifiers and accounts without a password are checked against a
+  dummy hash, so they take as long as a wrong password.
 - **OTP codes.** Stored as an HMAC-SHA256 keyed with `OTP_HASH_SECRET` over the challenge id, the
   mobile and the code, so a copy of the table doesn't give the codes away. Codes issued before this
   scheme simply expire.
