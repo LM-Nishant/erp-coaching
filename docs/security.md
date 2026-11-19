@@ -150,7 +150,8 @@ dedicated one. Counters are kept in memory, per API process (see [open findings]
   - the `Authorization` and `Cookie` headers;
   - password, token, OTP, API key and secret fields;
   - tokens in URLs: signed files, HLS, webhook keys and `token`, `code`, `otp`, `key`,
-    `signature`, `state` (OAuth) and `PushCommKey` (ADMS devices) query parameters.
+    `signature`, `hub.verify_token` (WhatsApp), `state` (OAuth) and `PushCommKey` (ADMS devices)
+    query parameters.
 - **Rotation:**
   - **`JWT_ACCESS_SECRET`**: access tokens expire within 15 minutes and refresh tokens are opaque
     database rows, so clients silently get a new access token.
