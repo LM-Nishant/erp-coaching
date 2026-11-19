@@ -340,6 +340,7 @@ Set a per-checkout `TEST_DB_NAME` in `backend/.env` (e.g. `erp_coaching_test_<mo
 | `9459…`          | browser E2E (`e2e/`)                                                                                                                           |
 | `952…`           | `payment-gateways.test.ts` (payment gateway flows)                                                                                             |
 | `955…`           | `biometric-adms.test.ts`                                                                                                                       |
+| `956…`           | `tally.test.ts` (Tally accounting export)                                                                                                      |
 
 Commands:
 
