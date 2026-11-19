@@ -63,6 +63,11 @@ function offsetMs(tz: string, at: Date): number {
   return asUtc - Math.floor(at.getTime() / 1000) * 1000;
 }
 
+/** UTC offset of `tz` at `at`, in minutes (positive east of Greenwich, e.g. 330 for Asia/Kolkata). */
+export function utcOffsetMinutes(tz: string, at = new Date()): number {
+  return Math.round(offsetMs(tz, at) / 60_000);
+}
+
 /**
  * The instant at which the wall clock in `tz` reads `date` `time` (`HH:mm` or `HH:mm:ss`).
  * Times skipped by a DST jump resolve forward.

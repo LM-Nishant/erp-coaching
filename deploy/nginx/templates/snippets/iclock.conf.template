@@ -1,0 +1,10 @@
+# ZKTeco/eSSL biometric devices (ADMS "iclock" push), rendered to /etc/nginx/erp/snippets/iclock.conf.
+# Devices call fixed paths at the server root; they are proxied unchanged and the API serves them as
+# /api/attendance/public/iclock/... It identifies each device by serial number and applies the device's
+# IP allowlist and plain-HTTP setting. See docs/integrations/biometric.md.
+location ^~ /iclock/ {
+    include /etc/nginx/erp/snippets/proxy-headers.conf;
+    # The API refuses larger uploads itself (ADMS_MAX_BODY_KB: default 2 MB, at most 8 MB).
+    client_max_body_size 10m;
+    proxy_pass http://erp_api;
+}
