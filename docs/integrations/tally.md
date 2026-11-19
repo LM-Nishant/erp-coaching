@@ -68,7 +68,9 @@ their settings, mapping, ledger list and exports. Institute-wide settings and **
 institute-level user with no branch selected.
 
 Audit events: `tally.settings.updated`, `tally.mapping.updated`, `tally.ledgers.imported`, `tally.ledgers.cleared`,
-`tally.export.created` and `tally.export.downloaded` (with the file and its count).
+`tally.export.created` and `tally.export.downloaded` (with the file and its count). Each is logged against its branch,
+or as institute-wide for institute-wide settings and **All branches** exports, so users limited to some branches see
+their branches' events in the audit log.
 
 ## Setting up
 
