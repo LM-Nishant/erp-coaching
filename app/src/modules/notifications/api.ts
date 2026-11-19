@@ -13,6 +13,7 @@ import type {
   NotificationProviderDto,
   NotificationRuleDto,
   NotificationTemplateDto,
+  ProviderVerifyResultDto,
   RecipientType,
 } from '@erp/shared';
 import { api } from '@/core/api';
@@ -90,8 +91,13 @@ export const commsApi = {
     api.put<NotificationProviderDto>(`${base}/providers/${channel}`, body),
   resetProvider: (channel: ExternalChannel) =>
     api.delete<NotificationProviderDto>(`${base}/providers/${channel}`),
-  testProvider: (channel: ExternalChannel, to: string) =>
-    api.post<{ ok: boolean; provider: string; error?: string }>(`${base}/providers/${channel}/test`, { to }),
+  testProvider: (channel: ExternalChannel, to: string, opts: { templateId?: string; body?: string } = {}) =>
+    api.post<{ ok: boolean; provider: string; error?: string }>(`${base}/providers/${channel}/test`, {
+      to,
+      ...opts,
+    }),
+  verifyProvider: (channel: ExternalChannel) =>
+    api.post<ProviderVerifyResultDto>(`${base}/providers/${channel}/verify`, {}),
 
   templates: () => api.get<NotificationTemplateDto[]>(`${base}/templates`),
   createTemplate: (t: TemplateInput) => api.post<NotificationTemplateDto>(`${base}/templates`, t),

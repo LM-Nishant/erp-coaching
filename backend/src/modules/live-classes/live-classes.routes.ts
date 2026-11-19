@@ -1,13 +1,15 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { z } from 'zod';
 import { LIVE_SESSION_STATUSES } from '@erp/shared';
 import { parse } from '../../shared/utilities/validation';
 import { idParam, paginationSchema } from '../../shared/utilities/pagination';
 import { authenticate } from '../../shared/middleware/authenticate';
-import { requireModule, requirePermission } from '../../shared/middleware/authorize';
+import { requireModule, requirePermission, requireSuperAdmin } from '../../shared/middleware/authorize';
+import { webhookRateLimit } from '../../shared/middleware/security';
 import { BadRequest } from '../../shared/errors';
 import { uploadMiddleware } from '../files/files.routes';
 import * as svc from './live-classes.service';
+import { handleProviderWebhook, streamingStatus, testStreamingConnection } from './provider-webhooks';
 
 const M = svc.MODULE;
 const can = (action: Parameters<typeof requirePermission>[1]) => requirePermission(M, action);
@@ -71,7 +73,8 @@ export function liveClassRoutes(api: Router) {
   });
   r.get('/recordings/:id/url', can('view'), async (req, res) => {
     const { id } = parse(idParam, req.params);
-    res.json(await svc.recordingUrl(id));
+    const { format } = parse(z.object({ format: z.enum(['hls', 'file']).optional() }), req.query);
+    res.json(await svc.recordingUrl(id, format));
   });
 
   // Sessions
@@ -154,5 +157,29 @@ export function liveClassRoutes(api: Router) {
       );
   });
 
+  // Unauthenticated (before the authenticated router): the media provider's signed webhooks.
+  api.post(
+    '/live-classes/public/:provider/webhook',
+    webhookRateLimit,
+    express.raw({ type: () => true, limit: '1mb' }),
+    async (req, res) => {
+      const { provider } = parse(z.object({ provider: z.string().regex(/^[a-z0-9-]{1,30}$/) }), req.params);
+      const raw =
+        req.rawBody ?? (Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body ?? {})));
+      res.json(await handleProviderWebhook(provider, raw, req.get('authorization')));
+    },
+  );
+
   api.use('/live-classes', r);
+
+  // Platform admins: media provider status, webhook URL and connection check.
+  const admin = Router();
+  admin.use(authenticate, requireSuperAdmin);
+  admin.get('/', async (_req, res) => {
+    res.json(await streamingStatus());
+  });
+  admin.post('/test', async (_req, res) => {
+    res.json(await testStreamingConnection());
+  });
+  api.use('/admin/live-streaming', admin);
 }

@@ -4,8 +4,8 @@ import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { api, sessionEnded, setSessionExpiredHandler } from './api';
 import { idleMonitor } from './idle';
-import { wipeUserData } from './modules';
-import { sessionEndReason, useAuthStore } from '@/stores/auth';
+import { beforeSignOut, wipeUserData } from './modules';
+import { sessionEndReason, setBeforeLogoutHandler, useAuthStore } from '@/stores/auth';
 
 /**
  * Session lifecycle (spec 4.18):
@@ -20,6 +20,7 @@ import { sessionEndReason, useAuthStore } from '@/stores/auth';
  */
 export function installSession(router: Router) {
   const auth = useAuthStore();
+  setBeforeLogoutHandler(beforeSignOut);
 
   setSessionExpiredHandler(async (code) => {
     idleMonitor.stop();

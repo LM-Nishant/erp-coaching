@@ -2,6 +2,8 @@ import type {
   ExternalChannel,
   IntegrationTestResultDto,
   IntegrationTestStatus,
+  LiveStreamingStatusDto,
+  LiveStreamingTestResultDto,
   PaymentGatewayKey,
   PlatformGatewayDto,
   PlatformGatewayInput,
@@ -28,13 +30,23 @@ export const platformApi = {
     api.put<PlatformMessagingDto>(`${base}/messaging/${channel}`, b),
   testMessaging: (
     channel: ExternalChannel,
-    b: Partial<Pick<PlatformMessagingInput, 'provider' | 'settings'>> & { to: string },
+    b: Partial<Pick<PlatformMessagingInput, 'provider' | 'settings'>> & {
+      to: string;
+      templateId?: string;
+    },
   ) => api.post<IntegrationTestResultDto>(`${base}/messaging/${channel}/test`, b),
+  verifyMessaging: (
+    channel: ExternalChannel,
+    b: Partial<Pick<PlatformMessagingInput, 'provider' | 'settings'>>,
+  ) => api.post<IntegrationTestResultDto>(`${base}/messaging/${channel}/verify`, b),
   removeMessaging: (channel: ExternalChannel) =>
     api.delete<PlatformMessagingDto>(`${base}/messaging/${channel}`),
   saveStorage: (b: PlatformStorageInput) => api.put<PlatformStorageDto>(`${base}/storage`, b),
   testStorage: (b: Partial<PlatformStorageInput>) =>
     api.post<IntegrationTestResultDto>(`${base}/storage/test`, b),
+  /** Live-class media provider (configured on the server): status, webhook URL and connection check. */
+  liveStreaming: () => api.get<LiveStreamingStatusDto>('/admin/live-streaming'),
+  testLiveStreaming: () => api.post<LiveStreamingTestResultDto>('/admin/live-streaming/test', {}),
 };
 
 export const GATEWAY_LABELS: Record<PaymentGatewayKey, string> = {

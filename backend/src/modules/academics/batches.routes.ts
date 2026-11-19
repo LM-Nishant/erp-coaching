@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { Op } from 'sequelize';
 import { z } from 'zod';
+import type { PromotionFeeStudentResult, PromotionResult } from '@erp/shared';
 import { parse } from '../../shared/utilities/validation';
 import { idParam, paginated, paginationSchema, toLimitOffset } from '../../shared/utilities/pagination';
 import { requirePermission } from '../../shared/middleware/authorize';
@@ -28,6 +29,12 @@ import {
   teachersBody,
   dateStr,
 } from './academics.schemas';
+import {
+  preparePromotionFees,
+  promotionFeeOptions,
+  summarizePromotionFees,
+  type PromotionFeeTarget,
+} from './promotion-fees';
 
 const can = (action: 'view' | 'create' | 'edit' | 'delete' | 'configure') =>
   requirePermission('academics', action);
@@ -321,6 +328,19 @@ export function batchRoutes(r: Router) {
   });
 
   /* ---------------- promotion ---------------- */
+  const feeTarget = (b: Batch): PromotionFeeTarget => ({
+    batchId: b.id,
+    branchId: b.branchId,
+    courseId: b.courseId,
+    academicSessionId: b.academicSessionId,
+  });
+
+  /** Fee structures that can bill students promoted into this batch (needs `fees.create`). */
+  r.get('/batches/:id/promotion-fees', can('configure'), async (req, res) => {
+    const { id } = parse(idParam, req.params);
+    res.json(await promotionFeeOptions(feeTarget(await repos.batches.findById(id))));
+  });
+
   r.post('/promotions', can('configure'), async (req, res) => {
     const body = parse(promotionBody, req.body);
     if (body.fromBatchId === body.toBatchId) throw BadRequest('Source and target batch must differ');
@@ -332,6 +352,7 @@ export function batchRoutes(r: Router) {
     const toSession = await repos.sessions.findById(to.academicSessionId);
     if (toSession.id === fromSession.id || toSession.startDate <= fromSession.startDate)
       throw BadRequest('Target batch must belong to a later academic session');
+    const fees = body.fees ? await preparePromotionFees(feeTarget(to), body.fees) : null;
 
     const active = await repos.batchStudents.findAll({ where: { batchId: from.id, status: 'active' } });
     const wanted = body.studentUserIds ? new Set(body.studentUserIds) : null;
@@ -361,6 +382,7 @@ export function batchRoutes(r: Router) {
 
     const { userId } = getContext();
     const day = await today();
+    let feeResults: PromotionFeeStudentResult[] = [];
     await getSequelize().transaction(async (transaction) => {
       for (const e of moving) {
         await e.update({ status: 'promoted', leftOn: day }, { transaction });
@@ -386,14 +408,38 @@ export function batchRoutes(r: Router) {
           { transaction },
         );
       }
+      // Only the students promoted now are billed, never others already in the target batch.
+      if (fees && moving.length)
+        feeResults = await fees.apply(
+          moving.map((e) => e.studentUserId),
+          transaction,
+        );
     });
+    const feeSummary = fees ? summarizePromotionFees(fees, feeResults) : undefined;
     await audit({
       action: 'academics.students_promoted',
       entityType: 'Batch',
       entityId: from.id,
-      metadata: { toBatchId: to.id, studentUserIds: moving.map((e) => e.studentUserId), skipped },
+      metadata: {
+        toBatchId: to.id,
+        studentUserIds: moving.map((e) => e.studentUserId),
+        skipped,
+        ...(feeSummary && {
+          fees: {
+            structureId: feeSummary.structureId,
+            created: feeSummary.created,
+            skipped: feeSummary.skipped,
+          },
+        }),
+      },
     });
-    res.json({ promoted: moving.length, skipped });
+    if (fees && feeSummary && feeResults.length) await fees.afterCommit(feeSummary, from.id);
+    const result: PromotionResult = {
+      promoted: moving.length,
+      skipped,
+      ...(feeSummary && { fees: feeSummary }),
+    };
+    res.json(result);
   });
 
   r.get('/promotions', can('view'), async (req, res) => {

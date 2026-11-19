@@ -17,7 +17,7 @@ map $request_uri $erp_path {
 }
 map $erp_path $erp_log_path {
     default $erp_path;
-    "~^(?<erp_lp_head>/api/(?:files/signed|lms/public/hls|fees/public/webhooks/[^/]+)/)[^/]+(?<erp_lp_tail>.*)$" "${erp_lp_head}[redacted]${erp_lp_tail}";
+    "~^(?<erp_lp_head>/api/(?:files/signed|lms/public/hls|(?:fees|notifications)/public/webhooks/[^/]+)/)[^/]+(?<erp_lp_tail>.*)$" "${erp_lp_head}[redacted]${erp_lp_tail}";
 }
 
 log_format erp_json escape=json
@@ -101,6 +101,17 @@ server {
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
         proxy_pass http://erp_api;
+    }
+
+    # LiveKit signalling (STREAMING_PROVIDER=livekit, compose profile livekit): WebSocket upgrade, unbuffered,
+    # 1-hour timeouts. The server runs on the host network, so this is a 502 while the profile is not running.
+    # The access_token query parameter is never logged ($erp_log_path drops query strings).
+    location ^~ /livekit/ {
+        include /etc/nginx/erp/snippets/proxy-headers.conf;
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_pass http://host.docker.internal:7880/;
     }
 
     # Media and file downloads: unbuffered, so large files and Range requests stream straight through.

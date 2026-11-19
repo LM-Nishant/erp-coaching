@@ -39,7 +39,12 @@
     </ion-list>
 
     <ion-list v-else>
-      <ion-item v-for="r in recordings" :key="r.id" button @click="play(r.id)">
+      <ion-item
+        v-for="r in recordings"
+        :key="r.id"
+        button
+        :router-link="`/live-classes/${r.liveSessionId}?recording=${r.id}`"
+      >
         <ion-icon slot="start" :icon="playCircleOutline" />
         <ion-label>
           <h2>{{ r.title }}</h2>
@@ -149,7 +154,6 @@ import { add, playCircleOutline } from 'ionicons/icons';
 import { useRouter } from 'vue-router';
 import type { BatchDto, ClassSessionDto, LiveRecordingDto, LiveSessionDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
-import { openFileLink } from '@/core/downloads';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import { academicsApi } from '@/modules/academics/api';
@@ -182,15 +186,6 @@ async function load() {
 const reload = () => load();
 onIonViewWillEnter(reload);
 watch(tab, reload);
-
-async function play(id: number) {
-  try {
-    const { url } = await liveApi.recordingUrl(id);
-    openFileLink(url);
-  } catch (e) {
-    await toastError(e);
-  }
-}
 
 /* scheduling */
 const scheduling = ref(false);

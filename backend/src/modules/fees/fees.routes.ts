@@ -329,6 +329,8 @@ async function shareReceipt(receipt: FeeReceipt) {
       receiptNo: receipt.number,
       paidOn: payment?.paidOn ?? '',
       receiptUrl: url,
+      // The PDF itself goes out as a WhatsApp document (vendor providers); the link expires.
+      attachment: { fileId: receipt.pdfFileId },
     },
     receipt.branchId,
     ['whatsapp'],

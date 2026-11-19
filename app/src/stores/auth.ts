@@ -54,6 +54,11 @@ const isServerError = (e: unknown) => e instanceof ApiError && e.status >= 500;
 let restoring: Promise<void> | null = null;
 /** Secret read during an offline biometric unlock; exchanged for a session once the network is back. */
 let pendingUnlockSecret: string | null = null;
+/** Modules' sign-out clean-up (core/session.ts sets it): runs while the session still works. */
+let beforeLogout: (() => Promise<void>) | null = null;
+export function setBeforeLogoutHandler(fn: (() => Promise<void>) | null) {
+  beforeLogout = fn;
+}
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -334,6 +339,7 @@ export const useAuthStore = defineStore('auth', {
 
     /** Signs out. Also turns biometric unlock off on this device; downloaded lectures stay until they expire. */
     async logout() {
+      await beforeLogout?.();
       const session = await loadSession();
       const refreshToken = session?.impersonator?.refreshToken ?? session?.refreshToken;
       if (refreshToken)

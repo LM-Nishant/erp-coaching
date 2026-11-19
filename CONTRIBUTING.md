@@ -214,6 +214,7 @@ Current wiring:
 | fees → LMS                                        | `fees/integrations.ts`          | `setCourseEntitlementProvider`: paid courses (fees enabled + active course fee structure) need a fee entitlement; otherwise LMS falls back to batch enrolment                                                                                                            |
 | fees → exams, live-classes                        | `fees/integrations.ts`          | `setExamEntitlementProvider` (start attempt, `EXAM_NOT_ENTITLED`), `setLiveEntitlementProvider` (student join token, `LIVE_NOT_ENTITLED`); both default-allow                                                                                                            |
 | fees → website                                    | `fees/integrations.ts`          | `setCheckoutHandoff` (→ app `/my-fees/buy/:courseId`), `setCoursePriceResolver` (lowest active course structure)                                                                                                                                                         |
+| fees → academics                                  | `fees/integrations.ts`          | `setPromotionFeeProvider` (`academics/api`): `POST /academics/promotions` with `fees` bills only the promoted students in the promotion transaction (needs `fees.create`); same `sourceRef` as `generate-batch`, so neither bills twice                                  |
 | website → fees (direct calls)                     | `fees/course-sales.ts`          | `validateCoupon` when pricing, `redeemCoupon` on capture (per payment, replay-safe), `releaseCoupon` on full refund/cancel, `recordReferralConversion({ kind: 'purchase' })`                                                                                             |
 | website → students (direct call)                  | `self-registration.routes.ts`   | self-registration honours `ref`/`courseId` (body or query) and records `recordReferralConversion({ kind: 'signup' })`; failures never block registration                                                                                                                 |
 | admissions → website (direct calls)               | `admissions/api.ts`             | website enquiries use `createEnquiry`, `activeForm`, `validateCustomFields`                                                                                                                                                                                              |
@@ -338,9 +339,12 @@ Set a per-checkout `TEST_DB_NAME` in `backend/.env` (e.g. `erp_coaching_test_<mo
 | `9454…`          | `release-readiness.test.ts`                                                                                                                    |
 | `9458…`          | load runs (`load/`)                                                                                                                            |
 | `9459…`          | browser E2E (`e2e/`)                                                                                                                           |
+| `951…`           | messaging vendors: adapters, delivery webhooks, OTP through the platform provider                                                              |
 | `952…`           | `payment-gateways.test.ts` (payment gateway flows)                                                                                             |
+| `954…`           | `livekit-streaming.test.ts`                                                                                                                    |
 | `955…`           | `biometric-adms.test.ts`                                                                                                                       |
 | `956…`           | `tally.test.ts` (Tally accounting export)                                                                                                      |
+| `957…`           | `promotion-fees.test.ts`                                                                                                                       |
 
 Commands:
 

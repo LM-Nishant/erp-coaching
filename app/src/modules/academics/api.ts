@@ -11,6 +11,7 @@ import type {
   CourseDto,
   GenerateSessionsRequest,
   GenerateSessionsResult,
+  PromotionFeeOptions,
   PromotionRequest,
   PromotionResult,
   RescheduleRequest,
@@ -89,6 +90,9 @@ export const academicsApi = {
     api.post(`${A}/batches/${id}/students`, { studentUserIds }),
   unenroll: (id: number, studentUserId: number) => api.delete(`${A}/batches/${id}/students/${studentUserId}`),
   promote: (b: PromotionRequest) => api.post<PromotionResult>(`${A}/promotions`, b),
+  /** Fee structures that can bill students promoted into the batch (needs `fees.create`). */
+  promotionFees: (toBatchId: number) =>
+    api.get<PromotionFeeOptions>(`${A}/batches/${toBatchId}/promotion-fees`),
 
   classrooms: (q: Q = {}) => api.get<ClassroomDto[]>(`${A}/classrooms`, q),
   saveClassroom: (b: Body, id?: number) =>

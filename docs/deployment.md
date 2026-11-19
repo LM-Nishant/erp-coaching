@@ -28,7 +28,7 @@ Backups and restores are covered in [backup-restore.md](backup-restore.md), secu
 
 | Path                            | Purpose                                                                                                                                                                                 |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `deploy/docker-compose.yml`     | The stack: `mysql`, `migrate`, `api` and `web`; `backup` and `restore` (profile `ops`); `redis` (profile `redis`)                                                                       |
+| `deploy/docker-compose.yml`     | The stack: `mysql`, `migrate`, `api` and `web`; `backup` and `restore` (profile `ops`); `redis` (profile `redis`); the LiveKit services (profile `livekit`)                             |
 | `deploy/.env.example`           | Template for `deploy/.env`, the stack's only configuration file                                                                                                                         |
 | `deploy/api.Dockerfile`         | `erp-api` image: the compiled backend, production dependencies, the database CLI and ffmpeg. Runs as the `node` user                                                                    |
 | `deploy/web.Dockerfile`         | `erp-web` image: the built web app, served by nginx                                                                                                                                     |
@@ -78,6 +78,7 @@ flowchart LR
 | `web`                | `erp-web`                          | nginx on ports 80 and 443: TLS, the web app, the proxy to the api, institute websites | Read-only bind mounts `certs/` and `acme-webroot/`                    |
 | `backup` / `restore` | `erp-backup` (`mysql:8.4` + tools) | Profile `ops`, run on demand ([backup-restore.md](backup-restore.md))                 | Bind mount `backups/`; volume `storage` (read-only for `backup`)      |
 | `redis`              | `redis:8-alpine`                   | Profile `redis`. Not used by this release; reserved for [scaling](#scaling)           | Volume `redis-data`                                                   |
+| `livekit*`           | `livekit/*`, `redis:8-alpine`      | Profile `livekit`: self-hosted LiveKit server, Egress recorder and their Redis        | Volume `livekit-recordings` (recordings until they are imported)      |
 
 Start order: `mysql` is healthy, then `migrate` exits with 0, then `api` is healthy (`/api/ready`), then `web` starts. If a
 migration fails, the api doesn't start and `docker compose up` exits non-zero.
@@ -91,6 +92,7 @@ migration fails, the api doesn't start and `docker compose up` exits non-zero.
 | `<any host>/iclock/…` over HTTPS, and over HTTP with `ADMS_ALLOW_HTTP=true`                       | ZKTeco/eSSL biometric devices: the API, bodies up to 10 MB ([biometric.md](integrations/biometric.md))               |
 | Any other `http://` request                                                                       | `301` to the same URL on `https://`                                                                                  |
 | `https://SERVER_NAME/api/live-classes/socket.io/`                                                 | Socket.IO (namespace `/live`): WebSocket upgrade and long-polling, unbuffered, 1-hour timeouts                       |
+| `https://SERVER_NAME/livekit/…`                                                                   | LiveKit signalling (profile `livekit`): WebSocket to port 7880 on the host, unbuffered, 1-hour timeouts              |
 | `https://SERVER_NAME/api/files/signed/…`, `/api/lms/public/hls/…`, institute logos, website media | The API, unbuffered, so large files and `Range` requests stream through (300 s read timeout)                         |
 | `https://SERVER_NAME/api/…`                                                                       | The API: 120 s timeouts, bodies up to `MAX_UPLOAD_MB` + 10 MB. The API's own security headers pass through unchanged |
 | `https://SERVER_NAME/assets/…`                                                                    | Content-hashed build output, cached for a year; a missing file is a 404                                              |
@@ -117,12 +119,16 @@ request therefore share one `requestId`.
 - **Sizing:** size CPU and memory with the [load tests](load-testing.md). Lecture transcoding (ffmpeg) is CPU-bound and
   runs inside the api container. Plan disk space for MySQL, the media volume and the local backups; each full backup
   holds the compressed database plus all media.
+  - Recording live classes with the self-hosted LiveKit profile needs about 4 free CPU cores per class being recorded
+    ([live streaming](integrations/live-streaming.md#server)).
 - **DNS:**
   - an `A`/`AAAA` record for `SERVER_NAME`;
   - a wildcard record `*.SITES_DOMAIN` if institutes use subdomains;
   - institutes point their custom domains at the server, with a `CNAME` to `SERVER_NAME` or `A`/`AAAA` records.
 - **Firewall:**
   - inbound: TCP 80 and 443 (plus SSH). MySQL is not published;
+  - live classes with LiveKit: the [media and TURN ports](integrations/live-streaming.md#ports) of the self-hosted
+    profile, or outbound HTTPS to LiveKit Cloud and its recordings bucket;
   - outbound: HTTPS for ACME and for the AI provider, if you use one.
 - **Certificates:** certbot (or another ACME client) on the host. The wildcard certificate also needs your DNS
   provider's certbot plugin.
@@ -174,6 +180,8 @@ Format rules:
 | `ADMS_ALLOW_HTTP`, `ADMS_MAX_BODY_KB`, `ADMS_MAX_RECORDS`, `ADMS_BACKFILL_DAYS`                                                                                          | ZKTeco/eSSL biometric devices ([biometric.md](integrations/biometric.md#server-setup)). `ADMS_ALLOW_HTTP=true` also serves `/iclock/` on `HTTP_PORT`, for firmware without HTTPS                                  |
 | `AI_BASE_URL`, `AI_MODEL`, `AI_API_KEY`, `AI_TIMEOUT_MS`                                                                                                                 | Defaults for the AI features; the Super Admin can override them in the app                                                                                                                                        |
 | `SMS_PROVIDER`, `WHATSAPP_PROVIDER`, `EMAIL_PROVIDER`, `PUSH_PROVIDER`, `PAYMENT_GATEWAY`, `STREAMING_PROVIDER`, `BIOMETRIC_PROVIDER`                                    | Integration adapters. This release only has `console` and `mock` implementations ([before going live](#before-going-live))                                                                                        |
+| `MESSAGING_TIMEOUT_MS`, `MESSAGING_DEFAULT_COUNTRY_CODE`                                                                                                                 | Messaging vendor requests. MSG91, Twilio, WhatsApp Cloud, SMTP and FCM/APNs are configured in the app ([messaging](integrations/messaging.md))                                                                    |
+| `LIVEKIT_*`                                                                                                                                                              | Live classes with `STREAMING_PROVIDER=livekit` ([live streaming](integrations/live-streaming.md#settings))                                                                                                        |
 | `SEED_SUPERADMIN_MOBILE`, `SEED_SUPERADMIN_PASSWORD`, `SEED_DEMO_DATA`                                                                                                   | First deployment only ([seeding](#first-deployment))                                                                                                                                                              |
 | `BACKUP_HOST_DIR`, `BACKUP_KEEP_COUNT`, `BACKUP_KEEP_DAYS`, `BACKUP_UID`, `BACKUP_GID`                                                                                   | [backup-restore.md](backup-restore.md)                                                                                                                                                                            |
 
@@ -183,6 +191,7 @@ The compose file sets the following for the API itself, overriding any value in 
 - `PORT=4000`;
 - `TRUST_PROXY=1`;
 - `STORAGE_DRIVER=local` and `STORAGE_LOCAL_ROOT=/var/lib/erp/storage`;
+- `LIVEKIT_RECORDINGS_DIR=/var/lib/erp/livekit-recordings`, the volume `livekit-recordings`;
 - `API_PUBLIC_URL=$PUBLIC_URL`;
 - `PUBLIC_WEB_URL=$PUBLIC_WEB_URL`, or `$PUBLIC_URL` when blank (also for `migrate`: the API refuses to start in
   production without it);
@@ -491,14 +500,16 @@ Demo data (`SEED_DEMO_DATA=true`) is for demos and staging only. In production i
 
 This release only ships development adapters for the external integrations:
 
-- **Messaging:** `SMS_PROVIDER`, `WHATSAPP_PROVIDER`, `EMAIL_PROVIDER` and `PUSH_PROVIDER` are `console`. In
-  production the console adapters deliver nothing and log only the channel and a masked recipient, never the message
-  body. So OTP login, the OTP for a user's additional devices, and notifications don't reach users until real adapters
-  are implemented. Password login on a user's first device needs no OTP.
+- **Messaging:** until providers are configured in the app, SMS, WhatsApp, email and push use the console adapters,
+  which in production deliver nothing and log only the channel and a masked recipient, never the message body. Set up
+  the platform providers (and institutes their own) as described in [messaging](integrations/messaging.md): OTP login
+  and the OTP for a user's additional devices need the platform SMS provider. Password login on a user's first device
+  needs no OTP.
 - **Payments:** the mock gateway (`PAYMENT_GATEWAY=mock`) doesn't charge anyone, and production won't use it.
   Institutes and the platform take real payments once they enter their Paytm, Razorpay or Cashfree keys in the app
   ([payment gateways](integrations/payments.md)).
-- **Live classes:** `STREAMING_PROVIDER=mock` is the peer-to-peer WebRTC transport ([live classes](#live-classes)).
+- **Live classes:** `STREAMING_PROVIDER=mock` is the peer-to-peer WebRTC transport ([live classes](#live-classes)). For
+  production, use LiveKit, self-hosted or LiveKit Cloud ([live streaming](integrations/live-streaming.md)).
 - **Biometrics:** ZKTeco and eSSL devices connect directly over ADMS push
   ([biometric.md](integrations/biometric.md)). `BIOMETRIC_PROVIDER=mock` is only the payload format of the punch API,
   for other devices and middleware.
@@ -822,6 +833,10 @@ firebase-messaging) is in the merged manifest, and an `iphonesimulator` build pi
 plugin, run `npx cap sync ios` and `xcodebuild -resolvePackageDependencies -project App.xcodeproj -scheme App` in
 `app/ios/App` and commit the updated `Package.resolved`.
 
+Push notifications need your `app/android/app/google-services.json` and an APNs key
+([messaging](integrations/messaging.md#push-fcm-for-android-apns-for-ios)). CI builds both apps without them: the
+Android app then skips push registration.
+
 The API, including the live-class Socket.IO endpoint, accepts these origins, in this order:
 
 1. `PUBLIC_URL`. Links into the web app (institute websites, course checkout) use `PUBLIC_WEB_URL` instead,
@@ -861,7 +876,9 @@ and attendance:
   reconnect, but the room state is gone.
 - **Media:** with `STREAMING_PROVIDER=mock`, media flows peer to peer over WebRTC. The teacher's browser sends one
   stream to each student, so a class is limited by the teacher's upload bandwidth, roughly 15 to 25 viewers (see
-  `backend/src/modules/live-classes/README.md`).
+  `backend/src/modules/live-classes/README.md`). With `STREAMING_PROVIDER=livekit`, a LiveKit media server forwards
+  the streams and brings its own TURN ([live streaming](integrations/live-streaming.md)); the rest of this section
+  is about the peer-to-peer transport and the socket.
 - **STUN only:** the ICE configuration contains only a public STUN server (`stun:stun.l.google.com:19302`).
   Participants behind symmetric NAT or strict firewalls, which are common on mobile networks and on school or office
   networks, can't connect without a TURN relay.
@@ -912,8 +929,8 @@ TURN with [coturn](https://github.com/coturn/coturn):
 - **Wiring it in:** the API must return the TURN server and these credentials from the streaming provider's
   `iceServers()` (`backend/src/infrastructure/streaming/`). This needs a code change: today the list is hard-coded.
   Never ship static TURN credentials in the app.
-- **Larger classes:** use an SFU (LiveKit, mediasoup, Janus or a hosted service) through a `STREAMING_PROVIDER`
-  adapter. The steps are in the live-classes README.
+- **Larger classes:** use LiveKit (`STREAMING_PROVIDER=livekit`, [live streaming](integrations/live-streaming.md)), or
+  another SFU through a `STREAMING_PROVIDER` adapter. The steps are in the live-classes README.
 
 ### Rate limits
 
@@ -967,6 +984,7 @@ The `backup-restore` job runs `deploy/backup/restore-test.sh` against MySQL 8.4;
 | A 503 `SERVICE_UNAVAILABLE` on `/api/…`             | nginx can't reach the api: it is stopped, restarting or crashed (`docker compose logs api`)                                                                                                                |
 | A 413 on uploads                                    | Raise `MAX_UPLOAD_MB` and run `docker compose up -d --wait`; it applies to both nginx and the API                                                                                                          |
 | Live classes don't connect                          | `curl 'https://app.example.com/api/live-classes/socket.io/?EIO=4&transport=polling'` must return `0{"sid":…`. A proxy in front must pass WebSocket upgrades. For media failures, see [TURN](#live-classes) |
+| LiveKit media, recordings or attendance fail        | [Live streaming troubleshooting](integrations/live-streaming.md#troubleshooting)                                                                                                                           |
 | A biometric device doesn't send punches             | The device's last error in Attendance setup → Biometric, and [biometric.md](integrations/biometric.md#troubleshooting)                                                                                     |
 | CORS errors in the mobile apps                      | `CORS_ORIGINS` (`docker compose exec api printenv CORS_ORIGINS`) must contain the app's origin                                                                                                             |
 | A certificate error on a custom domain              | `docker compose exec web erp-certs --reload` reports skipped certificates; `openssl s_client -servername <host> -connect <host>:443` shows the certificate in use                                          |

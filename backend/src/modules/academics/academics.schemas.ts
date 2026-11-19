@@ -104,6 +104,7 @@ export const promotionBody = z.object({
   fromBatchId: idNum,
   toBatchId: idNum,
   studentUserIds: z.array(idNum).min(1).max(1000).optional(),
+  fees: z.object({ structureId: idNum.optional(), firstDueDate: dateStr.optional() }).optional(),
 });
 
 export const classroomBody = z.object({
