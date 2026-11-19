@@ -69,6 +69,8 @@ export type StreamingWebhookEvent = {
       role?: string;
       /** Provider connection id (e.g. LiveKit participant SID), unique per visit. */
       connectionRef?: string;
+      /** The device the participant's join token was issued to (see `JoinTokenClaims`). */
+      deviceId?: number;
       /** When that connection joined. */
       joinedAt?: Date;
     }
@@ -111,6 +113,12 @@ export interface StreamingProvider {
   endRoom(roomId: string): Promise<{ recordings: ProviderRecording[] }>;
   /** Lets a participant publish their microphone (the teacher's grant), or takes it away. */
   setParticipantPublish?(input: { roomId: string; userId: number; microphone: boolean }): Promise<void>;
+  /**
+   * Disconnects a user from the media room (their device signed out, was revoked or lost access). With `deviceId`,
+   * only a connection that joined with a token issued to that device is removed: the user may have moved to another
+   * device. Returns whether one was removed.
+   */
+  removeParticipant?(input: { roomId: string; userId: number; deviceId?: number }): Promise<boolean>;
   /**
    * Finished provider-side recordings of a room and how many are still being written (catch-up when
    * a webhook was missed).

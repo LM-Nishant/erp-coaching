@@ -33,7 +33,11 @@ webhooks, so the only difference is where the media servers run and where record
    the development provider. Tokens are issued only while the class is live, and only to the class's teacher, the
    batch's other teachers and students, and branch admins. A token is valid for at most 15 minutes, which only limits
    joining: LiveKit renews the token of a connected participant. Each participant's LiveKit identity is
-   `user-<user id>`.
+   `user-<user id>`, and its metadata holds its classroom role and the id of the device the token was issued to. When
+   that device signs out or is revoked, the API removes the participant from the room (`RemoveParticipant`), and a
+   join reported later from a device that is signed out, revoked or idle is removed at once and counts no attendance.
+   The [socket re-check](../security.md#signed-media-urls) also removes the media connection of a classroom socket it drops (suspended
+   subscription, idle device, inactive user or institute).
 4. **Teach.** The teacher's console has **Mic**, **Camera**, **Share screen**, **Whiteboard** and **End class**.
 5. **End.** **End class** stops the recording, closes the LiveKit room, which disconnects everyone, and closes the
    attendance.
@@ -257,9 +261,14 @@ it from the bucket.
 4. In the project settings, under webhooks, add the URL from the admin card
    (`https://app.example.com/api/live-classes/public/livekit/webhook`) and choose the same API key as the signing key.
    The API rejects webhooks signed with any other key.
-5. If the web app's CSP is enforced (`SPA_CSP_MODE=enforce`), add `wss://*.livekit.cloud https://*.livekit.cloud` to
-   `connect-src` in a custom `SPA_CSP` ([web app security headers](../deployment.md#web-app-security-headers)). The
-   self-hosted setup needs no change: the default policy allows `wss://SERVER_NAME`.
+5. If the web app's CSP is enforced (`SPA_CSP_MODE=enforce`), the browser also has to reach LiveKit Cloud. A custom
+   `SPA_CSP` replaces the default policy wholesale, so start from the complete default policy in
+   `deploy/nginx/entrypoint/18-erp-config.envsh` (also shown under
+   [web app security headers](../deployment.md#web-app-security-headers)), with your server name and the payment
+   gateways' hosts written out, and add `wss://*.livekit.cloud https://*.livekit.cloud` to its `connect-src`. A policy
+   written from scratch drops those hosts and breaks payments. `SPA_CSP_REPORT_URI` is appended only to the default
+   policy, so put a `report-uri` in yours if you collect reports. The self-hosted setup needs no change: the default
+   policy allows `wss://SERVER_NAME`.
 
 ## Webhooks
 

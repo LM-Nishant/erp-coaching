@@ -17,7 +17,12 @@ import { config } from '../../infrastructure/config';
 import { logger } from '../../infrastructure/logger';
 import { newRedisConnection, type RedisClient } from '../../infrastructure/redis';
 import { runWithContext, hasPermission, type RequestContext } from '../../shared/context';
-import { assertOpenSession, authenticate, recheckSession } from '../../shared/middleware/authenticate';
+import {
+  assertOpenSession,
+  authenticate,
+  isDeviceSignedIn,
+  recheckSession,
+} from '../../shared/middleware/authenticate';
 import { AppError, Conflict, Forbidden, TooManyRequests } from '../../shared/errors';
 import { parse } from '../../shared/utilities/validation';
 import { isModuleEnabled } from '../subscriptions/subscription.service';
@@ -36,7 +41,11 @@ import { createRoomStore, type RoomExtras, type RoomStore } from './room-store';
  *   that signed out is refused (401 `SIGNED_OUT`) although its access token has not expired yet.
  * - Open sockets are re-checked with `recheckSession` every minute and when an institute's subscription or status
  *   changes (`recheckLiveSockets`): a revoked, idle or signed-out device, an inactive user or institute and a
- *   suspended subscription drop them. A revoked device's sockets are dropped at once (`disconnectDeviceSockets`).
+ *   suspended subscription drop them. A device that signs out or is revoked is dropped within seconds, by the
+ *   device event's job (`dropDevice`).
+ * - Media: a vendor SFU's connection outlives its join token (the SFU renews it). Dropping a device's sockets also
+ *   removes the device's media connections (`svc.removeFromMedia`); a media join from a signed-out, revoked or idle
+ *   device is refused by the provider webhook (`provider-webhooks.ts`).
  * - Every event handler runs inside the socket's request context, so tenant-scoped repositories work.
  * - Several API instances: with REDIS_URL set, the Socket.IO Redis adapter carries broadcasts and the room's
  *   hands, speakers, screen share and whiteboard live in Redis (`room-store.ts`). Who is in a room is read from
@@ -236,15 +245,47 @@ export function attachLiveSockets(server: HttpServer): Server {
   return io;
 }
 
-/** Disconnects the live-class sockets opened from a device (it was revoked), on every instance. */
+/** Disconnects the live-class sockets opened from a device, on every instance. */
 export function disconnectDeviceSockets(deviceId: number): void {
   getLiveNamespace()?.in(deviceRoom(deviceId)).disconnectSockets(true);
+}
+
+/** The classes these sockets joined, as media seats of their user and device. */
+function seatsOf(sockets: PeerSocket[]): svc.MediaSeat[] {
+  const seats: svc.MediaSeat[] = [];
+  for (const { data } of sockets) {
+    const { ctx, liveSessionId } = data;
+    if (liveSessionId && ctx?.instituteId && ctx.userId && ctx.deviceId)
+      seats.push({ instituteId: ctx.instituteId, liveSessionId, userId: ctx.userId, deviceId: ctx.deviceId });
+  }
+  return seats;
+}
+const seatKey = (s: svc.MediaSeat) => `${s.instituteId}:${s.liveSessionId}:${s.userId}:${s.deviceId}`;
+
+/**
+ * Drops a device that signed out or was revoked from live classes: its sockets on every instance, and its media
+ * connections to the classes they joined and to every class live in the user's institutes (media needs no socket).
+ * Throws when the media server could not be told, so the device event job retries.
+ */
+export async function dropDevice(userId: number, deviceId: number): Promise<void> {
+  const nsp = getLiveNamespace();
+  // Read before disconnecting: leaving the class clears a socket's data.
+  const seats = seatsOf(nsp ? await socketsIn(nsp, deviceRoom(deviceId)) : []);
+  disconnectDeviceSockets(deviceId);
+  await svc.removeFromMedia([...seats, ...(await svc.liveSeatsOf(userId, deviceId))]);
+}
+
+/** A sign-out is undone by signing in again on the same device before the job runs: then nothing is dropped. */
+export async function dropSignedOutDevice(userId: number, deviceId: number): Promise<void> {
+  if (await isDeviceSignedIn(deviceId)) return;
+  await dropDevice(userId, deviceId);
 }
 
 /**
  * Re-checks open sockets with `recheckSession` and drops those it refuses: this instance's sockets
  * (every minute), or an institute's sockets on every instance (when its subscription or status
- * changed). Returns how many were dropped. A database error keeps the socket.
+ * changed). Their media connections go too, unless another kept socket has the same seat. Returns how
+ * many sockets were dropped. A database error keeps the socket.
  */
 export async function recheckLiveSockets(instituteId?: number): Promise<number> {
   const nsp = getLiveNamespace();
@@ -252,6 +293,8 @@ export async function recheckLiveSockets(instituteId?: number): Promise<number> 
   const sockets: PeerSocket[] =
     instituteId === undefined ? [...nsp.sockets.values()] : await socketsIn(nsp, instituteRoom(instituteId));
   const verdicts = new Map<string, Promise<boolean>>();
+  const evicted: svc.MediaSeat[] = [];
+  const kept = new Set<string>();
   let dropped = 0;
   for (const socket of sockets) {
     const ctx = socket.data.ctx;
@@ -264,10 +307,17 @@ export async function recheckLiveSockets(instituteId?: number): Promise<number> 
       allowed = runWithContext(scope, () => stillAllowed(scope));
       verdicts.set(key, allowed);
     }
-    if (await allowed) continue;
+    if (await allowed) {
+      for (const seat of seatsOf([socket])) kept.add(seatKey(seat));
+      continue;
+    }
+    evicted.push(...seatsOf([socket]));
     socket.disconnect(true);
     dropped++;
   }
+  const gone = evicted.filter((seat) => !kept.has(seatKey(seat)));
+  if (gone.length)
+    await svc.removeFromMedia(gone).catch((err: unknown) => logger.warn({ err }, 'live media not removed'));
   return dropped;
 }
 

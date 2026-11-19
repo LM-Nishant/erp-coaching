@@ -987,8 +987,10 @@ and attendance:
   After an API restart the clients reconnect and rejoin; without Redis, the hands and the whiteboard are gone.
 - **Re-checks:** open sockets are re-checked every minute with the REST API's session checks. A revoked or idle
   device, an inactive user, a lost membership or branch, a suspended subscription or an inactive institute drops them.
-  A change of an institute's subscription or status re-checks its sockets at once, and signing a device out drops its
-  sockets at once. The app then asks the REST API, which explains why, and reconnects if it is allowed.
+  A change of an institute's subscription or status re-checks its sockets at once, and signing a device out or revoking
+  it drops its sockets within seconds (a background job). With LiveKit, the media connections of dropped sockets and
+  devices are removed too ([live streaming](integrations/live-streaming.md#how-a-class-runs)). The app then asks the
+  REST API, which explains why, and reconnects if it is allowed.
 - **Media:** with `STREAMING_PROVIDER=mock`, media flows peer to peer over WebRTC. The teacher's browser sends one
   stream to each student, so a class is limited by the teacher's upload bandwidth, roughly 15 to 25 viewers (see
   `backend/src/modules/live-classes/README.md`). With `STREAMING_PROVIDER=livekit`, a LiveKit media server forwards

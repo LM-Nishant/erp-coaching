@@ -35,6 +35,7 @@ import { AppError, BadRequest, Conflict, Forbidden, NotFound } from '../../share
 import { isDeviceSignedIn } from '../../shared/middleware/authenticate';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { User } from '../users/user.model';
+import { membershipInstituteIds } from '../permissions/access.service';
 import { FileObject } from '../files/file.model';
 import { deleteFile, saveUploadedFile, signedUrlFor } from '../files/files.service';
 import { Batch, BatchStudent, BatchTeacher, ClassSession, getBatchMemberUserIds } from '../academics/api';
@@ -600,6 +601,69 @@ export async function setMicPermission(liveSessionId: number, userId: number, al
         'MEDIA_NOT_CONNECTED',
       );
   }
+}
+
+/** Who joined which live class from which device (a classroom socket, or a device's possible media rooms). */
+export interface MediaSeat {
+  instituteId: number;
+  liveSessionId: number;
+  userId: number;
+  deviceId: number;
+}
+
+/**
+ * Every class live on the media provider in the user's institutes, as seats of `deviceId`: a device that signed
+ * out or was revoked may be connected to any of them, also without a classroom socket. Empty when the provider
+ * cannot remove participants.
+ */
+export async function liveSeatsOf(userId: number, deviceId: number): Promise<MediaSeat[]> {
+  const provider = getStreamingProvider();
+  if (!provider.removeParticipant) return [];
+  const instituteIds = await membershipInstituteIds(userId);
+  if (!instituteIds.length) return [];
+  const live = await LiveSession.findAll({
+    where: { instituteId: instituteIds, status: 'live', provider: provider.name, roomId: { [Op.ne]: null } },
+    attributes: ['id', 'instituteId'],
+  });
+  return live.map((s) => ({ instituteId: s.instituteId, liveSessionId: s.id, userId, deviceId }));
+}
+
+/**
+ * Removes the seats' media connections (vendor SFUs that support it): the user's connection to the class, but only
+ * one that joined with a token issued to the seat's device. Classes that are no longer live on the current
+ * provider are skipped. Runs without a request context (device events, socket re-checks). Returns how many were
+ * removed; after trying every seat, throws the first provider error so a device event job retries.
+ */
+export async function removeFromMedia(seats: MediaSeat[]): Promise<number> {
+  const provider = getStreamingProvider();
+  if (!provider.removeParticipant || !seats.length) return 0;
+  const unique = [...new Map(seats.map((s) => [`${s.liveSessionId}:${s.userId}:${s.deviceId}`, s])).values()];
+  const live = await LiveSession.findAll({
+    where: {
+      instituteId: [...new Set(unique.map((s) => s.instituteId))],
+      id: [...new Set(unique.map((s) => s.liveSessionId))],
+      status: 'live',
+      provider: provider.name,
+      roomId: { [Op.ne]: null },
+    },
+    attributes: ['id', 'instituteId', 'roomId'],
+  });
+  const rooms = new Map(live.map((s) => [`${s.instituteId}:${s.id}`, s.roomId as string]));
+  let removed = 0;
+  let failure: unknown;
+  for (const seat of unique) {
+    const roomId = rooms.get(`${seat.instituteId}:${seat.liveSessionId}`);
+    if (!roomId) continue;
+    try {
+      if (await provider.removeParticipant({ roomId, userId: seat.userId, deviceId: seat.deviceId }))
+        removed++;
+    } catch (err) {
+      failure ??= err;
+      logger.warn({ err, ...seat }, 'Could not remove a device from the live class media room');
+    }
+  }
+  if (failure) throw failure;
+  return removed;
 }
 
 /* ------------------------------------------------------------------ participation */

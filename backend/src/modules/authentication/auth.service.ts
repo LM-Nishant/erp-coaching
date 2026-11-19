@@ -26,6 +26,7 @@ import { Branch } from '../branches/branch.model';
 import { loadAssignments, computeAccess, membershipInstituteIds } from '../permissions/access.service';
 import { Role, UserRole } from '../permissions/models';
 import { getPlanLimits } from '../subscriptions/subscription.service';
+import { emitDeviceSignedOut } from './device-events';
 import { Device, ImpersonationSession, OtpChallenge, RefreshToken } from './models';
 import { signAccessToken } from './token.service';
 import {
@@ -359,15 +360,12 @@ export async function refreshTokens(token: string): Promise<AuthTokens> {
     throw Unauthorized('This device session has been revoked', 'SESSION_REVOKED');
   if (!user || user.status !== 'active') throw Unauthorized('Account is not active', 'ACCOUNT_INACTIVE');
   if (row.revokedAt) {
-    await RefreshToken.update(
-      { revokedAt: new Date() },
-      { where: { deviceId: row.deviceId, revokedAt: null } },
-    );
+    await endDeviceSessions(row.deviceId, row.userId);
     throw Unauthorized('Refresh token reuse detected', 'INVALID_REFRESH_TOKEN');
   }
   if (row.expiresAt < new Date()) throw Unauthorized('Refresh token expired', 'INVALID_REFRESH_TOKEN');
   if (isIdle(device.lastSeenAt, await getIdleTimeoutMinutes(row.instituteId))) {
-    await RefreshToken.update({ revokedAt: new Date() }, { where: { deviceId: device.id, revokedAt: null } });
+    await endDeviceSessions(device.id, row.userId);
     throw Unauthorized('Signed out after a period of inactivity', 'SESSION_IDLE');
   }
   if (row.instituteId) await assertInstituteActive(row.instituteId);
@@ -381,16 +379,25 @@ export async function refreshTokens(token: string): Promise<AuthTokens> {
 export async function logout(token: string) {
   const row = await RefreshToken.findOne({ where: { tokenHash: sha256(token) } });
   if (!row) return;
-  await RefreshToken.update(
-    { revokedAt: new Date() },
-    { where: { deviceId: row.deviceId, revokedAt: null } },
-  );
+  await endDeviceSessions(row.deviceId, row.userId);
   // Signing out turns biometric unlock off on that device (the app deletes its credential too).
   // Locking after inactivity does not call this, so unlock keeps working there.
   await Device.update(
     { unlockKeyHash: null, unlockEnrolledAt: null },
     { where: { id: row.deviceId, unlockKeyHash: { [Op.ne]: null } } },
   );
+}
+
+/**
+ * Ends every session on a device (revokes its refresh tokens). When one was open, other modules hear of it
+ * (`onDeviceSignedOut`): live classes drop the device's sockets and media connections at once.
+ */
+async function endDeviceSessions(deviceId: number, userId: number) {
+  const [ended] = await RefreshToken.update(
+    { revokedAt: new Date() },
+    { where: { deviceId, revokedAt: null } },
+  );
+  if (ended) await emitDeviceSignedOut({ deviceId, userId, signedOutAt: new Date().toISOString() });
 }
 
 async function assertInstituteActive(instituteId: number) {
