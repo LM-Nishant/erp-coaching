@@ -1,7 +1,13 @@
-import express, { Router } from 'express';
+import express, { Router, type Request, type Response } from 'express';
 import { Op, col, fn } from 'sequelize';
 import { z } from 'zod';
-import { ADDON_KINDS, METERED_METRICS, PLAN_MODULE_KEYS, type SubscriptionAccessState } from '@erp/shared';
+import {
+  ADDON_KINDS,
+  CHECKOUT_PLATFORMS,
+  METERED_METRICS,
+  PLAN_MODULE_KEYS,
+  type SubscriptionAccessState,
+} from '@erp/shared';
 import { parse } from '../../shared/utilities/validation';
 import { idParam, paginationSchema } from '../../shared/utilities/pagination';
 import { authenticate } from '../../shared/middleware/authenticate';
@@ -10,6 +16,8 @@ import { getContext, hasPermission, requireTenantContext } from '../../shared/co
 import { BadRequest, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
 import { webhookRateLimit } from '../../shared/middleware/security';
+import { sendCheckoutReturn, verifyCheckoutReturn } from '../../shared/utilities/checkout-return';
+import { logger } from '../../infrastructure/logger';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { Institute } from '../institutes/institute.model';
 import { User } from '../users/user.model';
@@ -56,6 +64,7 @@ import {
   recordManualPayment,
   startCheckout,
   syncPayment,
+  syncReturnedSaasPayment,
 } from './payments.service';
 import {
   getBillingPolicy,
@@ -263,7 +272,13 @@ function tenantRoutes(api: Router) {
     const { instituteId, userId: uid } = requireTenantContext();
     const { id } = parse(idParam, req.params);
     const body = parse(
-      z.object({ idempotencyKey: z.string().trim().min(8).max(100).optional() }),
+      z.object({
+        idempotencyKey: z.string().trim().min(8).max(100).optional(),
+        returnTo: z
+          .object({ platform: z.enum(CHECKOUT_PLATFORMS), path: z.string().max(80).optional() })
+          .nullable()
+          .optional(),
+      }),
       req.body ?? {},
     );
     const user = await User.findByPk(uid!);
@@ -272,6 +287,7 @@ function tenantRoutes(api: Router) {
       idempotencyKey: req.header('idempotency-key') ?? body.idempotencyKey ?? null,
       userId: user.id,
       customer: { name: user.name, mobile: user.mobile, ...(user.email ? { email: user.email } : {}) },
+      returnTo: body.returnTo,
     });
     res.status(201).json(result);
   });
@@ -734,6 +750,27 @@ function publicRoutes(api: Router) {
       const result = await processWebhook(gateway, raw, req.headers);
       res.json({ received: true, ...result });
     },
+  );
+
+  // The payer's browser coming back from a redirect checkout (see fees.routes.ts): the signed link
+  // names the payment, which is re-checked with the gateway before the payer lands back in the app.
+  const checkoutReturn = async (req: Request, res: Response) => {
+    const target = verifyCheckoutReturn('saas', String(req.params.token ?? ''));
+    if (target)
+      await syncReturnedSaasPayment(target.instituteId, target.paymentId).catch((err: Error) =>
+        logger.warn(
+          { paymentId: target.paymentId, reason: err.message },
+          'Checkout return status check failed',
+        ),
+      );
+    sendCheckoutReturn(res, target);
+  };
+  api.get('/subscriptions/public/checkout-return/:token', webhookRateLimit, checkoutReturn);
+  api.post(
+    '/subscriptions/public/checkout-return/:token',
+    webhookRateLimit,
+    express.urlencoded({ extended: false, limit: '64kb' }),
+    checkoutReturn,
   );
 
   // Short-lived signed link to an invoice / credit note PDF.

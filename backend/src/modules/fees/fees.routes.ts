@@ -2,6 +2,7 @@ import express, { Router, type Request, type Response } from 'express';
 import { Op, type WhereOptions } from 'sequelize';
 import { z } from 'zod';
 import {
+  CHECKOUT_PLATFORMS,
   FEE_ADJUSTMENT_TYPES,
   FEE_COURSE_ENROLMENT_STATUSES,
   INSTALMENT_PLAN_TYPES,
@@ -13,6 +14,8 @@ import { idParam, paginated, paginationSchema, toLimitOffset } from '../../share
 import { authenticate } from '../../shared/middleware/authenticate';
 import { requireModule, requirePermission } from '../../shared/middleware/authorize';
 import { webhookRateLimit } from '../../shared/middleware/security';
+import { sendCheckoutReturn, verifyCheckoutReturn } from '../../shared/utilities/checkout-return';
+import { logger } from '../../infrastructure/logger';
 import { hasPermission, requireTenantContext } from '../../shared/context';
 import { BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { Student } from '../students/api';
@@ -62,6 +65,7 @@ import {
   recordOfflinePayment,
   refundPayment,
   syncPaymentStatus,
+  syncReturnedPayment,
 } from './payments.service';
 import { findReceipt, receiptDto, receiptPdfUrl } from './receipts';
 import { quoteCourse, startCoursePurchase } from './course-sales';
@@ -71,7 +75,13 @@ import {
   courseEnrolmentRepo,
   reconcileCourseEnrolment,
 } from './course-enrolment';
-import { enabledGateways, gatewayDto, gatewayRepo, upsertGatewayConfig } from './gateways.service';
+import {
+  enabledGateways,
+  gatewayDto,
+  gatewayRepo,
+  testGatewayConnection,
+  upsertGatewayConfig,
+} from './gateways.service';
 import {
   bankAccountDto,
   bankRepo,
@@ -193,12 +203,18 @@ const offlineBody = z.object({
   notes: optStr(500),
 });
 const promoCode = z.string().trim().max(40).nullable().optional();
+// Where a redirect checkout sends the payer back to (the web app or a native app).
+const returnTo = z
+  .object({ platform: z.enum(CHECKOUT_PLATFORMS), path: z.string().max(80).optional() })
+  .nullable()
+  .optional();
 const checkoutBody = z.object({
   accountId: z.number().int().positive(),
   amount: positivePaise.optional(),
   gateway: z.enum(PAYMENT_GATEWAYS).optional(),
   couponCode: promoCode,
   referralCode: promoCode,
+  returnTo,
 });
 const coursePurchaseBody = z.object({
   studentId: optId,
@@ -206,7 +222,15 @@ const coursePurchaseBody = z.object({
   gateway: z.enum(PAYMENT_GATEWAYS).optional(),
   couponCode: promoCode,
   referralCode: promoCode,
+  returnTo,
 });
+// A blank secret keeps the stored one.
+const gatewaySecret = z
+  .string()
+  .trim()
+  .max(500)
+  .refine((v) => v === '' || v.length >= 4, 'Must be at least 4 characters')
+  .optional();
 const adjustmentBody = z.object({
   type: z.enum(FEE_ADJUSTMENT_TYPES).default('discount'),
   mode: z.enum(['fixed', 'percent']).optional(),
@@ -334,6 +358,27 @@ function publicRoutes(api: Router) {
       res.json({ received: true, ...result });
     },
   );
+  // The payer's browser coming back from a redirect checkout (GET, or a form POST from Paytm and
+  // Razorpay). The signed link names the payment; whatever the gateway posted is ignored and the
+  // payment is re-checked with the gateway before the payer lands back in the app.
+  const checkoutReturn = async (req: Request, res: Response) => {
+    const target = verifyCheckoutReturn('fees', String(req.params.token ?? ''));
+    if (target?.instituteId)
+      await syncReturnedPayment(target.instituteId, target.paymentId).catch((err: Error) =>
+        logger.warn(
+          { paymentId: target.paymentId, reason: err.message },
+          'Checkout return status check failed',
+        ),
+      );
+    sendCheckoutReturn(res, target);
+  };
+  api.get('/fees/public/checkout-return/:token', webhookRateLimit, checkoutReturn);
+  api.post(
+    '/fees/public/checkout-return/:token',
+    webhookRateLimit,
+    express.urlencoded({ extended: false, limit: '64kb' }),
+    checkoutReturn,
+  );
 }
 
 // ------------------------------------------------------------------ configuration
@@ -432,8 +477,9 @@ function configRoutes(r: Router) {
         enabled: z.boolean().optional(),
         isDefault: z.boolean().optional(),
         merchantId: optStr(100),
-        secretKey: z.string().min(4).max(500).optional(),
-        webhookSecret: z.string().min(4).max(500).optional(),
+        secretKey: gatewaySecret,
+        webhookSecret: gatewaySecret,
+        website: optStr(60),
         extra: z.record(z.string(), z.string().max(200)).optional(),
         sandbox: z.boolean().optional(),
       }),
@@ -448,6 +494,17 @@ function configRoutes(r: Router) {
       after: gatewayDto(row),
     });
     res.json(gatewayDto(row));
+  });
+  // Checks the saved keys with a harmless read-only call to the gateway.
+  r.post('/gateways/:gateway/test', can('configure'), async (req, res) => {
+    const { gateway } = parse(z.object({ gateway: z.enum(PAYMENT_GATEWAYS) }), req.params);
+    const result = await testGatewayConnection(gateway);
+    await auditFee({
+      action: 'fees.gateway.test',
+      entityType: 'payment_gateway_config',
+      metadata: { gateway, ok: result.ok },
+    });
+    res.json(result);
   });
 
   r.post('/jobs/sweep', can('configure'), async (req, res) => {
@@ -787,6 +844,7 @@ function paymentRoutes(r: Router) {
     const { outcome, payment } = await syncPaymentStatus(id);
     res.json({ outcome, payment: paymentDto(payment) });
   });
+  // Development/test: completes a mock gateway checkout (404 in production).
   r.post('/payments/:id/mock-complete', can('create'), async (req, res) => {
     const { id } = parse(idParam, req.params);
     const { outcome } = parse(
@@ -877,7 +935,7 @@ function selfRoutes(r: Router) {
   r.post('/me/checkout', pay, async (req, res) => {
     const body = parse(checkoutBody, req.body);
     await assertMyAccount(body.accountId);
-    res.status(201).json(await createCheckout({ ...body, idempotencyKey: idemKey(req) }));
+    res.status(201).json(await createCheckout({ ...body, idempotencyKey: idemKey(req), payer: true }));
   });
   // Buying a course online (website "Buy" button → app → here).
   const myStudent = async (requested?: number | null) => {
@@ -910,6 +968,7 @@ function selfRoutes(r: Router) {
         studentId: await myStudent(body.studentId),
         courseId: id,
         idempotencyKey: idemKey(req),
+        payer: true,
       }),
     );
   });
@@ -930,7 +989,7 @@ function selfRoutes(r: Router) {
   r.post('/me/payments/:id/sync', mine, async (req, res) => {
     const { id } = parse(idParam, req.params);
     await assertMyPayment(id);
-    const { outcome } = await syncPaymentStatus(id);
+    const { outcome } = await syncPaymentStatus(id, { payer: true });
     res.json({ outcome, payment: paymentDto(await assertMyPayment(id)) });
   });
   r.get('/me/receipts/:id/pdf', mine, async (req, res) => {

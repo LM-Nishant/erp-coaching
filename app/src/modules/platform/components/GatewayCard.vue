@@ -17,10 +17,11 @@
       </p>
       <ion-list>
         <template v-if="!isMock">
+          <p class="muted hint">{{ fields.hint }}</p>
           <ion-item>
             <ion-input
               v-model="form.merchantId"
-              label="Merchant / key id"
+              :label="fields.merchantId"
               label-placement="stacked"
               autocomplete="off"
               :maxlength="120"
@@ -29,21 +30,31 @@
           <ion-item>
             <ion-input
               v-model="form.secretKey"
-              label="Secret key"
+              :label="fields.secretKey"
               label-placement="stacked"
               type="password"
               autocomplete="off"
-              :placeholder="dto.hasSecret ? `Saved (${dto.keyHint ?? 'hidden'}); blank keeps it` : ''"
+              :placeholder="savedSecretHint(dto.hasSecret, dto.keyHint)"
             />
           </ion-item>
-          <ion-item>
+          <ion-item v-if="fields.webhookSecret">
             <ion-input
               v-model="form.webhookSecret"
-              label="Webhook secret"
+              :label="fields.webhookSecret"
               label-placement="stacked"
               type="password"
               autocomplete="off"
-              :placeholder="dto.hasWebhookSecret ? 'Saved; blank keeps it' : ''"
+              :placeholder="savedSecretHint(dto.hasWebhookSecret)"
+            />
+          </ion-item>
+          <ion-item v-if="fields.website">
+            <ion-input
+              v-model="form.website"
+              :label="fields.website"
+              label-placement="stacked"
+              autocomplete="off"
+              :maxlength="60"
+              placeholder="Blank: WEBSTAGING (test) or DEFAULT (live)"
             />
           </ion-item>
           <ion-item><ion-toggle v-model="form.sandbox">Sandbox (test) mode</ion-toggle></ion-item>
@@ -58,9 +69,15 @@
         </ion-item>
         <ion-item><ion-toggle v-model="form.enabled">Enabled</ion-toggle></ion-item>
       </ion-list>
+      <div v-if="secretAgain" class="notice warning">
+        Sandbox and live use different keys: enter the {{ fields.secretKey?.toLowerCase() }} for
+        {{ form.sandbox ? 'sandbox' : 'live' }} mode.
+      </div>
       <p class="muted note">
         Subscription payment webhook URL: <code>{{ dto.webhookUrl }}</code>
-        <ion-button size="small" fill="clear" @click="copyWebhook">Copy</ion-button>
+        <ion-button size="small" fill="clear" aria-label="Copy webhook URL" @click="copyWebhook"
+          >Copy</ion-button
+        >
       </p>
       <TestStatus :status="dto" :result="result" />
       <div class="actions">
@@ -91,6 +108,7 @@ import {
 } from '@ionic/vue';
 import type { IntegrationTestResultDto, PaymentGatewayKey, PlatformGatewayDto } from '@erp/shared';
 import { toast, toastError } from '@/core/toast';
+import { GATEWAY_FIELDS, savedSecretHint } from '@/modules/fees/api';
 import { GATEWAY_LABELS, platformApi } from '../api';
 import TestStatus from './TestStatus.vue';
 
@@ -99,6 +117,7 @@ const emit = defineEmits<{ saved: [] }>();
 
 const label = computed(() => GATEWAY_LABELS[props.dto.gateway as PaymentGatewayKey] ?? props.dto.gateway);
 const isMock = computed(() => props.dto.gateway === 'mock');
+const fields = computed(() => GATEWAY_FIELDS[props.dto.gateway as PaymentGatewayKey] ?? GATEWAY_FIELDS.mock);
 
 const toForm = (d: PlatformGatewayDto) => ({
   enabled: d.enabled,
@@ -108,11 +127,20 @@ const toForm = (d: PlatformGatewayDto) => ({
   merchantId: d.merchantId ?? '',
   secretKey: '',
   webhookSecret: '',
+  website: d.website ?? '',
 });
 
 const form = ref(toForm(props.dto));
 const result = ref<IntegrationTestResultDto | null>(null);
 const busy = ref(false);
+// The server refuses to reuse a saved key in the other mode (SECRET_REQUIRED).
+const secretAgain = computed(
+  () =>
+    !isMock.value &&
+    props.dto.hasSecret &&
+    form.value.sandbox !== props.dto.sandbox &&
+    !String(form.value.secretKey ?? '').trim(),
+);
 
 // Only this gateway's saved configuration resets the form (other cards keep their edits).
 watch(
@@ -129,6 +157,7 @@ const connection = () => ({
   merchantId: String(form.value.merchantId ?? '').trim() || null,
   secretKey: String(form.value.secretKey ?? '').trim() || undefined,
   webhookSecret: String(form.value.webhookSecret ?? '').trim() || undefined,
+  ...(fields.value.website ? { website: String(form.value.website ?? '').trim() || null } : {}),
 });
 
 async function test() {
@@ -197,6 +226,9 @@ async function copyWebhook() {
 .note {
   font-size: 13px;
   word-break: break-all;
+}
+.hint {
+  font-size: 13px;
 }
 .actions {
   display: flex;

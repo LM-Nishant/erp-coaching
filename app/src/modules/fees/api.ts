@@ -2,6 +2,7 @@ import type {
   BankAccountDto,
   BankStatementLineDto,
   CheckoutOrderDto,
+  CheckoutReturnInput,
   CourseBatchOptionDto,
   CourseEnrolmentDto,
   CourseQuoteDto,
@@ -53,6 +54,56 @@ export interface WebhookResult {
   outcome: string;
   payment: FeePaymentDto;
 }
+export interface GatewayTestResult {
+  ok: boolean;
+  message: string;
+}
+
+export const GATEWAY_LABELS: Record<PaymentGatewayKey, string> = {
+  mock: 'Mock gateway (testing)',
+  paytm: 'Paytm',
+  razorpay: 'Razorpay',
+  cashfree: 'Cashfree',
+};
+
+/** Credential fields of a gateway's settings form, named as on the vendor's dashboard. */
+export interface GatewayFields {
+  merchantId?: string;
+  secretKey?: string;
+  /** Only Razorpay (and the mock) sign webhooks with a separate secret. */
+  webhookSecret?: string;
+  /** Paytm's website name. */
+  website?: string;
+  hint: string;
+}
+
+export const GATEWAY_FIELDS: Record<PaymentGatewayKey, GatewayFields> = {
+  mock: {
+    webhookSecret: 'Webhook secret',
+    hint: 'Simulated payments for development and testing. No real money moves.',
+  },
+  paytm: {
+    merchantId: 'Merchant ID (MID)',
+    secretKey: 'Merchant key',
+    website: 'Website name',
+    hint: 'Use the test or production API keys from your Paytm dashboard. Paytm signs webhooks with the merchant key.',
+  },
+  razorpay: {
+    merchantId: 'Key ID',
+    secretKey: 'Key secret',
+    webhookSecret: 'Webhook secret',
+    hint: 'Use the test or live API keys from your Razorpay dashboard, and the secret you set on the webhook (blank uses the key secret).',
+  },
+  cashfree: {
+    merchantId: 'Client ID (App ID)',
+    secretKey: 'Client secret',
+    hint: 'Use the test or production API keys from your Cashfree dashboard. Cashfree signs webhooks with the client secret.',
+  },
+};
+
+/** Placeholder of a write-only secret input. */
+export const savedSecretHint = (saved: boolean | undefined, hint?: string | null) =>
+  saved ? `Saved${hint ? ` (${hint})` : ''}; blank keeps it` : '';
 
 const idem = () => ({ 'Idempotency-Key': crypto.randomUUID() });
 
@@ -70,6 +121,8 @@ export const feesApi = {
   gateways: () => api.get<GatewayConfigDto[]>('/fees/gateways'),
   saveGateway: (g: PaymentGatewayKey, b: Record<string, unknown>) =>
     api.put<GatewayConfigDto>(`/fees/gateways/${g}`, b),
+  /** Checks the saved keys against the gateway. */
+  testGateway: (g: PaymentGatewayKey) => api.post<GatewayTestResult>(`/fees/gateways/${g}/test`),
 
   structures: (q: Query = {}) => api.get<Page<FeeStructureDto>>('/fees/structures', { pageSize: 100, ...q }),
   structure: (id: number) =>
@@ -152,15 +205,25 @@ export const feesApi = {
 
   // student / parent
   my: (studentId?: number) => api.get<MyFeesDto>('/fees/me', { studentId }),
-  myCheckout: (b: { accountId: number; amount?: number; gateway?: PaymentGatewayKey }) =>
-    api.post<CheckoutOrderDto>('/fees/me/checkout', b, { headers: idem() }),
+  myCheckout: (b: {
+    accountId: number;
+    amount?: number;
+    gateway?: PaymentGatewayKey;
+    returnTo?: CheckoutReturnInput;
+  }) => api.post<CheckoutOrderDto>('/fees/me/checkout', b, { headers: idem() }),
   myMockComplete: (id: number, outcome: 'success' | 'failed') =>
     api.post<WebhookResult>(`/fees/me/payments/${id}/mock-complete`, { outcome }),
   courseQuote: (courseId: number, q: { batchId?: number; coupon?: string }) =>
     api.get<CourseQuoteDto>(`/fees/me/courses/${courseId}/quote`, q),
   courseCheckout: (
     courseId: number,
-    b: { batchId?: number; couponCode?: string; referralCode?: string; gateway?: PaymentGatewayKey },
+    b: {
+      batchId?: number;
+      couponCode?: string;
+      referralCode?: string;
+      gateway?: PaymentGatewayKey;
+      returnTo?: CheckoutReturnInput;
+    },
   ) => api.post<CheckoutOrderDto>(`/fees/me/courses/${courseId}/checkout`, b, { headers: idem() }),
   mySync: (id: number) => api.post<WebhookResult>(`/fees/me/payments/${id}/sync`),
   myReceiptPdf: (id: number) => api.get<SignedUrl>(`/fees/me/receipts/${id}/pdf`),

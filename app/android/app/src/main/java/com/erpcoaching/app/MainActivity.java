@@ -6,7 +6,9 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
 
     @Override
-    public void onCreate(Bundle savedInstanceState) {
+    protected void onCreate(Bundle savedInstanceState) {
+        // The app's own plugins; they must be registered before the bridge starts.
+        registerPlugin(PaymentCheckoutPlugin.class);
         registerPlugin(PushConfigPlugin.class);
         super.onCreate(savedInstanceState);
     }

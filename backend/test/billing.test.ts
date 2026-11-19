@@ -4,8 +4,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { QueryTypes } from 'sequelize';
 import type { SaasInvoiceDto } from '@erp/shared';
 import { getSequelize } from '../src/infrastructure/database/sequelize';
-import { MOCK_SIGNATURE_HEADER, signMockWebhook } from '../src/infrastructure/payment-gateways/mock.gateway';
+import {
+  MOCK_SIGNATURE_HEADER,
+  MockPaymentGateway,
+  signMockWebhook,
+} from '../src/infrastructure/payment-gateways/mock.gateway';
 import { runWithContext } from '../src/shared/context';
+import { signCheckoutReturn } from '../src/shared/utilities/checkout-return';
 import {
   invalidateAccess,
   revenueByMonth,
@@ -20,6 +25,7 @@ import {
 import { computeAccessState } from '../src/modules/subscriptions/subscription.service';
 import { subscriptionAccessGuard } from '../src/modules/subscriptions/access-guard';
 import type { Subscription } from '../src/modules/subscriptions/models';
+import { reconcileSaasPayments } from '../src/modules/subscriptions/payments.service';
 import { renderPdf } from '../src/modules/subscriptions/pdf';
 import { sweepInstitute, type BillingSweepResult } from '../src/modules/subscriptions/sweep.service';
 import { billingDate } from '../src/modules/subscriptions/util';
@@ -830,6 +836,62 @@ describe('SaaS billing', () => {
       .set('Idempotency-Key', `mismatch-${RUN}`);
     expect(conflict.status).toBe(409);
     expect(conflict.body.error.code).toBe('IDEMPOTENCY_KEY_REUSED');
+  });
+
+  it('settles a paid invoice whose webhook was lost exactly once, and returns the payer to the app', async () => {
+    const app = await getApp();
+    const inv = await request(app)
+      .post('/api/admin/billing/invoices')
+      .set(bearer(sa))
+      .send({ instituteId: B.id, lines: [{ description: 'Onboarding call', unitPricePaise: 20_000 }] });
+    expect(inv.status).toBe(201);
+    const checkout = await request(app)
+      .post(`/api/subscription/invoices/${inv.body.id}/checkout`)
+      .set(bearer(B.token))
+      .set('Idempotency-Key', `lost-hook-${RUN}`)
+      .send({ returnTo: { platform: 'android' } });
+    expect(checkout.status).toBe(201);
+    const { id: paymentId, gatewayOrderId } = checkout.body.payment as { id: number; gatewayOrderId: string };
+    const returnPath = new URL(checkout.body.checkout.callbackUrl).pathname;
+    expect(returnPath).toMatch(/^\/api\/subscriptions\/public\/checkout-return\/[\w-]+\.[\w-]{22}$/);
+    const detail = async () =>
+      (await request(app).get(`/api/subscription/invoices/${inv.body.id}`).set(bearer(B.token))).body;
+
+    // Coming back without paying changes nothing.
+    const early = await request(app).get(returnPath);
+    expect(early.status).toBe(303);
+    expect(early.headers.location).toBe(`https://localhost/subscription?payment=${paymentId}`);
+    expect((await detail()).invoice.status).toBe('open');
+
+    // The payment succeeds but its webhook never arrives: reconciliation asks the gateway.
+    const late = new MockPaymentGateway().completeCheckout(gatewayOrderId, 'success');
+    await reconcileSaasPayments(new Date(Date.now() + 3 * 60_000));
+    const paid = await detail();
+    expect(paid.invoice).toMatchObject({ status: 'paid', paidPaise: inv.body.totalPaise });
+    expect(paid.payments).toHaveLength(1);
+    expect(paid.payments[0]).toMatchObject({ id: paymentId, status: 'success' });
+
+    // Another poll, the payer's return, the late webhook and its redelivery change nothing.
+    await reconcileSaasPayments(new Date(Date.now() + 3 * 60_000));
+    expect((await request(app).get(returnPath)).status).toBe(303);
+    const deliver = () =>
+      request(app).post(WEBHOOK).set('Content-Type', 'application/json').set(late.headers).send(late.body);
+    expect((await deliver()).body.outcome).toBe('already_processed');
+    expect((await deliver()).body.outcome).toBe('duplicate');
+    const after = await detail();
+    expect(after.invoice).toMatchObject({ status: 'paid', paidPaise: inv.body.totalPaise });
+    expect(after.payments).toHaveLength(1);
+
+    // Return links are signed per flow: a fee-payment link is not accepted here.
+    const feesLink = signCheckoutReturn('fees', {
+      instituteId: B.id,
+      paymentId,
+      platform: 'web',
+      path: '/x',
+    });
+    expect((await request(app).get(`/api/subscriptions/public/checkout-return/${feesLink}`)).status).toBe(
+      400,
+    );
   });
 
   it('meters usage daily and bills overage for soft limits after the month ends', async () => {
