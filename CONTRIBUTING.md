@@ -339,6 +339,7 @@ Set a per-checkout `TEST_DB_NAME` in `backend/.env` (e.g. `erp_coaching_test_<mo
 | `9458…`          | load runs (`load/`)                                                                                                                            |
 | `9459…`          | browser E2E (`e2e/`)                                                                                                                           |
 | `952…`           | `payment-gateways.test.ts` (payment gateway flows)                                                                                             |
+| `954…`           | `livekit-streaming.test.ts`                                                                                                                    |
 | `955…`           | `biometric-adms.test.ts`                                                                                                                       |
 
 Commands:

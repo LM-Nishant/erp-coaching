@@ -8,7 +8,6 @@
       <SecureView v-if="isVideo" class="player" screen="lms-content" :text="watermark">
         <video
           ref="videoEl"
-          :src="videoSrc"
           controls
           playsinline
           disablepictureinpicture
@@ -67,6 +66,7 @@ import type { LmsLearnerResourceDto, LmsPlaybackDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import SecureView from '@/components/SecureView.vue';
 import { openFileLink } from '@/core/downloads';
+import { hlsPlayable, useVideoSource, type VideoSource } from '@/core/hls';
 import { useSessionHold } from '@/core/idle';
 import { toast, toastError } from '@/core/toast';
 import { fmtDateTime, lmsApi } from './api';
@@ -117,7 +117,11 @@ const backHref = computed(() =>
 const isVideo = computed(
   () => !!offlineUrl.value || playback.value?.kind === 'hls' || playback.value?.kind === 'mp4',
 );
-const videoSrc = computed(() => offlineUrl.value ?? playback.value?.url);
+const videoSource = computed<VideoSource | null>(() => {
+  if (offlineUrl.value) return { url: offlineUrl.value, hls: false };
+  const p = playback.value;
+  return p?.kind === 'hls' || p?.kind === 'mp4' ? { url: p.url, hls: p.kind === 'hls' } : null;
+});
 const watermark = computed(() => offlineItem.value?.watermark ?? playback.value?.watermark.text ?? '');
 const inline = computed(() => {
   const m = playback.value?.mimeType ?? '';
@@ -133,7 +137,7 @@ const showOfflineSave = computed(
     !!playback.value?.offlineAllowed,
 );
 
-const prefersHls = () => document.createElement('video').canPlayType('application/vnd.apple.mpegurl') !== '';
+useVideoSource(videoEl, videoSource, () => void onVideoError());
 
 async function load() {
   error.value = '';
@@ -148,7 +152,7 @@ async function load() {
     }
     resource.value = isStaff.value ? await lmsApi.resource(id.value) : await lmsApi.learnerResource(id.value);
     completed.value = !!resource.value.progress?.completed;
-    playback.value = await lmsApi.play(id.value, prefersHls() ? 'hls' : 'mp4');
+    playback.value = await lmsApi.play(id.value, hlsPlayable() ? 'hls' : 'mp4');
     resumeAt = playback.value.resumeAtSeconds;
     if (showOfflineSave.value) savedOffline.value = await isSavedOffline(id.value);
   } catch (e) {
@@ -210,7 +214,7 @@ async function onVideoError() {
   refreshing = true;
   try {
     const at = videoEl.value?.currentTime ?? 0;
-    playback.value = await lmsApi.play(id.value, prefersHls() ? 'hls' : 'mp4');
+    playback.value = await lmsApi.play(id.value, hlsPlayable() ? 'hls' : 'mp4');
     resumeAt = at;
   } catch (e) {
     error.value = (e as Error).message;

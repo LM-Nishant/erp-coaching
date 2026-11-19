@@ -2,6 +2,8 @@ import type {
   ExternalChannel,
   IntegrationTestResultDto,
   IntegrationTestStatus,
+  LiveStreamingStatusDto,
+  LiveStreamingTestResultDto,
   PaymentGatewayKey,
   PlatformGatewayDto,
   PlatformGatewayInput,
@@ -35,6 +37,9 @@ export const platformApi = {
   saveStorage: (b: PlatformStorageInput) => api.put<PlatformStorageDto>(`${base}/storage`, b),
   testStorage: (b: Partial<PlatformStorageInput>) =>
     api.post<IntegrationTestResultDto>(`${base}/storage/test`, b),
+  /** Live-class media provider (configured on the server): status, webhook URL and connection check. */
+  liveStreaming: () => api.get<LiveStreamingStatusDto>('/admin/live-streaming'),
+  testLiveStreaming: () => api.post<LiveStreamingTestResultDto>('/admin/live-streaming/test', {}),
 };
 
 export const GATEWAY_LABELS: Record<PaymentGatewayKey, string> = {

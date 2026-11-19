@@ -5,6 +5,8 @@
 #   docker compose up -d --build --wait           # migrate runs (once) before the api starts
 #   docker compose run --rm migrate node dist/infrastructure/database/cli.js seed   # first deploy only
 #   docker compose --profile ops run --rm backup  # database + media backup into ./backups
+#   docker compose --profile livekit up -d        # optional self-hosted LiveKit for live classes, see
+#                                                 # docs/integrations/live-streaming.md
 #
 # Images are tagged ${ERP_REGISTRY}erp-api:${ERP_IMAGE_TAG} and ${ERP_REGISTRY}erp-web:${ERP_IMAGE_TAG};
 # roll back by setting ERP_IMAGE_TAG to the previous tag and running `docker compose up -d`.
@@ -109,9 +111,15 @@ services:
       # The web origin, then the Capacitor app origins (iOS capacitor://localhost, Android https://localhost /
       # http://localhost).
       CORS_ORIGINS: ${PUBLIC_URL},${CORS_EXTRA_ORIGINS:-capacitor://localhost,https://localhost,http://localhost}
+      # Recordings written by livekit-egress (profile livekit), imported into storage and then deleted.
+      LIVEKIT_RECORDINGS_DIR: /var/lib/erp/livekit-recordings
     volumes:
       - storage:/var/lib/erp/storage
       - api-tmp:/srv/erp/backend/tmp
+      - livekit-recordings:/var/lib/erp/livekit-recordings
+    # The self-hosted LiveKit server (profile livekit) is on the host network; see LIVEKIT_API_URL.
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     depends_on:
       mysql:
         condition: service_healthy
@@ -157,9 +165,94 @@ services:
     volumes:
       - ${ERP_CERTS_DIR:-./certs}:/etc/nginx/certs:ro
       - ${ERP_ACME_DIR:-./acme-webroot}:/var/www/acme:ro
+    # /livekit/ is proxied to the self-hosted LiveKit server (profile livekit) on the host network.
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     depends_on:
       api:
         condition: service_healthy
+
+  # ------------------------------------------------------------------ optional: self-hosted LiveKit
+  # STREAMING_PROVIDER=livekit on your own server: docker compose --profile livekit up -d. These services use
+  # the host network, as LiveKit recommends for WebRTC media. Keys, ports, firewall and TLS:
+  # docs/integrations/live-streaming.md. Variables use ${VAR:-} so that the default stack never needs them.
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    profiles: [livekit]
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      # Signalling on 7880 (only nginx's /livekit/ reaches it), ICE over TCP on 7881 and UDP 50000-60000,
+      # embedded TURN on 3478/udp and TURN/TLS (platform certificate) on LIVEKIT_TURN_TLS_PORT (0 = off).
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          port_range_start: 50000
+          port_range_end: 60000
+          use_external_ip: true
+        redis:
+          address: 127.0.0.1:6380
+        turn:
+          enabled: true
+          domain: "${SERVER_NAME:-}"
+          udp_port: 3478
+          tls_port: ${LIVEKIT_TURN_TLS_PORT:-5349}
+          cert_file: /certs/platform/fullchain.pem
+          key_file: /certs/platform/privkey.pem
+        webhook:
+          api_key: "${LIVEKIT_API_KEY:-}"
+          urls:
+            - "${PUBLIC_URL:-}/api/live-classes/public/livekit/webhook"
+          # Only what the api acts on: attendance and recordings.
+          filter_params:
+            include_events: [participant_joined, participant_left, participant_connection_aborted, room_finished, egress_ended]
+        keys:
+          "${LIVEKIT_API_KEY:-}": "${LIVEKIT_API_SECRET:-}"
+    volumes:
+      - ${ERP_CERTS_DIR:-./certs}:/certs:ro
+    depends_on:
+      - livekit-redis
+
+  # Egress requests and room state shared by livekit and livekit-egress; loopback only, nothing persisted.
+  livekit-redis:
+    image: redis:8-alpine
+    profiles: [livekit]
+    restart: unless-stopped
+    network_mode: host
+    command: ['redis-server', '--bind', '127.0.0.1', '--port', '6380', '--save', '', '--appendonly', 'no']
+
+  # Records live classes into the livekit-recordings volume; the api imports them on the egress webhook.
+  livekit-egress:
+    image: livekit/egress:v1.15.0
+    profiles: [livekit]
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      EGRESS_CONFIG_BODY: |
+        api_key: "${LIVEKIT_API_KEY:-}"
+        api_secret: "${LIVEKIT_API_SECRET:-}"
+        ws_url: ws://127.0.0.1:7880
+        insecure: true
+        redis:
+          address: 127.0.0.1:6380
+    volumes:
+      - livekit-recordings:/out
+    depends_on:
+      livekit-init:
+        condition: service_completed_successfully
+      livekit:
+        condition: service_started
+
+  # One-shot: egress writes as its own user, the api (node) reads and deletes the files.
+  livekit-init:
+    image: redis:8-alpine
+    profiles: [livekit]
+    restart: 'no'
+    user: '0:0'
+    entrypoint: ['chmod', '0777', '/out']
+    volumes:
+      - livekit-recordings:/out
 
   # docker compose --profile ops run --rm backup [--no-media] [--no-prune]
   backup:
@@ -213,3 +306,4 @@ volumes:
   storage:
   api-tmp:
   redis-data:
+  livekit-recordings:

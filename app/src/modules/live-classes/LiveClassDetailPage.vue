@@ -58,15 +58,18 @@
         </ion-list>
         <SecureView v-if="playing" screen="live-recording">
           <video
-            :src="playing"
+            ref="recordingVideo"
             controls
+            autoplay
             playsinline
             disablepictureinpicture
             controlslist="nodownload noremoteplayback"
             class="player"
+            @loadedmetadata="onRecordingLoaded"
             @play="videoPlaying = true"
             @pause="videoPlaying = false"
             @ended="videoPlaying = false"
+            @error="refreshRecording"
           />
         </SecureView>
       </template>
@@ -124,9 +127,10 @@ import {
   onIonViewWillEnter,
 } from '@ionic/vue';
 import { enterOutline, playCircleOutline, radioOutline } from 'ionicons/icons';
-import type { LiveRecordingDto, LiveSessionDto } from '@erp/shared';
+import type { LiveRecordingDto, LiveRecordingUrlDto, LiveSessionDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import SecureView from '@/components/SecureView.vue';
+import { hlsPlayable, useVideoSource } from '@/core/hls';
 import { useSessionHold } from '@/core/idle';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
@@ -140,9 +144,18 @@ const id = Number(route.params.id);
 const session = ref<LiveSessionDto | null>(null);
 const recordings = ref<LiveRecordingDto[]>([]);
 const report = ref<ParticipationReport | null>(null);
-const playing = ref<string | null>(null);
+const playing = ref<(LiveRecordingUrlDto & { recordingId: number }) | null>(null);
+const recordingVideo = ref<HTMLVideoElement | null>(null);
 const videoPlaying = ref(false);
 useSessionHold(videoPlaying);
+let resumeAt = 0;
+let refreshing = false;
+let openedRecording = false;
+useVideoSource(
+  recordingVideo,
+  computed(() => playing.value && { url: playing.value.url, hls: playing.value.kind === 'hls' }),
+  () => void refreshRecording(),
+);
 
 const isHost = computed(() => session.value?.myRole === 'host');
 const isModerator = computed(() => session.value?.myRole === 'host' || session.value?.myRole === 'moderator');
@@ -151,6 +164,12 @@ async function load() {
   try {
     session.value = await liveApi.get(id);
     recordings.value = await liveApi.recordings({ liveSessionId: id });
+    // Opened from the recordings list: play that recording (once).
+    const wanted = Number(route.query.recording);
+    if (!openedRecording && recordings.value.some((r) => r.id === wanted)) {
+      openedRecording = true;
+      await play(wanted);
+    }
     report.value =
       isModerator.value && session.value.status !== 'scheduled' ? await liveApi.participants(id) : null;
   } catch (e) {
@@ -206,13 +225,44 @@ const remove = async () => {
   }
 };
 
+/** Playback URL of a recording: HLS (the transcoded copy) where it plays, else the original file. */
+const recordingUrl = async (recordingId: number) => ({
+  recordingId,
+  ...(await liveApi.recordingUrl(recordingId, hlsPlayable() ? 'hls' : 'file')),
+});
+
 async function play(recordingId: number) {
   try {
     videoPlaying.value = false;
-    playing.value = (await liveApi.recordingUrl(recordingId)).url;
+    resumeAt = 0;
+    playing.value = await recordingUrl(recordingId);
   } catch (e) {
     await toastError(e);
   }
+}
+
+/** Signed URLs are short-lived: on expiry fetch a fresh one and continue where the viewer was. */
+async function refreshRecording() {
+  const current = playing.value;
+  if (!current || refreshing) return;
+  refreshing = true;
+  try {
+    const at = recordingVideo.value?.currentTime ?? 0;
+    const next = await recordingUrl(current.recordingId);
+    if (playing.value !== current) return;
+    resumeAt = at;
+    playing.value = next;
+  } catch (e) {
+    await toastError(e);
+  } finally {
+    setTimeout(() => (refreshing = false), 5000);
+  }
+}
+
+function onRecordingLoaded() {
+  const v = recordingVideo.value;
+  if (v && resumeAt > 1 && resumeAt < v.duration - 1) v.currentTime = resumeAt;
+  resumeAt = 0;
 }
 </script>
 
