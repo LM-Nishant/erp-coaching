@@ -180,6 +180,7 @@ Format rules:
 | `ADMS_ALLOW_HTTP`, `ADMS_MAX_BODY_KB`, `ADMS_MAX_RECORDS`, `ADMS_BACKFILL_DAYS`                                                                                          | ZKTeco/eSSL biometric devices ([biometric.md](integrations/biometric.md#server-setup)). `ADMS_ALLOW_HTTP=true` also serves `/iclock/` on `HTTP_PORT`, for firmware without HTTPS                                  |
 | `AI_BASE_URL`, `AI_MODEL`, `AI_API_KEY`, `AI_TIMEOUT_MS`                                                                                                                 | Defaults for the AI features; the Super Admin can override them in the app                                                                                                                                        |
 | `SMS_PROVIDER`, `WHATSAPP_PROVIDER`, `EMAIL_PROVIDER`, `PUSH_PROVIDER`, `PAYMENT_GATEWAY`, `STREAMING_PROVIDER`, `BIOMETRIC_PROVIDER`                                    | Integration adapters. This release only has `console` and `mock` implementations ([before going live](#before-going-live))                                                                                        |
+| `MESSAGING_TIMEOUT_MS`, `MESSAGING_DEFAULT_COUNTRY_CODE`                                                                                                                 | Messaging vendor requests. MSG91, Twilio, WhatsApp Cloud, SMTP and FCM/APNs are configured in the app ([messaging](integrations/messaging.md))                                                                    |
 | `LIVEKIT_*`                                                                                                                                                              | Live classes with `STREAMING_PROVIDER=livekit` ([live streaming](integrations/live-streaming.md#settings))                                                                                                        |
 | `SEED_SUPERADMIN_MOBILE`, `SEED_SUPERADMIN_PASSWORD`, `SEED_DEMO_DATA`                                                                                                   | First deployment only ([seeding](#first-deployment))                                                                                                                                                              |
 | `BACKUP_HOST_DIR`, `BACKUP_KEEP_COUNT`, `BACKUP_KEEP_DAYS`, `BACKUP_UID`, `BACKUP_GID`                                                                                   | [backup-restore.md](backup-restore.md)                                                                                                                                                                            |
@@ -499,10 +500,11 @@ Demo data (`SEED_DEMO_DATA=true`) is for demos and staging only. In production i
 
 This release only ships development adapters for the external integrations:
 
-- **Messaging:** `SMS_PROVIDER`, `WHATSAPP_PROVIDER`, `EMAIL_PROVIDER` and `PUSH_PROVIDER` are `console`. In
-  production the console adapters deliver nothing and log only the channel and a masked recipient, never the message
-  body. So OTP login, the OTP for a user's additional devices, and notifications don't reach users until real adapters
-  are implemented. Password login on a user's first device needs no OTP.
+- **Messaging:** until providers are configured in the app, SMS, WhatsApp, email and push use the console adapters,
+  which in production deliver nothing and log only the channel and a masked recipient, never the message body. Set up
+  the platform providers (and institutes their own) as described in [messaging](integrations/messaging.md): OTP login
+  and the OTP for a user's additional devices need the platform SMS provider. Password login on a user's first device
+  needs no OTP.
 - **Payments:** the mock gateway (`PAYMENT_GATEWAY=mock`) doesn't charge anyone, and production won't use it.
   Institutes and the platform take real payments once they enter their Paytm, Razorpay or Cashfree keys in the app
   ([payment gateways](integrations/payments.md)).
@@ -828,6 +830,10 @@ firebase-messaging) is in the merged manifest, and an `iphonesimulator` build pi
 `app/ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`. After changing a Capacitor
 plugin, run `npx cap sync ios` and `xcodebuild -resolvePackageDependencies -project App.xcodeproj -scheme App` in
 `app/ios/App` and commit the updated `Package.resolved`.
+
+Push notifications need your `app/android/app/google-services.json` and an APNs key
+([messaging](integrations/messaging.md#push-fcm-for-android-apns-for-ios)). CI builds both apps without them: the
+Android app then skips push registration.
 
 The API, including the live-class Socket.IO endpoint, accepts these origins, in this order:
 

@@ -18,30 +18,44 @@
             }}</ion-select-option>
           </ion-select>
         </ion-item>
-        <ion-item v-for="f in PROVIDER_FIELDS[form.provider]" :key="`${form.provider}-${f.key}`">
-          <ion-input
-            v-model="form.values[f.key]"
-            :label="f.label + (f.required ? ' *' : '')"
-            label-placement="stacked"
-            :type="f.secret ? 'password' : 'text'"
-            autocomplete="off"
-            :placeholder="secretPlaceholder(f.key, !!f.secret)"
-          />
-        </ion-item>
+        <ProviderFields
+          v-model="form.values"
+          :kind="form.provider"
+          :channel="dto.channel"
+          platform
+          :secret-hints="form.provider === dto.provider ? dto.secretHints : {}"
+        />
         <ion-item>
           <ion-input
             v-model="form.testTo"
             :label="TEST_TO_LABELS[dto.channel]"
             label-placement="stacked"
-            helper-text="Send test uses it; enabling an untested configuration sends a test here first"
+            :helper-text="TEST_HELP[dto.channel]"
+          />
+        </ion-item>
+        <ion-item v-if="dto.channel === 'whatsapp'">
+          <ion-input
+            v-model="form.testTemplateId"
+            label="Test template"
+            label-placement="stacked"
+            placeholder="hello_world:en_US"
+            helper-text="WhatsApp sends approved templates only: use one without variables"
           />
         </ion-item>
         <ion-item><ion-toggle v-model="form.enabled">Enabled</ion-toggle></ion-item>
       </ion-list>
+      <MessagingWebhook
+        v-if="dto.webhook && form.provider === dto.provider"
+        :kind="dto.provider"
+        :webhook="dto.webhook"
+      />
       <TestStatus :status="dto" :result="result" />
       <div class="actions">
         <ion-button v-if="dto.configured" fill="clear" color="danger" :disabled="busy" @click="remove"
           >Remove</ion-button
+        >
+        <ion-button v-if="form.provider !== 'console'" fill="outline" :disabled="busy" @click="verify"
+          >Check keys</ion-button
         >
         <ion-button fill="outline" :disabled="busy" @click="test">Send test</ion-button>
         <ion-button :disabled="busy" @click="save">Save</ion-button>
@@ -69,12 +83,14 @@ import {
 } from '@ionic/vue';
 import {
   MESSAGING_PROVIDER_KINDS,
-  PROVIDER_FIELDS,
+  providerFieldsFor,
   type ExternalChannel,
   type IntegrationTestResultDto,
   type MessagingProviderKind,
   type PlatformMessagingDto,
 } from '@erp/shared';
+import MessagingWebhook from '@/components/MessagingWebhook.vue';
+import ProviderFields from '@/components/ProviderFields.vue';
 import { toast, toastError } from '@/core/toast';
 import { CHANNEL_LABELS, platformApi } from '../api';
 import TestStatus from './TestStatus.vue';
@@ -89,6 +105,13 @@ const TEST_TO_LABELS: Record<ExternalChannel, string> = {
   push: 'Test device token',
 };
 
+const TEST_HELP: Record<ExternalChannel, string> = {
+  sms: 'Send test sends the login OTP text (123456 is your verification code…) through the OTP template',
+  whatsapp: 'Send test uses it; enabling an untested configuration needs a passing test or key check',
+  email: 'Send test uses it; enabling an untested configuration sends a test here first',
+  push: 'Send test uses it; enabling an untested configuration needs a passing test or key check',
+};
+
 const kinds = computed(() =>
   (Object.keys(MESSAGING_PROVIDER_KINDS) as MessagingProviderKind[]).filter((k) =>
     (MESSAGING_PROVIDER_KINDS[k].channels as readonly ExternalChannel[]).includes(props.dto.channel),
@@ -101,6 +124,7 @@ const toForm = (d: PlatformMessagingDto) => ({
   enabled: d.enabled,
   values: { ...d.settings } as Record<string, string>,
   testTo: '',
+  testTemplateId: '',
 });
 
 const form = ref(toForm(props.dto));
@@ -110,7 +134,11 @@ const busy = ref(false);
 watch(
   () => JSON.stringify(props.dto),
   () => {
-    form.value = { ...toForm(props.dto), testTo: form.value.testTo };
+    form.value = {
+      ...toForm(props.dto),
+      testTo: form.value.testTo,
+      testTemplateId: form.value.testTemplateId,
+    };
     result.value = null;
   },
 );
@@ -123,15 +151,12 @@ watch(
   },
 );
 
-/** Saved secrets apply only while the saved provider is selected. */
-function secretPlaceholder(key: string, secret: boolean) {
-  const hint = secret && form.value.provider === props.dto.provider ? props.dto.secretHints[key] : undefined;
-  return hint ? `Saved (${hint}); blank keeps it` : '';
-}
-
 const settings = () =>
   Object.fromEntries(
-    PROVIDER_FIELDS[form.value.provider].map((f) => [f.key, String(form.value.values[f.key] ?? '').trim()]),
+    providerFieldsFor(form.value.provider, props.dto.channel, { platform: true }).map((f) => [
+      f.key,
+      String(form.value.values[f.key] ?? '').trim(),
+    ]),
   );
 
 async function test() {
@@ -146,6 +171,22 @@ async function test() {
       provider: form.value.provider,
       settings: settings(),
       to,
+      templateId: form.value.testTemplateId.trim() || undefined,
+    });
+  } catch (e) {
+    await toastError(e);
+  } finally {
+    busy.value = false;
+  }
+}
+
+/** Key check of the form's credentials (blank secrets use the saved ones); nothing is sent. */
+async function verify() {
+  busy.value = true;
+  try {
+    result.value = await platformApi.verifyMessaging(props.dto.channel, {
+      provider: form.value.provider,
+      settings: settings(),
     });
   } catch (e) {
     await toastError(e);

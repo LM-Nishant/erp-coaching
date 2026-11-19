@@ -41,4 +41,5 @@ export default defineAppModule({
     },
   ],
   toolbarItems: [defineAsyncComponent(() => import('./components/NotificationBell.vue'))],
+  beforeSignOut: async () => (await import('./push')).unregisterPush(),
 });

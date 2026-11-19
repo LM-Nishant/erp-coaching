@@ -11,6 +11,9 @@
           {{ CHANNEL_LABELS[c] }}
         </ion-toggle>
       </ion-item>
+      <ion-item v-if="!isEnabled('whatsapp', null)" lines="none">
+        <ion-label class="muted">WhatsApp messages are sent only after you turn WhatsApp on.</ion-label>
+      </ion-item>
     </ion-list>
 
     <ion-list v-for="group in groups" :key="group.category">

@@ -22,45 +22,188 @@ export const MESSAGING_PROVIDER_KINDS = {
   twilio: { label: 'Twilio', channels: ['sms', 'whatsapp'] },
   'whatsapp-cloud': { label: 'WhatsApp Cloud API (Meta)', channels: ['whatsapp'] },
   smtp: { label: 'SMTP', channels: ['email'] },
-  fcm: { label: 'Firebase Cloud Messaging', channels: ['push'] },
+  fcm: { label: 'Firebase Cloud Messaging (+ APNs for iOS)', channels: ['push'] },
 } as const satisfies Record<string, { label: string; channels: readonly ExternalChannel[] }>;
 export type MessagingProviderKind = keyof typeof MESSAGING_PROVIDER_KINDS;
 
-/** Credential fields per provider; `secret` fields are encrypted at rest and never returned. */
-export const PROVIDER_FIELDS: Record<
-  MessagingProviderKind,
-  { key: string; label: string; secret?: boolean; required?: boolean }[]
-> = {
+export interface ProviderField {
+  key: string;
+  label: string;
+  /** Encrypted at rest and never returned; a blank value on save keeps the stored one. */
+  secret?: boolean;
+  required?: boolean;
+  /** Only used on these channels (default: every channel of the provider). */
+  channels?: readonly ExternalChannel[];
+  /** Only for the platform default provider (e.g. the login OTP template). */
+  platformOnly?: boolean;
+  help?: string;
+  placeholder?: string;
+  /** Multi-line value (PEM keys). */
+  multiline?: boolean;
+  /** Fixed choices; blank uses the vendor default. */
+  options?: readonly { value: string; label: string }[];
+}
+
+const WHATSAPP_OPT_IN: ProviderField = {
+  key: 'requireOptIn',
+  label: 'Require WhatsApp opt-in',
+  channels: ['whatsapp'],
+  options: [
+    { value: 'yes', label: 'Yes: only users who opted in' },
+    { value: 'no', label: 'No: consent collected elsewhere' },
+  ],
+  help: 'WhatsApp policy: message only users who agreed to receive WhatsApp messages from you.',
+};
+
+const TEMPLATE_LANGUAGE: ProviderField = {
+  key: 'defaultLanguage',
+  label: 'Template language',
+  channels: ['whatsapp'],
+  placeholder: 'en',
+  help: 'Language code of your approved templates (a template id like `fee_receipt:hi` overrides it).',
+};
+
+/** Credential fields per provider (see docs/integrations/messaging.md for where to find each one). */
+export const PROVIDER_FIELDS: Record<MessagingProviderKind, ProviderField[]> = {
   console: [{ key: 'failPattern', label: 'Fail when recipient contains (testing)' }],
   msg91: [
     { key: 'authKey', label: 'Auth key', secret: true, required: true },
-    { key: 'senderId', label: 'Sender id', required: true },
-    { key: 'dltEntityId', label: 'DLT entity id' },
+    {
+      key: 'senderId',
+      label: 'Sender id (DLT header)',
+      required: true,
+      channels: ['sms'],
+      placeholder: 'APEXED',
+    },
+    {
+      key: 'dltEntityId',
+      label: 'DLT principal entity id',
+      channels: ['sms'],
+      help: 'India: the entity id of your DLT registration.',
+    },
+    {
+      key: 'otpTemplateId',
+      label: 'Login OTP template id',
+      required: true,
+      channels: ['sms'],
+      platformOnly: true,
+      help: 'DLT template id (text: "{#var#} is your verification code. It expires in {#var#} minutes.") or an MSG91 template id using ##otp## and ##minutes##.',
+    },
+    {
+      key: 'integratedNumber',
+      label: 'WhatsApp integrated number',
+      required: true,
+      channels: ['whatsapp'],
+      placeholder: '919876543210',
+    },
+    TEMPLATE_LANGUAGE,
+    WHATSAPP_OPT_IN,
   ],
   twilio: [
-    { key: 'accountSid', label: 'Account SID', required: true },
+    {
+      key: 'accountSid',
+      label: 'Account SID',
+      required: true,
+      placeholder: 'AC…',
+      help: 'Test credentials work for SMS sandbox testing.',
+    },
     { key: 'authToken', label: 'Auth token', secret: true, required: true },
-    { key: 'from', label: 'From number', required: true },
+    {
+      key: 'from',
+      label: 'From number or Messaging Service SID',
+      required: true,
+      placeholder: '+15551234567 or MG…',
+    },
+    WHATSAPP_OPT_IN,
   ],
   'whatsapp-cloud': [
     { key: 'phoneNumberId', label: 'Phone number id', required: true },
-    { key: 'accessToken', label: 'Access token', secret: true, required: true },
+    {
+      key: 'accessToken',
+      label: 'Access token',
+      secret: true,
+      required: true,
+      help: 'A permanent System User token with whatsapp_business_messaging.',
+    },
+    {
+      key: 'appSecret',
+      label: 'App secret',
+      secret: true,
+      required: true,
+      help: 'Meta app secret: verifies the X-Hub-Signature-256 of delivery webhooks.',
+    },
     { key: 'businessAccountId', label: 'Business account id' },
+    { key: 'apiVersion', label: 'Graph API version', placeholder: 'v27.0' },
+    TEMPLATE_LANGUAGE,
+    WHATSAPP_OPT_IN,
   ],
   smtp: [
-    { key: 'host', label: 'Host', required: true },
-    { key: 'port', label: 'Port', required: true },
-    { key: 'secure', label: 'TLS (true/false)' },
+    { key: 'host', label: 'Host', required: true, placeholder: 'smtp.example.com' },
+    { key: 'port', label: 'Port', required: true, placeholder: '587' },
+    {
+      key: 'secure',
+      label: 'Connection security',
+      options: [
+        { value: 'false', label: 'STARTTLS (port 587)' },
+        { value: 'true', label: 'TLS (port 465)' },
+      ],
+    },
     { key: 'user', label: 'Username' },
     { key: 'password', label: 'Password', secret: true },
-    { key: 'from', label: 'From address', required: true },
+    { key: 'from', label: 'From address', required: true, placeholder: 'Institute <noreply@example.com>' },
   ],
   fcm: [
-    { key: 'projectId', label: 'Project id', required: true },
+    { key: 'projectId', label: 'Firebase project id', required: true },
     { key: 'clientEmail', label: 'Service account email', required: true },
-    { key: 'privateKey', label: 'Service account private key', secret: true, required: true },
+    {
+      key: 'privateKey',
+      label: 'Service account private key',
+      secret: true,
+      required: true,
+      multiline: true,
+      help: 'The private_key of the service account JSON (-----BEGIN PRIVATE KEY-----…).',
+    },
+    {
+      key: 'apnsKeyId',
+      label: 'APNs key id (iOS)',
+      help: 'iOS devices register APNs tokens: fill the APNs fields to deliver to iPhones.',
+    },
+    { key: 'apnsTeamId', label: 'Apple team id' },
+    { key: 'apnsBundleId', label: 'iOS bundle id', placeholder: 'com.example.app' },
+    {
+      key: 'apnsPrivateKey',
+      label: 'APNs auth key (.p8)',
+      secret: true,
+      multiline: true,
+    },
+    {
+      key: 'apnsEnvironment',
+      label: 'APNs environment',
+      options: [
+        { value: 'production', label: 'Production (App Store, TestFlight)' },
+        { value: 'sandbox', label: 'Sandbox (debug builds from Xcode)' },
+      ],
+    },
   ],
 };
+
+/** The fields that apply to a provider on a channel (platform defaults also have platform-only fields). */
+export function providerFieldsFor(
+  kind: MessagingProviderKind,
+  channel: ExternalChannel,
+  opts: { platform?: boolean } = {},
+): ProviderField[] {
+  return (PROVIDER_FIELDS[kind] ?? []).filter(
+    (f) => (!f.channels || f.channels.includes(channel)) && (!f.platformOnly || !!opts.platform),
+  );
+}
+
+/** Where the vendor posts delivery reports and replies (paste into the vendor dashboard). */
+export interface MessagingWebhookDto {
+  url: string;
+  /** WhatsApp Cloud API: the verify token of the webhook subscription. */
+  verifyToken?: string;
+}
 
 export interface NotificationEventDef {
   /** `<module>.<event>`, e.g. `fees.receipt`. */
@@ -353,6 +496,15 @@ export interface NotificationProviderDto {
   retryMaxAttempts: number;
   retryBaseDelaySeconds: number;
   updatedAt: string | null;
+  /** Saved vendor providers that report delivery status. */
+  webhook?: MessagingWebhookDto;
+}
+
+/** Result of checking saved provider credentials with the vendor (nothing is sent). */
+export interface ProviderVerifyResultDto {
+  ok: boolean;
+  provider: string;
+  message: string;
 }
 
 export interface NotificationTemplateDto {

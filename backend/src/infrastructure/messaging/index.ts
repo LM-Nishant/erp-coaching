@@ -1,17 +1,24 @@
+import { config } from '../config';
 import { logger } from '../logger';
 import { ConsoleMessagingProvider } from './console.provider';
-import type { Channel, MessagingProvider } from './types';
+import type { Channel, MessagingProvider, ProviderSettings } from './types';
+import { whatsappVerifyToken } from './webhooks';
 
 export * from './types';
 export { consoleOutbox } from './console.provider';
 export * from './providers';
+export * from './errors';
+export * from './webhooks';
+export { isApnsToken } from './apns';
+export { e164, msisdn, storedMobileForms } from './phone';
+export { otpSms } from './otp';
+export { setMessagingTransport, type Http2Response, type Mailer, type MessagingTransport } from './transport';
 
 const providers = new Map<Channel, MessagingProvider>();
 
 /**
- * Returns the configured provider for a channel. Only console providers exist today; real
- * providers (MSG91, Twilio, Meta WhatsApp, SES, FCM...) implement MessagingProvider and are
- * selected here via env (SMS_PROVIDER etc.) or per-institute settings later.
+ * Built-in provider for a channel (console: logs instead of sending). Vendor providers are chosen
+ * per institute (notifications module) or for the platform (super admin), see `createMessagingProvider`.
  */
 export function getMessagingProvider(channel: Channel): MessagingProvider {
   let p = providers.get(channel);
@@ -50,4 +57,51 @@ export async function getDefaultMessagingProvider(channel: Channel): Promise<Mes
     }
   }
   return getMessagingProvider(channel);
+}
+
+/** Vendors that report delivery status (and inbound replies) to a webhook. */
+export const MESSAGING_WEBHOOK_VENDORS = ['msg91', 'twilio', 'whatsapp-cloud'] as const;
+export const hasMessagingWebhook = (kind: string) =>
+  (MESSAGING_WEBHOOK_VENDORS as readonly string[]).includes(kind);
+
+/** Public webhook URL the admin pastes into the vendor dashboard (key = provider webhook key). */
+export function messagingWebhookUrl(vendor: string, webhookKey: string): string {
+  return `${config.API_PUBLIC_URL.replace(/\/+$/, '')}/api/notifications/public/webhooks/${vendor}/${webhookKey}`;
+}
+
+/** What the admin pastes into the vendor dashboard; undefined for vendors without webhooks. */
+export function messagingWebhook(
+  vendor: string,
+  webhookKey: string | null | undefined,
+): { url: string; verifyToken?: string } | undefined {
+  if (!webhookKey || !hasMessagingWebhook(vendor)) return undefined;
+  return {
+    url: messagingWebhookUrl(vendor, webhookKey),
+    ...(vendor === 'whatsapp-cloud' ? { verifyToken: whatsappVerifyToken(webhookKey) } : {}),
+  };
+}
+
+export interface WebhookProviderMatch {
+  channel: Channel;
+  kind: string;
+  settings: ProviderSettings;
+}
+
+/** Finds the platform provider that owns a webhook key; registered by the platform module. */
+export type PlatformWebhookResolver = (
+  vendor: string,
+  webhookKey: string,
+) => Promise<WebhookProviderMatch | null>;
+
+let platformWebhookResolver: PlatformWebhookResolver | null = null;
+
+export function setPlatformWebhookResolver(fn: PlatformWebhookResolver | null): void {
+  platformWebhookResolver = fn;
+}
+
+export async function resolvePlatformWebhook(
+  vendor: string,
+  webhookKey: string,
+): Promise<WebhookProviderMatch | null> {
+  return platformWebhookResolver ? platformWebhookResolver(vendor, webhookKey) : null;
 }
