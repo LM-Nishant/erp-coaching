@@ -92,13 +92,18 @@ describe('reports & analytics', () => {
         res.on('data', (c: Buffer) => chunks.push(c));
         res.on('end', () => cb(null, Buffer.concat(chunks)));
       });
-  /** Signs a download for the caller's export and fetches the file. */
+  /** Downloads the caller's export, always as an attachment. */
   const download = async (token: string, exportId: number) => {
-    const signed = await request(app).post(`/api/reports/exports/${exportId}/download`).set(bearer(token));
-    expect(signed.status, JSON.stringify(signed.body)).toBe(200);
-    const file = await binary(new URL(signed.body.url).pathname);
-    expect(file.status).toBe(200);
-    return { fileName: signed.body.fileName as string, body: file.body as Buffer };
+    const file = await binary(`/api/reports/exports/${exportId}/download`).set(bearer(token));
+    expect(file.status, String(file.body)).toBe(200);
+    const disposition = String(file.headers['content-disposition']);
+    expect(disposition).toMatch(/^attachment; /);
+    expect(file.headers['cache-control']).toBe('private, no-store');
+    return {
+      fileName: /filename="([^"]+)"/.exec(disposition)![1],
+      contentType: String(file.headers['content-type']),
+      body: file.body as Buffer,
+    };
   };
 
   async function otpLogin(m: string) {
@@ -616,6 +621,8 @@ describe('reports & analytics', () => {
       fileName: `fee-collections-${range.from}-to-${range.to}.csv`,
     });
     const file = await download(t.branchAdmin, csv.body.id);
+    expect(file.contentType).toBe('text/csv; charset=utf-8');
+    expect(file.fileName).toBe(csv.body.fileName);
     expect([...file.body.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     expect(file.body.toString('utf8')).toContain('RPT Student One');
     const audits = await AuditEvent.findAll({
@@ -631,7 +638,9 @@ describe('reports & analytics', () => {
 
     const xlsx = await exportReport(t.branchAdmin, 'capacity', { format: 'xlsx' });
     expect(xlsx.status).toBe(201);
-    expect((await download(t.branchAdmin, xlsx.body.id)).body.subarray(0, 2).toString()).toBe('PK');
+    const xlsxFile = await download(t.branchAdmin, xlsx.body.id);
+    expect(xlsxFile.contentType).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    expect(xlsxFile.body.subarray(0, 2).toString()).toBe('PK');
     const pdf = await exportReport(t.branchAdmin, 'attendance', { format: 'pdf' });
     expect(pdf.status).toBe(201);
     expect((await download(t.branchAdmin, pdf.body.id)).body.subarray(0, 5).toString()).toBe('%PDF-');
@@ -648,7 +657,7 @@ describe('reports & analytics', () => {
       404,
     );
     expect(
-      (await request(app).post(`/api/reports/exports/${own.body.id}/download`).set(bearer(t.zenith))).status,
+      (await request(app).get(`/api/reports/exports/${own.body.id}/download`).set(bearer(t.zenith))).status,
     ).toBe(404);
     expect((await exportReport(t.s1, 'attendance', { format: 'csv' })).status).toBe(403);
     const list = (await request(app).get('/api/reports/exports').set(bearer(t.teacherA))).body;
@@ -662,7 +671,7 @@ describe('reports & analytics', () => {
       expect(queued.status, JSON.stringify(queued.body)).toBe(202);
       expect(queued.body).toMatchObject({ status: 'queued', rowCount: null });
       const early = await request(app)
-        .post(`/api/reports/exports/${queued.body.id}/download`)
+        .get(`/api/reports/exports/${queued.body.id}/download`)
         .set(bearer(t.branchAdmin));
       expect([early.status, early.body.error.code]).toEqual([409, 'EXPORT_NOT_READY']);
       const audit = await AuditEvent.findOne({
@@ -714,7 +723,7 @@ describe('reports & analytics', () => {
     const status = async () =>
       (await request(app).get(`/api/reports/exports/${id}`).set(bearer(t.branchAdmin))).body;
     expect(await status()).toMatchObject({ status: 'failed', error: 'Unknown report bogus' });
-    const res = await request(app).post(`/api/reports/exports/${id}/download`).set(bearer(t.branchAdmin));
+    const res = await request(app).get(`/api/reports/exports/${id}/download`).set(bearer(t.branchAdmin));
     expect([res.status, res.body.error.code]).toEqual([409, 'EXPORT_FAILED']);
     // The export's own queued job finds it final and leaves it alone.
     await processDueJobs();
@@ -730,7 +739,7 @@ describe('reports & analytics', () => {
     await ReportExport.update({ expiresAt: new Date(Date.now() - 1000) }, { where: { id, instituteId: 1 } });
     const get1 = await request(app).get(`/api/reports/exports/${id}`).set(bearer(t.branchAdmin));
     expect(get1.body.status).toBe('expired');
-    const res = await request(app).post(`/api/reports/exports/${id}/download`).set(bearer(t.branchAdmin));
+    const res = await request(app).get(`/api/reports/exports/${id}/download`).set(bearer(t.branchAdmin));
     expect([res.status, res.body.error.code]).toEqual([410, 'EXPORT_EXPIRED']);
 
     await asApex(() => expireExportJob({ exportId: id }));

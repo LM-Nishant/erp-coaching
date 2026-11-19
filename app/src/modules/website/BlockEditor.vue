@@ -38,7 +38,12 @@
         <ImageField v-model="img.fileId" :label="`Image ${i + 1}`" :clearable="false" />
         <ion-item>
           <ion-input v-model="img.caption" label="Caption" label-placement="stacked" />
-          <ion-button slot="end" fill="clear" color="danger" @click="s.images!.splice(i, 1)"
+          <ion-button
+            slot="end"
+            fill="clear"
+            color="danger"
+            aria-label="Remove image"
+            @click="s.images!.splice(i, 1)"
             ><ion-icon slot="icon-only" :icon="trashOutline"
           /></ion-button>
         </ion-item>
@@ -85,7 +90,12 @@
       <div v-for="(m, i) in s.members" :key="i" class="sub">
         <ion-item>
           <ion-input v-model="m.name" label="Name" label-placement="stacked" />
-          <ion-button slot="end" fill="clear" color="danger" @click="s.members!.splice(i, 1)"
+          <ion-button
+            slot="end"
+            fill="clear"
+            color="danger"
+            aria-label="Remove member"
+            @click="s.members!.splice(i, 1)"
             ><ion-icon slot="icon-only" :icon="trashOutline"
           /></ion-button>
         </ion-item>
@@ -104,7 +114,12 @@
       <div v-for="(t, i) in s.items" :key="i" class="sub">
         <ion-item>
           <ion-input v-model="t.name" label="Name" label-placement="stacked" />
-          <ion-button slot="end" fill="clear" color="danger" @click="s.items!.splice(i, 1)"
+          <ion-button
+            slot="end"
+            fill="clear"
+            color="danger"
+            aria-label="Remove item"
+            @click="s.items!.splice(i, 1)"
             ><ion-icon slot="icon-only" :icon="trashOutline"
           /></ion-button>
         </ion-item>
@@ -162,7 +177,12 @@
             label="Starts at"
             label-placement="stacked"
           />
-          <ion-button slot="end" fill="clear" color="danger" @click="s.slots!.splice(i, 1)"
+          <ion-button
+            slot="end"
+            fill="clear"
+            color="danger"
+            aria-label="Remove slot"
+            @click="s.slots!.splice(i, 1)"
             ><ion-icon slot="icon-only" :icon="trashOutline"
           /></ion-button>
         </ion-item>

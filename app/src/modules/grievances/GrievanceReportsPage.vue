@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Grievance reports" :on-refresh="load">
     <template #actions>
-      <ion-button :disabled="downloading" @click="download"
+      <ion-button :disabled="downloading" aria-label="Download CSV" @click="download"
         ><ion-icon slot="icon-only" :icon="downloadOutline"
       /></ion-button>
     </template>

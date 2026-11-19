@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Branches" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'branches.create'" @click="openEditor()"
+      <ion-button v-can="'branches.create'" aria-label="New branch" @click="openEditor()"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
@@ -15,7 +15,12 @@
           </h2>
           <p>{{ b.code }} · {{ [b.city, b.phone].filter(Boolean).join(' · ') }}</p>
         </ion-label>
-        <ion-button slot="end" v-can="'branches.edit'" fill="clear" @click="openEditor(b)"
+        <ion-button
+          slot="end"
+          v-can="'branches.edit'"
+          fill="clear"
+          :aria-label="`Edit ${b.name}`"
+          @click="openEditor(b)"
           ><ion-icon slot="icon-only" :icon="createOutline"
         /></ion-button>
         <ion-button
@@ -38,7 +43,14 @@
           @click="activateBranch(b)"
           ><ion-icon slot="icon-only" :icon="lockOpenOutline"
         /></ion-button>
-        <ion-button slot="end" v-can="'branches.delete'" fill="clear" color="danger" @click="remove(b)">
+        <ion-button
+          slot="end"
+          v-can="'branches.delete'"
+          fill="clear"
+          color="danger"
+          :aria-label="`Delete ${b.name}`"
+          @click="remove(b)"
+        >
           <ion-icon slot="icon-only" :icon="trashOutline" />
         </ion-button>
       </ion-item>

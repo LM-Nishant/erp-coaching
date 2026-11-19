@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Admission forms" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'admissions.configure'" @click="open()"
+      <ion-button v-can="'admissions.configure'" aria-label="New form" @click="open()"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
@@ -111,17 +111,28 @@
                 ><ion-input v-model="fld.helpText" label="Help text" label-placement="stacked"
               /></ion-item>
               <ion-item><ion-checkbox v-model="fld.required">Required</ion-checkbox></ion-item>
-              <ion-button size="small" fill="clear" :disabled="i === 0" @click="moveField(i, -1)"
+              <ion-button
+                size="small"
+                fill="clear"
+                :disabled="i === 0"
+                aria-label="Move field up"
+                @click="moveField(i, -1)"
                 ><ion-icon slot="icon-only" :icon="arrowUp"
               /></ion-button>
               <ion-button
                 size="small"
                 fill="clear"
                 :disabled="i === edit.fields.length - 1"
+                aria-label="Move field down"
                 @click="moveField(i, 1)"
                 ><ion-icon slot="icon-only" :icon="arrowDown"
               /></ion-button>
-              <ion-button size="small" fill="clear" color="danger" @click="edit.fields.splice(i, 1)"
+              <ion-button
+                size="small"
+                fill="clear"
+                color="danger"
+                aria-label="Remove field"
+                @click="edit.fields.splice(i, 1)"
                 ><ion-icon slot="icon-only" :icon="trashOutline"
               /></ion-button>
             </ion-card-content>

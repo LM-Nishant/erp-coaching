@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Applications" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'admissions.create'" @click="openCreate"
+      <ion-button v-can="'admissions.create'" aria-label="New application" @click="openCreate"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
@@ -29,7 +29,12 @@
           <p v-if="a.remarks" class="muted">{{ a.remarks }}</p>
           <p v-if="a.studentId"><router-link :to="`/students/${a.studentId}`">View student →</router-link></p>
         </ion-label>
-        <ion-button v-if="isOpen(a)" slot="end" fill="clear" @click="actions(a)"
+        <ion-button
+          v-if="isOpen(a)"
+          slot="end"
+          fill="clear"
+          :aria-label="`Actions for ${a.name}`"
+          @click="actions(a)"
           ><ion-icon slot="icon-only" :icon="ellipsisVertical"
         /></ion-button>
       </ion-item>

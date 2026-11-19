@@ -49,8 +49,8 @@ import {
 import { downloadOutline } from 'ionicons/icons';
 import { DEFAULT_INSTITUTE_TIMEZONE, type ReportExportDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
-import { toastError } from '@/core/toast';
-import { openExport, reportsApi } from './api';
+import { toast, toastError } from '@/core/toast';
+import { reportsApi, saveExport } from './api';
 import { FORMAT_LABELS, STATUS_COLORS } from './exportUi';
 import { displayDateTime, humanize } from './format';
 
@@ -90,7 +90,7 @@ function stopPolling() {
 async function download(e: ReportExportDto) {
   downloading.value = e.id;
   try {
-    await openExport(e.id);
+    await toast(await saveExport(e));
   } catch (err) {
     void toastError(err);
     void load();

@@ -221,11 +221,10 @@ describe('final-wave flows across institutes', () => {
     expect([201, 202]).toContain(created.status);
     await processDueJobs(200);
     expect((await call('get', `/api/reports/exports/${created.body.id}`, B.token)).status).toBe(404);
-    expect((await call('post', `/api/reports/exports/${created.body.id}/download`, B.token, {})).status).toBe(
-      404,
-    );
-    const own = await call('post', `/api/reports/exports/${created.body.id}/download`, A.token, {});
+    expect((await call('get', `/api/reports/exports/${created.body.id}/download`, B.token)).status).toBe(404);
+    const own = await call('get', `/api/reports/exports/${created.body.id}/download`, A.token);
     expect(own.status).toBe(200);
+    expect(own.headers['content-disposition']).toMatch(/^attachment; /);
   }, 60_000);
 
   it('deleting an institute keeps its SaaS invoices, payments and credit notes, detached', async () => {

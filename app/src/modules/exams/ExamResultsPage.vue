@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Results & analytics" :back-href="`/exams/${id}`" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'exams.export'" @click="exportCsv"
+      <ion-button v-can="'exams.export'" aria-label="Export CSV" @click="exportCsv"
         ><ion-icon slot="icon-only" :icon="downloadOutline"
       /></ion-button>
     </template>

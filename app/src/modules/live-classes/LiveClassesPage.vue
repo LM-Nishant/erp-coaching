@@ -1,7 +1,10 @@
 <template>
   <AppPage title="Live classes" :on-refresh="reload">
     <template #actions>
-      <ion-button v-if="auth.can('live-classes.create')" @click="openSchedule"
+      <ion-button
+        v-if="auth.can('live-classes.create')"
+        aria-label="Schedule live class"
+        @click="openSchedule"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>

@@ -64,6 +64,7 @@
               fill="clear"
               size="small"
               :color="n <= rating ? 'warning' : 'medium'"
+              :aria-label="`Rate ${n} out of 5`"
               @click="rating = n"
               ><ion-icon slot="icon-only" :icon="n <= rating ? star : starOutline"
             /></ion-button>

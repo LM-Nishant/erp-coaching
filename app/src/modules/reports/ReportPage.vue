@@ -52,8 +52,8 @@ import {
   type ReportResultDto,
 } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
-import { toastError } from '@/core/toast';
-import { openExport, reportsApi } from './api';
+import { toast, toastError } from '@/core/toast';
+import { reportsApi, saveExport } from './api';
 import MetricGrid from './components/MetricGrid.vue';
 import ReportFilters from './components/ReportFilters.vue';
 import ReportTable from './components/ReportTable.vue';
@@ -133,7 +133,7 @@ async function exportReport() {
   exporting.value = true;
   try {
     const exp = await reportsApi.createExport(key.value, format, filtersInput.value);
-    if (exp.status === 'ready') await openExport(exp.id);
+    if (exp.status === 'ready') await toast(await saveExport(exp));
     else await queuedToast();
   } catch (e) {
     void toastError(e);

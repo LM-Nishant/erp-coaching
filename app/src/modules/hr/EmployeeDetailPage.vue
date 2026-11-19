@@ -67,7 +67,14 @@
               }}
             </p>
           </ion-label>
-          <ion-button slot="end" v-can="'hr.edit'" fill="clear" color="danger" @click="removeChild(row.id)">
+          <ion-button
+            slot="end"
+            v-can="'hr.edit'"
+            fill="clear"
+            color="danger"
+            :aria-label="`Delete ${childCfg.title.toLowerCase()}`"
+            @click="removeChild(row.id)"
+          >
             <ion-icon slot="icon-only" :icon="trashOutline" />
           </ion-button>
         </ion-item>
@@ -100,7 +107,14 @@
           <ion-button v-if="d.file" slot="end" fill="clear" :href="d.file.url" target="_blank"
             >Open</ion-button
           >
-          <ion-button slot="end" v-can="'hr.edit'" fill="clear" color="danger" @click="removeDocument(d.id)">
+          <ion-button
+            slot="end"
+            v-can="'hr.edit'"
+            fill="clear"
+            color="danger"
+            aria-label="Delete document"
+            @click="removeDocument(d.id)"
+          >
             <ion-icon slot="icon-only" :icon="trashOutline" />
           </ion-button>
         </ion-item>

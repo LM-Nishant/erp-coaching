@@ -301,7 +301,7 @@ The `reports` module owns the catalogue, filters, scoping, role dashboards and e
 - **Exports.**
   - `POST /api/reports/:key/exports` renders CSV, XLSX or PDF during the request when every table fits in 2,000 rows. Otherwise it queues the `reports.export` job, which allows up to 50,000 rows per table and notifies `reports.export-ready`.
   - Files use the `reports` purpose, count toward the storage quota, and expire after 24 hours.
-  - Each download is a separately audited, 5-minute signed link (`POST /api/reports/exports/:id/download`).
+  - `GET /api/reports/exports/:id/download` sends the file to its creator as an attachment with its own type (`text/csv; charset=utf-8`, XLSX or PDF), never inline. The app saves it with `api.download()`, like other exports.
   - Requests and downloads are audited as `report.exported` and `report.export_downloaded`.
 - **SaaS dashboard.**
   - `GET /api/admin/reports/dashboard` (super admin) aggregates every institute.
@@ -376,7 +376,7 @@ export default defineAppModule({
   - Route paths are prefixed with the module id.
   - Always lazy-load pages.
   - Set `meta.permission` (or `meta.superAdmin` for platform screens).
-  - A suspended institute can only open routes with `meta.allowWhenSuspended: true`, such as sign-in, Subscription & billing and data export. Set it only when every API call the page makes is still allowed while suspended.
+  - A suspended institute can only open routes with `meta.allowWhenSuspended: true`, such as sign-in, Subscription & billing, data export and Member devices. Set it only when every API call the page makes is still allowed while suspended (`ALWAYS_ALLOWED` in `subscriptions/access-guard.ts`).
 - **Pages.** Wrap every page in `<AppPage title="…">`, which provides the header, menu button and pull-to-refresh.
 - **UI.** Use Ionic components so the app works on web, Android and iOS.
 - **Permissions.** Hide actions with `v-can="'students.create'"`, or use `auth.can('students.create')` in script.
@@ -505,7 +505,7 @@ Critical and high findings are fixed, never listed. Entries naming routes that d
 
 ### Browser E2E
 
-`e2e/` drives the critical workflows of spec §7 in Chromium against the real API, web app and MySQL (`npm run e2e`; see [e2e/README.md](e2e/README.md)). If your change touches a covered workflow, run its spec. For downloads and new-tab documents use `trapWindowOpen`/`fetchDownload` from `e2e/support/downloads.ts`. To cover a new workflow, follow ["Adding a workflow spec"](e2e/README.md#adding-a-workflow-spec): one spec per workflow, setup through the API with the builders in `e2e/support/data.ts` (mobiles `9459…`), the user-facing steps in the browser, and an institute of its own for every spec.
+`e2e/` drives the critical workflows of spec §7 in Chromium against the real API, web app and MySQL (`npm run e2e`; see [e2e/README.md](e2e/README.md)). If your change touches a covered workflow, run its spec. For signed links and new-tab documents use `trapWindowOpen`/`fetchDownload` from `e2e/support/downloads.ts`, and `savedDownload` for files the app fetches and saves itself (`api.download()`). To cover a new workflow, follow ["Adding a workflow spec"](e2e/README.md#adding-a-workflow-spec): one spec per workflow, setup through the API with the builders in `e2e/support/data.ts` (mobiles `9459…`), the user-facing steps in the browser, and an institute of its own for every spec.
 
 ### Load tests
 

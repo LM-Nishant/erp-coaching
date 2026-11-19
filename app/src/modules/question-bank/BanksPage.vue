@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Question bank" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'question-bank.create'" @click="openEditor()"
+      <ion-button v-can="'question-bank.create'" aria-label="New bank" @click="openEditor()"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
@@ -27,7 +27,12 @@
           <p v-if="b.description">{{ b.description }}</p>
         </ion-label>
         <template v-if="b.canEdit">
-          <ion-button slot="end" v-can="'question-bank.edit'" fill="clear" @click.stop.prevent="openEditor(b)"
+          <ion-button
+            slot="end"
+            v-can="'question-bank.edit'"
+            fill="clear"
+            :aria-label="`Edit ${b.name}`"
+            @click.stop.prevent="openEditor(b)"
             ><ion-icon slot="icon-only" :icon="createOutline"
           /></ion-button>
           <ion-button
@@ -35,6 +40,7 @@
             v-can="'question-bank.delete'"
             fill="clear"
             color="danger"
+            :aria-label="`Delete ${b.name}`"
             @click.stop.prevent="remove(b)"
             ><ion-icon slot="icon-only" :icon="trashOutline"
           /></ion-button>

@@ -2,7 +2,6 @@ import { Capacitor } from '@capacitor/core';
 import { Directory, Filesystem } from '@capacitor/filesystem';
 import type {
   ReportCatalogItemDto,
-  ReportDownloadDto,
   ReportExportDto,
   ReportExportFormat,
   ReportFilterOptionsDto,
@@ -27,18 +26,20 @@ export const reportsApi = {
     api.post<ReportExportDto>(`/reports/${key}/exports`, { ...f, format }),
   exports: () => api.get<ReportExportDto[]>('/reports/exports'),
   getExport: (id: number) => api.get<ReportExportDto>(`/reports/exports/${id}`),
-  /** Short-lived signed link; every call is audited. */
-  downloadLink: (id: number) => api.post<ReportDownloadDto>(`/reports/exports/${id}/download`),
+  /** The export file as an attachment; every download is audited. */
+  downloadExport: (id: number) => api.download(`/reports/exports/${id}/download`),
 
   saasDashboard: (f: PeriodInput = {}) => api.get<SaasDashboardDto>('/admin/reports/dashboard', { ...f }),
   saasExport: (format: ReportExportFormat, f: PeriodInput = {}) =>
     api.download('/admin/reports/institutes/export', { ...f, format }),
 };
 
-/** Opens a ready export through a fresh signed link (the browser or the OS handles the file). */
-export async function openExport(id: number) {
-  const link = await reportsApi.downloadLink(id);
-  window.open(link.url, '_blank');
+/** Downloads a ready export and saves it like other files; returns a message for a toast. */
+export async function saveExport(exp: Pick<ReportExportDto, 'id' | 'fileName'>): Promise<string> {
+  const file = await reportsApi.downloadExport(exp.id);
+  const name = exp.fileName ?? file.fileName ?? 'report-export';
+  const savedTo = await saveFile(file.blob, name);
+  return savedTo ? `Saved ${name} to Documents` : `Downloaded ${name}`;
 }
 
 /** Saves a downloaded file: a browser download on the web, the Documents folder on devices. */

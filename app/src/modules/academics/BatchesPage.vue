@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Batches" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'academics.create'" @click="openEditor()"
+      <ion-button v-can="'academics.create'" aria-label="New batch" @click="openEditor()"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
@@ -45,10 +45,21 @@
             }}
           </p>
         </ion-label>
-        <ion-button slot="end" v-can="'academics.edit'" fill="clear" @click.stop="openEditor(b)"
+        <ion-button
+          slot="end"
+          v-can="'academics.edit'"
+          fill="clear"
+          :aria-label="`Edit ${b.name}`"
+          @click.stop="openEditor(b)"
           ><ion-icon slot="icon-only" :icon="createOutline"
         /></ion-button>
-        <ion-button slot="end" v-can="'academics.delete'" fill="clear" color="danger" @click.stop="remove(b)"
+        <ion-button
+          slot="end"
+          v-can="'academics.delete'"
+          fill="clear"
+          color="danger"
+          :aria-label="`Delete ${b.name}`"
+          @click.stop="remove(b)"
           ><ion-icon slot="icon-only" :icon="trashOutline"
         /></ion-button>
       </ion-item>
@@ -147,7 +158,12 @@
                   s.name
                 }}</ion-select-option>
               </ion-select>
-              <ion-button slot="end" fill="clear" color="danger" @click="form.teachers.splice(i, 1)"
+              <ion-button
+                slot="end"
+                fill="clear"
+                color="danger"
+                aria-label="Remove teacher"
+                @click="form.teachers.splice(i, 1)"
                 ><ion-icon slot="icon-only" :icon="closeOutline"
               /></ion-button>
             </ion-item>
@@ -188,6 +204,7 @@
               v-can="'academics.edit'"
               fill="clear"
               color="danger"
+              :aria-label="`Remove ${e.student?.name ?? 'student'} from the batch`"
               @click="unenroll(e.studentUserId)"
               ><ion-icon slot="icon-only" :icon="closeOutline"
             /></ion-button>

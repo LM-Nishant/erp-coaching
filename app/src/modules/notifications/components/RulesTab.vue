@@ -19,7 +19,13 @@
             {{ r.recipientTypes.join(', ') }}
           </p>
         </ion-label>
-        <ion-button slot="end" v-can="'notifications.edit'" fill="clear" @click="edit(r)">
+        <ion-button
+          slot="end"
+          v-can="'notifications.edit'"
+          fill="clear"
+          aria-label="Edit rule"
+          @click="edit(r)"
+        >
           <ion-icon slot="icon-only" :icon="createOutline" />
         </ion-button>
       </ion-item>

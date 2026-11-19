@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Website announcements" :on-refresh="load">
     <template #actions>
-      <ion-button v-if="auth.can('website.create')" @click="openEditor()"
+      <ion-button v-if="auth.can('website.create')" aria-label="New announcement" @click="openEditor()"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>

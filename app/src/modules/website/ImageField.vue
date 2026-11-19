@@ -14,6 +14,7 @@
       fill="clear"
       color="danger"
       size="small"
+      aria-label="Remove image"
       @click="clear"
     >
       <ion-icon slot="icon-only" :icon="closeCircleOutline" />
