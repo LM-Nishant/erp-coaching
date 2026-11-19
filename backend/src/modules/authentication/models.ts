@@ -44,6 +44,21 @@ export class OtpChallenge extends Model<
   declare updatedAt: CreationOptional<Date>;
 }
 
+/** Failed sign-in attempts of a user; `deviceId` 0 = devices the user has not signed in on. */
+export class SignInThrottle extends Model<
+  InferAttributes<SignInThrottle>,
+  InferCreationAttributes<SignInThrottle>
+> {
+  declare id: CreationOptional<number>;
+  declare userId: number;
+  declare deviceId: number;
+  declare failures: CreationOptional<number>;
+  declare lockedUntil: Date | null;
+  declare lastFailureAt: Date | null;
+  declare createdAt: CreationOptional<Date>;
+  declare updatedAt: CreationOptional<Date>;
+}
+
 export class RefreshToken extends Model<
   InferAttributes<RefreshToken>,
   InferCreationAttributes<RefreshToken>
@@ -112,6 +127,18 @@ export function initAuthModels(sequelize: Sequelize) {
       ...ts,
     },
     { sequelize, tableName: 'otp_challenges' },
+  );
+  SignInThrottle.init(
+    {
+      id: pk,
+      userId: uint(),
+      deviceId: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
+      failures: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
+      lockedUntil: DataTypes.DATE,
+      lastFailureAt: DataTypes.DATE,
+      ...ts,
+    },
+    { sequelize, tableName: 'sign_in_throttles' },
   );
   RefreshToken.init(
     {

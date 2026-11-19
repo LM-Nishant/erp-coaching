@@ -430,6 +430,7 @@ export async function updateStudent(id: number, patch: Partial<StudentFields>): 
       action: 'student.updated',
       entityType: 'student',
       entityId: id,
+      branchId: student.branchId,
       metadata: { fields: changed },
     });
   }
@@ -456,6 +457,7 @@ export async function changeStatus(
     action: 'student.status_changed',
     entityType: 'student',
     entityId: id,
+    branchId: student.branchId,
     metadata: { from, to: status, reason },
   });
   return student;
@@ -502,6 +504,7 @@ export async function transferStudent(
     action: 'student.transferred',
     entityType: 'student',
     entityId: id,
+    branchId: to.id,
     metadata: { fromBranchId, toBranchId: to.id, reason: input.reason ?? null },
   });
   return student;
@@ -529,6 +532,7 @@ export async function deleteStudent(id: number): Promise<void> {
     action: 'student.deleted',
     entityType: 'student',
     entityId: id,
+    branchId: student.branchId,
     metadata: { admissionNumber: student.admissionNumber, name: student.name },
   });
 }

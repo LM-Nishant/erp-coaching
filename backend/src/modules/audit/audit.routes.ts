@@ -5,7 +5,7 @@ import { parse } from '../../shared/utilities/validation';
 import { paginated, paginationSchema, toLimitOffset } from '../../shared/utilities/pagination';
 import { authenticate } from '../../shared/middleware/authenticate';
 import { requirePermission, requireSuperAdmin } from '../../shared/middleware/authorize';
-import { requireTenantContext } from '../../shared/context';
+import { requireTenantContext, type TenantContext } from '../../shared/context';
 import { AuditEvent } from '../../shared/audit/audit-event.model';
 
 const filters = paginationSchema.extend({
@@ -23,12 +23,25 @@ function buildWhere(q: z.infer<typeof filters>): Record<string, unknown> {
   return where;
 }
 
+/**
+ * Branch-restricted users see only their branches' events (their selected branch, if any).
+ * Institute-wide events (no branch: settings, roles, sign-ins, …) are shown only to users with
+ * access to all branches; with a branch selected they see that branch's and institute-wide events.
+ */
+function branchWhere(ctx: TenantContext): Record<string, unknown> {
+  if (ctx.allowedBranchIds !== null)
+    return { branchId: ctx.activeBranchId ?? { [Op.in]: ctx.allowedBranchIds } };
+  if (ctx.activeBranchId)
+    return { branchId: { [Op.or]: [{ [Op.eq]: ctx.activeBranchId }, { [Op.is]: null }] } };
+  return {};
+}
+
 export function auditRoutes(api: Router) {
   api.get('/audit-events', authenticate, requirePermission('audit', 'view'), async (req, res) => {
     const q = parse(filters, req.query);
-    const { instituteId } = requireTenantContext();
+    const ctx = requireTenantContext();
     const { rows, count } = await AuditEvent.findAndCountAll({
-      where: { ...buildWhere(q), instituteId } as WhereOptions,
+      where: { ...buildWhere(q), ...branchWhere(ctx), instituteId: ctx.instituteId } as WhereOptions,
       order: [['id', 'DESC']],
       ...toLimitOffset(q),
     });

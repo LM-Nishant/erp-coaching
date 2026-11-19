@@ -82,6 +82,8 @@ const schema = z.object({
   PAYMENT_GATEWAY: z.enum(['mock']).default('mock'),
   STREAMING_PROVIDER: z.enum(['mock']).default('mock'),
   BIOMETRIC_PROVIDER: z.enum(['mock']).default('mock'),
+  /** Largest biometric device push (KB). Bigger bodies get 413 before they are parsed. */
+  BIOMETRIC_PUSH_MAX_KB: z.coerce.number().int().positive().max(1024).default(256),
 
   JOBS_WORKER_ENABLED: bool(true),
   /** Express `trust proxy` setting (number of hops), needed behind nginx for correct client IPs. */

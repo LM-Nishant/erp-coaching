@@ -7,7 +7,7 @@ import { parse } from '../../shared/utilities/validation';
 import { idParam, paginated, paginationSchema, toLimitOffset } from '../../shared/utilities/pagination';
 import { authenticate } from '../../shared/middleware/authenticate';
 import { requireSuperAdmin } from '../../shared/middleware/authorize';
-import { BadRequest, Conflict, NotFound } from '../../shared/errors';
+import { AppError, BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { Institute } from './institute.model';
@@ -121,6 +121,7 @@ export function instituteAdminRoutes(api: Router) {
     const body = parse(createSchema, req.body);
     const plan = await Plan.findByPk(body.planId);
     if (!plan) throw BadRequest('Unknown plan');
+    if (!plan.isActive) throw new AppError(400, 'PLAN_INACTIVE', 'This plan is no longer offered');
     if (await Institute.findOne({ where: { slug: body.slug } }))
       throw Conflict('Slug already in use', 'SLUG_TAKEN');
     const adminRole = await getSystemRole(SYSTEM_ROLES.INSTITUTE_ADMIN);
