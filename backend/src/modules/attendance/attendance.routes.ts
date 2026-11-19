@@ -1,6 +1,7 @@
 import { Router, type RequestHandler, type Response } from 'express';
 import { z } from 'zod';
-import { ATTENDANCE_METHODS, ATTENDANCE_STATUSES } from '@erp/shared';
+import { ATTENDANCE_METHODS, ATTENDANCE_STATUSES, DEVICE_PROTOCOLS } from '@erp/shared';
+import { ADMS_PIN } from '../../infrastructure/biometric';
 import { parse } from '../../shared/utilities/validation';
 import { idParam, paginated, paginationSchema, toLimitOffset } from '../../shared/utilities/pagination';
 import { authenticate } from '../../shared/middleware/authenticate';
@@ -61,8 +62,12 @@ import {
   updateDevice,
   upsertEnrolment,
 } from './devices.service';
+import { admsRoutes } from './adms.routes';
+import { listDeviceCommands, queueDeviceCommand } from './adms.service';
+import { listDevicePins, setDevicePin } from './device-pins.service';
+import { isIpRule } from './ip-allowlist';
 import { isoDate, localDate } from './time';
-import { getInstituteTimezone } from '../../shared/timezone';
+import { getInstituteTimezone, isValidTimeZone } from '../../shared/timezone';
 import { User } from '../users/user.model';
 import type { AttendanceDevice } from './models';
 
@@ -158,15 +163,49 @@ const reportQuery = z
 
 const yearQuery = z.object({ year: z.coerce.number().int().min(2000).max(2100).optional() });
 
+const admsSettings = {
+  timeZone: z.string().trim().max(64).refine(isValidTimeZone, 'Unknown time zone').nullable().optional(),
+  ipAllowlist: z
+    .array(
+      z
+        .string()
+        .trim()
+        .max(64)
+        .refine(isIpRule, 'Use an IP address or range, e.g. 203.0.113.7 or 203.0.113.0/24'),
+    )
+    .max(20)
+    .optional(),
+  allowHttp: z.boolean().optional(),
+};
 const deviceBody = z.object({
   name: z.string().trim().min(1).max(100),
   serial: z.string().trim().min(1).max(100),
   branchId: z.number().int().positive().nullable().optional(),
+  protocol: z.enum(DEVICE_PROTOCOLS).optional(),
+  ...admsSettings,
 });
 const devicePatch = z.object({
   name: z.string().trim().min(1).max(100).optional(),
   active: z.boolean().optional(),
   branchId: z.number().int().positive().nullable().optional(),
+  ...admsSettings,
+});
+const devicePin = z.string().regex(ADMS_PIN, 'Enter the user ID exactly as on the device');
+const commandBody = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('sync_clock') }),
+  z.object({ kind: z.literal('device_info') }),
+  z.object({ kind: z.literal('fetch_users') }),
+  z.object({ kind: z.literal('fetch_user'), pin: devicePin }),
+  z.object({ kind: z.literal('fetch_logs'), from: date, to: date }),
+]);
+const devicePinBody = z.object({
+  pin: z.string().trim().min(1).max(50),
+  target: z
+    .discriminatedUnion('type', [
+      z.object({ type: z.literal('student'), studentUserId: z.number().int().positive() }),
+      z.object({ type: z.literal('employee'), employeeId: z.number().int().positive() }),
+    ])
+    .nullable(),
 });
 const enrolmentBody = z.object({
   studentUserId: z.number().int().positive(),
@@ -402,6 +441,21 @@ function deviceRoutes(r: Router) {
     await deleteDevice(pid(req));
     res.status(204).end();
   });
+  /** Commands for ADMS devices, delivered when the device next polls. */
+  r.get('/devices/:id/commands', requirePermission('attendance', 'configure'), async (req, res) => {
+    res.json(await listDeviceCommands(pid(req)));
+  });
+  r.post('/devices/:id/commands', requirePermission('attendance', 'configure'), async (req, res) => {
+    res.status(201).json(await queueDeviceCommand(pid(req), parse(commandBody, req.body)));
+  });
+  /** Device user PINs and who they belong to (students and employees). */
+  r.get('/device-pins', requirePermission('attendance', 'configure'), async (_req, res) => {
+    res.json(await listDevicePins());
+  });
+  r.put('/device-pins', requirePermission('attendance', 'configure'), async (req, res) => {
+    const body = parse(devicePinBody, req.body);
+    res.json(await setDevicePin(body.pin, body.target));
+  });
   /** Manual upload of a device export (same payload as the device push). */
   r.post('/devices/:id/events', requirePermission('attendance', 'edit'), async (req, res) => {
     const device = await deviceRepo.findById(pid(req));
@@ -538,6 +592,8 @@ function publicRoutes(pub: Router) {
 }
 
 export function attendanceRoutes(api: Router) {
+  // ZKTeco/eSSL devices call `/iclock/*` at the server root; app.ts rewrites those paths to here.
+  api.use('/attendance/public/iclock', admsRoutes());
   const pub = Router();
   publicRoutes(pub);
   api.use('/attendance/public', pub);

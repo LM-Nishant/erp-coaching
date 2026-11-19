@@ -1,0 +1,9 @@
+USER PIN=1001	Name=Asha	Pri=0	Passwd=	Card=	Grp=1	TZ=0000000100000000	Verify=0	ViceCard=
+USER PIN=2002	Name=Bala	Pri=0	Passwd=	Card=	Grp=1	TZ=0000000100000000	Verify=0	ViceCard=
+USER PIN=5005	Name=Charu	Pri=0	Passwd=	Card=	Grp=1	TZ=0000000100000000	Verify=0	ViceCard=
+USER PIN=7001	Name=Ravi Staff	Pri=14	Passwd=	Card=	Grp=1	TZ=0000000100000000	Verify=0	ViceCard=
+USER PIN=8008	Name=Nila	Pri=0	Passwd=	Card=	Grp=1	TZ=0000000100000000	Verify=0	ViceCard=
+FP PIN=1001	FID=6	Size=8	Valid=1	TMP=AAAAAAAA
+OPLOG 4	0	{{Y}} 08:59:12	0	0	0	0
+OPLOG 9	0	{{Y}} 09:01:30	9009	0	0	0
+USER PIN=bad pin	Name=X	Pri=0

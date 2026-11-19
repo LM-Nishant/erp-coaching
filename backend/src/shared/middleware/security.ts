@@ -81,5 +81,8 @@ export const publicFormRateLimit = limiter('public-form', WINDOW_15M, config.RAT
 /** Biometric device pushes (authenticated by device serial and key). */
 export const deviceRateLimit = limiter('device', MINUTE, config.RATE_LIMIT_DEVICE_PER_MIN);
 
+/** ZKTeco/eSSL ADMS devices (`/iclock/*`, identified by registered serial number). */
+export const admsRateLimit = limiter('adms', MINUTE, config.RATE_LIMIT_ADMS_PER_MIN);
+
 /** Payment gateway webhooks (signature verified in the handler). */
 export const webhookRateLimit = limiter('webhook', MINUTE, config.RATE_LIMIT_WEBHOOK_PER_MIN);

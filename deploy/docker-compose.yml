@@ -158,6 +158,8 @@ services:
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-100}
       SPA_CSP_MODE: ${SPA_CSP_MODE:-report-only}
       SPA_CSP_REPORT_URI: ${SPA_CSP_REPORT_URI:-}
+      # Biometric devices without HTTPS firmware (docs/integrations/biometric.md).
+      ADMS_ALLOW_HTTP: ${ADMS_ALLOW_HTTP:-false}
       # Lets nginx start with a temporary self-signed certificate before the first real one exists.
       TLS_SELF_SIGNED_FALLBACK: ${TLS_SELF_SIGNED_FALLBACK:-true}
     volumes:
