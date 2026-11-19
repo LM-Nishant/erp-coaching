@@ -1,6 +1,8 @@
-import { rateLimit } from 'express-rate-limit';
+import { rateLimit, type Options } from 'express-rate-limit';
 import type { RequestHandler } from 'express';
 import { config } from '../../infrastructure/config';
+import { sha256 } from '../../infrastructure/crypto';
+import { rateStore } from '../../infrastructure/rate-store';
 
 const handler: RequestHandler = (_req, res) => {
   res.status(429).json({ error: { code: 'RATE_LIMITED', message: 'Too many requests, please slow down.' } });
@@ -14,18 +16,27 @@ export function rateLimiterName(fn: unknown): string | undefined {
 }
 
 /**
- * Each limiter keeps its own per-IP counter, so traffic of one kind (say a biometric device or
- * website forms behind an institute's NAT) can't use up another's budget (logins). Counters are
- * in memory, i.e. per API process; see docs/deployment.md for running several nodes.
+ * Each limiter keeps its own counter (per client IP unless `keyGenerator` says otherwise), so traffic
+ * of one kind (say a biometric device or website forms behind an institute's NAT) can't use up
+ * another's budget (logins). Counters live in Redis when REDIS_URL is set, so every API instance
+ * shares them; otherwise (and while Redis is unreachable) in this process.
  */
 function limiter(
   name: string,
   windowMs: number,
   limit: number,
-  skip?: (req: Parameters<RequestHandler>[0]) => boolean,
+  options: Pick<Partial<Options>, 'skip' | 'keyGenerator'> = {},
 ): RequestHandler {
   const fn: RequestHandler = config.RATE_LIMIT_ENABLED
-    ? rateLimit({ windowMs, limit, skip, standardHeaders: 'draft-8', legacyHeaders: false, handler })
+    ? rateLimit({
+        windowMs,
+        limit,
+        ...options,
+        store: rateStore(name),
+        standardHeaders: 'draft-8',
+        legacyHeaders: false,
+        handler,
+      })
     : (_req, _res, next) => next();
   limiterNames.set(fn, name);
   return fn;
@@ -33,16 +44,30 @@ function limiter(
 
 const MINUTE = 60_000;
 const WINDOW_15M = 15 * MINUTE;
-/** Token-authorised media (signed files, HLS) has its own, higher limit: a video is many requests. */
-const MEDIA_PATH = /^\/(files\/signed|lms\/public\/hls)\//;
+/**
+ * Token-authorised media (signed files, HLS) and the public website have their own limiters: a video
+ * or a page with images is many requests, and website visitors shouldn't use up the app's budget.
+ */
+export const OWN_LIMITER_PATH = /^\/(files\/signed|lms\/public\/hls|public\/sites)\//;
 
-/** Every /api request except media. */
-export const apiRateLimit = limiter('api', MINUTE, config.RATE_LIMIT_API_PER_MIN, (req) =>
-  MEDIA_PATH.test(req.path),
-);
+/** Every /api request except media and the public website. */
+export const apiRateLimit = limiter('api', MINUTE, config.RATE_LIMIT_API_PER_MIN, {
+  skip: (req) => OWN_LIMITER_PATH.test(req.path),
+});
 
-/** Signed file downloads and HLS segments. */
+/** Signed file downloads, HLS segments and website images, per IP. */
 export const mediaRateLimit = limiter('media', MINUTE, config.RATE_LIMIT_MEDIA_PER_MIN);
+
+/**
+ * Signed file and HLS URLs, per token whatever the IP: caps a leaked or shared link. Runs after the
+ * per-IP `media` limiter on routes with a `:token` parameter.
+ */
+export const mediaTokenRateLimit = limiter('media-token', MINUTE, config.RATE_LIMIT_MEDIA_PER_TOKEN_PER_MIN, {
+  keyGenerator: (req) => sha256(String(req.params.token ?? '')).slice(0, 32),
+});
+
+/** Public website pages, sitemap, robots.txt and redirects (GET). */
+export const websiteRateLimit = limiter('website', MINUTE, config.RATE_LIMIT_WEBSITE_PER_MIN);
 
 /** Password login and OTP request/verify: brute-force protection. */
 export const authRateLimit = limiter('auth', WINDOW_15M, config.RATE_LIMIT_AUTH_MAX);
@@ -59,5 +84,8 @@ export const deviceRateLimit = limiter('device', MINUTE, config.RATE_LIMIT_DEVIC
 /** ZKTeco/eSSL ADMS devices (`/iclock/*`, identified by registered serial number). */
 export const admsRateLimit = limiter('adms', MINUTE, config.RATE_LIMIT_ADMS_PER_MIN);
 
-/** Payment gateway webhooks (signature verified in the handler). */
+/**
+ * Payment gateway and messaging vendor webhooks, and gateway checkout returns (the handlers verify
+ * signatures, or the secret key in the URL).
+ */
 export const webhookRateLimit = limiter('webhook', MINUTE, config.RATE_LIMIT_WEBHOOK_PER_MIN);

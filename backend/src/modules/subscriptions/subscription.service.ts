@@ -121,10 +121,25 @@ export async function getAccessStateCached(instituteId: number, now = new Date()
   return computeAccessState(hit.sub, await getBillingPolicy(), now);
 }
 
-/** Drops the cached subscription of one institute (or all, e.g. in tests after direct DB edits). */
+type AccessChangedListener = (instituteId: number | undefined) => void;
+const accessListeners = new Map<string, AccessChangedListener>();
+
+/**
+ * Called after an institute's subscription (or institute status) may have changed state; `undefined`
+ * for every institute (a changed billing policy). Keyed by name; listeners must not throw.
+ */
+export function onAccessChanged(name: string, listener: AccessChangedListener): void {
+  accessListeners.set(name, listener);
+}
+
+/**
+ * Drops the cached subscription of one institute (or all, e.g. in tests after direct DB edits) and
+ * tells the `onAccessChanged` listeners. Call it after the change is committed.
+ */
 export function invalidateAccess(instituteId?: number): void {
   if (instituteId === undefined) accessCache.clear();
   else accessCache.delete(instituteId);
+  for (const listener of accessListeners.values()) listener(instituteId);
 }
 
 /** Adds an active add-on to included limits (`ai_credits` only count in their month). */

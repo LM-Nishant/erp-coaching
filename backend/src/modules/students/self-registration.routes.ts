@@ -1,4 +1,3 @@
-import bcrypt from 'bcryptjs';
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import type { SelfRegistrationInfo, SelfRegistrationResult } from '@erp/shared';
@@ -6,6 +5,7 @@ import { parse } from '../../shared/utilities/validation';
 import { publicFormRateLimit } from '../../shared/middleware/security';
 import { getContext, runWithContext } from '../../shared/context';
 import { logger } from '../../infrastructure/logger';
+import { confirmAccountPassword } from '../authentication/api';
 import { audit } from '../../shared/audit/audit.service';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../shared/errors';
 import { Institute } from '../institutes/institute.model';
@@ -158,10 +158,7 @@ export function selfRegistrationRoutes(api: Router) {
       let userId: number | null = null;
       const existing = await User.findOne({ where: { mobile: body.mobile } });
       if (existing) {
-        const ok =
-          !!body.password &&
-          !!existing.passwordHash &&
-          (await bcrypt.compare(body.password, existing.passwordHash));
+        const ok = !!body.password && (await confirmAccountPassword(existing, body.password));
         if (!ok)
           throw Conflict(
             'An account with this mobile number already exists. Enter its password to continue, or sign in.',

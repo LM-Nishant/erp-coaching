@@ -7,6 +7,7 @@ import {
   type Sequelize,
 } from 'sequelize';
 import type { AiProviderId } from '@erp/shared';
+import { registerEncryptedColumns } from '../../infrastructure/database/encrypted-columns';
 
 /** Platform-level (SaaS) AI provider settings. One row per scope; `global` is the only scope for now. */
 export class AiSetting extends Model<InferAttributes<AiSetting>, InferCreationAttributes<AiSetting>> {
@@ -73,6 +74,7 @@ export function initAiModels(sequelize: Sequelize) {
     },
     { sequelize, tableName: 'ai_settings' },
   );
+  registerEncryptedColumns(AiSetting, ['apiKeyEncrypted']);
   AiUsage.init(
     {
       id: { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },

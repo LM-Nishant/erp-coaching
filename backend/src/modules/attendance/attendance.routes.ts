@@ -1,4 +1,4 @@
-import { Router, type Response } from 'express';
+import { Router, type RequestHandler, type Response } from 'express';
 import { z } from 'zod';
 import { ATTENDANCE_METHODS, ATTENDANCE_STATUSES, DEVICE_PROTOCOLS } from '@erp/shared';
 import { ADMS_PIN } from '../../infrastructure/biometric';
@@ -7,6 +7,8 @@ import { idParam, paginated, paginationSchema, toLimitOffset } from '../../share
 import { authenticate } from '../../shared/middleware/authenticate';
 import { requireModule, requirePermission } from '../../shared/middleware/authorize';
 import { deviceRateLimit } from '../../shared/middleware/security';
+import { ownJsonBody } from '../../shared/middleware/body';
+import { config } from '../../infrastructure/config';
 import { getContext, hasPermission, requireTenantContext, runWithContext } from '../../shared/context';
 import { AppError, BadRequest, Forbidden, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
@@ -67,6 +69,7 @@ import { isIpRule } from './ip-allowlist';
 import { isoDate, localDate } from './time';
 import { getInstituteTimezone, isValidTimeZone } from '../../shared/timezone';
 import { User } from '../users/user.model';
+import type { AttendanceDevice } from './models';
 
 const pid = (req: { params: unknown }) => parse(idParam, req.params).id;
 const date = z.string().regex(isoDate, 'Use YYYY-MM-DD');
@@ -457,8 +460,8 @@ function deviceRoutes(r: Router) {
   r.post('/devices/:id/events', requirePermission('attendance', 'edit'), async (req, res) => {
     const device = await deviceRepo.findById(pid(req));
     deviceRepo.assertRowWritable(device);
-    const punches = await parseDevicePayload(req.body?.punches ?? req.body);
-    if (punches.length > 1000) throw BadRequest('At most 1000 punches per upload');
+    const punches = await parseDevicePayload(rawPunches(req.body, 'upload'));
+    if (punches.length > MAX_PUNCHES) throw BadRequest(`At most ${MAX_PUNCHES} punches per upload`);
     const result = await ingestPunches(device, punches);
     await audit({
       action: 'attendance.device.events-imported',
@@ -533,29 +536,59 @@ function selfRoutes(r: Router) {
 
 /* ----------------------------------------------------------------- public */
 
+const MAX_PUNCHES = 1000;
+
+/**
+ * The punches of a device payload (`{ punches: [...] }` or the array itself), counted before the
+ * adapter parses them.
+ */
+function rawPunches(body: unknown, what: 'push' | 'upload'): unknown {
+  const raw = (body as { punches?: unknown } | null | undefined)?.punches ?? body;
+  if (Array.isArray(raw) && raw.length > MAX_PUNCHES)
+    throw BadRequest(`At most ${MAX_PUNCHES} punches per ${what}`);
+  return raw;
+}
+
+const DEVICE_PUSH_PATH = '/api/attendance/public/device-events';
+
+/** Device serial and API key (headers). Runs before the body is read. */
+const authenticatePushDevice: RequestHandler = async (req, res, next) => {
+  const device = await authenticateDevice(
+    String(req.get('x-device-serial') ?? ''),
+    String(req.get('x-device-key') ?? ''),
+  );
+  if (!device) throw new AppError(401, 'DEVICE_UNAUTHORIZED', 'Unknown device or invalid key');
+  if (!(await isModuleEnabled(device.instituteId, 'attendance')))
+    throw Forbidden('Attendance is not enabled for this institute', 'MODULE_DISABLED');
+  res.locals.attendanceDevice = device;
+  next();
+};
+
 function publicRoutes(pub: Router) {
   /**
-   * Biometric device push. The device authenticates with its serial and API key (headers); the
-   * institute comes from the registered device, never from the request body.
+   * Biometric device push. The device authenticates with its serial and API key (headers) before
+   * its body is read (at most BIOMETRIC_PUSH_MAX_KB); the institute comes from the registered
+   * device, never from the request body.
    */
-  pub.post('/device-events', deviceRateLimit, async (req, res) => {
-    const device = await authenticateDevice(
-      String(req.get('x-device-serial') ?? ''),
-      String(req.get('x-device-key') ?? ''),
-    );
-    if (!device) throw new AppError(401, 'DEVICE_UNAUTHORIZED', 'Unknown device or invalid key');
-    if (!(await isModuleEnabled(device.instituteId, 'attendance')))
-      throw Forbidden('Attendance is not enabled for this institute', 'MODULE_DISABLED');
-    const result = await runWithContext(
-      { ...getContext(), system: true, instituteId: device.instituteId, allowedBranchIds: null },
-      async () => {
-        const punches = await parseDevicePayload(req.body?.punches ?? req.body);
-        if (punches.length > 1000) throw BadRequest('At most 1000 punches per push');
-        return ingestPunches(device, punches);
-      },
-    );
-    res.json(result);
-  });
+  pub.post(
+    '/device-events',
+    deviceRateLimit,
+    authenticatePushDevice,
+    ownJsonBody(DEVICE_PUSH_PATH, config.BIOMETRIC_PUSH_MAX_KB * 1024),
+    async (req, res) => {
+      const device = res.locals.attendanceDevice as AttendanceDevice;
+      const raw = rawPunches(req.body, 'push');
+      const result = await runWithContext(
+        { ...getContext(), system: true, instituteId: device.instituteId, allowedBranchIds: null },
+        async () => {
+          const punches = await parseDevicePayload(raw);
+          if (punches.length > MAX_PUNCHES) throw BadRequest(`At most ${MAX_PUNCHES} punches per push`);
+          return ingestPunches(device, punches);
+        },
+      );
+      res.json(result);
+    },
+  );
 }
 
 export function attendanceRoutes(api: Router) {

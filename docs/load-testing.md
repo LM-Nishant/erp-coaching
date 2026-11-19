@@ -109,13 +109,16 @@ run 1 / run 2.
 
 What the numbers say:
 
-- **Login is CPU-bound on the event loop.** Passwords are hashed with `bcryptjs` (pure JavaScript,
-  cost 10, about 120 ms per comparison on this machine), which runs on the API's single JavaScript
-  thread. One API process therefore manages only a handful of logins per second, and a login burst
-  (everyone signing in before an exam) delays every other request on that process. Before a large
-  rollout, move to a native hasher that runs on the libuv thread pool (`bcrypt` or
-  `@node-rs/bcrypt` keep existing hashes valid) and run more than one API process (live classes
-  then need the Socket.IO Redis adapter; see [deployment.md](deployment.md)).
+- **Login was CPU-bound on the event loop.** This baseline hashed passwords with `bcryptjs` (pure
+  JavaScript, cost 10, about 120 ms per comparison on this machine) on the API's single JavaScript
+  thread, so one API process managed only a handful of logins per second, and a login burst
+  (everyone signing in before an exam) delayed every other request on that process. Passwords are
+  now hashed with scrypt on libuv's thread pool (`backend/src/infrastructure/password.ts`; older
+  bcrypt hashes are checked on a worker thread and replaced at the next sign-in), so a burst no
+  longer holds up other requests. Sign-ins per process are still bounded by `UV_THREADPOOL_SIZE`
+  and the CPU cores ([scaling](deployment.md#scaling)); run `login` again for a new baseline. Keep
+  `LOAD_STUDENTS` at or above `LOAD_CONNECTIONS` for it: attempts for the same account take turns.
+  With `REDIS_URL` set, several API processes share rate limits, sign-in locks and live classes.
 - **Reads are dominated by MySQL round trips**: dashboards and lists sit at 150–300 ms p50 at 10
   connections on a loaded laptop; nothing failed or timed out.
 - **Media is cheap**: signed, ranged local-disk reads stay under 50 ms p95.

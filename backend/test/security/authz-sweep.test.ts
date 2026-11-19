@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { discoverModules } from '../../src/infrastructure/module-loader';
 import { describeRoutes, type RouteInfo } from '../../src/infrastructure/route-registry';
+import { Plan } from '../../src/modules/subscriptions/models';
 import { purgeRows } from '../helpers';
 import { isWrite, routeKey, sampleUrl } from './crawler';
 import {
@@ -56,7 +57,6 @@ beforeAll(async () => {
     name: `Authz no modules ${tag}`,
     priceMonthlyPaise: 0,
     priceYearlyPaise: 0,
-    isActive: false,
     limits: {
       maxStudents: null,
       maxBranches: null,
@@ -74,6 +74,8 @@ beforeAll(async () => {
     label: 'gated institute admin',
     planId,
   });
+  // Institutes can only be created on an active plan; hide this one from plan pickers afterwards.
+  await Plan.update({ isActive: false }, { where: { id: planId } });
 }, 120_000);
 
 afterAll(async () => {
