@@ -30,6 +30,7 @@ const gatewaySchema = z.object({
   useForInstitutes: z.boolean(),
   sandbox: z.boolean(),
   merchantId: optionalText(120),
+  website: optionalText(60),
   secretKey: secret,
   webhookSecret: secret,
 });

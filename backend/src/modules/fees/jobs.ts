@@ -1,4 +1,5 @@
 import { Op } from 'sequelize';
+import { config } from '../../infrastructure/config';
 import { enqueueJob } from '../../infrastructure/jobs/queue';
 import { Job } from '../../infrastructure/jobs/job.model';
 import { logger } from '../../infrastructure/logger';
@@ -6,15 +7,16 @@ import { requireTenantContext, runWithContext } from '../../shared/context';
 import { todayIn } from '../../shared/timezone';
 import { isModuleEnabled } from '../subscriptions/subscription.service';
 import { Student } from '../students/api';
-import { FeeAccount, FeeInstalment } from './models';
+import { FeeAccount, FeeInstalment, PaymentGatewayConfig } from './models';
 import { applyLateFee } from './accounts.service';
 import { getFeeSettings } from './settings.service';
-import { releaseStaleCouponReservations } from './payments.service';
+import { reconcileGatewayPayments, releaseStaleCouponReservations } from './payments.service';
 import { money, notifyStudent } from './notifications';
 import { addDays, today } from './util';
 
 export const FEES_SWEEP_JOB = 'fees.sweep';
 export const FEES_INSTITUTE_SWEEP_JOB = 'fees.institute-sweep';
+export const FEES_PAYMENT_RECONCILE_JOB = 'fees.payment-reconcile';
 const SWEEP_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 /**
@@ -116,5 +118,46 @@ export async function scheduleFeesSweep() {
     FEES_SWEEP_JOB,
     {},
     { instituteId: null, runAt: new Date(Date.now() + SWEEP_INTERVAL_MS) },
+  );
+}
+
+/**
+ * Platform job: asks the gateways about open online payments and refunds of every institute with a
+ * gateway (missed webhooks, unknown refund outcomes); re-enqueues itself.
+ */
+export async function runPaymentReconcile(now = new Date()) {
+  try {
+    const rows = (await PaymentGatewayConfig.findAll({
+      attributes: ['instituteId'],
+      group: ['instituteId'],
+      raw: true,
+      tenantBypass: true, // system job across institutes; each institute then runs in its own context
+    } as object)) as unknown as { instituteId: number }[];
+    for (const { instituteId } of rows) {
+      await runWithContext({ system: true, instituteId, allowedBranchIds: null }, async () => {
+        try {
+          await reconcileGatewayPayments(now);
+        } catch (err) {
+          logger.warn({ instituteId, err }, 'Payment reconciliation failed for institute');
+        }
+      });
+    }
+  } finally {
+    await schedulePaymentReconcile();
+  }
+}
+
+export async function schedulePaymentReconcile() {
+  const pending = await Job.findOne({
+    where: { name: FEES_PAYMENT_RECONCILE_JOB, status: { [Op.in]: ['pending', 'running'] } },
+  });
+  if (pending && pending.status === 'pending') return;
+  await enqueueJob(
+    FEES_PAYMENT_RECONCILE_JOB,
+    {},
+    {
+      instituteId: null,
+      runAt: new Date(Date.now() + config.PAYMENT_RECONCILE_INTERVAL_MINUTES * 60_000),
+    },
   );
 }

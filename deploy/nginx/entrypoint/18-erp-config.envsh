@@ -101,9 +101,12 @@ case "${SPA_CSP_MODE:-report-only}" in
 esac
 if [ -z "${SPA_CSP:-}" ]; then
   # 'unsafe-inline' styles: Ionic's web components set inline styles. ws/wss to the own origin are
-  # listed explicitly for browsers where 'self' does not cover WebSockets.
+  # listed explicitly for browsers where 'self' does not cover WebSockets. The payment gateways'
+  # checkouts (Razorpay, Cashfree, Paytm) load from their own hosts: docs/integrations/payments.md.
+  erp_config_paytm="https://secure.paytmpayments.com https://securestage.paytmpayments.com"
+  erp_config_pay_frames="https://api.razorpay.com https://checkout.razorpay.com https://*.cashfree.com $erp_config_paytm"
   # shellcheck disable=SC2089 # the single quotes are CSP keywords in the header value, not shell quoting
-  SPA_CSP="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' blob: data: wss://$SERVER_NAME$HTTPS_PORT_SUFFIX; frame-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+  SPA_CSP="default-src 'self'; script-src 'self' https://checkout.razorpay.com https://sdk.cashfree.com $erp_config_paytm; style-src 'self' 'unsafe-inline' $erp_config_paytm; img-src 'self' data: blob: https:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' blob: data: wss://$SERVER_NAME$HTTPS_PORT_SUFFIX https://lumberjack.razorpay.com $erp_config_pay_frames; frame-src 'self' blob: $erp_config_pay_frames; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https://api.razorpay.com $erp_config_paytm https://securegw.paytmpayments.in https://securegw-stage.paytmpayments.in; frame-ancestors 'self'"
   if [ -n "${SPA_CSP_REPORT_URI:-}" ]; then
     SPA_CSP="$SPA_CSP; report-uri $SPA_CSP_REPORT_URI"
   fi

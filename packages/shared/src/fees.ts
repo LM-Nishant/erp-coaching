@@ -22,6 +22,16 @@ export type FeeApprovalStatus = 'not_required' | 'pending' | 'approved' | 'rejec
 export const PAYMENT_GATEWAYS = ['mock', 'paytm', 'razorpay', 'cashfree'] as const;
 export type PaymentGatewayKey = (typeof PAYMENT_GATEWAYS)[number];
 
+/** Where a checkout runs: the vendor's hosted pages send the payer back to the matching app origin. */
+export const CHECKOUT_PLATFORMS = ['web', 'android', 'ios'] as const;
+export type CheckoutPlatform = (typeof CHECKOUT_PLATFORMS)[number];
+
+/** App route the payer returns to after a redirect-based checkout (`path` like `/my-fees`). */
+export interface CheckoutReturnInput {
+  platform: CheckoutPlatform;
+  path?: string;
+}
+
 export const INSTALMENT_PLAN_TYPES = ['one_time', 'monthly', 'quarterly', 'custom'] as const;
 export type InstalmentPlanType = (typeof INSTALMENT_PLAN_TYPES)[number];
 
@@ -317,6 +327,12 @@ export interface GatewayConfigDto {
   webhookUrl: string;
   /** Provisioned from the platform's global gateway (no own merchant account configured). */
   platformManaged?: boolean;
+  /** A merchant secret / key secret / client secret is stored (never returned). */
+  hasSecret: boolean;
+  /** A separate webhook secret is stored (Razorpay). */
+  hasWebhookSecret: boolean;
+  /** Paytm website name (WEBSTAGING in staging, DEFAULT in production unless Paytm assigned another). */
+  website: string | null;
 }
 
 export interface BankAccountDto {

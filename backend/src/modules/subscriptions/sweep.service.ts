@@ -1,5 +1,6 @@
 import { Op } from 'sequelize';
 import { METRIC_LABELS, type BillingPolicyDto } from '@erp/shared';
+import { config } from '../../infrastructure/config';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { Job } from '../../infrastructure/jobs/job.model';
 import { enqueueJob } from '../../infrastructure/jobs/queue';
@@ -18,9 +19,11 @@ import {
 } from './subscription.service';
 import { computeOverage, snapshotUsage } from './usage.service';
 import { notifyInstituteAdmins } from './notifications';
+import { reconcileSaasPayments } from './payments.service';
 import { DAY_MS, formatDay, formatRupees, isoDay, nextMonth, startOfMonth } from './util';
 
 export const BILLING_SWEEP_JOB = 'subscriptions.billing-sweep';
+export const SAAS_PAYMENT_RECONCILE_JOB = 'subscriptions.payment-reconcile';
 const SWEEP_INTERVAL_MS = 60 * 60_000;
 /** Trial-ending reminder lead time when the policy issues renewals later than this. */
 const TRIAL_NOTICE_DAYS = 3;
@@ -247,5 +250,28 @@ export async function billingSweepJob(): Promise<void> {
     await runBillingSweep();
   } finally {
     await scheduleBillingSweep();
+  }
+}
+
+export async function scheduleSaasPaymentReconcile(): Promise<void> {
+  const pending = await Job.findOne({ where: { name: SAAS_PAYMENT_RECONCILE_JOB, status: 'pending' } });
+  if (pending) return;
+  await enqueueJob(
+    SAAS_PAYMENT_RECONCILE_JOB,
+    {},
+    {
+      instituteId: null,
+      runAt: new Date(Date.now() + config.PAYMENT_RECONCILE_INTERVAL_MINUTES * 60_000),
+    },
+  );
+}
+
+/** Checks open online subscription payments with the gateway (missed webhooks); re-enqueues itself. */
+export async function saasPaymentReconcileJob(): Promise<void> {
+  try {
+    const result = await reconcileSaasPayments();
+    if (result.errors) logger.warn({ ...result }, 'SaaS payment reconciliation finished with errors');
+  } finally {
+    await scheduleSaasPaymentReconcile();
   }
 }

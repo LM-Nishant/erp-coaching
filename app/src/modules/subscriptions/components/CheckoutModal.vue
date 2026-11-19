@@ -1,5 +1,6 @@
 <template>
-  <ion-modal :is-open="!!invoice" @did-dismiss="close">
+  <!-- The gateway's checkout opens outside the modal: it must be able to take focus. -->
+  <ion-modal :is-open="!!invoice" :focus-trap="!vendorOpen" @did-dismiss="close">
     <ion-header>
       <ion-toolbar>
         <ion-title>Pay invoice</ion-title>
@@ -39,11 +40,11 @@
         >
       </template>
       <template v-else>
-        <p>Complete the payment in the {{ order.gateway }} window, then tap below.</p>
-        <ion-button v-if="checkoutUrl" expand="block" :href="checkoutUrl" target="_blank"
-          >Open {{ order.gateway }}</ion-button
+        <p>Pay in the {{ label }} checkout. If it closed before you finished, open it again.</p>
+        <ion-button expand="block" :disabled="busy || vendorOpen" @click="launch(order)"
+          >Open {{ label }}</ion-button
         >
-        <ion-button expand="block" fill="outline" :disabled="busy" @click="check"
+        <ion-button expand="block" fill="outline" :disabled="busy || vendorOpen" @click="check"
           >I've paid, check status</ion-button
         >
       </template>
@@ -66,8 +67,10 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/vue';
-import type { SaasCheckoutDto, SaasInvoiceDto, SaasPaymentDto } from '@erp/shared';
+import type { PaymentGatewayKey, SaasCheckoutDto, SaasInvoiceDto, SaasPaymentDto } from '@erp/shared';
+import { checkoutReturnTo, openCheckout, settlePayment, type CheckoutOutcome } from '@/core/payment-checkout';
 import { toast, toastError } from '@/core/toast';
+import { GATEWAY_LABELS } from '@/modules/fees/api';
 import { rupees } from '@/modules/hr/api';
 import { billingApi } from '../api';
 import { INVOICE_KIND_LABELS, formatDay } from '../format';
@@ -76,14 +79,19 @@ import { loadSubscriptionStatus } from '../status';
 const props = defineProps<{ invoice: SaasInvoiceDto | null }>();
 const emit = defineEmits<{ close: []; paid: [payment: SaasPaymentDto] }>();
 
+/** App route the gateway's checkout returns to (BillingPage checks the payment there). */
+const RETURN_PATH = '/subscription';
+
 const order = ref<SaasCheckoutDto | null>(null);
 const busy = ref(false);
+/** The gateway's checkout is open over the modal. */
+const vendorOpen = ref(false);
 /** One key per attempt: a retried request resumes the same gateway order; a new attempt after a failure gets a new one. */
 let attemptKey = crypto.randomUUID();
 
-const checkoutUrl = computed(() => {
-  const u = order.value?.checkout.url;
-  return typeof u === 'string' ? u : undefined;
+const label = computed(() => {
+  const g = order.value?.gateway ?? '';
+  return GATEWAY_LABELS[g as PaymentGatewayKey] ?? g;
 });
 
 watch(
@@ -101,10 +109,42 @@ function close() {
 async function start() {
   if (!props.invoice) return;
   busy.value = true;
+  let o: SaasCheckoutDto;
   try {
-    const o = await billingApi.checkout(props.invoice.id, attemptKey);
-    if (o.payment.status === 'pending') order.value = o;
-    else await settled(o.payment);
+    o = await billingApi.checkout(props.invoice.id, attemptKey, checkoutReturnTo(RETURN_PATH));
+  } catch (e) {
+    void toastError(e);
+    return;
+  } finally {
+    busy.value = false;
+  }
+  if (o.payment.status !== 'pending') return settled(o.payment);
+  order.value = o;
+  if (o.gateway !== 'mock') await launch(o);
+}
+
+/** Opens the gateway's checkout. Only the API's check with the gateway decides how the payment ended. */
+async function launch(o: SaasCheckoutDto) {
+  vendorOpen.value = true;
+  let outcome: CheckoutOutcome;
+  try {
+    outcome = await openCheckout({ paymentId: o.payment.id, path: RETURN_PATH, checkout: o.checkout });
+  } catch (e) {
+    void toastError(e);
+    return;
+  } finally {
+    vendorOpen.value = false;
+  }
+  if (outcome === 'away') return;
+  busy.value = true;
+  try {
+    const sync = () => billingApi.sync(o.payment.id);
+    // A completed checkout is checked for a few seconds; a dismissed one once, and only reported if it settled.
+    const { payment } =
+      outcome === 'completed'
+        ? await settlePayment(sync, (r) => r.payment.status === 'pending')
+        : await sync();
+    if (outcome === 'completed' || payment.status !== 'pending') await settled(payment);
   } catch (e) {
     void toastError(e);
   } finally {

@@ -70,10 +70,10 @@
           </ion-label>
           <ion-badge slot="end" :color="STATUS_COLORS[p.status]">{{ p.status.replace('_', ' ') }}</ion-badge>
           <ion-buttons v-if="p.receiptId" slot="end">
-            <ion-button title="Download receipt" @click="pdf(p.receiptId)"
+            <ion-button title="Download receipt" aria-label="Download receipt" @click="pdf(p.receiptId)"
               ><ion-icon slot="icon-only" :icon="downloadOutline"
             /></ion-button>
-            <ion-button title="Send to WhatsApp" @click="share(p.receiptId)"
+            <ion-button title="Send to WhatsApp" aria-label="Send to WhatsApp" @click="share(p.receiptId)"
               ><ion-icon slot="icon-only" :icon="logoWhatsapp"
             /></ion-button>
           </ion-buttons>
@@ -91,7 +91,8 @@
       </ion-list>
     </template>
 
-    <ion-modal :is-open="!!payFor" @did-dismiss="closePay">
+    <!-- The gateway's checkout opens outside the modal: it must be able to take focus. -->
+    <ion-modal :is-open="!!payFor" :focus-trap="!vendorOpen" @did-dismiss="closePay">
       <ion-header>
         <ion-toolbar>
           <ion-title>Pay fees</ion-title>
@@ -116,7 +117,9 @@
             </ion-item>
             <ion-item v-if="(data?.gateways.length ?? 0) > 1">
               <ion-select v-model="gateway" label="Pay with" label-placement="stacked">
-                <ion-select-option v-for="g in data?.gateways" :key="g" :value="g">{{ g }}</ion-select-option>
+                <ion-select-option v-for="g in data?.gateways" :key="g" :value="g">{{
+                  GATEWAY_LABELS[g] ?? g
+                }}</ion-select-option>
               </ion-select>
             </ion-item>
           </ion-list>
@@ -141,14 +144,17 @@
           >
         </template>
         <template v-else>
-          <p>Complete the payment in the {{ order.gateway }} window, then tap below.</p>
-          <ion-button v-if="checkoutUrl" expand="block" :href="checkoutUrl" target="_blank"
-            >Open {{ order.gateway }}</ion-button
+          <p>
+            Pay in the {{ GATEWAY_LABELS[order.gateway] ?? order.gateway }} checkout. If it closed before you
+            finished, open it again.
+          </p>
+          <ion-button expand="block" :disabled="busy || vendorOpen" @click="launch(order)"
+            >Open {{ GATEWAY_LABELS[order.gateway] ?? order.gateway }}</ion-button
           >
           <ion-button
             expand="block"
             fill="outline"
-            :disabled="busy"
+            :disabled="busy || vendorOpen"
             @click="refreshPayment(order.paymentId, true)"
             >I've paid, check status</ion-button
           >
@@ -160,6 +166,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import {
   IonBadge,
   IonButton,
@@ -190,9 +197,23 @@ import {
 import { downloadOutline, logoWhatsapp } from 'ionicons/icons';
 import type { CheckoutOrderDto, FeeAccountDto, MyFeesDto, PaymentGatewayKey } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import {
+  checkoutReturnTo,
+  openCheckout,
+  settlePayment,
+  takeReturnedPayment,
+  withoutReturnQuery,
+  type CheckoutOutcome,
+} from '@/core/payment-checkout';
 import { toast, toastError } from '@/core/toast';
 import { rupees } from '../hr/api';
-import { MODE_LABELS, STATUS_COLORS, feesApi, openSigned, toPaise } from './api';
+import { GATEWAY_LABELS, MODE_LABELS, STATUS_COLORS, feesApi, openSigned, toPaise } from './api';
+
+/** App route the gateway's checkout returns to. */
+const RETURN_PATH = '/my-fees';
+
+const route = useRoute();
+const router = useRouter();
 
 const data = ref<MyFeesDto | null>(null);
 const studentId = ref<number | undefined>(undefined);
@@ -202,6 +223,8 @@ const customAmount = ref('');
 const gateway = ref<PaymentGatewayKey | undefined>(undefined);
 const order = ref<CheckoutOrderDto | null>(null);
 const busy = ref(false);
+/** The gateway's checkout is open over the page. */
+const vendorOpen = ref(false);
 
 const nextDue = computed(() => {
   const i = payFor.value?.instalments?.find((x) => x.balance > 0);
@@ -214,11 +237,6 @@ const payAmount = computed(() =>
       ? nextDue.value
       : (payFor.value?.balance ?? 0),
 );
-const checkoutUrl = computed(() => {
-  const u = order.value?.checkout.url;
-  return typeof u === 'string' ? u : undefined;
-});
-
 async function load() {
   try {
     data.value = await feesApi.my(studentId.value);
@@ -253,17 +271,69 @@ async function checkout() {
     return;
   }
   busy.value = true;
+  let o: CheckoutOrderDto;
   try {
-    order.value = await feesApi.myCheckout({
+    o = await feesApi.myCheckout({
       accountId: payFor.value.id,
       amount: payAmount.value,
       gateway: gateway.value,
+      returnTo: checkoutReturnTo(RETURN_PATH),
     });
+  } catch (e) {
+    void toastError(e);
+    return;
+  } finally {
+    busy.value = false;
+  }
+  order.value = o;
+  if (o.gateway !== 'mock') await launch(o);
+}
+
+/** Opens the gateway's checkout. Only the API's check with the gateway decides how the payment ended. */
+async function launch(o: CheckoutOrderDto) {
+  vendorOpen.value = true;
+  let outcome: CheckoutOutcome;
+  try {
+    outcome = await openCheckout({ paymentId: o.paymentId, path: RETURN_PATH, checkout: o.checkout });
+  } catch (e) {
+    void toastError(e);
+    return;
+  } finally {
+    vendorOpen.value = false;
+  }
+  if (outcome !== 'away') await settle(o.paymentId, outcome === 'completed');
+}
+
+/**
+ * Checks a payment with the gateway. After a completed checkout or a return from the gateway (`wait`) it keeps checking
+ * for a few seconds and also reports a payment that is still pending; after a dismissed checkout it checks once.
+ */
+async function settle(id: number, wait: boolean) {
+  busy.value = true;
+  try {
+    const { payment } = wait
+      ? await settlePayment(
+          () => feesApi.mySync(id),
+          (r) => r.payment.status === 'pending',
+        )
+      : await feesApi.mySync(id);
+    if (payment.status === 'successful') {
+      await toast(`Payment successful. Receipt ${payment.receiptNumber ?? ''}`);
+      closePay();
+    } else if (payment.status === 'failed') {
+      await toast('Payment failed. You can try again.', 'danger');
+      if (order.value?.paymentId === id) order.value = null;
+    } else if (payment.status !== 'pending') {
+      await toast(`Payment ${payment.status.replace('_', ' ')}`, 'medium');
+    } else if (wait) {
+      await toast('The payment is still pending. Check again in a moment.', 'medium');
+    }
   } catch (e) {
     void toastError(e);
   } finally {
     busy.value = false;
   }
+  await load();
 }
 
 async function complete(outcome: 'success' | 'failed') {
@@ -316,5 +386,10 @@ const share = async (id: number) => {
   }
 };
 
-onMounted(load);
+onMounted(async () => {
+  const returned = takeReturnedPayment(RETURN_PATH, route.query);
+  if (route.query.payment !== undefined) await router.replace({ query: withoutReturnQuery(route.query) });
+  await load();
+  if (returned) await settle(returned, true);
+});
 </script>
