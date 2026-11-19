@@ -423,6 +423,8 @@ export interface PlatformGatewayDto extends IntegrationTestStatus {
   hasSecret: boolean;
   keyHint: string | null;
   hasWebhookSecret: boolean;
+  /** Paytm website name (blank: WEBSTAGING in staging, DEFAULT in production). */
+  website: string | null;
   /** SaaS subscription payment webhook to register with the gateway. */
   webhookUrl: string;
   updatedAt: string | null;
@@ -437,6 +439,8 @@ export interface PlatformGatewayInput {
   /** Blank/omitted keeps the stored secret. */
   secretKey?: string;
   webhookSecret?: string;
+  /** Paytm website name. */
+  website?: string | null;
 }
 
 /** Global default notification provider per channel (institute providers take precedence). */

@@ -339,6 +339,7 @@ Set a per-checkout `TEST_DB_NAME` in `backend/.env` (e.g. `erp_coaching_test_<mo
 | `9454…`          | `release-readiness.test.ts`                                                                                                                    |
 | `9458…`          | load runs (`load/`)                                                                                                                            |
 | `9459…`          | browser E2E (`e2e/`)                                                                                                                           |
+| `952…`           | `payment-gateways.test.ts` (payment gateway flows)                                                                                             |
 | `953…`           | `calendar.test.ts` (Google Calendar)                                                                                                           |
 | `955…`           | `biometric-adms.test.ts`                                                                                                                       |
 
