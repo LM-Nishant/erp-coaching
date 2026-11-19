@@ -10,6 +10,12 @@ export {
   type BatchUnavailableReason,
 } from './academics.service';
 export { onClassSessionCompleted, type ClassCompletedEvent } from './class-events';
+export {
+  setPromotionFeeProvider,
+  type PromotionFeePlan,
+  type PromotionFeeProvider,
+  type PromotionFeeTarget,
+} from './promotion-fees';
 export { completeClassSession, type CompleteClassOptions } from './class-completion';
 export {
   AcademicSession,

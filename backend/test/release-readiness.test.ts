@@ -100,6 +100,16 @@ describe('request ids and log redaction', () => {
     expect(redactUrl('/api/fees/public/webhooks/razorpay/whk_secret')).toBe(
       '/api/fees/public/webhooks/razorpay/[redacted]',
     );
+    expect(redactUrl('/api/notifications/public/webhooks/msg91/dlr_secret')).toBe(
+      '/api/notifications/public/webhooks/msg91/[redacted]',
+    );
+    expect(
+      redactUrl(
+        '/api/notifications/public/webhooks/whatsapp-cloud/wa_secret?hub.mode=subscribe&hub.verify_token=vt&hub.challenge=42',
+      ),
+    ).toBe(
+      '/api/notifications/public/webhooks/whatsapp-cloud/[redacted]?hub.mode=subscribe&hub.verify_token=[redacted]&hub.challenge=42',
+    );
     expect(redactUrl('/api/x?page=2&token=abc&OTP=123456&code=9')).toBe(
       '/api/x?page=2&token=[redacted]&OTP=[redacted]&code=[redacted]',
     );
