@@ -1,5 +1,6 @@
 <template>
   <AppPage title="Meeting availability" :on-refresh="load">
+    <CalendarConnectionCard ref="calendarCard" />
     <ion-list>
       <ion-list-header><ion-label>My slots</ion-label></ion-list-header>
       <ion-item v-for="s in slots" :key="s.id">
@@ -116,6 +117,7 @@ import { trashOutline } from 'ionicons/icons';
 import type { AppointmentSlotDto, SlotKind, SlotMode } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import { toast, toastError } from '@/core/toast';
+import CalendarConnectionCard from '@/modules/calendar/components/CalendarConnectionCard.vue';
 import { useAuthStore } from '@/stores/auth';
 import { appointmentsApi, DAYS } from './api';
 
@@ -124,6 +126,7 @@ const branches = computed(() => auth.me?.branches ?? []);
 const slots = ref<AppointmentSlotDto[]>([]);
 const loading = ref(true);
 const saving = ref(false);
+const calendarCard = ref<InstanceType<typeof CalendarConnectionCard> | null>(null);
 
 const form = reactive({
   kind: 'recurring' as SlotKind,
@@ -146,6 +149,7 @@ const branchName = (id: number) =>
 
 async function load() {
   loading.value = true;
+  void calendarCard.value?.load();
   try {
     slots.value = await appointmentsApi.slots({ includeInactive: true });
   } catch (e) {

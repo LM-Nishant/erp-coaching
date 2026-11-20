@@ -4,8 +4,10 @@ import { requireTenantContext } from '../../shared/context';
 import { User } from '../users/user.model';
 import { registerNotificationEvents } from '../notifications/api';
 import { registerParentPortalProvider } from '../parent-portal/api';
+import { registerCalendarSource } from '../calendar/api';
 import { Appointment } from './appointments.models';
-import { localToday } from './appointments.service';
+import { localToday, MODULE } from './appointments.service';
+import { appointmentCalendarSource } from './calendar-source';
 
 const ev = (
   key: string,
@@ -64,9 +66,10 @@ export const APPOINTMENT_EVENTS: NotificationEventDef[] = [
 const label = (a: Appointment) =>
   `${a.teacher?.name ?? 'Teacher'} · ${a.mode === 'online' ? 'Online' : 'In person'}`;
 
-/** Wires appointments into notifications and the parent portal (called from `onReady`). */
+/** Wires appointments into notifications, the parent portal and calendars (called from `onReady`). */
 export function registerAppointmentIntegrations(): void {
   registerNotificationEvents(APPOINTMENT_EVENTS);
+  registerCalendarSource(MODULE, appointmentCalendarSource);
   registerParentPortalProvider({
     key: 'appointments',
     label: 'Parent-teacher meetings',

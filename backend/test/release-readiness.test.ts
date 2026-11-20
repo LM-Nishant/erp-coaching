@@ -90,7 +90,7 @@ describe('request ids and log redaction', () => {
     expect(replaced.headers['x-request-id']).toMatch(UUID);
   });
 
-  it('strips signed tokens, webhook keys and one-time codes from logged URLs', () => {
+  it('strips signed tokens, webhook and device keys, one-time codes and OAuth state from logged URLs', () => {
     expect(redactUrl('/api/files/signed/eyJmIjo.abc123?download=1')).toBe(
       '/api/files/signed/[redacted]?download=1',
     );
@@ -112,6 +112,12 @@ describe('request ids and log redaction', () => {
     );
     expect(redactUrl('/api/x?page=2&token=abc&OTP=123456&code=9')).toBe(
       '/api/x?page=2&token=[redacted]&OTP=[redacted]&code=[redacted]',
+    );
+    expect(redactUrl('/api/attendance/public/iclock/cdata?SN=CQZ7&PushCommKey=abc123&options=all')).toBe(
+      '/api/attendance/public/iclock/cdata?SN=CQZ7&PushCommKey=[redacted]&options=all',
+    );
+    expect(redactUrl('/api/calendar/public/google/callback?state=abc&code=4/0Ab&scope=x')).toBe(
+      '/api/calendar/public/google/callback?state=[redacted]&code=[redacted]&scope=x',
     );
     expect(redactUrl('/api/students?page=2')).toBe('/api/students?page=2');
   });

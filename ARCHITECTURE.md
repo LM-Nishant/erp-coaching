@@ -22,7 +22,7 @@ backend/src/
     messaging/           SMS / WhatsApp / email / push providers (console impl + MSG91/Twilio/WhatsApp Cloud/SMTP/FCM stubs)
     payment-gateways/    PaymentGateway interface: mock (signed webhooks) + Paytm/Razorpay/Cashfree adapters (signature verification; API calls stubbed)
     streaming/ biometric/  interfaces + mock impls
-    calendar/            CalendarProvider (Google Calendar/Meet stub + mock that issues meeting links)
+    calendar/            CalendarProvider: Google Calendar API v3 + Meet adapter (OAuth helpers) and a mock that issues meeting links
     jobs/                DB-backed job queue + in-process worker
     crypto.ts logger.ts
   shared/                                # cross-cutting building blocks used by every module
@@ -154,7 +154,7 @@ Deployment, TLS, backups and scaling are covered in [docs/deployment.md](docs/de
 | Notifications (all channels)     | `notify({ event, recipients, data })` from `modules/notifications/api`: rules → templates → preferences → queued delivery with retries (see CONTRIBUTING.md)                                                                                                                |
 | SMS/WhatsApp/email/push          | Low-level `getMessagingProvider(channel)`; platform/auth code only (OTP). Per-institute providers via `createMessagingProvider()`                                                                                                                                           |
 | Payments / streaming / biometric | `getPaymentGateway(instituteId)`, `infrastructure/streaming`, `infrastructure/biometric` (mock implementations)                                                                                                                                                             |
-| Calendar / online meetings       | `getCalendarProvider(instituteId)` from `infrastructure/calendar`: create/update/cancel events and get a meeting link (mock implementation)                                                                                                                                 |
+| Calendar / online meetings       | `registerCalendarSource()` + `syncCalendarEvent()` from `modules/calendar/api`: events with Meet links in the connected Google Calendar (or the mock), retried in jobs; see [Google Calendar](docs/integrations/google-calendar.md)                                         |
 | Parent portal                    | `registerParentPortalProvider()` from `modules/parent-portal/api` (backend sections); app `widgets` with slot `parent-home` (see CONTRIBUTING.md)                                                                                                                           |
 | Reports / analytics              | module `reporting.ts` queries take a `ReportScope` (`shared/reporting.ts`); `setSaasBillingStatsProvider()` in `modules/reports/api`; widget slots `home`, `platform-home`                                                                                                  |
 

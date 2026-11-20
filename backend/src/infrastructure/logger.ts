@@ -5,11 +5,11 @@ import { config } from './config';
 
 /**
  * Secrets that travel in URLs (signed file/stream tokens, payment and messaging webhook keys, the
- * WhatsApp verify token, one-time codes, the ADMS device communication key).
+ * WhatsApp verify token, one-time codes, OAuth state, the ADMS device communication key).
  */
 const SECRET_PATH =
   /\/(files\/signed|lms\/public\/hls|(?:fees|notifications)\/public\/webhooks\/[^/?]+)\/[^/?]+/g;
-const SECRET_QUERY = /([?&](?:token|code|otp|key|signature|pushcommkey|hub\.verify_token)=)[^&]*/gi;
+const SECRET_QUERY = /([?&](?:token|code|otp|key|signature|state|pushcommkey|hub\.verify_token)=)[^&]*/gi;
 
 export function redactUrl(url: string): string {
   return url.replace(SECRET_PATH, '/$1/[redacted]').replace(SECRET_QUERY, '$1[redacted]');
