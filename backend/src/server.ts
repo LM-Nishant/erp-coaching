@@ -22,6 +22,11 @@ process.on('uncaughtException', (err) => {
 
 async function main() {
   const modules = await bootstrap();
+  if (config.AUTH_DEV_SKIP_OTP)
+    logger.warn(
+      'AUTH_DEV_SKIP_OTP is on: sign-in skips every OTP (new device, mobile OTP login, profile choice). ' +
+        'Local development only; set AUTH_DEV_SKIP_OTP=false to require OTPs.',
+    );
   const server = createApp(modules).listen(config.PORT, () =>
     logger.info(`API listening on :${config.PORT}`),
   );

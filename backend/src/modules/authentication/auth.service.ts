@@ -227,6 +227,10 @@ async function createChallenge(
     expiresAt: new Date(Date.now() + config.OTP_TTL_SECONDS * 1000),
     consumedAt: null,
   });
+  if (config.AUTH_DEV_SKIP_OTP) {
+    logger.warn({ purpose }, `[DEV] OTP for ${mobile} skipped (AUTH_DEV_SKIP_OTP)`);
+    return id;
+  }
   try {
     // OTPs are platform messages: the super admin's global SMS provider, else the built-in one.
     await (
@@ -245,8 +249,11 @@ async function createChallenge(
   return id;
 }
 
-/** Checks a code; wrong codes count towards the challenge's attempts and the sign-in lock. */
-async function consumeChallenge(challengeId: string, code: string, deviceUid: string) {
+/**
+ * Checks a code; wrong codes count towards the challenge's attempts and the sign-in lock. `null` (only with
+ * AUTH_DEV_SKIP_OTP) accepts the challenge without a code; everything else is checked as usual.
+ */
+async function consumeChallenge(challengeId: string, code: string | null, deviceUid: string) {
   const found = await OtpChallenge.findByPk(challengeId);
   // Both looked up for every challenge (also decoys), so the work doesn't depend on what exists.
   const [user, onMobile] = await Promise.all([
@@ -269,7 +276,9 @@ async function consumeChallenge(challengeId: string, code: string, deviceUid: st
     if (ch.consumedAt || ch.expiresAt < new Date() || !ch.userId) throw otpInvalid();
     if (ch.deviceUid && ch.deviceUid !== deviceUid) throw otpInvalid();
     if (ch.attempts >= config.OTP_MAX_ATTEMPTS) throw otpExceeded();
-    if (!safeEqual(ch.codeHash, otpHash(ch.id, ch.mobile, code))) {
+    if (
+      code === null ? !config.AUTH_DEV_SKIP_OTP : !safeEqual(ch.codeHash, otpHash(ch.id, ch.mobile, code))
+    ) {
       await ch.increment('attempts');
       await attempt.failed('otp');
       throw otpInvalid();
@@ -304,7 +313,7 @@ export async function loginWithPassword(
   if (needsRehash) await user.update({ passwordHash: await hashPassword(password) });
   if (user.status !== 'active') throw Forbidden('Account is not active', 'ACCOUNT_INACTIVE');
 
-  const check = await checkDevice(user, device, false);
+  const check = await checkDevice(user, device, config.AUTH_DEV_SKIP_OTP);
   if ('limitReached' in check)
     return { status: 'device_limit_reached', maxDevices: config.MAX_ACTIVE_DEVICES };
   if ('otpRequired' in check) {
@@ -332,11 +341,14 @@ export async function loginWithPassword(
  * Always returns a challenge, to avoid revealing whether the mobile is registered or how many accounts it
  * reaches. A number shared by several accounts (children on a parent's mobile) gets one code; which account
  * signs in is chosen once it is verified (`verifyOtp`). The challenge belongs to the number's first account.
+ * With AUTH_DEV_SKIP_OTP (local development) no code is sent: a known number's challenge is accepted at
+ * once and the answer is `verifyOtp`'s (signed in, "Who's signing in?" or the device limit).
  */
 export async function requestLoginOtp(mobile: string, device: DeviceInput): Promise<LoginResult> {
   const accounts = await accountsOnMobile(mobile, { active: true });
   const ids = accounts.map((u) => u.id);
   const challengeId = await createChallenge(accounts[0] ?? null, mobile, 'login', device.uid, ids);
+  if (config.AUTH_DEV_SKIP_OTP && accounts.length) return signInWithChallenge(challengeId, null, device);
   return {
     status: 'otp_required',
     challengeId,
@@ -426,9 +438,13 @@ async function offerProfiles(ch: OtpChallenge, accounts: User[]): Promise<LoginR
   };
 }
 
-export async function verifyOtp(
+export function verifyOtp(challengeId: string, code: string, device: DeviceInput): Promise<LoginResult> {
+  return signInWithChallenge(challengeId, code, device);
+}
+
+async function signInWithChallenge(
   challengeId: string,
-  code: string,
+  code: string | null,
   device: DeviceInput,
 ): Promise<LoginResult> {
   const ch = await consumeChallenge(challengeId, code, device.uid);
@@ -458,7 +474,7 @@ export async function verifyOtp(
     entityType: 'user',
     entityId: user.id,
     instituteId: null,
-    metadata: { method: 'otp', purpose: ch.purpose },
+    metadata: { method: 'otp', purpose: ch.purpose, ...(code === null && { otpSkipped: true }) },
   });
   return { status: 'authenticated', ...(await issueTokens(user, check.device)) };
 }

@@ -40,6 +40,8 @@ const testEnv = {
   SESSION_IDLE_TIMEOUT_MINUTES: '0',
   STORAGE_LOCAL_ROOT: `./tmp/test-storage/${dbName}`,
   AI_API_KEY: '',
+  // OTPs are required as in production; tests of the local-development bypass turn it on themselves.
+  AUTH_DEV_SKIP_OTP: 'false',
   // Cheap password hashes; production defaults to 15 (see config).
   PASSWORD_HASH_COST: '10',
 };

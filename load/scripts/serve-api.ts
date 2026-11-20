@@ -82,6 +82,8 @@ const env: NodeJS.ProcessEnv = {
   API_PUBLIC_URL: API_URL,
   LOG_LEVEL: process.env.LOAD_API_LOG_LEVEL || 'warn',
   RATE_LIMIT_ENABLED: 'false',
+  // Sign in as production does, new-device OTPs included.
+  AUTH_DEV_SKIP_OTP: 'false',
   JOBS_WORKER_ENABLED: 'true',
   SMS_PROVIDER: 'console',
   WHATSAPP_PROVIDER: 'console',

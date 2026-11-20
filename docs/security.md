@@ -172,6 +172,14 @@ Redis is unreachable, each process counts in memory ([deployment.md](deployment.
     with their email and password, or with the number's OTP.
   - "Switch profile" in the app's account menu sends a new code to the number and asks for it
     before offering the accounts. The account that was signed in is signed out on that device.
+- **Local development bypass** (`AUTH_DEV_SKIP_OTP`). For local development only, and on by
+  default only when `NODE_ENV=development`: password sign-in on a new device needs no code, and an
+  OTP request for a number with an account sends no SMS and answers as a verified code would
+  (signed in, `choose_profile` or `device_limit_reached`), so "Who's signing in?" and "Switch
+  profile" skip the code too. Devices are still registered, and the device limit, rate limits,
+  sign-in locks and audit events apply as usual (`auth.login` records `otpSkipped`). The API logs a
+  `WARN` at startup while it is on and **refuses to start with it on in production**; tests and the
+  E2E and load runs keep it off.
 - **Failed SMS.** OTPs are sent while the request waits, through the platform SMS provider. When a
   code can't be sent (a vendor outage, or a vendor refusing one number, for example Twilio after
   its owner replied STOP), the operator always gets an error log and an error-tracking event, and
