@@ -18,6 +18,7 @@ import type {
   LmsSubmissionStatus,
   LmsTranscodeStatus,
 } from '@erp/shared';
+import { registerEncryptedColumns } from '../../infrastructure/database/encrypted-columns';
 import { registerTenantModel } from '../../shared/tenancy/tenant-model';
 import { FileObject } from '../files/file.model';
 import { User } from '../users/user.model';
@@ -333,6 +334,7 @@ export function initLmsModels(sequelize: Sequelize) {
     expiresAt: date(false),
     revokedAt: date(),
   });
+  registerEncryptedColumns(LmsOfflineLicense, ['contentKey']);
   define(LmsAssignment, sequelize, 'lms_assignments', {
     branchId: uint(false),
     batchId: uint(false),

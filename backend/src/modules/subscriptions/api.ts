@@ -25,6 +25,7 @@ export {
   getPlanLimits,
   invalidateAccess,
   isModuleEnabled,
+  onAccessChanged,
 } from './subscription.service';
 export { registerUsageCounter, type UsageCounter } from './usage.service';
 export { setSaasGatewayResolver, type SaasGatewayConfig, type SaasGatewayResolver } from './payments.service';

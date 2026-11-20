@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # End-to-end smoke test of the production stack (deploy/docker-compose.yml) for CI and anyone with
-# Docker + Compose v2. Builds the images, starts mysql/migrate/api/web under a separate project name with
-# throwaway secrets and a throwaway certificate authority, then checks everything through nginx:
+# Docker + Compose v2. Builds the images, starts mysql/redis/migrate/api/web under a separate project
+# name with throwaway secrets and a throwaway certificate authority, then checks everything through nginx:
 #   health/readiness, http->https redirect, ACME webroot, SPA (fallback, caching, security headers,
 #   report-only CSP), API headers and request ids, CORS for the Capacitor origin, Socket.IO polling
 #   handshake and WebSocket upgrade, institute websites on a custom domain (per-SNI certificate), a
 #   *.SITES_DOMAIN subdomain and a domain without certificate, biometric device paths (/iclock/ over
-#   https, plain http and the default server), super admin seeding (weak password
-#   refused, strong accepted) and login, migration status, nginx config test + certificate reload,
-#   a 503 while the api is down and recovery after its restart, log redaction, and a backup + verify +
-#   restore drill (restore-test.sh --from-backup latest) in the backup image.
+#   https, plain http and the default server), super admin seeding (weak password refused, strong
+#   accepted) and login (rate-limit counters in redis), migration status, nginx config test +
+#   certificate reload, a 503 while the api is down and recovery after its restart, log redaction, and
+#   a backup + verify + restore drill (restore-test.sh --from-backup latest) in the backup image.
 # The stack and its volumes are always removed at exit (docker compose down -v); on failure the service
 # logs are printed first.
 #
@@ -33,7 +33,7 @@ for v in ERP_REGISTRY ERP_IMAGE_TAG ERP_ENV_FILE ERP_SECRETS_DIR ERP_CERTS_DIR E
   BACKUP_UID BACKUP_GID BACKUP_KEEP_COUNT BACKUP_KEEP_DAYS DB_NAME DB_USER DB_PASSWORD SERVER_NAME PUBLIC_URL \
   PUBLIC_WEB_URL SITES_DOMAIN HTTP_PORT HTTPS_PORT CORS_EXTRA_ORIGINS MAX_UPLOAD_MB SPA_CSP_MODE SPA_CSP_REPORT_URI \
   TLS_SELF_SIGNED_FALLBACK ADMS_ALLOW_HTTP LIVEKIT_API_KEY LIVEKIT_API_SECRET LIVEKIT_TURN_TLS_PORT \
-  COMPOSE_PROJECT_NAME COMPOSE_FILE COMPOSE_PROFILES COMPOSE_ENV_FILES; do
+  REDIS_URL COMPOSE_PROJECT_NAME COMPOSE_FILE COMPOSE_PROFILES COMPOSE_ENV_FILES; do
   unset "$v"
 done
 
@@ -124,7 +124,7 @@ cleanup() {
       log "SMOKE_KEEP=1: stack $PROJECT left running; remove it with:"
       log "  docker compose -p $PROJECT -f $COMPOSE_FILE --env-file $WORK/smoke.env --profile ops down -v"
     else
-      compose --profile ops --profile redis down -v --remove-orphans >/dev/null 2>&1 ||
+      compose --profile ops down -v --remove-orphans >/dev/null 2>&1 ||
         log "WARNING: 'docker compose down' failed"
     fi
   fi
@@ -203,6 +203,7 @@ ADMIN_PASSWORD="Smoke-$(openssl rand -hex 10)-Aa1!"
     JWT_ACCESS_SECRET "$(openssl rand -base64 48 | tr -d '\n')" \
     ENCRYPTION_KEY "$(openssl rand -base64 32)" \
     FILE_URL_SECRET "$(openssl rand -hex 32)" \
+    OTP_HASH_SECRET "$(openssl rand -hex 32)" \
     LOG_LEVEL info \
     SEED_DEMO_DATA false
 } >"$WORK/smoke.env"
@@ -448,6 +449,18 @@ login_body=$(printf '{"identifier":"%s","password":"%s","device":{"uid":"smoke-t
 fetch login "$BASE/api/auth/login" -X POST -H 'Content-Type: application/json' --data-binary "$login_body"
 check 'super admin can log in' expect login 200 '"status":"authenticated"'
 check 'login returns an access token' expect login 200 '"accessToken":"[^"]+'
+redis_counters() { # the api keeps its rate-limit counters in the redis service (shared by every instance)
+  local keys
+  keys=$(compose exec -T redis redis-cli --scan --pattern 'rl:*' 2>&1) || {
+    echo "        redis-cli: $keys"
+    return 1
+  }
+  grep -q '^rl:auth:' <<<"$keys" || {
+    echo "        no rl:auth:* key in redis: $(head -c 300 <<<"$keys" | tr '\n' ' ')"
+    return 1
+  }
+}
+check 'login rate-limit counters are kept in redis' redis_counters
 
 migrations_applied() {
   compose run --rm --no-deps -T migrate node dist/infrastructure/database/cli.js migrate:status \

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { discoverModules } from '../../src/infrastructure/module-loader';
 import { describeRoutes, type RouteInfo } from '../../src/infrastructure/route-registry';
+import { OWN_LIMITER_PATH } from '../../src/shared/middleware/security';
 import {
   DEVICE_AUTHENTICATED_ROUTES,
   KNOWN_UNCOVERED,
@@ -63,6 +64,23 @@ describe('route registry', () => {
       .filter((r) => !r.rateLimits.some((l) => ANONYMOUS_LIMITERS.has(l)))
       .map(routeKey);
     expect(offenders, 'use publicFormRateLimit (or another dedicated limiter)').toEqual([]);
+  });
+
+  it('routes the api limiter skips have their own limiter', async () => {
+    const skipped = (await allRoutes()).filter((r) => OWN_LIMITER_PATH.test(r.path.slice('/api'.length)));
+    expect(skipped.length).toBeGreaterThan(10);
+    expect(skipped.filter((r) => !r.rateLimits.some((l) => l !== 'api')).map(routeKey)).toEqual([]);
+    // Signed file and HLS URLs are also limited per token, so a shared link can't be replayed at volume.
+    expect(
+      skipped.filter((r) => r.path.includes(':token') && !r.rateLimits.includes('media-token')).map(routeKey),
+    ).toEqual([]);
+    expect(
+      skipped
+        .filter((r) => r.path.startsWith('/api/public/sites/') && r.method === 'GET')
+        .filter((r) => !r.rateLimits.includes('website') && !r.rateLimits.includes('media'))
+        .map(routeKey),
+      'use websiteRateLimit on public website pages',
+    ).toEqual([]);
   });
 
   it('device-authenticated routes are listed with how the device is identified', async () => {

@@ -15,6 +15,7 @@ import {
   Topic,
 } from '../src/modules/academics/models';
 import { NotificationMessage } from '../src/modules/notifications/models';
+import { Device } from '../src/modules/authentication/models';
 import { LmsResource } from '../src/modules/lms/models';
 import { setCourseEntitlementProvider } from '../src/modules/lms/api';
 import { setVideoTranscoder, FfmpegTranscoder } from '../src/modules/lms/transcoder';
@@ -33,6 +34,7 @@ describe('lms module', () => {
   let teacher: string;
   let student: string;
   let studentAndroid: string;
+  let androidLogin: Awaited<ReturnType<typeof login>>;
   let parent: string;
   let zenith: string;
   let zenithStudent: string;
@@ -50,9 +52,8 @@ describe('lms module', () => {
         async (u) => (await login(u)).accessToken,
       ),
     );
-    studentAndroid = (
-      await login(STUDENT, newDevice('android') as unknown as ReturnType<typeof stableDevice>)
-    ).accessToken;
+    androidLogin = await login(STUDENT, newDevice('android') as unknown as ReturnType<typeof stableDevice>);
+    studentAndroid = androidLogin.accessToken;
     studentUserId = (await User.findOne({ where: { mobile: STUDENT.mobile } }))!.id;
     branchId = (await Branch.findOne({ where: { instituteId: 1 }, order: [['id', 'ASC']] }))!.id;
 
@@ -616,5 +617,32 @@ describe('lms module', () => {
     expect(
       (await api('put', `/lms/assignments/${ids.hw}/submission`, parent).send({ text: 'x' })).status,
     ).toBe(403);
+  });
+
+  // Last: it signs the android device out and revokes it.
+  it('binds offline download links to the device: sign-out and revocation stop them', async () => {
+    const downloadPath = async (token: string) => {
+      const lic = await api('post', `/lms/resources/${ids.video}/offline-license`, token);
+      expect(lic.status).toBe(201);
+      const ttl = (new Date(lic.body.downloadUrlExpiresAt).getTime() - Date.now()) / 1000;
+      expect(ttl).toBeGreaterThan(590);
+      expect(ttl).toBeLessThanOrEqual(600);
+      return new URL(lic.body.downloadUrl).pathname;
+    };
+    const first = await downloadPath(studentAndroid);
+    const ok = await request(app).get(first);
+    expect(ok.status).toBe(200);
+    expect(ok.headers['content-length']).toBe(String(64 * 1024));
+
+    await request(app).post('/api/auth/logout').send({ refreshToken: androidLogin.refreshToken }).expect(204);
+    expect((await request(app).get(first)).status).toBe(404);
+
+    const again = await login(STUDENT, androidLogin.device);
+    const second = await downloadPath(again.accessToken);
+    expect((await request(app).get(second)).status).toBe(200);
+
+    const device = await Device.findOne({ where: { deviceUid: androidLogin.device.uid } });
+    expect((await api('delete', `/auth/devices/${device!.id}`, student)).status).toBe(204);
+    expect((await request(app).get(second)).status).toBe(404);
   });
 });

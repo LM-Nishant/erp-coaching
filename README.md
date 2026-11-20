@@ -55,7 +55,7 @@ cp app/.env.example app/.env           # VITE_API_URL (default http://localhost:
 npm install                            # installs all workspaces and builds @erp/shared
 ```
 
-In development, `JWT_ACCESS_SECRET`, `ENCRYPTION_KEY` and `FILE_URL_SECRET` fall back to insecure defaults. In production they are **required**.
+In development, `JWT_ACCESS_SECRET`, `ENCRYPTION_KEY`, `FILE_URL_SECRET` and `OTP_HASH_SECRET` fall back to insecure defaults. In production they are **required**.
 
 ## 3. Migrate and seed
 

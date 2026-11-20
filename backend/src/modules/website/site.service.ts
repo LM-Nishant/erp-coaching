@@ -2,14 +2,16 @@ import { Op } from 'sequelize';
 import { z } from 'zod';
 import type { WebsiteSiteDto } from '@erp/shared';
 import { config } from '../../infrastructure/config';
+import { getSequelize } from '../../infrastructure/database/sequelize';
 import { webAppBaseUrl } from '../../shared/public-urls';
 import { getContext, requireTenantContext, runWithContext } from '../../shared/context';
-import { BadRequest, Conflict, NotFound } from '../../shared/errors';
+import { AppError, BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { Branch } from '../branches/branch.model';
 import { Institute } from '../institutes/institute.model';
 import { isModuleEnabled } from '../subscriptions/subscription.service';
 import { seoSchema } from './blocks';
 import { cached, invalidateAllSites } from './cache';
+import { hasVerificationRecord, newDomainToken, verificationRecord } from './domain-verification';
 import { WebsiteSite } from './models';
 
 export const PUBLIC_PREFIX = '/api/public/sites';
@@ -93,7 +95,7 @@ export async function getSite(): Promise<WebsiteSite> {
 }
 
 export function siteBaseUrl(site: WebsiteSite, inst: Pick<Institute, 'slug'>) {
-  if (site.customDomain) return `https://${site.customDomain}`;
+  if (site.verifiedDomain) return `https://${site.verifiedDomain}`;
   return `${config.API_PUBLIC_URL}${PUBLIC_PREFIX}/${inst.slug}`;
 }
 
@@ -112,6 +114,13 @@ export function toSiteDto(site: WebsiteSite, inst: Institute): WebsiteSiteDto {
   return {
     subdomain: site.subdomain,
     customDomain: site.customDomain,
+    domainVerification:
+      site.customDomain && site.domainToken
+        ? {
+            ...verificationRecord(site.customDomain, site.domainToken),
+            verifiedAt: site.verifiedDomain ? (site.domainVerifiedAt?.toISOString() ?? null) : null,
+          }
+        : null,
     theme: site.theme ?? {},
     seo: { ...(site.seo ?? {}), indexable: site.indexable },
     appUrl: site.appUrl,
@@ -131,17 +140,16 @@ export async function currentInstitute() {
 export async function updateSite(input: z.infer<typeof siteInputSchema>) {
   const { instituteId } = requireTenantContext();
   const site = await getSite();
-  // Subdomains and custom domains are globally unique across institutes, so the uniqueness check
-  // must look at every tenant (tenantBypass); it only reads the id, never another tenant's data.
-  for (const field of ['subdomain', 'customDomain'] as const) {
-    const value = input[field];
-    if (!value || value === site[field]) continue;
+  // Subdomains are globally unique across institutes, so the uniqueness check must look at every
+  // tenant (tenantBypass); it only reads the id, never another tenant's data. Custom domains aren't:
+  // whoever proves ownership in DNS gets the domain (verifyCustomDomain), so nobody can squat one.
+  if (input.subdomain && input.subdomain !== site.subdomain) {
     const taken = await WebsiteSite.findOne({
-      where: { [field]: value, instituteId: { [Op.ne]: instituteId } },
+      where: { subdomain: input.subdomain, instituteId: { [Op.ne]: instituteId } },
       attributes: ['id'],
       tenantBypass: true,
     } as never);
-    if (taken) throw Conflict(`This ${field === 'subdomain' ? 'subdomain' : 'domain'} is already in use`);
+    if (taken) throw Conflict('This subdomain is already in use');
   }
   if (input.defaultBranchId) {
     const branch = await Branch.findOne({ where: { instituteId, id: input.defaultBranchId } });
@@ -149,6 +157,12 @@ export async function updateSite(input: z.infer<typeof siteInputSchema>) {
   }
   const { seo, ...rest } = input;
   const values: Partial<WebsiteSite> = { ...(rest as Partial<WebsiteSite>) };
+  if (input.customDomain !== undefined && input.customDomain !== site.customDomain) {
+    // A new domain must be verified before it is served, with a token of its own.
+    values.domainToken = input.customDomain ? newDomainToken() : null;
+    values.verifiedDomain = null;
+    values.domainVerifiedAt = null;
+  }
   if (seo) {
     const { indexable, ...seoRest } = seo;
     values.seo = { ...(site.seo ?? {}), ...seoRest };
@@ -161,6 +175,49 @@ export async function updateSite(input: z.infer<typeof siteInputSchema>) {
   return { site, before };
 }
 
+/**
+ * Verifies the saved custom domain against its DNS TXT record. A verified domain moves here from any
+ * institute that verified it before (the domain changed hands); `released` is that institute's site.
+ */
+export async function verifyCustomDomain(): Promise<{
+  site: WebsiteSite;
+  verified: boolean;
+  released: WebsiteSite | null;
+}> {
+  const { instituteId } = requireTenantContext();
+  const site = await getSite();
+  const domain = site.customDomain;
+  if (!domain || !site.domainToken) throw BadRequest('Save a custom domain first');
+  if (site.verifiedDomain === domain) return { site, verified: false, released: null };
+  if (!(await hasVerificationRecord(domain, site.domainToken))) {
+    const record = verificationRecord(domain, site.domainToken);
+    throw new AppError(
+      422,
+      'DOMAIN_NOT_VERIFIED',
+      `No TXT record ${record.recordName} with the value ${record.recordValue} was found. DNS changes can take a while to appear.`,
+      record,
+    );
+  }
+  const released = await getSequelize().transaction(async (transaction) => {
+    const holder = await WebsiteSite.findOne({
+      where: { verifiedDomain: domain, instituteId: { [Op.ne]: instituteId } },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+      tenantBypass: true,
+    } as never);
+    if (holder) {
+      await holder.update({ verifiedDomain: null, domainVerifiedAt: null }, {
+        transaction,
+        tenantBypass: true,
+      } as never);
+    }
+    await site.update({ verifiedDomain: domain, domainVerifiedAt: new Date() }, { transaction });
+    return holder;
+  });
+  invalidateAllSites();
+  return { site, verified: true, released };
+}
+
 // ------------------------------------------------------------------ public resolution
 
 export interface PublicSite {
@@ -170,21 +227,31 @@ export interface PublicSite {
   basePath: string;
 }
 
+/** The subdomain label of a host directly under SITES_DOMAIN (`<label>.SITES_DOMAIN`), else null. */
+function sitesSubdomain(host: string): string | null {
+  const parent = config.SITES_DOMAIN;
+  if (!parent || !host.endsWith(`.${parent}`)) return null;
+  const label = host.slice(0, -parent.length - 1);
+  return /^[a-z0-9-]{1,63}$/.test(label) ? label : null;
+}
+
 /**
  * Resolves the institute for a public request. `key` is the institute slug; the special key
- * `_host` resolves from the request host instead: an exact custom-domain match, else the first
- * DNS label as the site subdomain (the platform proxies `*.<platform domain>` and mapped custom
- * domains to `/api/public/sites/_host/...`).
+ * `_host` resolves from the request host instead: an exact match of a verified custom domain, else,
+ * for a host directly under SITES_DOMAIN, its first label as the site subdomain (the platform proxies
+ * `*.SITES_DOMAIN` and custom domains to `/api/public/sites/_host/...`).
  */
 export async function resolvePublicSite(key: string, host: string | undefined): Promise<PublicSite> {
   const resolved = await cached(0, `resolve:${key}:${key === '_host' ? (host ?? '') : ''}`, async () => {
     let inst: Institute | null = null;
     if (key === '_host') {
-      const h = (host ?? '').toLowerCase().replace(/:\d+$/, '');
+      const h = (host ?? '').toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
+      const sub = sitesSubdomain(h);
       // Public resolution has no tenant yet: look up the site by its globally unique domain.
       const site =
-        (await WebsiteSite.findOne({ where: { customDomain: h }, tenantBypass: true } as never)) ??
-        (await WebsiteSite.findOne({ where: { subdomain: h.split('.')[0] }, tenantBypass: true } as never));
+        (h && (await WebsiteSite.findOne({ where: { verifiedDomain: h }, tenantBypass: true } as never))) ||
+        (sub && (await WebsiteSite.findOne({ where: { subdomain: sub }, tenantBypass: true } as never))) ||
+        null;
       if (site) inst = await Institute.findByPk(site.instituteId);
     } else {
       inst = await Institute.findOne({ where: { slug: key.toLowerCase() } });

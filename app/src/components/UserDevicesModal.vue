@@ -12,6 +12,16 @@
         deletes its downloaded lectures. The user is notified and needs an OTP to sign in on that device
         again.
       </p>
+      <ion-item v-if="locked" lines="none" color="warning">
+        <ion-icon slot="start" :icon="lockClosedOutline" />
+        <ion-label class="ion-text-wrap">
+          <h2>Sign-in locked</h2>
+          <p>Too many failed sign-in attempts. Locked until {{ when(lockedUntil) }}.</p>
+        </ion-label>
+        <ion-button v-if="canRevoke" slot="end" fill="clear" :disabled="busy" @click="unlock"
+          >Unlock sign-in</ion-button
+        >
+      </ion-item>
       <ion-list>
         <ion-item v-for="d in devices" :key="d.id">
           <ion-icon slot="start" :icon="d.platform === 'web' ? desktopOutline : phonePortraitOutline" />
@@ -38,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import {
   alertController,
   IonButton,
@@ -53,17 +63,18 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/vue';
-import { desktopOutline, phonePortraitOutline } from 'ionicons/icons';
+import { desktopOutline, lockClosedOutline, phonePortraitOutline } from 'ionicons/icons';
 import type { DeviceDto } from '@erp/shared';
 import { api, ApiError } from '@/core/api';
 import { toast, toastError } from '@/core/toast';
 
 /**
  * A member's sign-in devices for administrators (spec 4.18). `basePath` is the user resource: `/users/:id` for
- * institute and branch admins, `/admin/users/:id` for the super admin.
+ * institute and branch admins, `/admin/users/:id` for the super admin. Also shows and ends a sign-in lock
+ * after repeated failed attempts.
  */
 const props = defineProps<{
-  user: { id: number; name: string; mobile: string } | null;
+  user: { id: number; name: string; mobile: string; signInLockedUntil?: string | null } | null;
   basePath: string;
   canRevoke: boolean;
 }>();
@@ -80,6 +91,8 @@ function outOfScope(e: unknown) {
 }
 const loaded = ref(false);
 const busy = ref(false);
+const lockedUntil = ref<string | null>(null);
+const locked = computed(() => !!lockedUntil.value && new Date(lockedUntil.value).getTime() > Date.now());
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
 function describe(d: DeviceDto) {
@@ -127,5 +140,27 @@ async function revoke(d: DeviceDto) {
   }
 }
 
+async function unlock() {
+  const user = props.user;
+  if (!user) return;
+  busy.value = true;
+  try {
+    await api.delete(`${props.basePath}/${user.id}/sign-in-lock`);
+    lockedUntil.value = null;
+    await toast('Sign-in unlocked');
+    emit('changed');
+  } catch (e) {
+    await toastError(e);
+    outOfScope(e);
+  } finally {
+    busy.value = false;
+  }
+}
+
+watch(
+  () => props.user,
+  (u) => (lockedUntil.value = u?.signInLockedUntil ?? null),
+  { immediate: true },
+);
 watch(() => props.user?.id, load, { immediate: true });
 </script>

@@ -76,7 +76,9 @@ Keep these elsewhere. You need them to restore onto a new server:
   `docker-compose.override.yml` and `deploy/local/`. Keep them in a password manager or secret vault, never next to the
   backups ([secrets](deployment.md#secrets)).
   - Above all, keep `ENCRYPTION_KEY`. The integration credentials stored in the database (payment, notification and AI
-    settings, offline LMS keys) can only be decrypted with the key that encrypted them.
+    settings, offline LMS keys) can only be decrypted with the key that encrypted them. After
+    [rotating it](deployment.md#rotating-the-encryption-key), keep the old key as long as you keep backups made before
+    the rotation.
 - **TLS certificates:** `deploy/certs/` (or `ERP_CERTS_DIR`) and certbot's `/etc/letsencrypt`. They can be issued
   again, but with many custom domains Let's Encrypt's rate limits slow that down. Include both directories in the
   encrypted [offsite copies](#offsite-copies); they contain private keys.
@@ -355,8 +357,11 @@ then delete the directory, which contains personal data.
 
 1. Prepare the server ([prerequisites](deployment.md#prerequisites)), clone the repository to `/srv/erp` and check out
    the release that took the backup (the manifest's `appVersion`), or a newer one.
-2. Restore `deploy/.env`, `deploy/secrets/` and any host-specific files from the vault. `ENCRYPTION_KEY` must be the
-   key that was in use when the backup was taken. Set `ERP_IMAGE_TAG` to the release you checked out.
+2. Restore `deploy/.env`, `deploy/secrets/` and any host-specific files from the vault. The secrets in the backup
+   decrypt only with the keys configured when it was taken: use them as `ENCRYPTION_KEY` and
+   `ENCRYPTION_PREVIOUS_KEYS`, or keep a newer `ENCRYPTION_KEY`, list the backup's keys in `ENCRYPTION_PREVIOUS_KEYS`
+   and [re-encrypt](deployment.md#rotating-the-encryption-key) after the restore. Set `ERP_IMAGE_TAG` to the release
+   you checked out.
 3. Build or pull the images ([building images](deployment.md#building-images)).
 4. Fetch the backup into `BACKUP_HOST_DIR`, for example with `restic restore`, and verify it:
 

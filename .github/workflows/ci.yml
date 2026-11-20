@@ -71,12 +71,19 @@ jobs:
         options: >-
           --health-cmd="mysqladmin ping -h 127.0.0.1 -proot" --health-interval=5s --health-timeout=5s
           --health-retries=30
+      # Shared rate limits and live classes across API instances (tests skip without TEST_REDIS_URL).
+      redis:
+        image: redis:8-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd="redis-cli ping" --health-interval=5s --health-timeout=5s --health-retries=30
     env:
       DB_HOST: 127.0.0.1
       DB_PORT: 3306
       DB_USER: root
       DB_PASSWORD: root
       TEST_DB_NAME: erp_coaching_test
+      TEST_REDIS_URL: redis://127.0.0.1:6379
       TEST_FILE_ORDER: ${{ matrix.order != 'alphabetical' && matrix.order || '' }}
       # Printed by the sequencer; rerun locally with the same TEST_FILE_SEED to reproduce.
       TEST_FILE_SEED: ${{ github.run_id }}

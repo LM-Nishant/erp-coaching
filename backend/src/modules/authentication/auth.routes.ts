@@ -11,6 +11,7 @@ import { SECURE_SCREEN_NAME } from '@erp/shared';
 import { User } from '../users/user.model';
 import * as auth from './auth.service';
 import { listUserDevices, revokeDevice, searchPlatformUsers } from './devices.service';
+import { clearSignInLock } from './sign-in-lock';
 
 const device = z.object({
   uid: z.string().trim().min(8).max(128),
@@ -170,6 +171,14 @@ export function authRoutes(api: Router) {
       req.params,
     );
     await revokeDevice(p.deviceId, p.id, req.ctx.userId!);
+    res.status(204).end();
+  });
+
+  // Ends the user's sign-in lock after failed attempts, on every device (audited).
+  api.delete('/admin/users/:id/sign-in-lock', authenticate, requireSuperAdmin, async (req, res) => {
+    const { id } = parse(idParam, req.params);
+    if (!(await User.findByPk(id))) throw NotFound('User');
+    await clearSignInLock(id);
     res.status(204).end();
   });
 }

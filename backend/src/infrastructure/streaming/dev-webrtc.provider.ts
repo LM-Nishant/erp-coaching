@@ -1,6 +1,13 @@
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
-import type { IceServer, JoinCredentials, LiveRoom, StreamingProvider, StreamingRole } from './types';
+import type {
+  IceServer,
+  JoinCredentials,
+  JoinTokenClaims,
+  LiveRoom,
+  StreamingProvider,
+  StreamingRole,
+} from './types';
 
 const AUDIENCE = 'live-dev-webrtc';
 
@@ -24,22 +31,34 @@ export class DevWebRtcStreamingProvider implements StreamingProvider {
   async issueJoinToken(input: {
     roomId: string;
     userId: number;
+    deviceId: number;
     displayName: string;
     role: StreamingRole;
     ttlSeconds: number;
   }): Promise<JoinCredentials> {
     const token = jwt.sign(
-      { room: input.roomId, role: input.role, name: input.displayName },
+      { room: input.roomId, role: input.role, name: input.displayName, did: input.deviceId },
       config.JWT_ACCESS_SECRET,
       { subject: String(input.userId), audience: AUDIENCE, expiresIn: input.ttlSeconds },
     );
     return { token, url: null, expiresAt: new Date(Date.now() + input.ttlSeconds * 1000) };
   }
 
-  /** Verifies a token issued above (used by tests and any dev media relay). */
-  verifyJoinToken(token: string): { userId: number; room: string; role: StreamingRole } {
-    const claims = jwt.verify(token, config.JWT_ACCESS_SECRET, { audience: AUDIENCE }) as jwt.JwtPayload;
-    return { userId: Number(claims.sub), room: String(claims.room), role: claims.role as StreamingRole };
+  /** Verifies a token issued above (null when invalid or expired). */
+  verifyJoinToken(token: string): JoinTokenClaims | null {
+    let claims: jwt.JwtPayload;
+    try {
+      claims = jwt.verify(token, config.JWT_ACCESS_SECRET, { audience: AUDIENCE }) as jwt.JwtPayload;
+    } catch {
+      return null;
+    }
+    if (typeof claims.did !== 'number' || typeof claims.room !== 'string') return null;
+    return {
+      roomId: claims.room,
+      userId: Number(claims.sub),
+      deviceId: claims.did,
+      role: claims.role as StreamingRole,
+    };
   }
 
   iceServers(): IceServer[] {
