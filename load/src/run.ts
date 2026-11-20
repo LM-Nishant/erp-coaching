@@ -232,6 +232,7 @@ async function main(): Promise<number> {
     throw new Error(
       `The API at ${API_URL} is not answering /api/health (${(error as Error).message}). ` +
         'Start it with `npm run load:serve` or point LOAD_API_URL at a running API.',
+      { cause: error },
     );
   }
 
