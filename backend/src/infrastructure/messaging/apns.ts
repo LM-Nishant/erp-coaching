@@ -124,7 +124,7 @@ export class ApnsSender {
     } catch (err) {
       throw networkError(VENDOR, err);
     }
-    let reason = '';
+    let reason: string;
     try {
       reason = res.body ? String((JSON.parse(res.body) as { reason?: string }).reason ?? '') : '';
     } catch {

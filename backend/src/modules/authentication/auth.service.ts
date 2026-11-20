@@ -702,7 +702,7 @@ export async function startImpersonation(
 ) {
   const institute = await Institute.findByPk(instituteId);
   if (!institute) throw NotFound('Institute');
-  let target: User | null = null;
+  let target: User | null;
   if (targetUserId) {
     target = await User.findByPk(targetUserId);
   } else {

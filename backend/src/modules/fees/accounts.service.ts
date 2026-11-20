@@ -531,7 +531,7 @@ export async function applyLateFee(instalmentId: number, asOf: string): Promise<
       const graceEnd = new Date(`${inst.dueDate}T00:00:00Z`);
       graceEnd.setUTCDate(graceEnd.getUTCDate() + cfg.graceDays);
       if (asOf <= graceEnd.toISOString().slice(0, 10)) return 0;
-      let add = 0;
+      let add: number;
       if (cfg.type === 'per_day') {
         if (inst.lateFeeAppliedOn && inst.lateFeeAppliedOn >= asOf) return 0;
         add = cfg.amount;
