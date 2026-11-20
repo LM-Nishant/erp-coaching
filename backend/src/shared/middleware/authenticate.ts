@@ -1,11 +1,17 @@
 import type { Request, RequestHandler } from 'express';
+import { Op } from 'sequelize';
 import { Unauthorized, Forbidden } from '../errors';
+import type { RequestContext } from '../context';
 import { User } from '../../modules/users/user.model';
 import { Institute } from '../../modules/institutes/institute.model';
 import { Branch } from '../../modules/branches/branch.model';
-import { Device, ImpersonationSession } from '../../modules/authentication/models';
+import { Device, ImpersonationSession, RefreshToken } from '../../modules/authentication/models';
 import { verifyAccessToken } from '../../modules/authentication/token.service';
-import { computeAccess, loadAssignments } from '../../modules/permissions/access.service';
+import {
+  computeAccess,
+  loadAssignments,
+  type ResolvedAccess,
+} from '../../modules/permissions/access.service';
 import {
   ACTIVITY_TOUCH_INTERVAL_MS,
   BACKGROUND_REQUEST_HEADER,
@@ -119,3 +125,90 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
   }
   next();
 };
+
+/**
+ * The device's newest open session: an unexpired refresh token that is not revoked (null without one). Read
+ * newest first: a device keeps its revoked tokens, and the open one is usually the last.
+ */
+function openSession(deviceId: number) {
+  return RefreshToken.findOne({
+    attributes: ['id', 'instituteId'],
+    where: { deviceId, revokedAt: null, expiresAt: { [Op.gt]: new Date() } },
+    order: [['id', 'DESC']],
+  });
+}
+
+/**
+ * Refuses a device on which no session is open any more (401 `SIGNED_OUT`). Signing out, revoking the device and
+ * an idle sign-out revoke its refresh tokens, but the access tokens already issued stay valid until they expire;
+ * live-class sockets check this at the handshake and whenever they are re-checked.
+ */
+export async function assertOpenSession(deviceId: number): Promise<void> {
+  if (!(await openSession(deviceId))) throw Unauthorized('You signed out on this device', 'SIGNED_OUT');
+}
+
+/**
+ * For credentials bound to a device and used without an access token (signed offline-download links, live-class
+ * join tokens): the device is active, a session is still open on it (see `assertOpenSession`), and it is not idle
+ * under that session's institute timeout.
+ */
+export async function isDeviceSignedIn(deviceId: number): Promise<boolean> {
+  const [device, session] = await Promise.all([
+    Device.findByPk(deviceId, { attributes: ['id', 'status', 'lastSeenAt'] }),
+    openSession(deviceId),
+  ]);
+  if (!device || device.status !== 'active' || !session) return false;
+  return !isIdle(device.lastSeenAt, await getIdleTimeoutMinutes(session.instituteId));
+}
+
+/**
+ * Re-checks a session that `authenticate` accepted earlier, without its access token (which may have
+ * expired since): open live-class sockets are authenticated once, at the handshake. Applies the same
+ * rules: the device is still active and not idle (or the impersonation still running), the user and
+ * institute are active, the user is still a member (and may use the selected branch), and the tenant
+ * request guards pass for a read (a suspended subscription → 402). Also refuses a device that signed out
+ * (401 `SIGNED_OUT`, see `assertOpenSession`). Throws the error `authenticate` would; returns the user's
+ * current access in the institute (null without one). Run it in `ctx`.
+ */
+export async function recheckSession(ctx: RequestContext): Promise<ResolvedAccess | null> {
+  const [user, device] = await Promise.all([
+    User.findByPk(ctx.userId, { attributes: ['id', 'status'] }),
+    Device.findByPk(ctx.deviceId),
+  ]);
+  if (!user || user.status !== 'active') {
+    if (ctx.impersonatorId) throw Unauthorized('Impersonation session ended', 'IMPERSONATION_ENDED');
+    throw Unauthorized('Account is not active', 'ACCOUNT_INACTIVE');
+  }
+  if (!device || device.status !== 'active' || device.userId !== (ctx.impersonatorId ?? ctx.userId))
+    throw Unauthorized('This device session has been revoked', 'SESSION_REVOKED');
+  if (ctx.impersonatorId) {
+    const session = ctx.impersonationSessionId
+      ? await ImpersonationSession.findByPk(ctx.impersonationSessionId)
+      : null;
+    if (
+      !session ||
+      session.endedAt ||
+      session.expiresAt < new Date() ||
+      session.superAdminId !== ctx.impersonatorId
+    )
+      throw Unauthorized('Impersonation session ended', 'IMPERSONATION_ENDED');
+  } else if (isIdle(device.lastSeenAt, await getIdleTimeoutMinutes(ctx.instituteId ?? null))) {
+    throw Unauthorized('Signed out after a period of inactivity', 'SESSION_IDLE');
+  }
+  await assertOpenSession(device.id);
+  if (!ctx.instituteId) return null;
+  const institute = await Institute.findByPk(ctx.instituteId, { attributes: ['id', 'status'] });
+  if (!institute) throw Unauthorized('Institute not found', 'INSTITUTE_NOT_FOUND');
+  if (institute.status !== 'active' && !ctx.impersonatorId)
+    throw Forbidden(`Institute is ${institute.status}`, 'INSTITUTE_NOT_ACTIVE');
+  const data = await loadAssignments(user.id, institute.id);
+  if (!data.assignments.length)
+    throw Forbidden('You are no longer a member of this institute', 'NOT_A_MEMBER');
+  const allowed = computeAccess(data).allowedBranchIds;
+  const branchId = ctx.activeBranchId ?? undefined;
+  if (branchId !== undefined && allowed !== null && !allowed.includes(branchId))
+    throw Forbidden('You do not have access to this branch', 'BRANCH_FORBIDDEN');
+  const req = { ctx, header: () => undefined } as unknown as Request;
+  for (const guard of tenantGuards.values()) await guard(req);
+  return computeAccess(data, branchId);
+}

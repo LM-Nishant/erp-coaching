@@ -6,7 +6,7 @@ import { parse } from '../../shared/utilities/validation';
 import { idParam, paginated, paginationSchema, toLimitOffset } from '../../shared/utilities/pagination';
 import { authenticate } from '../../shared/middleware/authenticate';
 import { requireModule, requirePermission, requireTenant } from '../../shared/middleware/authorize';
-import { requireTenantContext } from '../../shared/context';
+import { getContext, requireTenantContext, runWithContext } from '../../shared/context';
 import { BadRequest, Conflict } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
@@ -49,6 +49,7 @@ import {
   siteInputSchema,
   toSiteDto,
   updateSite,
+  verifyCustomDomain,
 } from './site.service';
 import { collectMediaFileIds } from './blocks';
 import { buildView, loadLiveSite, signedMediaResolver } from './view.service';
@@ -122,6 +123,33 @@ export function websiteRoutes(api: Router) {
       entityId: site.id,
       metadata: { before: strip(before), changes: body },
     });
+    res.json(toSiteDto(site, await currentInstitute()));
+  });
+
+  r.post('/site/domain/verify', can('configure'), async (_req, res) => {
+    const { site, verified, released } = await verifyCustomDomain();
+    const domain = site.verifiedDomain;
+    if (released) {
+      // Tells the previous holder's admins why their domain stopped working, as a system event: the
+      // actor, IP and institute of the other tenant stay out of their trail.
+      await runWithContext({ requestId: getContext().requestId, system: true }, () =>
+        audit({
+          instituteId: released.instituteId,
+          action: 'website.domain_released',
+          entityType: 'website_site',
+          entityId: released.id,
+          metadata: { domain, reason: 'verified_elsewhere' },
+        }),
+      );
+    }
+    if (verified) {
+      await audit({
+        action: 'website.domain_verified',
+        entityType: 'website_site',
+        entityId: site.id,
+        metadata: { domain, releasedFromInstituteId: released?.instituteId ?? null },
+      });
+    }
     res.json(toSiteDto(site, await currentInstitute()));
   });
 

@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
 import { Op, fn, col } from 'sequelize';
 import { z } from 'zod';
 import { SYSTEM_ROLES } from '@erp/shared';
@@ -7,15 +6,17 @@ import { parse } from '../../shared/utilities/validation';
 import { idParam, paginated, paginationSchema, toLimitOffset } from '../../shared/utilities/pagination';
 import { authenticate } from '../../shared/middleware/authenticate';
 import { requireSuperAdmin } from '../../shared/middleware/authorize';
-import { BadRequest, Conflict, NotFound } from '../../shared/errors';
+import { AppError, BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
 import { getSequelize } from '../../infrastructure/database/sequelize';
+import { hashPassword } from '../../infrastructure/password';
 import { Institute } from './institute.model';
 import { Branch } from '../branches/branch.model';
 import { User } from '../users/user.model';
 import { UserRole } from '../permissions/models';
 import { getSystemRole } from '../permissions/catalog.service';
 import { Plan, Subscription } from '../subscriptions/models';
+import { invalidateAccess } from '../subscriptions/api';
 
 const color = z
   .string()
@@ -121,6 +122,7 @@ export function instituteAdminRoutes(api: Router) {
     const body = parse(createSchema, req.body);
     const plan = await Plan.findByPk(body.planId);
     if (!plan) throw BadRequest('Unknown plan');
+    if (!plan.isActive) throw new AppError(400, 'PLAN_INACTIVE', 'This plan is no longer offered');
     if (await Institute.findOne({ where: { slug: body.slug } }))
       throw Conflict('Slug already in use', 'SLUG_TAKEN');
     const adminRole = await getSystemRole(SYSTEM_ROLES.INSTITUTE_ADMIN);
@@ -163,7 +165,7 @@ export function instituteAdminRoutes(api: Router) {
             name: admin.name,
             mobile: admin.mobile,
             email: admin.email ?? null,
-            passwordHash: admin.password ? await bcrypt.hash(admin.password, 10) : null,
+            passwordHash: admin.password ? await hashPassword(admin.password) : null,
             lastLoginAt: null,
           },
           { transaction },
@@ -214,6 +216,8 @@ export function instituteAdminRoutes(api: Router) {
     if (!inst) throw NotFound('Institute');
     const previous = inst.status;
     await inst.update({ status: body.status });
+    // Re-checks open live-class sockets of the institute (see onAccessChanged).
+    invalidateAccess(id);
     await audit({
       action: `institute.status_changed`,
       entityType: 'institute',

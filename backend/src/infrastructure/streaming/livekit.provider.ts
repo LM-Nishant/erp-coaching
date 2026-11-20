@@ -82,6 +82,18 @@ const num = (o: unknown, name: string) => {
 /** EgressInfo.status: proto3 JSON omits the zero value (EGRESS_STARTING). */
 const egressStatus = (info: unknown) => str(info, 'status') || 'EGRESS_STARTING';
 
+/** Role and device from the metadata our join token gave a participant (participants cannot change it). */
+function tokenMetadata(participant: unknown): { role?: string; deviceId?: number } {
+  try {
+    const m = JSON.parse(str(participant, 'metadata') || '{}') as { role?: unknown; deviceId?: unknown };
+    const deviceId =
+      Number.isSafeInteger(m.deviceId) && (m.deviceId as number) > 0 ? (m.deviceId as number) : undefined;
+    return { role: typeof m.role === 'string' ? m.role : undefined, deviceId };
+  } catch {
+    return {};
+  }
+}
+
 const ROLE_GRANTS: Record<StreamingRole, Omit<VideoGrant, 'room' | 'roomJoin'>> = {
   host: {
     canSubscribe: true,
@@ -101,6 +113,8 @@ const ROLE_GRANTS: Record<StreamingRole, Omit<VideoGrant, 'room' | 'roomJoin'>> 
  * - Rooms are named `<prefix>-<instituteId>-<liveSessionId>`, so signed webhooks map back to the tenant.
  * - Join tokens carry per-role grants: the class teacher publishes camera, microphone and screen; everyone
  *   else only subscribes until the teacher grants a student's microphone (`setParticipantPublish`).
+ * - The identity is `user-<id>`; the token's metadata names the role and the device it was issued to, so a
+ *   device that signs out or is revoked can be removed from the room (`removeParticipant`).
  * - Recording uses Egress (room composite, MP4). Self-hosted Egress writes to a directory shared with the
  *   API (`local`); LiveKit Cloud uploads to an S3 staging bucket (`s3`). The API imports each finished
  *   file into its own storage, then deletes the staged copy.
@@ -144,6 +158,7 @@ export class LiveKitStreamingProvider implements StreamingProvider {
   async issueJoinToken(input: {
     roomId: string;
     userId: number;
+    deviceId: number;
     displayName: string;
     role: StreamingRole;
     ttlSeconds: number;
@@ -155,7 +170,7 @@ export class LiveKitStreamingProvider implements StreamingProvider {
       {
         sub: `user-${input.userId}`,
         name: input.displayName,
-        metadata: JSON.stringify({ role: input.role }),
+        metadata: JSON.stringify({ role: input.role, deviceId: input.deviceId }),
         video: {
           room: input.roomId,
           roomJoin: true,
@@ -310,6 +325,23 @@ export class LiveKitStreamingProvider implements StreamingProvider {
     );
   }
 
+  async removeParticipant(input: { roomId: string; userId: number; deviceId?: number }): Promise<boolean> {
+    const who = { room: input.roomId, identity: `user-${input.userId}` };
+    const grant = { roomAdmin: true, room: input.roomId };
+    try {
+      if (input.deviceId !== undefined) {
+        const participant = await this.api('RoomService', 'GetParticipant', who, grant);
+        if (tokenMetadata(participant).deviceId !== input.deviceId) return false;
+      }
+      await this.api('RoomService', 'RemoveParticipant', who, grant);
+      return true;
+    } catch (err) {
+      // Not (or no longer) in the room, or the room is gone.
+      if (err instanceof LiveKitApiError && err.status === 404) return false;
+      throw err;
+    }
+  }
+
   async listRecordings(roomId: string): Promise<{ recordings: ProviderRecording[]; pending: number }> {
     const all = await this.listEgress(roomId);
     return {
@@ -435,12 +467,7 @@ export class LiveKitStreamingProvider implements StreamingProvider {
         const participant = field(body, 'participant');
         const m = IDENTITY.exec(str(participant, 'identity'));
         if (!m) return { ...base, roomId, kind: 'ignored' };
-        let role: string | undefined;
-        try {
-          role = (JSON.parse(str(participant, 'metadata') || '{}') as { role?: string }).role;
-        } catch {
-          role = undefined;
-        }
+        const { role, deviceId } = tokenMetadata(participant);
         // An aborted connection never got media through: it may close a visit, never add one.
         const joinedMs =
           event === 'participant_connection_aborted'
@@ -451,7 +478,8 @@ export class LiveKitStreamingProvider implements StreamingProvider {
           roomId,
           kind: event === 'participant_joined' ? 'participant-joined' : 'participant-left',
           userId: Number(m[1]),
-          role: typeof role === 'string' ? role : undefined,
+          role,
+          deviceId,
           connectionRef: str(participant, 'sid').slice(0, 64) || undefined,
           joinedAt: joinedMs > 0 ? new Date(joinedMs) : undefined,
         };

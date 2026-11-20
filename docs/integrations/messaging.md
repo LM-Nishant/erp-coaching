@@ -81,8 +81,10 @@ sign in with a password on their first device.
 3. **Send test** sends `123456 is your verification code. It expires in 5 minutes.` through that template. Enable
    the provider once it arrives.
 
-If the vendor rejects the OTP or can't be reached, the OTP request answers `503 MESSAGE_NOT_SENT` ("The message
-could not be sent. Try again in a minute.") and the vendor's reason is logged.
+If the vendor rejects the OTP or can't be reached, the vendor's reason is logged and reported to error tracking. A
+login OTP request still answers as usual, so the response doesn't reveal that the number has an account; an OTP for
+a new device, sent after a correct password, answers `503 MESSAGE_NOT_SENT` ("The message could not be sent. Try
+again in a minute."). See [security.md](../security.md#passwords-otps-and-sign-in-lockout).
 
 ## Templates
 

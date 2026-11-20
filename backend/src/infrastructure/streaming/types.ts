@@ -24,6 +24,15 @@ export interface JoinCredentials {
   expiresAt: Date;
 }
 
+/** A verified join token. */
+export interface JoinTokenClaims {
+  roomId: string;
+  userId: number;
+  /** The device it was issued to: the token stops working once that device signs out or is revoked. */
+  deviceId: number;
+  role: StreamingRole;
+}
+
 export interface StartRecordingResult {
   /**
    * `provider`: the vendor records server-side and returns files from `endRoom`/webhooks.
@@ -60,6 +69,8 @@ export type StreamingWebhookEvent = {
       role?: string;
       /** Provider connection id (e.g. LiveKit participant SID), unique per visit. */
       connectionRef?: string;
+      /** The device the participant's join token was issued to (see `JoinTokenClaims`). */
+      deviceId?: number;
       /** When that connection joined. */
       joinedAt?: Date;
     }
@@ -85,16 +96,29 @@ export interface StreamingProvider {
   issueJoinToken(input: {
     roomId: string;
     userId: number;
+    /** The requesting device: put it in the vendor's participant identity (see modules/live-classes/README.md). */
+    deviceId: number;
     displayName: string;
     role: StreamingRole;
     ttlSeconds: number;
   }): Promise<JoinCredentials>;
+  /**
+   * Checks the signature and expiry of a token this adapter issued (null when invalid). Media relays and
+   * webhooks call `verifyJoinCredentials` (live-classes), which also checks the device is still signed in.
+   */
+  verifyJoinToken?(token: string): JoinTokenClaims | null;
   iceServers(): IceServer[];
   startRecording(roomId: string): Promise<StartRecordingResult>;
   /** Closes the room and returns finished provider-side recordings (empty for client-upload). */
   endRoom(roomId: string): Promise<{ recordings: ProviderRecording[] }>;
   /** Lets a participant publish their microphone (the teacher's grant), or takes it away. */
   setParticipantPublish?(input: { roomId: string; userId: number; microphone: boolean }): Promise<void>;
+  /**
+   * Disconnects a user from the media room (their device signed out, was revoked or lost access). With `deviceId`,
+   * only a connection that joined with a token issued to that device is removed: the user may have moved to another
+   * device. Returns whether one was removed.
+   */
+  removeParticipant?(input: { roomId: string; userId: number; deviceId?: number }): Promise<boolean>;
   /**
    * Finished provider-side recordings of a room and how many are still being written (catch-up when
    * a webhook was missed).

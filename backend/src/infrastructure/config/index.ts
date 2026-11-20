@@ -34,6 +34,29 @@ const schema = z.object({
     .url()
     .refine((v) => /^https?:\/\//.test(v), 'must be an http(s) URL')
     .optional(),
+  /**
+   * Parent domain of the institute website subdomains (`<subdomain>.SITES_DOMAIN`), as given to nginx.
+   * Website requests for a host directly under it resolve by subdomain; any other host must be a
+   * DNS-verified custom domain. Empty: only verified custom domains resolve.
+   */
+  SITES_DOMAIN: z
+    .string()
+    .transform((v) =>
+      v
+        .trim()
+        .toLowerCase()
+        .replace(/^\*?\./, '')
+        .replace(/\.$/, ''),
+    )
+    .pipe(
+      z
+        .string()
+        .regex(
+          /^$|^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/,
+          'must be a domain name like sites.example.com',
+        ),
+    )
+    .default(''),
   LOG_LEVEL: z.string().default(isProd ? 'info' : 'debug'),
   /** Reported by /api/ready and attached to tracked errors (e.g. the git SHA or image tag). */
   APP_VERSION: z.string().default('dev'),
@@ -55,10 +78,39 @@ const schema = z.object({
   IMPERSONATION_TTL_SECONDS: z.coerce.number().default(1800),
   /** 32 bytes, base64 encoded. Used for AES-256-GCM encryption of secrets at rest. */
   ENCRYPTION_KEY: devDefault('ZGV2LW9ubHktZW5jcnlwdGlvbi1rZXktMzItYnl0ZXM='),
+  /**
+   * Earlier ENCRYPTION_KEY values, comma separated: secrets stored with them still decrypt until
+   * `secrets:reencrypt` moves them to the current key (docs/deployment.md, "Rotating the encryption key").
+   */
+  ENCRYPTION_PREVIOUS_KEYS: z.string().default(''),
   FILE_URL_SECRET: devDefault('dev-only-file-url-secret-change-me'),
+  /**
+   * Server-side key for the HMAC that stores OTP codes. It also keys the per-mobile OTP counters and the
+   * sign-in locks of identifiers without an account. Changing it invalidates codes already sent.
+   */
+  OTP_HASH_SECRET: devDefault('dev-only-otp-hash-secret-change-me'),
+  /**
+   * scrypt cost of new password hashes, as log2(N) (memory = 128 * 2^cost * 8 bytes). Sign-in rehashes
+   * passwords stored with another cost or with bcrypt. Production requires at least 15 (OWASP).
+   */
+  PASSWORD_HASH_COST: z.coerce
+    .number()
+    .int()
+    .min(isProd ? 15 : 10)
+    .max(18)
+    .default(15),
 
   OTP_TTL_SECONDS: z.coerce.number().default(300),
   OTP_MAX_ATTEMPTS: z.coerce.number().default(5),
+  /** OTP requests per mobile number per 10 minutes, whether or not the number has an account. */
+  OTP_REQUESTS_PER_MOBILE: z.coerce.number().int().positive().default(5),
+  /**
+   * Failed password, OTP or device-unlock attempts before sign-in is locked (0 = never lock). The lock
+   * lasts LOGIN_LOCKOUT_BASE_SECONDS and doubles with every further failure, up to LOGIN_LOCKOUT_MAX_SECONDS.
+   */
+  LOGIN_LOCKOUT_THRESHOLD: z.coerce.number().int().min(0).default(5),
+  LOGIN_LOCKOUT_BASE_SECONDS: z.coerce.number().int().positive().default(60),
+  LOGIN_LOCKOUT_MAX_SECONDS: z.coerce.number().int().positive().max(86400).default(900),
   MAX_ACTIVE_DEVICES: z.coerce.number().default(2),
   /** Default inactivity timeout (minutes, 0 = off) for sessions without an institute setting. */
   SESSION_IDLE_TIMEOUT_MINUTES: z.coerce.number().int().min(0).max(1440).default(0),
@@ -126,15 +178,28 @@ const schema = z.object({
   LIVEKIT_S3_SECRET_KEY: z.string().optional(),
   LIVEKIT_S3_FORCE_PATH_STYLE: bool(false),
   BIOMETRIC_PROVIDER: z.enum(['mock']).default('mock'),
+  /** Largest biometric device push (KB). Bigger bodies get 413 before they are parsed. */
+  BIOMETRIC_PUSH_MAX_KB: z.coerce.number().int().positive().max(1024).default(256),
 
   JOBS_WORKER_ENABLED: bool(true),
   /** Express `trust proxy` setting (number of hops), needed behind nginx for correct client IPs. */
   TRUST_PROXY: z.coerce.number().int().min(0).default(0),
   JOBS_POLL_INTERVAL_MS: z.coerce.number().default(2000),
   RATE_LIMIT_ENABLED: bool(true),
+  /**
+   * Redis connection (e.g. redis://redis:6379). When set, rate-limit counters and live-class sockets are
+   * shared by every API instance; unset, they are kept in this process (single instance).
+   */
+  REDIS_URL: z
+    .string()
+    .regex(/^rediss?:\/\//, 'must be a redis:// or rediss:// URL')
+    .optional(),
   /** Per client IP. Clients behind one NAT (an institute's Wi-Fi) share these budgets. */
   RATE_LIMIT_API_PER_MIN: z.coerce.number().int().positive().default(600),
   RATE_LIMIT_MEDIA_PER_MIN: z.coerce.number().int().positive().default(3000),
+  /** Per signed file or HLS token, whatever the IP. */
+  RATE_LIMIT_MEDIA_PER_TOKEN_PER_MIN: z.coerce.number().int().positive().default(300),
+  RATE_LIMIT_WEBSITE_PER_MIN: z.coerce.number().int().positive().default(300),
   RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(30),
   RATE_LIMIT_TOKEN_MAX: z.coerce.number().int().positive().default(600),
   RATE_LIMIT_PUBLIC_FORM_MAX: z.coerce.number().int().positive().default(60),

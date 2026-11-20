@@ -163,15 +163,25 @@ export interface WebsiteTheme {
   socialLinks?: { label: string; url: string }[];
 }
 
+/** DNS TXT record proving the institute owns its custom domain. */
+export interface WebsiteDomainVerificationDto {
+  recordName: string;
+  recordValue: string;
+  /** Null until verified; an unverified domain isn't served. */
+  verifiedAt: string | null;
+}
+
 export interface WebsiteSiteDto {
   subdomain: string | null;
   customDomain: string | null;
+  /** Set when `customDomain` is. */
+  domainVerification: WebsiteDomainVerificationDto | null;
   theme: WebsiteTheme;
   seo: WebsiteSeo & { indexable: boolean };
   /** App base URL used for online admission links (`<appUrl>/register/<slug>`). */
   appUrl: string | null;
   defaultBranchId: number | null;
-  /** Public URL of the site (custom domain when set, otherwise the API slug route). */
+  /** Public URL of the site (the custom domain once verified, otherwise the API slug route). */
   publicUrl: string;
   sitemapUrl: string;
   robotsUrl: string;

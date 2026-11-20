@@ -89,6 +89,7 @@ export async function uploadStudentDocument(req: Request, student: Student) {
     action: 'student.document_added',
     entityType: 'student',
     entityId: student.id,
+    branchId: student.branchId,
     metadata: { documentId: doc.id, docType: doc.docType },
   });
   return doc;

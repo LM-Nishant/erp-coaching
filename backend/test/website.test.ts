@@ -1,8 +1,10 @@
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { config } from '../src/infrastructure/config';
 import { Institute } from '../src/modules/institutes/institute.model';
 import { Enquiry } from '../src/modules/admissions/models';
 import { redeemCoupon, releaseCoupon, setCheckoutHandoff, validateCoupon } from '../src/modules/website/api';
+import { setTxtResolver } from '../src/modules/website/domain-verification';
 import { asInstitute } from '../src/modules/website/site.service';
 import { USERS, bearer, getApp, idWatermarks, login, purgeCreatedSince, snapshotRows } from './helpers';
 
@@ -27,10 +29,15 @@ const CREATED_TABLES = [
   'courses',
   'notification_messages',
   'jobs',
+  'audit_events',
 ] as const;
 let watermarks: Record<string, number>;
 let restoreSites: () => Promise<void>;
 let restorePages: () => Promise<void>;
+
+/** Mocked DNS: TXT records by name; an Error is thrown as the lookup failure. */
+const dnsTxt = new Map<string, string[][] | Error>();
+const sitesDomain = config.SITES_DOMAIN;
 
 beforeAll(async () => {
   await getApp();
@@ -38,9 +45,18 @@ beforeAll(async () => {
   // The suite edits, publishes and restores the existing sites and home pages (domains included).
   restoreSites = await snapshotRows('website_sites', '1 = 1');
   restorePages = await snapshotRows('website_pages', '1 = 1');
+  config.SITES_DOMAIN = 'erp.example.com';
+  setTxtResolver(async (name) => {
+    const answer = dnsTxt.get(name);
+    if (answer instanceof Error) throw answer;
+    if (answer) return answer;
+    throw Object.assign(new Error(`queryTxt ENOTFOUND ${name}`), { code: 'ENOTFOUND' });
+  });
 });
 
 afterAll(async () => {
+  config.SITES_DOMAIN = sitesDomain;
+  setTxtResolver(null);
   await purgeCreatedSince(watermarks);
   await restorePages();
   await restoreSites();
@@ -454,7 +470,11 @@ describe('website builder & online admissions', () => {
       .set(bearer(apex))
       .send({ subdomain: sub, customDomain: domain });
     expect(set.status).toBe(200);
-    expect(set.body.publicUrl).toBe(`https://${domain}`);
+    // The domain isn't served until its TXT record is verified
+    expect(set.body.publicUrl).toMatch(/\/api\/public\/sites\/apex$/);
+    const record = set.body.domainVerification;
+    expect(record).toMatchObject({ recordName: `_erp-verification.${domain}`, verifiedAt: null });
+    expect(record.recordValue).toMatch(/^erp-verification=[0-9a-f]{32}$/);
     expect(
       (await request(app).patch('/api/website/site').set(bearer(zenith)).send({ subdomain: sub })).status,
     ).toBe(409);
@@ -465,7 +485,27 @@ describe('website builder & online admissions', () => {
     const bySub = await request(app).get(`${PUB}/_host`).set('Host', `${sub}.erp.example.com`);
     expect(bySub.status).toBe(200);
     expect(bySub.text).toContain('href="/p/about"');
-    const byDomain = await request(app).get(`${PUB}/_host/p/about`).set('Host', domain);
+    // Subdomains resolve only directly under SITES_DOMAIN
+    for (const host of [
+      `${sub}.example.net`,
+      `www.${sub}.erp.example.com`,
+      `${sub}.erp.example.com.evil.test`,
+    ])
+      expect((await request(app).get(`${PUB}/_host`).set('Host', host)).status, host).toBe(404);
+
+    expect((await request(app).get(`${PUB}/_host/p/about`).set('Host', domain)).status).toBe(404);
+    // TXT values can arrive in several chunks, next to unrelated records
+    dnsTxt.set(record.recordName, [
+      ['v=spf1 -all'],
+      [record.recordValue.slice(0, 20), record.recordValue.slice(20)],
+    ]);
+    const verified = await request(app).post('/api/website/site/domain/verify').set(bearer(apex));
+    expect(verified.status).toBe(200);
+    expect(verified.body.publicUrl).toBe(`https://${domain}`);
+    expect(verified.body.domainVerification.verifiedAt).toEqual(expect.any(String));
+    const byDomain = await request(app)
+      .get(`${PUB}/_host/p/about`)
+      .set('Host', `${domain.toUpperCase()}:443`);
     expect(byDomain.text).toContain('Hello');
     expect((await request(app).get(`${PUB}/_host`).set('Host', `unknown-${run}.example.net`)).status).toBe(
       404,
@@ -473,6 +513,75 @@ describe('website builder & online admissions', () => {
 
     // Media: only images used by published pages are public
     expect((await request(app).get(`${PUB}/apex/media/1`)).status).toBe(404);
+  });
+
+  it('serves a custom domain only for the institute that verified it in DNS', async () => {
+    const app = await getApp();
+    const domain = `www.apex-${run}.example.org`;
+    const recordName = `_erp-verification.${domain}`;
+    const verify = (token: string) => request(app).post('/api/website/site/domain/verify').set(bearer(token));
+    const sitemap = () => request(app).get(`${PUB}/_host/sitemap.xml`).set('Host', domain);
+    expect((await sitemap()).text).toContain('/p/about</loc>');
+
+    // Verifying again needs no lookup (DNS is down) and records nothing new
+    dnsTxt.set(recordName, Object.assign(new Error('queryTxt ETIMEOUT'), { code: 'ETIMEOUT' }));
+    expect((await verify(apex)).status).toBe(200);
+    expect((await verify(branchAdmin)).status).toBe(403);
+
+    // Another institute can enter the same domain (no squatting) but must prove ownership
+    const z = await request(app)
+      .patch('/api/website/site')
+      .set(bearer(zenith))
+      .send({ customDomain: domain });
+    expect(z.status).toBe(200);
+    const zRecord = z.body.domainVerification;
+    expect(zRecord).toMatchObject({ recordName, verifiedAt: null });
+    expect(z.body.publicUrl).toMatch(/\/api\/public\/sites\/zenith$/);
+    const down = await verify(zenith);
+    expect(down.status).toBe(503);
+    expect(down.body.error.code).toBe('DNS_LOOKUP_FAILED');
+    dnsTxt.set(recordName, [[`erp-verification=${'0'.repeat(32)}`]]);
+    const wrong = await verify(zenith);
+    expect(wrong.status).toBe(422);
+    expect(wrong.body.error).toMatchObject({
+      code: 'DOMAIN_NOT_VERIFIED',
+      details: { recordName, recordValue: zRecord.recordValue },
+    });
+    expect((await sitemap()).text).toContain('/p/about</loc>');
+
+    // The domain's owner publishes Zenith's token: the domain moves to Zenith
+    dnsTxt.set(recordName, [[zRecord.recordValue]]);
+    const moved = await verify(zenith);
+    expect(moved.status).toBe(200);
+    expect(moved.body.publicUrl).toBe(`https://${domain}`);
+    const served = await sitemap();
+    expect(served.status).toBe(200);
+    expect(served.text).not.toContain('/p/about</loc>');
+    const apexSite = await request(app).get('/api/website/site').set(bearer(apex));
+    expect(apexSite.body.publicUrl).toMatch(/\/api\/public\/sites\/apex$/);
+    expect(apexSite.body.domainVerification).toMatchObject({ recordName, verifiedAt: null });
+    // Apex's trail says why, without Zenith's actor or IP
+    const trail = await request(app).get('/api/audit-events?action=website.domain_').set(bearer(apex));
+    expect(trail.body.items.map((e: { action: string }) => e.action)).toEqual([
+      'website.domain_released',
+      'website.domain_verified',
+    ]);
+    expect(trail.body.items[0]).toMatchObject({ actorUserId: null, ip: null, metadata: { domain } });
+
+    // Changing or clearing the domain un-verifies it at once
+    const changed = await request(app)
+      .patch('/api/website/site')
+      .set(bearer(zenith))
+      .send({ customDomain: `zenith-${run}.example.org` });
+    expect(changed.body.domainVerification).toMatchObject({ verifiedAt: null });
+    expect(changed.body.domainVerification.recordValue).not.toBe(zRecord.recordValue);
+    expect((await sitemap()).status).toBe(404);
+    const cleared = await request(app)
+      .patch('/api/website/site')
+      .set(bearer(zenith))
+      .send({ customDomain: null });
+    expect(cleared.body.domainVerification).toBeNull();
+    expect((await verify(zenith)).status).toBe(400);
   });
 
   it('manages announcements shown on the public site', async () => {

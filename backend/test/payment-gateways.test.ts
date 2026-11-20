@@ -15,6 +15,7 @@ import {
 import { PAYTM_HOSTS, rawJsonMember } from '../src/infrastructure/payment-gateways/paytm.gateway';
 import { FeeLedgerEntry, FeeRefund } from '../src/modules/fees/models';
 import { reconcileGatewayPayments } from '../src/modules/fees/payments.service';
+import { AuditEvent } from '../src/shared/audit/audit-event.model';
 import { runWithContext } from '../src/shared/context';
 import { signCheckoutReturn } from '../src/shared/utilities/checkout-return';
 
@@ -539,7 +540,15 @@ describe('payment gateway flows', () => {
 
       refunds[0].status = 'processed';
       await reconcile(3 * MINUTE);
-      expect(await payment(paymentId)).toMatchObject({ status: 'partially_refunded', refunded: 50_000 });
+      const settled = await payment(paymentId);
+      expect(settled).toMatchObject({ status: 'partially_refunded', refunded: 50_000 });
+      // Settled with no user acting: the audit event still carries the payment's branch.
+      const update = await AuditEvent.findOne({
+        where: { instituteId: 1, action: 'fees.payment.refund.update', entityId: String(paymentId) },
+        order: [['id', 'DESC']],
+      });
+      expect(update?.branchId).toBe(settled.branchId);
+      expect(settled.branchId).toEqual(expect.any(Number));
       expect(await journal(`refund:${first.body.refund.id}`)).toMatchObject({
         debit: 50_000,
         credit: 50_000,

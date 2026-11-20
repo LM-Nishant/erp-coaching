@@ -116,9 +116,16 @@ export function useLiveSocket(sessionId: number, info: LiveJoinInfo) {
     room.connected = true;
     void join();
   });
-  socket.on('disconnect', () => {
+  socket.on('disconnect', (reason) => {
     room.connected = false;
     room.joined = false;
+    // Dropped by the server (device signed out or idle, subscription suspended…): an API call surfaces why
+    // through the usual 401 / 402 handling, and reconnects when access is fine again.
+    if (reason === 'io server disconnect')
+      void liveApi.get(sessionId).then(
+        () => socket.connect(),
+        () => {},
+      );
   });
   socket.on('connect_error', (err: Error & { data?: { code?: string } }) => {
     room.connected = false;

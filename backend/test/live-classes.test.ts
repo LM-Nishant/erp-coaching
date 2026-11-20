@@ -26,7 +26,10 @@ import {
   onLiveSessionEnded,
   type LiveRecordingReadyEvent,
   type LiveSessionEndedEvent,
+  verifyJoinCredentials,
 } from '../src/modules/live-classes/api';
+import { joinTokenTtlSeconds } from '../src/modules/live-classes/live-classes.service';
+import { Device } from '../src/modules/authentication/models';
 import { LiveParticipant } from '../src/modules/live-classes/models';
 import { attachLiveSockets, closeLiveSockets } from '../src/modules/live-classes/realtime';
 import { DevWebRtcStreamingProvider } from '../src/infrastructure/streaming/dev-webrtc.provider';
@@ -272,13 +275,27 @@ describe('live-classes module', () => {
       socketPath: LIVE_SOCKET_PATH,
     });
     expect(join.body.iceServers.length).toBeGreaterThan(0);
-    expect(new DevWebRtcStreamingProvider().verifyJoinToken(join.body.token)).toMatchObject({
-      userId: studentId,
-      role: 'viewer',
+    const device = await Device.findOne({
+      where: { userId: studentId, deviceUid: `test-device-${STUDENT.mobile}` },
     });
+    const claims = new DevWebRtcStreamingProvider().verifyJoinToken(join.body.token);
+    expect(claims).toMatchObject({ userId: studentId, role: 'viewer', deviceId: device!.id });
+    expect(await verifyJoinCredentials(join.body.token)).toEqual(claims);
+    expect(await verifyJoinCredentials('not-a-token')).toBeNull();
+    // The class ends in 2040, so the token gets the 4-hour cap.
+    const ttl = (Date.parse(join.body.expiresAt) - Date.now()) / 1000;
+    expect(ttl).toBeGreaterThan(4 * 3600 - 60);
+    expect(ttl).toBeLessThanOrEqual(4 * 3600);
 
     const hostJoin = await request(app).post(`/api/live-classes/${liveId}/join`).set(bearer(teacher));
     expect(hostJoin.body.role).toBe('host');
+  });
+
+  it('keeps join tokens until 30 minutes after the scheduled end, between 15 minutes and 4 hours', () => {
+    const now = Date.now();
+    expect(joinTokenTtlSeconds(new Date(now + 3_600_000), now)).toBe(5400);
+    expect(joinTokenTtlSeconds(new Date(now + 10 * 3_600_000), now)).toBe(4 * 3600);
+    expect(joinTokenTtlSeconds(new Date(now - 2 * 3_600_000), now)).toBe(15 * 60);
   });
 
   it('rejects unauthenticated or unauthorised sockets', async () => {

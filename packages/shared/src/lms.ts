@@ -180,7 +180,10 @@ export interface LmsOfflineLicenseDto {
   id: number;
   resourceId: number;
   title: string;
-  /** Signed source URL for the one-time download into the app's private storage. */
+  /**
+   * Signed source URL for the one-time download into the app's private storage: open it at once. It works for
+   * 10 minutes, and only while this device is signed in.
+   */
   downloadUrl: string;
   downloadUrlExpiresAt: string;
   /** Base64 AES-256-GCM key the app uses to encrypt the copy at rest. */

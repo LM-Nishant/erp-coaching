@@ -1,4 +1,3 @@
-import bcrypt from 'bcryptjs';
 import { Op, type Transaction, type WhereOptions } from 'sequelize';
 import { z } from 'zod';
 import type {
@@ -13,6 +12,7 @@ import type {
 } from '@erp/shared';
 import { GUARDIAN_RELATIONS, STUDENT_STATUSES } from '@erp/shared';
 import { getSequelize } from '../../infrastructure/database/sequelize';
+import { hashPassword } from '../../infrastructure/password';
 import { requireTenantContext } from '../../shared/context';
 import { BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
@@ -293,7 +293,7 @@ export async function findOrCreateUser(
       name: input.name,
       mobile: input.mobile,
       email: input.email && !emailTaken ? input.email : null,
-      passwordHash: input.password ? await bcrypt.hash(input.password, 10) : null,
+      passwordHash: input.password ? await hashPassword(input.password) : null,
       lastLoginAt: null,
     },
     { transaction },
@@ -430,6 +430,7 @@ export async function updateStudent(id: number, patch: Partial<StudentFields>): 
       action: 'student.updated',
       entityType: 'student',
       entityId: id,
+      branchId: student.branchId,
       metadata: { fields: changed },
     });
   }
@@ -456,6 +457,7 @@ export async function changeStatus(
     action: 'student.status_changed',
     entityType: 'student',
     entityId: id,
+    branchId: student.branchId,
     metadata: { from, to: status, reason },
   });
   return student;
@@ -502,6 +504,7 @@ export async function transferStudent(
     action: 'student.transferred',
     entityType: 'student',
     entityId: id,
+    branchId: to.id,
     metadata: { fromBranchId, toBranchId: to.id, reason: input.reason ?? null },
   });
   return student;
@@ -529,6 +532,7 @@ export async function deleteStudent(id: number): Promise<void> {
     action: 'student.deleted',
     entityType: 'student',
     entityId: id,
+    branchId: student.branchId,
     metadata: { admissionNumber: student.admissionNumber, name: student.name },
   });
 }
