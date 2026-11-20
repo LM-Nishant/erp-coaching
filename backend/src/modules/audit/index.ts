@@ -5,5 +5,16 @@ import { auditRoutes } from './audit.routes';
 export default defineModule({
   name: 'audit',
   routes: auditRoutes,
-  permissions: [{ module: 'audit', label: 'Audit log', actions: ['view', 'export'] }],
+  permissions: [
+    {
+      module: 'audit',
+      label: 'Audit log',
+      area: 'Institute',
+      describe: {
+        view: ['View audit log', 'See who changed what, and when'],
+        export: ['Export audit log', 'Download the audit log'],
+      },
+      actions: ['view', 'export'],
+    },
+  ],
 });

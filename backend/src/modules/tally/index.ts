@@ -12,6 +12,12 @@ export default defineModule({
     {
       module: 'tally',
       label: 'Tally export (ledger mapping, export files, reconciliation)',
+      area: 'Finance',
+      describe: {
+        view: ['View Tally export', 'See ledger mapping, past exports and reconciliation'],
+        configure: ['Tally setup', 'Map ledgers and set up the Tally export'],
+        export: ['Export to Tally', 'Create and download Tally export files'],
+      },
       actions: ['view', 'configure', 'export'],
       grants: { accountant: 'all', 'branch-admin': ['view', 'export'] },
     },

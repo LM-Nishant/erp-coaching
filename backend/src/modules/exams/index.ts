@@ -16,6 +16,17 @@ export default defineModule({
     {
       module: MODULE,
       label: 'Examinations & evaluation',
+      area: 'Learning & exams',
+      describe: {
+        view: ['View exams', 'See exams, papers and results'],
+        create: ['Create exams', 'Schedule exams and set papers'],
+        edit: ['Edit exams', 'Change exams, papers and enter marks'],
+        delete: ['Delete exams', 'Remove exams and papers'],
+        approve: ['Evaluate answers', 'Grade answer sheets and approve scores'],
+        publish: ['Publish results', 'Release results to students and parents'],
+        export: ['Export results', 'Download marks sheets and result reports'],
+        configure: ['Exam setup', 'Grading schemes, report-card templates and exam settings'],
+      },
       actions: ['view', 'create', 'edit', 'delete', 'approve', 'publish', 'export', 'configure'],
       grants: {
         'branch-admin': 'all',
@@ -25,6 +36,11 @@ export default defineModule({
     {
       module: PORTAL,
       label: 'Exams & results (students and parents)',
+      area: 'My account',
+      describe: {
+        view: ['Own results', "See their own (or their children's) exams and results"],
+        create: ['Take exams', 'Attempt online exams'],
+      },
       actions: ['view', 'create'],
       grants: {
         student: ['view', 'create'],

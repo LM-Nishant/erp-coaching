@@ -20,6 +20,13 @@ export default defineModule({
     {
       module: 'tenant-data',
       label: 'Data export & deletion',
+      area: 'Institute',
+      adminOnly: true,
+      describe: {
+        view: ['View data requests', 'See data exports and deletion requests'],
+        export: ['Export all data', "Download a full export of the institute's data"],
+        delete: ['Delete institute data', "Request deletion of the institute's data"],
+      },
       actions: ['view', 'export', 'delete'],
     },
   ],

@@ -19,6 +19,14 @@ export default defineModule({
     {
       module: 'grievances',
       label: 'Grievances & complaints',
+      area: 'Communication',
+      describe: {
+        view: ['View grievances', 'See complaints raised by or about them'],
+        create: ['Raise grievances', 'Raise a complaint or suggestion'],
+        edit: ['Resolve grievances', 'Assign, reply to and close complaints'],
+        export: ['Export grievances', 'Download grievance reports'],
+        configure: ['Grievance setup', 'Categories, escalation and response times'],
+      },
       actions: ['view', 'create', 'edit', 'export', 'configure'],
       grants: {
         'branch-admin': ['view', 'create', 'edit', 'export'],

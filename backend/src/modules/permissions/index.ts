@@ -11,6 +11,14 @@ export default defineModule({
     {
       module: 'roles',
       label: 'Roles & permissions',
+      area: 'Institute',
+      adminOnly: ['create', 'edit', 'delete'],
+      describe: {
+        view: ['View roles', 'See roles and the permissions each one gives'],
+        create: ['Create roles', 'Create custom roles and choose their permissions'],
+        edit: ['Edit roles', 'Change the permissions of custom roles'],
+        delete: ['Delete roles', 'Remove custom roles'],
+      },
       actions: ['view', 'create', 'edit', 'delete'],
       grants: { 'branch-admin': ['view'] },
     },

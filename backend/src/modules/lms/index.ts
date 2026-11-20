@@ -18,6 +18,15 @@ export default defineModule({
     {
       module: LMS,
       label: 'Learning content',
+      area: 'Learning & exams',
+      describe: {
+        view: ['View learning content', 'Watch lectures and read study material'],
+        create: ['Add learning content', 'Upload lectures, notes and study material'],
+        edit: ['Edit learning content', 'Change lectures and study material'],
+        delete: ['Delete learning content', 'Remove lectures and study material'],
+        publish: ['Publish content', 'Make content visible to students'],
+        configure: ['Content setup', 'Content protection, downloads and paid-course settings'],
+      },
       actions: ['view', 'create', 'edit', 'delete', 'publish', 'configure'],
       grants: {
         'branch-admin': 'all',
@@ -30,6 +39,14 @@ export default defineModule({
       // `create` = submit homework (learners); `edit` = author and grade (staff).
       module: LMS_ASSIGNMENTS,
       label: 'Homework & assignments',
+      area: 'Learning & exams',
+      describe: {
+        view: ['View assignments', 'See homework and assignments'],
+        create: ['Submit assignments', 'Hand in homework and assignments'],
+        edit: ['Set and grade assignments', 'Create, edit and grade homework and assignments'],
+        delete: ['Delete assignments', 'Remove homework and assignments'],
+        publish: ['Publish assignments', 'Release assignments and grades to students'],
+      },
       actions: ['view', 'create', 'edit', 'delete', 'publish'],
       grants: {
         'branch-admin': 'all',
