@@ -120,6 +120,16 @@ const schema = z.object({
   MAX_UPLOAD_MB: z.coerce.number().default(100),
   SIGNED_URL_TTL_SECONDS: z.coerce.number().default(300),
 
+  /**
+   * Appointment calendar events: `mock` (in-memory, fake Meet links) or `google` (Calendar API v3
+   * with the SaaS-level OAuth client below). See docs/integrations/google-calendar.md.
+   */
+  CALENDAR_PROVIDER: z.enum(['mock', 'google']).default('mock'),
+  GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
+  GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),
+  /** Defaults to `<API_PUBLIC_URL>/api/calendar/public/google/callback`; register it in Google Cloud. */
+  GOOGLE_OAUTH_REDIRECT_URI: z.string().url().optional(),
+
   AI_BASE_URL: z.string().default('https://api.openai.com/v1'),
   AI_MODEL: z.string().default('gpt-4o-mini'),
   AI_API_KEY: z.string().default(''),
@@ -226,6 +236,13 @@ if (!parsed.success) {
 if (isProd && parsed.data.DEV_OUTBOX_FILE) throw new Error('DEV_OUTBOX_FILE must not be set in production');
 if (parsed.data.ERROR_TRACKING_PROVIDER === 'webhook' && !parsed.data.ERROR_TRACKING_WEBHOOK_URL)
   throw new Error('ERROR_TRACKING_WEBHOOK_URL is required when ERROR_TRACKING_PROVIDER=webhook');
+if (
+  parsed.data.CALENDAR_PROVIDER === 'google' &&
+  (!parsed.data.GOOGLE_OAUTH_CLIENT_ID || !parsed.data.GOOGLE_OAUTH_CLIENT_SECRET)
+)
+  throw new Error(
+    'GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET are required when CALENDAR_PROVIDER=google',
+  );
 if (parsed.data.STREAMING_PROVIDER === 'livekit') {
   const d = parsed.data;
   if (!d.LIVEKIT_URL || !d.LIVEKIT_API_KEY || !d.LIVEKIT_API_SECRET)
@@ -267,6 +284,9 @@ export const config = {
     : null,
   corsOrigins,
   publicWebUrl: (parsed.data.PUBLIC_WEB_URL ?? fallbackWebUrl).replace(/\/+$/, ''),
+  googleOAuthRedirectUri:
+    parsed.data.GOOGLE_OAUTH_REDIRECT_URI ??
+    `${parsed.data.API_PUBLIC_URL.replace(/\/+$/, '')}/api/calendar/public/google/callback`,
 };
 
 export type AppConfig = typeof config;

@@ -186,6 +186,7 @@ Format rules:
 | `JOBS_WORKER_ENABLED`, `JOBS_POLL_INTERVAL_MS`                                                                                                                           | [Background jobs](#background-jobs)                                                                                                                                                                               |
 | `PAYMENT_RECONCILE_INTERVAL_MINUTES`                                                                                                                                     | Minutes between checks of open gateway payments, 10 by default ([payment gateways](integrations/payments.md#reconciliation-and-idempotency))                                                                      |
 | `ADMS_ALLOW_HTTP`, `ADMS_MAX_BODY_KB`, `ADMS_MAX_RECORDS`, `ADMS_BACKFILL_DAYS`                                                                                          | ZKTeco/eSSL biometric devices ([biometric.md](integrations/biometric.md#server-setup)). `ADMS_ALLOW_HTTP=true` also serves `/iclock/` on `HTTP_PORT`, for firmware without HTTPS                                  |
+| `CALENDAR_PROVIDER`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI`                                                                 | Google Calendar for parent-teacher meetings: `mock` by default, `google` with the platform's OAuth client ([Google Calendar](integrations/google-calendar.md))                                                    |
 | `AI_BASE_URL`, `AI_MODEL`, `AI_API_KEY`, `AI_TIMEOUT_MS`                                                                                                                 | Defaults for the AI features; the Super Admin can override them in the app                                                                                                                                        |
 | `SMS_PROVIDER`, `WHATSAPP_PROVIDER`, `EMAIL_PROVIDER`, `PUSH_PROVIDER`, `PAYMENT_GATEWAY`, `STREAMING_PROVIDER`, `BIOMETRIC_PROVIDER`                                    | Integration adapters. This release only has `console` and `mock` implementations ([before going live](#before-going-live))                                                                                        |
 | `MESSAGING_TIMEOUT_MS`, `MESSAGING_DEFAULT_COUNTRY_CODE`                                                                                                                 | Messaging vendor requests. MSG91, Twilio, WhatsApp Cloud, SMTP and FCM/APNs are configured in the app ([messaging](integrations/messaging.md))                                                                    |
@@ -259,6 +260,7 @@ Relative paths are relative to `deploy/`. `ERP_ENV_FILE` names the env file that
 | `ENCRYPTION_KEY`              | `openssl rand -base64 32` (exactly 32 bytes) | Encrypts stored integration credentials: AI keys, payment and notification settings, offline LMS keys. **It is not in the backups.** Without it, those values can't be decrypted ([rotation](#rotating-the-encryption-key)) |
 | `FILE_URL_SECRET`             | `openssl rand -hex 32`                       | Signs short-lived file and media URLs                                                                                                                                                                                       |
 | `OTP_HASH_SECRET`             | `openssl rand -hex 32`                       | Keys the stored OTP codes, the OTP counters per mobile number and the sign-in locks of unregistered numbers and emails                                                                                                      |
+| `GOOGLE_OAUTH_CLIENT_SECRET`  | Google Cloud (the OAuth client)              | Google Calendar's OAuth client, only with `CALENDAR_PROVIDER=google`. To rotate it, see [Google Calendar](integrations/google-calendar.md#configuration)                                                                    |
 
 - **Where secrets live:**
   - on the server, only in `deploy/.env` and `deploy/secrets/` (mode 600, owned by root or the deploy user);
@@ -298,7 +300,7 @@ Relative paths are relative to `deploy/`. `ERP_ENV_FILE` names the env file that
 Every encrypted value carries the id of the key that wrote it (`v2:<key id>:…`, derived from the key). `ENCRYPTION_KEY`
 encrypts, and both it and the keys in `ENCRYPTION_PREVIOUS_KEYS` decrypt. Values saved before key ids existed (`v1:`)
 are tried with each key until they are re-encrypted. The stored secrets are the AI keys, payment gateway credentials,
-notification and platform integration settings, and offline LMS content keys.
+notification and platform integration settings, Google Calendar refresh tokens, and offline LMS content keys.
 
 1. Back up ([backup-restore.md](backup-restore.md)). Keep the old key in your vault as long as you keep backups made
    before the rotation: they can only be restored with it.
@@ -589,7 +591,12 @@ This release only ships development adapters for the external integrations:
 - **Biometrics:** ZKTeco and eSSL devices connect directly over ADMS push
   ([biometric.md](integrations/biometric.md)). `BIOMETRIC_PROVIDER=mock` is only the payload format of the punch API,
   for other devices and middleware.
+- **Accounting (Tally):** nothing to set up on the server. Accountants download TallyPrime XML files (also importable
+  into Tally.ERP 9) from **Tally export** and import them in Tally ([tally.md](integrations/tally.md)).
 - **Storage:** `STORAGE_DRIVER` must stay `local`, because the S3/R2 adapter is not implemented.
+- **Google Calendar:** `CALENDAR_PROVIDER=mock` keeps parent-teacher meetings out of Google Calendar. Turning on
+  `google` needs the platform's Google OAuth client, and Google's verification of its consent screen can take weeks
+  ([Google Calendar](integrations/google-calendar.md)).
 
 ## Upgrades
 

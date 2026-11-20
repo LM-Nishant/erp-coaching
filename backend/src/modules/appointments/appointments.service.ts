@@ -16,7 +16,6 @@ import {
 } from '@erp/shared';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { enqueueJob } from '../../infrastructure/jobs/queue';
-import { getCalendarProvider, type CalendarEventInput } from '../../infrastructure/calendar';
 import { getContext, hasPermission, requireTenantContext } from '../../shared/context';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { audit } from '../../shared/audit/audit.service';
@@ -30,6 +29,7 @@ import { Student } from '../students/models';
 import { Batch, BatchStudent, BatchTeacher, Subject } from '../academics/api';
 import { assertGuardianOf, linkedStudentIds } from '../guardians/guardian-access';
 import { guardiansOf, notify } from '../notifications/api';
+import { calendarSyncStatus, syncCalendarEvent } from '../calendar/api';
 import { Appointment, AppointmentEvent, AppointmentSlot } from './appointments.models';
 
 export const MODULE = 'appointments';
@@ -563,44 +563,14 @@ async function send(
 
 // ---------------------------------------------------------------- calendar + reminders
 
-function calendarInput(
-  a: Appointment,
-  teacher: string,
-  requester: string,
-  studentName: string,
-): CalendarEventInput {
-  return {
-    externalRef: `appointments:${a.id}`,
-    title: `Parent-teacher meeting: ${studentName}`,
-    description: a.agenda ?? undefined,
-    start: `${a.date}T${a.startTime}`,
-    end: `${a.date}T${a.endTime}`,
-    attendees: [{ name: teacher }, { name: requester }],
-    withMeeting: a.mode === 'online',
-    location: a.mode === 'offline' ? a.location : null,
-  };
-}
-
-/** Creates or updates the calendar event (with a meeting link for online meetings). */
-async function syncCalendar(a: Appointment, meetingUrlOverride?: string | null) {
-  const provider = getCalendarProvider(a.instituteId, a.calendarProvider ?? 'mock');
-  const n = await names(a);
-  const student = await Student.findOne({
-    where: { instituteId: a.instituteId, id: a.studentId },
-    attributes: ['name'],
-  });
-  const input = calendarInput(a, n.teacher, n.requester, student?.name ?? '');
-  const res = a.calendarEventId
-    ? await provider.updateEvent(a.calendarEventId, input)
-    : await provider.createEvent(input);
-  a.calendarProvider = provider.name;
-  a.calendarEventId = res.eventId;
-  a.meetingUrl = a.mode === 'online' ? (meetingUrlOverride ?? res.meetingUrl) : null;
-}
-
-async function cancelCalendar(a: Appointment) {
-  if (!a.calendarEventId) return;
-  await getCalendarProvider(a.instituteId, a.calendarProvider ?? 'mock').cancelEvent(a.calendarEventId);
+/**
+ * Brings the meeting's calendar event in line with it (create, update or delete; see
+ * `appointmentCalendarSource`) and reloads it with the event's meeting link. Never throws:
+ * calendar failures are retried in the background and never undo the change.
+ */
+async function syncCalendar(a: Appointment): Promise<Appointment> {
+  await syncCalendarEvent(MODULE, a.id);
+  return loadAppointment(a.id);
 }
 
 const reminderBase = (a: Appointment) => `${a.date}T${a.startTime}`;
@@ -738,13 +708,15 @@ export async function listAll(q: ListQuery) {
 
 export async function getDetail(id: number): Promise<AppointmentDetailDto> {
   const a = await loadAppointment(id);
-  await roleFor(a);
+  const role = await roleFor(a);
   const events = await AppointmentEvent.findAll({
     where: { instituteId: a.instituteId, appointmentId: a.id },
     include: [{ model: User, as: 'actor', ...userRef }],
     order: [['id', 'ASC']],
   });
-  return { ...appointmentDto(a), history: events.map(eventDto) };
+  // Calendar sync errors are for staff; parents just see the meeting link.
+  const calendarSync = role === 'parent' ? null : await calendarSyncStatus(MODULE, a.id);
+  return { ...appointmentDto(a), history: events.map(eventDto), calendarSync };
 }
 
 // ---------------------------------------------------------------- lifecycle
@@ -847,22 +819,23 @@ export async function approve(
   assertStatus(a, ['requested']);
   const from = a.status;
   if (input.location !== undefined && a.mode === 'offline') a.location = input.location;
-  await syncCalendar(a, input.meetingUrl);
+  // A link the teacher enters replaces the Google Meet link; otherwise the calendar sync adds one.
+  const customUrl = a.mode === 'online' ? (input.meetingUrl ?? null) : null;
   await a.update({
     status: 'confirmed',
     responseNote: input.note ?? null,
     respondedAt: a.respondedAt ?? new Date(),
     location: a.location,
-    meetingUrl: a.meetingUrl,
-    calendarEventId: a.calendarEventId,
-    calendarProvider: a.calendarProvider,
+    meetingUrl: customUrl,
+    meetingUrlCustom: customUrl !== null,
   });
+  const c = await syncCalendar(a);
   await recordEvent(
-    a,
+    c,
     'approved',
     from,
     input.note ?? null,
-    a.meetingUrl ? { meetingUrl: a.meetingUrl } : null,
+    c.meetingUrl ? { meetingUrl: c.meetingUrl } : null,
   );
   await audit({
     action: 'appointments.approve',
@@ -870,9 +843,9 @@ export async function approve(
     entityId: id,
     metadata: { from, to: 'confirmed' },
   });
-  await scheduleReminders(a);
-  await send('appointments.confirmed', a, toParents(a));
-  return appointmentDto(a);
+  await scheduleReminders(c);
+  await send('appointments.confirmed', c, toParents(c));
+  return appointmentDto(c);
 }
 
 export async function reject(id: number, reason: string) {
@@ -880,6 +853,8 @@ export async function reject(id: number, reason: string) {
   assertStatus(a, ['requested']);
   const from = a.status;
   await a.update({ status: 'rejected', responseNote: reason, respondedAt: a.respondedAt ?? new Date() });
+  // Removes an event left from before a parent's reschedule whose removal is still pending.
+  await syncCalendarEvent(MODULE, a.id);
   await recordEvent(a, 'rejected', from, reason);
   await audit({
     action: 'appointments.reject',
@@ -922,6 +897,9 @@ export async function reschedule(id: number, input: RescheduleInput) {
         endTime: chunk.endTime,
         slotId: chunk.slotId,
         status: 'requested',
+        // The teacher confirms again and gets (or enters) a new link.
+        meetingUrl: null,
+        meetingUrlCustom: false,
       });
       if (mode === 'offline') a.location = chunk.location;
     } else {
@@ -943,40 +921,37 @@ export async function reschedule(id: number, input: RescheduleInput) {
     }
     a.mode = mode;
     if (mode === 'online') a.location = null;
+    else a.set({ meetingUrl: null, meetingUrlCustom: false });
     a.rescheduleCount = a.rescheduleCount + 1;
     await a.save({ transaction });
   });
-  if (a.status === 'confirmed') {
-    await syncCalendar(a);
-    await a.save();
-    await scheduleReminders(a);
-  } else if (a.calendarEventId) {
-    await cancelCalendar(a);
-    await a.update({ calendarEventId: null, meetingUrl: null });
-  }
-  const after = { date: a.date, startTime: a.startTime, endTime: a.endTime, mode: a.mode };
-  await recordEvent(a, 'rescheduled', from, input.reason ?? null, { before, after });
+  // Confirmed: the event moves (its Meet link is kept). Back to requested: the event is removed.
+  const c = await syncCalendar(a);
+  if (c.status === 'confirmed') await scheduleReminders(c);
+  const after = { date: c.date, startTime: c.startTime, endTime: c.endTime, mode: c.mode };
+  await recordEvent(c, 'rescheduled', from, input.reason ?? null, { before, after });
   await audit({
     action: 'appointments.reschedule',
     entityType: 'Appointment',
     entityId: id,
     metadata: { before, after, by: role },
   });
-  await send('appointments.rescheduled', a, role === 'parent' ? [toTeacher(a)] : toParents(a), {
+  await send('appointments.rescheduled', c, role === 'parent' ? [toTeacher(c)] : toParents(c), {
     reason: input.reason ?? '',
     previousDate: before.date,
     previousTime: before.startTime,
   });
-  return appointmentDto(a);
+  return appointmentDto(c);
 }
 
 export async function cancel(id: number, reason: string) {
   const { a, role } = await loadAs(id, ['teacher', 'manager', 'parent']);
   assertStatus(a, ['requested', 'confirmed']);
   const from = a.status;
-  await cancelCalendar(a);
   await a.update({ status: 'cancelled', cancelReason: reason, cancelledByUserId: me() });
-  await recordEvent(a, 'cancelled', from, reason);
+  // Deletes the calendar event; Google emails the attendees a cancellation.
+  const c = await syncCalendar(a);
+  await recordEvent(c, 'cancelled', from, reason);
   await audit({
     action: 'appointments.cancel',
     entityType: 'Appointment',
@@ -985,11 +960,11 @@ export async function cancel(id: number, reason: string) {
   });
   await send(
     'appointments.cancelled',
-    a,
-    role === 'parent' ? [{ userIds: [a.teacherUserId] }] : toParents(a),
+    c,
+    role === 'parent' ? [{ userIds: [c.teacherUserId] }] : toParents(c),
     { reason },
   );
-  return appointmentDto(a);
+  return appointmentDto(c);
 }
 
 export async function complete(

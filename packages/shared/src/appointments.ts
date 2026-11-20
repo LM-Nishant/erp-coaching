@@ -1,4 +1,5 @@
 /** Parent-teacher appointments (spec §4.16). */
+import type { CalendarSyncDto } from './calendar';
 
 export const APPOINTMENT_MODES = ['online', 'offline'] as const;
 export type AppointmentMode = (typeof APPOINTMENT_MODES)[number];
@@ -133,6 +134,8 @@ export interface AppointmentEventDto {
 
 export interface AppointmentDetailDto extends AppointmentDto {
   history: AppointmentEventDto[];
+  /** Calendar event state; only for the meeting's teacher and appointment managers. */
+  calendarSync?: CalendarSyncDto | null;
 }
 
 export interface RequestAppointmentInput {

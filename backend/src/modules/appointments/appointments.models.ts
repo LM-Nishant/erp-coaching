@@ -99,6 +99,8 @@ export class Appointment extends Model<InferAttributes<Appointment>, InferCreati
   declare agenda: string | null;
   declare location: CreationOptional<string | null>;
   declare meetingUrl: CreationOptional<string | null>;
+  /** The teacher supplied `meetingUrl`; the calendar sync keeps it instead of creating a Meet. */
+  declare meetingUrlCustom: CreationOptional<boolean>;
   declare calendarProvider: CreationOptional<string | null>;
   declare calendarEventId: CreationOptional<string | null>;
   declare responseNote: CreationOptional<string | null>;
@@ -136,6 +138,7 @@ export class Appointment extends Model<InferAttributes<Appointment>, InferCreati
         agenda: str(1000),
         location: str(200),
         meetingUrl: str(500),
+        meetingUrlCustom: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
         calendarProvider: str(20),
         calendarEventId: str(200),
         responseNote: str(1000),

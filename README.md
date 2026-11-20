@@ -14,15 +14,16 @@ packages/shared/  TypeScript types/constants shared by API and app (@erp/shared)
 
 Read [ARCHITECTURE.md](ARCHITECTURE.md) for how the platform works. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the conventions every feature module **must** follow.
 
-| Document                                         | Covers                                                                    |
-| ------------------------------------------------ | ------------------------------------------------------------------------- |
-| [ARCHITECTURE.md](ARCHITECTURE.md)               | how the platform works: modules, tenancy, RBAC, auth, files, probes, logs |
-| [CONTRIBUTING.md](CONTRIBUTING.md)               | module conventions, tests, CI and the other quality gates                 |
-| [docs/security.md](docs/security.md)             | security controls, dependency and secret scanning, review findings        |
-| [docs/deployment.md](docs/deployment.md)         | Docker Compose stack, nginx and TLS, releases, rollback, scaling          |
-| [docs/backup-restore.md](docs/backup-restore.md) | MySQL and media backups, restore, the restore test, RPO and RTO           |
-| [docs/load-testing.md](docs/load-testing.md)     | load scenarios, thresholds and the local baseline                         |
-| [e2e/README.md](e2e/README.md)                   | the Playwright browser tests of the critical workflows                    |
+| Document                                         | Covers                                                                                    |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| [ARCHITECTURE.md](ARCHITECTURE.md)               | how the platform works: modules, tenancy, RBAC, auth, files, probes, logs                 |
+| [CONTRIBUTING.md](CONTRIBUTING.md)               | module conventions, tests, CI and the other quality gates                                 |
+| [docs/security.md](docs/security.md)             | security controls, dependency and secret scanning, review findings                        |
+| [docs/deployment.md](docs/deployment.md)         | Docker Compose stack, nginx and TLS, releases, rollback, scaling                          |
+| [docs/backup-restore.md](docs/backup-restore.md) | MySQL and media backups, restore, the restore test, RPO and RTO                           |
+| [docs/operations.md](docs/operations.md)         | service targets, monitoring and alerting, incidents, runbooks, support, go-live checklist |
+| [docs/load-testing.md](docs/load-testing.md)     | load scenarios, thresholds and the local baseline                                         |
+| [e2e/README.md](e2e/README.md)                   | the Playwright browser tests of the critical workflows                                    |
 
 ## Prerequisites
 

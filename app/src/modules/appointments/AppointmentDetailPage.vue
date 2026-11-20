@@ -46,6 +46,14 @@
           <ion-icon slot="start" :icon="videocamOutline" />
           <ion-label>Join online meeting</ion-label>
         </ion-item>
+        <ion-item v-if="calendarState">
+          <ion-icon slot="start" :icon="calendarOutline" aria-hidden="true" />
+          <ion-label class="ion-text-wrap">
+            <p>Google Calendar</p>
+            <h2>{{ calendarState.title }}</h2>
+            <p v-if="calendarState.detail">{{ calendarState.detail }}</p>
+          </ion-label>
+        </ion-item>
         <ion-item v-if="a.responseNote">
           <ion-label class="ion-text-wrap"
             ><p>Teacher's note</p>
@@ -170,10 +178,11 @@ import {
   IonTextarea,
   onIonViewWillEnter,
 } from '@ionic/vue';
-import { videocamOutline } from 'ionicons/icons';
+import { calendarOutline, videocamOutline } from 'ionicons/icons';
 import type { AppointmentDetailDto, AppointmentMode, AvailableSlotDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import { toast, toastError } from '@/core/toast';
+import { syncLabel } from '@/modules/calendar/api';
 import { useAuthStore } from '@/stores/auth';
 import SlotPicker from './components/SlotPicker.vue';
 import { appointmentsApi, STATUS_COLORS, humanize } from './api';
@@ -196,6 +205,8 @@ const isStaff = computed(
     (a.value.teacher?.id === auth.me?.user.id || a.value.privateNotes !== undefined),
 );
 const active = computed(() => !!a.value && ['requested', 'confirmed'].includes(a.value.status));
+/** Returned to the teacher and appointment managers only; hidden with the test (mock) calendar. */
+const calendarState = computed(() => syncLabel(a.value?.calendarSync));
 
 async function load() {
   try {
@@ -229,8 +240,10 @@ async function run(fn: () => Promise<unknown>, message: string) {
 }
 
 async function approve() {
+  const online = a.value?.mode === 'online';
   const alert = await alertController.create({
     header: 'Approve meeting',
+    message: online ? 'Leave the meeting link blank to get a video meeting link automatically.' : undefined,
     inputs: [
       { name: 'note', type: 'textarea', placeholder: 'Note to the parent (optional)' },
       ...(a.value?.mode === 'offline'
@@ -243,15 +256,27 @@ async function approve() {
             },
           ]
         : []),
+      ...(online
+        ? [{ name: 'meetingUrl', type: 'url' as const, placeholder: 'Meeting link (optional)' }]
+        : []),
     ],
     buttons: [
       { text: 'Back', role: 'cancel' },
       {
         text: 'Approve',
-        handler: (v: { note?: string; location?: string }) => {
+        handler: (v: { note?: string; location?: string; meetingUrl?: string }) => {
+          const meetingUrl = v.meetingUrl?.trim() || null;
+          if (meetingUrl && !/^https?:\/\/\S+$/i.test(meetingUrl)) {
+            void toast('Enter the full meeting link, starting with https://', 'warning');
+            return false;
+          }
           void run(
             () =>
-              appointmentsApi.approve(id.value, { note: v.note || null, location: v.location || undefined }),
+              appointmentsApi.approve(id.value, {
+                note: v.note || null,
+                location: v.location || undefined,
+                ...(online ? { meetingUrl } : {}),
+              }),
             'Meeting confirmed',
           );
         },
