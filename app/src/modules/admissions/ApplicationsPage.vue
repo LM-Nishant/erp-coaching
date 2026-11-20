@@ -378,10 +378,8 @@ async function confirmAdmit(allowDuplicate = false): Promise<void> {
     admitting.value = null;
     const admitted = `Admitted ${student.name} (${student.admissionNumber})`;
     await toast(
-      batchEnrolment === 'no_login'
-        ? `${admitted}. They share a mobile number and have no login of their own yet, so add them to the batch in Academics once they do.`
-        : admitted,
-      batchEnrolment === 'no_login' ? 'warning' : 'success',
+      batchEnrolment === 'enrolled' ? `${admitted} and enrolled them in the batch` : admitted,
+      'success',
     );
     await router.push(`/students/${student.id}`);
   } catch (e) {

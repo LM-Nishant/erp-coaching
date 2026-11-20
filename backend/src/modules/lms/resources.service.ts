@@ -27,7 +27,7 @@ import { Device } from '../authentication/api';
 import { FileObject } from '../files/file.model';
 import { fileRepo, signedUrlFor } from '../files/files.service';
 import { UserRole } from '../permissions/models';
-import { User } from '../users/user.model';
+import { User, contactMobile } from '../users/user.model';
 import {
   activeBatchIds,
   listLearnerCourseIds,
@@ -643,8 +643,8 @@ function assertUnlocked(v: AccessVerdict) {
 }
 
 async function watermarkText(userId: number) {
-  const u = await User.findByPk(userId, { attributes: ['name', 'mobile'] });
-  return [u?.name, u?.mobile].filter(Boolean).join(' · ');
+  const u = await User.findByPk(userId, { attributes: ['name', 'mobile', 'sharedMobile'] });
+  return [u?.name, u && contactMobile(u)].filter(Boolean).join(' · ');
 }
 
 /**

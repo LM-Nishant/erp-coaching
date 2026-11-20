@@ -141,6 +141,7 @@ async function go(next: NextStep) {
     return;
   }
   if (next === 'otp') return router.push({ name: 'otp', query: route.query });
+  if (next === 'choose-profile') return router.replace({ name: 'choose-profile', query: route.query });
   if (next === 'select-institute') return router.replace({ name: 'select-institute' });
   return router.replace((route.query.redirect as string) || '/home');
 }

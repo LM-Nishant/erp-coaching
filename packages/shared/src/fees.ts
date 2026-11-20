@@ -242,6 +242,7 @@ export const COURSE_BATCH_ISSUES = [
   'other_branch',
   'closed',
   'full',
+  // Legacy: purchases recorded before every student (siblings sharing a mobile included) had a login.
   'no_login',
   'no_open_batch',
 ] as const;

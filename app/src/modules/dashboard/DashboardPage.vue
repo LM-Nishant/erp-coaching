@@ -114,7 +114,8 @@ async function refresh() {
 }
 
 onMounted(load);
-watch(() => [route.query.b, auth.me?.institute?.id, auth.activeBranchId], refresh);
+// Also another profile on the same number (siblings usually share the institute).
+watch(() => [route.query.b, auth.me?.user.id, auth.me?.institute?.id, auth.activeBranchId], refresh);
 </script>
 
 <style scoped>

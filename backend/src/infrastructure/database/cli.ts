@@ -1,6 +1,7 @@
 /*
  * Database CLI: create | migrate | migrate:undo | migrate:status | seed | seed:undo | reset
  * | make:migration <module> <name> | secrets:reencrypt [--dry-run]
+ * | students:backfill-accounts [--dry-run] [--institute=<id>[,<id>…]]
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,7 +9,8 @@ import mysql from 'mysql2/promise';
 import { config } from '../config';
 import { closeSequelize, getSequelize } from './sequelize';
 import { createMigrator, createSeeder } from './migrator';
-import { initModels } from '../../bootstrap';
+import { bootstrap, initModels } from '../../bootstrap';
+import { backfillStudentAccounts } from '../../modules/students/account-backfill';
 import { reencryptStoredSecrets } from './encrypted-columns';
 
 async function createDatabase(name = config.DB_NAME) {
@@ -85,6 +87,39 @@ async function reencryptSecrets(dryRun: boolean): Promise<boolean> {
   return !failed.length;
 }
 
+/** Gives students without a login account one (see account-backfill.ts). Returns false when something is left. */
+async function backfillAccounts(dryRun: boolean, instituteIds?: number[]): Promise<boolean> {
+  const report = await backfillStudentAccounts({ dryRun, instituteIds });
+  if (!report.institutes.length) {
+    console.log('Every student has a login account and no admission or course purchase is waiting for one.');
+    return true;
+  }
+  const verb = dryRun ? 'to ' : '';
+  console.table(
+    report.institutes.map((r) => ({
+      institute: r.instituteId,
+      [`${verb}create (own mobile)`]: r.accountsOwningMobile,
+      [`${verb}create (shared mobile)`]: r.accountsSharingMobile,
+      [`${verb}link existing`]: r.accountsLinked,
+      [dryRun ? 'to enrol in batch' : 'enrolled in batch']: r.enrolledInBatch,
+      'already in batch': r.alreadyInBatch,
+      [dryRun ? 'course purchases to retry' : 'course purchases placed']: r.coursePurchases,
+    })),
+  );
+  const copies = Object.entries(report.copies).filter(([, n]) => n);
+  if (copies.length)
+    console.log(
+      `${dryRun ? "Rows without the student's login" : "Rows given the student's login"}: ${copies
+        .map(([table, n]) => `${table} ${n}`)
+        .join(', ')}`,
+    );
+  if (report.problems.length) {
+    console.error(`${dryRun ? 'Would need' : 'Needs'} an admin's attention:`);
+    console.table(report.problems);
+  } else console.log(dryRun ? 'Nothing would need attention.' : 'Done: nothing needs attention.');
+  return !report.problems.length;
+}
+
 async function main() {
   const [cmd, ...args] = process.argv.slice(2);
   if (cmd === 'create') return createDatabase();
@@ -139,6 +174,17 @@ async function main() {
       await initModels();
       if (!(await reencryptSecrets(args.includes('--dry-run')))) process.exitCode = 1;
       break;
+    case 'students:backfill-accounts': {
+      // `--institute=<id>[,<id>…]` limits the run to those institutes.
+      const scope = args.find((a) => a.startsWith('--institute='))?.slice('--institute='.length);
+      const instituteIds = scope?.split(',').map(Number);
+      if (instituteIds?.some((id) => !Number.isInteger(id) || id <= 0))
+        throw new Error('Usage: students:backfill-accounts [--dry-run] [--institute=<id>[,<id>…]]');
+      // The full boot: enrolments notify students and guardians through resolvers wired in onReady.
+      await bootstrap();
+      if (!(await backfillAccounts(args.includes('--dry-run'), instituteIds))) process.exitCode = 1;
+      break;
+    }
     default:
       throw new Error(`Unknown command: ${cmd}`);
   }

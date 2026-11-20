@@ -18,6 +18,7 @@
     "db:seed:undo": "tsx src/infrastructure/database/cli.ts seed:undo",
     "db:reset": "tsx src/infrastructure/database/cli.ts reset",
     "secrets:reencrypt": "tsx src/infrastructure/database/cli.ts secrets:reencrypt",
+    "students:backfill-accounts": "tsx src/infrastructure/database/cli.ts students:backfill-accounts",
     "make:migration": "tsx src/infrastructure/database/cli.ts make:migration",
     "make:module": "tsx scripts/make-module.ts"
   },

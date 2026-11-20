@@ -51,6 +51,19 @@ export function authRoutes(api: Router) {
     res.json(await auth.verifyOtp(body.challengeId, body.code, body.device));
   });
 
+  // "Who's signing in?": after a verified code for a number shared by several accounts.
+  r.post('/select-profile', authRateLimit, async (req, res) => {
+    const body = parse(
+      z.object({
+        selectionToken: z.string().trim().min(40).max(200),
+        userId: z.number().int().positive(),
+        device,
+      }),
+      req.body,
+    );
+    res.json(await auth.selectProfile(body.selectionToken, body.userId, body.device));
+  });
+
   r.post('/refresh', tokenRateLimit, async (req, res) => {
     const body = parse(z.object({ refreshToken: z.string().min(20) }), req.body);
     res.json(await auth.refreshTokens(body.refreshToken));

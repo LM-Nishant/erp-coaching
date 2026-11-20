@@ -108,7 +108,7 @@ draft-8 `RateLimit` headers.
 | `media`       | `/api/files/signed/*`, `/api/lms/public/hls/*` and website images                              | 3000 / min   | `RATE_LIMIT_MEDIA_PER_MIN`           |
 | `media-token` | each signed file URL or HLS token, whatever the client IP: caps a leaked or shared link        | 300 / min    | `RATE_LIMIT_MEDIA_PER_TOKEN_PER_MIN` |
 | `website`     | public website reads: pages, sitemaps, `robots.txt`, short links and checkout pages            | 300 / min    | `RATE_LIMIT_WEBSITE_PER_MIN`         |
-| `auth`        | password login, OTP request and OTP verify                                                     | 30 / 15 min  | `RATE_LIMIT_AUTH_MAX`                |
+| `auth`        | password login, OTP request, OTP verify and profile selection                                  | 30 / 15 min  | `RATE_LIMIT_AUTH_MAX`                |
 | `token`       | token refresh and logout                                                                       | 600 / 15 min | `RATE_LIMIT_TOKEN_MAX`               |
 | `public-form` | anonymous writes: website forms, coupons, checkout, referral clicks, student self-registration | 60 / 15 min  | `RATE_LIMIT_PUBLIC_FORM_MAX`         |
 | `device`      | biometric device pushes                                                                        | 120 / min    | `RATE_LIMIT_DEVICE_PER_MIN`          |
@@ -148,6 +148,30 @@ Redis is unreachable, each process counts in memory ([deployment.md](deployment.
 - **Unknown numbers.** An OTP request for a number without an active account stores and sends
   nothing, but answers like a real one: a challenge id of the same shape, the time a real code
   takes, the same per-number limit, and wrong codes count towards the same attempts and lockout.
+- **Shared numbers ("Who's signing in?").** Children who share a parent's mobile each have an
+  account of their own. One account owns the number (`users.mobile`, unique); the others have no
+  number of their own and are reached on it (`users.shared_mobile`): their OTPs, new-device codes,
+  SMS and WhatsApp messages go to that number.
+  - Nothing before the code is verified depends on how many accounts the number reaches: one
+    code and one challenge (held by the number's first account), with the same answer, timing and
+    per-number limit as a number with one account, or none.
+  - A verified login code for a number with several active accounts returns `200 choose_profile`
+    without tokens: the accounts' names, institutes and roles, and a selection token. The token
+    works once, only on the device that verified the code, for `OTP_TTL_SECONDS`, and is stored
+    as an HMAC keyed with `OTP_HASH_SECRET`.
+  - `POST /api/auth/select-profile` with the token and one of those accounts signs in as it;
+    anything else is 401 `PROFILE_SELECTION_INVALID`. The chosen account's own sign-in lock
+    (429 `ACCOUNT_LOCKED`), device limit (`device_limit_reached`) and devices apply as for any
+    sign-in, then institute selection and biometric unlock. A lock or a full device list leaves
+    the token usable for another account. The audit log records `auth.login` with `profileChosen`.
+  - Wrong codes count against the number's first account, per device of any of the number's
+    accounts (every other device shares one scope), so a locked number stops OTP sign-in for all
+    of its accounts until the lock ends. The account that signs in, offered or chosen, also keeps
+    its own lock.
+  - Password sign-in with the mobile reaches only the account that owns it. The others sign in
+    with their email and password, or with the number's OTP.
+  - "Switch profile" in the app's account menu sends a new code to the number and asks for it
+    before offering the accounts. The account that was signed in is signed out on that device.
 - **Failed SMS.** OTPs are sent while the request waits, through the platform SMS provider. When a
   code can't be sent (a vendor outage, or a vendor refusing one number, for example Twilio after
   its owner replied STOP), the operator always gets an error log and an error-tracking event, and

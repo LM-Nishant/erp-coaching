@@ -4,3 +4,5 @@ export { hasCourseEntitlement, hasSubjectEntitlement, entitledCourseIds } from '
 /** Read-only report queries (reports module, spec §4.17); callers pass a validated `ReportScope`. */
 export { feeCollectionReport, outstandingDuesReport } from './reporting';
 export { setPlatformFeesGatewayProvider, type PlatformFeesGatewayProvider } from './gateways.service';
+/** Retries a course purchase's admission and batch enrolment (the students' account backfill). */
+export { reconcileCourseEnrolment } from './course-enrolment';

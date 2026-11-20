@@ -9,7 +9,7 @@ import { notify } from '../notifications/api';
 import { Institute } from '../institutes/institute.model';
 import { membershipInstituteIds } from '../permissions/access.service';
 import { UserRole } from '../permissions/models';
-import { User } from '../users/user.model';
+import { User, contactMobile, mobileLike } from '../users/user.model';
 import { emitDeviceRevoked } from './device-events';
 import { Device, RefreshToken } from './models';
 import { signInLocks } from './sign-in-lock';
@@ -132,11 +132,7 @@ export async function searchPlatformUsers(search: string): Promise<PlatformUserD
   const like = `%${search}%`;
   const users = await User.findAll({
     where: {
-      [Op.or]: [
-        { name: { [Op.like]: like } },
-        { mobile: { [Op.like]: like } },
-        { email: { [Op.like]: like } },
-      ],
+      [Op.or]: [{ name: { [Op.like]: like } }, ...mobileLike(like), { email: { [Op.like]: like } }],
     },
     order: [['name', 'ASC']],
     limit: 20,
@@ -161,7 +157,7 @@ export async function searchPlatformUsers(search: string): Promise<PlatformUserD
   return users.map((u) => ({
     id: u.id,
     name: u.name,
-    mobile: u.mobile,
+    mobile: contactMobile(u),
     email: u.email,
     status: u.status,
     isSuperAdmin: u.isSuperAdmin,

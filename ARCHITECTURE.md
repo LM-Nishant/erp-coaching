@@ -117,6 +117,7 @@ Deployment, TLS, backups and scaling are covered in [docs/deployment.md](docs/de
   - Passwords are hashed with scrypt on libuv's thread pool (`infrastructure/password.ts`). bcrypt hashes from earlier releases are checked in a worker thread and replaced at the next successful sign-in.
   - OTPs are stored as an HMAC keyed with `OTP_HASH_SECRET`. A request for a number without an account stores and sends nothing but gets the same answer, so it can't reveal which numbers have accounts. Requests are limited per number, with a separate budget for each of the account's devices.
   - Failed passwords, OTP codes and biometric unlocks lock the account for a while, per device (`authentication/sign-in-lock.ts`). Every lock ends by itself. Admins clear locks with `DELETE /users/:id/sign-in-lock`, the super admin with `DELETE /admin/users/:id/sign-in-lock`.
+  - Every student has an account, siblings on a parent's mobile included: one account owns a number (`users.mobile`, unique) and the others are reached on it (`users.shared_mobile`). A verified OTP for a number with several accounts answers `choose_profile` ("Who's signing in?"), and `POST /auth/select-profile` signs in as the one chosen ([details](docs/security.md#passwords-otps-and-sign-in-lockout)).
 - **Tokens:** access JWT of 15 minutes. Refresh tokens are opaque, stored as a sha256 hash, rotated on every refresh, and bound to a device.
 - **Devices:**
   - A device is identified by a client-generated id (Capacitor `Device.getId()`) plus its platform.

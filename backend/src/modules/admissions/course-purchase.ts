@@ -8,7 +8,7 @@ import type { CourseBatchIssue } from '@erp/shared';
 import { logger } from '../../infrastructure/logger';
 import { audit } from '../../shared/audit/audit.service';
 import { requireTenantContext } from '../../shared/context';
-import { AppError, BadRequest, Conflict, NotFound } from '../../shared/errors';
+import { AppError, Conflict, NotFound } from '../../shared/errors';
 import {
   activeBatchForCourse,
   batchAvailability,
@@ -18,20 +18,23 @@ import {
   openBatchesForCourse,
 } from '../academics/api';
 import { Student } from '../students/models';
-import { recordHistory } from '../students/students.service';
+import { ensureStudentUser, recordHistory } from '../students/students.service';
 import { emitAdmissionCompleted } from './admission-events';
 import { applicationRepo, completeAdmission, notifyAdmissionConfirmed } from './admissions.service';
 import { AdmissionApplication } from './models';
 
-/** Why a purchase could not be placed in a batch (or in the batch chosen at checkout). */
-export type PurchaseBatchIssue = CourseBatchIssue;
+/**
+ * Why a purchase could not be placed in a batch (or in the batch chosen at checkout). `no_login` is
+ * only on rows recorded before every student had a login of their own.
+ */
+export type PurchaseBatchIssue = Exclude<CourseBatchIssue, 'no_login'>;
 
 export interface CoursePurchaseAdmission {
   applicationId: number;
   /** The student's branch (the batch search is limited to it). */
   branchId: number;
-  /** The student's own login (batch rosters are by user id); null for a sibling sharing a mobile. */
-  studentUserId: number | null;
+  /** The student's own login (batch rosters are by user id); siblings sharing a mobile have one too. */
+  studentUserId: number;
   /** True when this call admitted the student; false when an earlier admission for the course is reused. */
   newlyAdmitted: boolean;
   /** Batch of the course the student is actively enrolled in after the call (null: none available). */
@@ -49,8 +52,6 @@ const OPEN_STATUSES = ['pending', 'waitlisted', 'approved'] as const;
 
 /** The error for an admin assignment (or checkout) that can't use the batch. */
 export function purchaseBatchError(issue: PurchaseBatchIssue): AppError {
-  if (issue === 'no_login')
-    return BadRequest('The student has no login of their own yet, so they cannot be enrolled in a batch');
   if (issue === 'no_open_batch')
     return Conflict('No open batch of the course has free seats', 'NO_OPEN_BATCH');
   return batchUnavailableError(issue);
@@ -123,47 +124,43 @@ export async function admitForCoursePurchase(
   let batchId: number | null = null;
   let addedToBatch = false;
   let batchIssue: PurchaseBatchIssue | null = null;
-  const userId = student.userId;
-  if (!userId) {
-    if (!fallback) throw purchaseBatchError('no_login');
-    batchIssue = 'no_login';
-  } else {
-    const current = await activeBatchForCourse(userId, courseId, { transaction });
-    if (current) batchId = current.id;
-    else {
-      // Locks each batch row, so a seat found here is still free when the student is enrolled.
-      const tryBatch = async (id: number) => {
-        const { reason } = await batchAvailability(id, {
-          courseId,
-          branchId,
-          studentUserId: userId,
-          transaction,
-        });
-        if (reason) {
-          if (!fallback) throw purchaseBatchError(reason);
-          return { reason, added: false };
-        }
-        const { enrolled } = await enrollStudentsInBatch(id, [userId], { branchId, transaction });
-        return { reason: null, added: enrolled.length > 0 };
-      };
-      const preferred = [input.batchId, fallback ? found?.batchId : null].filter((id): id is number => !!id);
-      const open = fallback
-        ? (await openBatchesForCourse(courseId, branchId, { transaction })).map((o) => o.batch.id)
-        : [];
-      for (const id of new Set([...preferred, ...open])) {
-        const r = await tryBatch(id);
-        if (r.reason) {
-          if (id === input.batchId) batchIssue = r.reason;
-          continue;
-        }
-        batchId = id;
-        addedToBatch = r.added;
-        break;
+  // A student recorded before every student had a login (a sibling on a shared mobile) gets one now.
+  const userId = await ensureStudentUser(student, transaction);
+  const current = await activeBatchForCourse(userId, courseId, { transaction });
+  if (current) batchId = current.id;
+  else {
+    // Locks each batch row, so a seat found here is still free when the student is enrolled.
+    const tryBatch = async (id: number) => {
+      const { reason } = await batchAvailability(id, {
+        courseId,
+        branchId,
+        studentUserId: userId,
+        transaction,
+      });
+      if (reason) {
+        if (!fallback) throw purchaseBatchError(reason);
+        return { reason, added: false };
       }
-      if (!batchId) {
-        batchIssue ??= 'no_open_batch';
-        if (!fallback) throw purchaseBatchError(batchIssue);
+      const { enrolled } = await enrollStudentsInBatch(id, [userId], { branchId, transaction });
+      return { reason: null, added: enrolled.length > 0 };
+    };
+    const preferred = [input.batchId, fallback ? found?.batchId : null].filter((id): id is number => !!id);
+    const open = fallback
+      ? (await openBatchesForCourse(courseId, branchId, { transaction })).map((o) => o.batch.id)
+      : [];
+    for (const id of new Set([...preferred, ...open])) {
+      const r = await tryBatch(id);
+      if (r.reason) {
+        if (id === input.batchId) batchIssue = r.reason;
+        continue;
       }
+      batchId = id;
+      addedToBatch = r.added;
+      break;
+    }
+    if (!batchId) {
+      batchIssue ??= 'no_open_batch';
+      if (!fallback) throw purchaseBatchError(batchIssue);
     }
   }
 
@@ -187,7 +184,7 @@ export async function admitForCoursePurchase(
     ));
   if (newlyAdmitted) {
     if (application.batchId !== batchId) await application.update({ batchId }, { transaction });
-    await completeAdmission(application, { id: student.id, userId }, branchId, transaction, { enrol: false });
+    await completeAdmission(application, student, branchId, transaction, { enrol: false });
     await emitAdmissionCompleted(
       {
         applicationId: application.id,

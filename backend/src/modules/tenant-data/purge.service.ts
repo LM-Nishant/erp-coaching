@@ -199,8 +199,8 @@ async function removeUsers(
         } catch (e) {
           if (!isFkRestrict(e)) throw e;
           await sequelize.query(
-            `UPDATE users SET name = 'Deleted user', mobile = :mobile, email = NULL, password_hash = NULL,
-                    status = 'blocked' WHERE id = :id AND is_super_admin = 0`,
+            `UPDATE users SET name = 'Deleted user', mobile = :mobile, shared_mobile = NULL, email = NULL,
+                    password_hash = NULL, status = 'blocked' WHERE id = :id AND is_super_admin = 0`,
             { type: QueryTypes.BULKUPDATE, replacements: { id, mobile: `deleted-${id}` } },
           );
           anonymized++;
