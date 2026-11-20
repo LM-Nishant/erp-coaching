@@ -213,7 +213,8 @@ fail the action:
 - **Pages:** the result pages are static HTML, with `Cache-Control: no-store` and a CSP that allows no scripts, forms
   or framing.
 - **Tokens:**
-  - Refresh tokens are encrypted with the shared encryption helper (`ENCRYPTION_KEY`).
+  - Refresh tokens are encrypted with the shared encryption helper (`ENCRYPTION_KEY`), and
+    [`secrets:reencrypt`](../deployment.md#rotating-the-encryption-key) moves them to a new key after a rotation.
   - Access tokens are kept in memory only.
   - No API returns a token. Tokens, codes and `state` are never logged; request logs redact `state` and `code`.
 - **Disconnecting** revokes the grant at Google, unless another connection on the platform uses the same Google

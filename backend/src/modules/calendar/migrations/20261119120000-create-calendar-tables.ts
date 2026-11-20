@@ -35,7 +35,7 @@ export const up: Migration = async ({ context: { queryInterface } }) => {
     owner_user_id: fk('users', { allowNull: true, onDelete: 'CASCADE' }),
     state_hash: { type: DataTypes.CHAR(64), allowNull: false },
     nonce_hash: { type: DataTypes.CHAR(64), allowNull: true },
-    code_verifier_encrypted: { type: DataTypes.TEXT, allowNull: false },
+    code_verifier_encrypted: { type: DataTypes.TEXT, allowNull: true },
     client: { type: DataTypes.STRING(10), allowNull: false },
     expires_at: { type: DataTypes.DATE, allowNull: false },
     started_at: { type: DataTypes.DATE, allowNull: true },

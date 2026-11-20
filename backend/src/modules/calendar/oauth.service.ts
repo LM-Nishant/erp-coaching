@@ -183,7 +183,8 @@ export async function beginConsent(rawState: string, cookieHeader?: string): Pro
   const state = await findState(rawState);
   if (!state) return invalidLink();
   const now = new Date();
-  if (state.usedAt || state.expiresAt <= now)
+  const verifier = state.codeVerifierEncrypted;
+  if (state.usedAt || !verifier || state.expiresAt <= now)
     return page(
       410,
       'Link expired',
@@ -196,7 +197,7 @@ export async function beginConsent(rawState: string, cookieHeader?: string): Pro
   const consentUrl = async () =>
     googleAuthUrl(client, {
       state: rawState,
-      codeVerifier: decryptSecret(state.codeVerifierEncrypted),
+      codeVerifier: decryptSecret(verifier),
       loginHint: await loginHintFor(state),
     });
   if (state.startedAt) {
@@ -241,7 +242,7 @@ export async function completeConsent(q: ConsentCallback, cookieHeader?: string)
   const verifier = state.codeVerifierEncrypted;
   // Single use: claim the state, and drop the verifier, before talking to Google.
   const [claimed] = await CalendarOAuthState.update(
-    { usedAt: new Date(), codeVerifierEncrypted: '' },
+    { usedAt: new Date(), codeVerifierEncrypted: null },
     { where: { instituteId: state.instituteId, id: state.id, usedAt: null } },
   );
   if (!claimed) {
@@ -252,7 +253,7 @@ export async function completeConsent(q: ConsentCallback, cookieHeader?: string)
   let result: CalendarConnectResult;
   if (state.expiresAt <= new Date()) result = 'expired';
   else if (q.error) result = q.error === 'access_denied' ? 'denied' : 'error';
-  else if (!q.code) result = 'error';
+  else if (!q.code || !verifier) result = 'error';
   else {
     const ctx = {
       ...getContext(),

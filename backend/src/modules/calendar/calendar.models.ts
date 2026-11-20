@@ -13,6 +13,7 @@ import type {
   CalendarConnectResult,
   CalendarSyncStatus,
 } from '@erp/shared';
+import { registerEncryptedColumns } from '../../infrastructure/database/encrypted-columns';
 import { registerTenantModel } from '../../shared/tenancy/tenant-model';
 import { User } from '../users/user.model';
 
@@ -73,6 +74,7 @@ export class CalendarConnection extends Model<
       { sequelize, tableName: 'calendar_connections' },
     );
     registerTenantModel(CalendarConnection);
+    registerEncryptedColumns(CalendarConnection, ['refreshTokenEncrypted']);
   }
 }
 
@@ -92,7 +94,8 @@ export class CalendarOAuthState extends Model<
   declare ownerUserId: number | null;
   declare stateHash: string;
   declare nonceHash: CreationOptional<string | null>;
-  declare codeVerifierEncrypted: string;
+  /** null once the state is used. */
+  declare codeVerifierEncrypted: string | null;
   declare client: CalendarConnectClient;
   declare expiresAt: Date;
   declare startedAt: CreationOptional<Date | null>;
@@ -110,7 +113,7 @@ export class CalendarOAuthState extends Model<
         ownerUserId: uint(),
         stateHash: { type: DataTypes.CHAR(64), allowNull: false },
         nonceHash: { type: DataTypes.CHAR(64), allowNull: true },
-        codeVerifierEncrypted: { type: DataTypes.TEXT, allowNull: false },
+        codeVerifierEncrypted: { type: DataTypes.TEXT, allowNull: true },
         client: str(10, false),
         expiresAt: date(false),
         startedAt: date(),
@@ -122,6 +125,7 @@ export class CalendarOAuthState extends Model<
       { sequelize, tableName: 'calendar_oauth_states' },
     );
     registerTenantModel(CalendarOAuthState);
+    registerEncryptedColumns(CalendarOAuthState, ['codeVerifierEncrypted']);
   }
 }
 

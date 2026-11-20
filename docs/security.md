@@ -209,6 +209,7 @@ Redis is unreachable, each process counts in memory ([deployment.md](deployment.
   - the AI API key;
   - payment-gateway credentials;
   - messaging-provider credentials;
+  - Google Calendar refresh tokens and OAuth code verifiers;
   - platform integration secrets;
   - LMS content keys.
 

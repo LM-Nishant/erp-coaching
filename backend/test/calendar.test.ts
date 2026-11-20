@@ -373,7 +373,7 @@ describe('Google Calendar', () => {
     expect(conn.refreshTokenEncrypted).not.toContain(refreshToken);
     expect(decryptSecret(conn.refreshTokenEncrypted)).toBe(refreshToken);
     const used = (await stateRow(flow.state))!;
-    expect(used).toMatchObject({ result: 'connected', codeVerifierEncrypted: '' });
+    expect(used).toMatchObject({ result: 'connected', codeVerifierEncrypted: null });
     expect(used.usedAt).toBeInstanceOf(Date);
 
     // Replaying the callback shows the result again without another code exchange; the start link is spent.

@@ -300,7 +300,7 @@ Relative paths are relative to `deploy/`. `ERP_ENV_FILE` names the env file that
 Every encrypted value carries the id of the key that wrote it (`v2:<key id>:…`, derived from the key). `ENCRYPTION_KEY`
 encrypts, and both it and the keys in `ENCRYPTION_PREVIOUS_KEYS` decrypt. Values saved before key ids existed (`v1:`)
 are tried with each key until they are re-encrypted. The stored secrets are the AI keys, payment gateway credentials,
-notification and platform integration settings, and offline LMS content keys.
+notification and platform integration settings, Google Calendar refresh tokens, and offline LMS content keys.
 
 1. Back up ([backup-restore.md](backup-restore.md)). Keep the old key in your vault as long as you keep backups made
    before the rotation: they can only be restored with it.
