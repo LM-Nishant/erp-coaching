@@ -11,6 +11,7 @@ import { SECURE_SCREEN_NAME } from '@erp/shared';
 import { User } from '../users/user.model';
 import * as auth from './auth.service';
 import { listUserDevices, revokeDevice, searchPlatformUsers } from './devices.service';
+import { clearSignInLock } from './sign-in-lock';
 
 const device = z.object({
   uid: z.string().trim().min(8).max(128),
@@ -48,6 +49,19 @@ export function authRoutes(api: Router) {
       req.body,
     );
     res.json(await auth.verifyOtp(body.challengeId, body.code, body.device));
+  });
+
+  // "Who's signing in?": after a verified code for a number shared by several accounts.
+  r.post('/select-profile', authRateLimit, async (req, res) => {
+    const body = parse(
+      z.object({
+        selectionToken: z.string().trim().min(40).max(200),
+        userId: z.number().int().positive(),
+        device,
+      }),
+      req.body,
+    );
+    res.json(await auth.selectProfile(body.selectionToken, body.userId, body.device));
   });
 
   r.post('/refresh', tokenRateLimit, async (req, res) => {
@@ -170,6 +184,14 @@ export function authRoutes(api: Router) {
       req.params,
     );
     await revokeDevice(p.deviceId, p.id, req.ctx.userId!);
+    res.status(204).end();
+  });
+
+  // Ends the user's sign-in lock after failed attempts, on every device (audited).
+  api.delete('/admin/users/:id/sign-in-lock', authenticate, requireSuperAdmin, async (req, res) => {
+    const { id } = parse(idParam, req.params);
+    if (!(await User.findByPk(id))) throw NotFound('User');
+    await clearSignInLock(id);
     res.status(204).end();
   });
 }

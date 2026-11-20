@@ -1,5 +1,6 @@
 import type { Server as HttpServer } from 'node:http';
 import { Server, type Namespace, type Socket } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import {
@@ -14,14 +15,21 @@ import {
 } from '@erp/shared';
 import { config } from '../../infrastructure/config';
 import { logger } from '../../infrastructure/logger';
+import { newRedisConnection, type RedisClient } from '../../infrastructure/redis';
 import { runWithContext, hasPermission, type RequestContext } from '../../shared/context';
-import { authenticate } from '../../shared/middleware/authenticate';
+import {
+  assertOpenSession,
+  authenticate,
+  isDeviceSignedIn,
+  recheckSession,
+} from '../../shared/middleware/authenticate';
 import { AppError, Conflict, Forbidden, TooManyRequests } from '../../shared/errors';
 import { parse } from '../../shared/utilities/validation';
 import { isModuleEnabled } from '../subscriptions/subscription.service';
 import { User } from '../users/user.model';
 import * as svc from './live-classes.service';
 import { setRealtimeBridge } from './realtime-bridge';
+import { createRoomStore, type RoomExtras, type RoomStore } from './room-store';
 
 /**
  * Socket.IO signalling + classroom interaction for live classes.
@@ -29,12 +37,20 @@ import { setRealtimeBridge } from './realtime-bridge';
  * - Auth: the handshake carries the normal access token (`auth.token`) and optional `auth.branchId`;
  *   it goes through the same `authenticate` checks as REST (revoked / idle device → 401 first, membership,
  *   branch, then the tenant request guards: a suspended subscription → 402, a read-only one may join since the
- *   handshake counts as a read), plus the `live-classes.view` permission and the plan's module switch. Sockets of
- *   a device are dropped when it is revoked (`disconnectDeviceSockets`, from integrations.ts).
+ *   handshake counts as a read), plus the `live-classes.view` permission and the plan's module switch. A device
+ *   that signed out is refused (401 `SIGNED_OUT`) although its access token has not expired yet.
+ * - Open sockets are re-checked with `recheckSession` every minute and when an institute's subscription or status
+ *   changes (`recheckLiveSockets`): a revoked, idle or signed-out device, an inactive user or institute and a
+ *   suspended subscription drop them. A device that signs out or is revoked is dropped within seconds, by the
+ *   device event's job (`dropDevice`).
+ * - Media: a vendor SFU's connection outlives its join token (the SFU renews it). Dropping a device's sockets also
+ *   removes the device's media connections (`svc.removeFromMedia`); a media join from a signed-out, revoked or idle
+ *   device is refused by the provider webhook (`provider-webhooks.ts`).
  * - Every event handler runs inside the socket's request context, so tenant-scoped repositories work.
- * - Room state that does not need persistence (hands, speakers, whiteboard, screen share) is kept in
- *   memory on this node. Run a single node, or add `@socket.io/redis-adapter` + sticky sessions and
- *   move `rooms` to Redis to scale out (see README).
+ * - Several API instances: with REDIS_URL set, the Socket.IO Redis adapter carries broadcasts and the room's
+ *   hands, speakers, screen share and whiteboard live in Redis (`room-store.ts`). Who is in a room is read from
+ *   its sockets (`fetchSockets`), so nothing goes stale when an instance stops. The long-polling fallback needs
+ *   sticky sessions (docs/deployment.md).
  */
 
 interface SocketData {
@@ -42,44 +58,93 @@ interface SocketData {
   user: LiveUserRef;
   liveSessionId?: number;
   role?: LiveRole;
+  /** The joined class's teacher. */
+  hostUserId?: number;
   chatBudget: { tokens: number; at: number };
 }
 type LiveSocket = Socket<Record<string, never>, Record<string, never>, Record<string, never>, SocketData>;
-
-interface RoomState {
-  members: Map<number, { user: LiveUserRef; role: LiveRole; sockets: Set<string> }>;
-  hands: Map<number, LiveUserRef>;
-  speakers: Map<number, LiveUserRef>;
-  screenSharing: boolean;
-  whiteboard: { visible: boolean; strokes: WhiteboardStroke[] };
+/** A socket on this or another instance, as returned by `fetchSockets`. */
+interface PeerSocket {
+  id: string;
+  data: Partial<SocketData>;
+  disconnect(close?: boolean): unknown;
 }
 
-const MAX_STROKES = 2000;
 const MAX_POINTS = 4000;
 const CHAT_BURST = 5;
 const CHAT_REFILL_MS = 1000;
+export const RECHECK_INTERVAL_MS = 60_000;
+const EMPTY_EXTRAS: RoomExtras = {
+  hands: [],
+  speakers: [],
+  screenSharing: false,
+  whiteboard: { visible: false, strokes: [] },
+};
 
-const rooms = new Map<string, RoomState>();
-const key = (inst: number, id: number) => `${inst}:${id}`;
 const roomName = (inst: number, id: number) => `room:${inst}:${id}`;
 const userRoom = (inst: number, id: number, userId: number) => `user:${inst}:${id}:${userId}`;
+const deviceRoom = (deviceId: number) => `device:${deviceId}`;
+const instituteRoom = (inst: number) => `inst:${inst}`;
 
-function roomState(inst: number, id: number): RoomState {
-  let r = rooms.get(key(inst, id));
-  if (!r) {
-    r = {
-      members: new Map(),
-      hands: new Map(),
-      speakers: new Map(),
-      screenSharing: false,
-      whiteboard: { visible: false, strokes: [] },
-    };
-    rooms.set(key(inst, id), r);
-  }
-  return r;
+const PEERS_TIMEOUT_MS = 2000;
+const warnedAt = new Map<string, number>();
+/** Logs at most one warning a minute per kind (Redis outages repeat on every event). */
+function warnOnce(kind: string, err: unknown, msg: string) {
+  if (Date.now() - (warnedAt.get(kind) ?? 0) < 60_000) return;
+  warnedAt.set(kind, Date.now());
+  logger.warn({ err }, msg);
 }
 
-const hostOnline = (r: RoomState) => [...r.members.values()].some((m) => m.role === 'host');
+/**
+ * The sockets in a room on every instance. When the other instances don't answer in time (Redis is
+ * unreachable), this instance's: each instance keeps its classes going until Redis is back.
+ */
+async function socketsIn(nsp: Namespace, room: string): Promise<PeerSocket[]> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('no answer from the other API instances')), PEERS_TIMEOUT_MS);
+  });
+  try {
+    return (await Promise.race([nsp.in(room).fetchSockets(), timeout])) as unknown as PeerSocket[];
+  } catch (err) {
+    warnOnce('peers', err, 'Live sockets: other API instances unreachable; using this instance only');
+    return (await nsp.in(room).local.fetchSockets()) as unknown as PeerSocket[];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** The adapter doesn't handle a failed publish (Redis down): log it instead of an unhandled rejection. */
+function quietPublish(pub: RedisClient): RedisClient {
+  const publish = pub.publish.bind(pub);
+  (pub as unknown as { publish: (channel: string, message: string) => Promise<number> }).publish = (
+    channel,
+    message,
+  ) =>
+    publish(channel, message).catch((err: unknown) => {
+      warnOnce('publish', err, 'Live sockets: Redis publish failed; other instances miss this event');
+      return 0;
+    });
+  return pub;
+}
+
+/**
+ * Runs the joins and leaves of one user in one class on this instance one after another, so the
+ * first socket in and the last socket out are counted once.
+ */
+const queues = new Map<string, Promise<void>>();
+function serial<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const run = (queues.get(key) ?? Promise.resolve()).then(fn);
+  const done = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  queues.set(key, done);
+  void done.then(() => {
+    if (queues.get(key) === done) queues.delete(key);
+  });
+  return run;
+}
 
 /* ------------------------------------------------------------------ payload schemas */
 
@@ -120,17 +185,23 @@ const visibleSchema = z.object({ visible: z.boolean() });
 /* ------------------------------------------------------------------ server */
 
 let io: Server | null = null;
+let recheckTimer: ReturnType<typeof setInterval> | null = null;
+let rechecking = false;
 
 export function getLiveNamespace(): Namespace | null {
   return io?.of(LIVE_SOCKET_NAMESPACE) ?? null;
 }
 
 export function attachLiveSockets(server: HttpServer): Server {
+  const pub = newRedisConnection('live-pub');
+  const sub = newRedisConnection('live-sub');
   io = new Server(server, {
     path: LIVE_SOCKET_PATH,
     cors: { origin: config.corsOrigins, credentials: true },
     maxHttpBufferSize: 1e6,
+    ...(pub && sub ? { adapter: createAdapter(quietPublish(pub), sub) } : {}),
   });
+  const rooms = createRoomStore();
   const nsp = io.of(LIVE_SOCKET_NAMESPACE);
 
   nsp.use((socket, next) => {
@@ -148,46 +219,129 @@ export function attachLiveSockets(server: HttpServer): Server {
 
   nsp.on('connection', (raw) => {
     const socket = raw as unknown as LiveSocket;
-    registerHandlers(nsp, socket);
+    const { deviceId, instituteId } = socket.data.ctx;
+    void socket.join([deviceRoom(deviceId!), instituteRoom(instituteId!)]);
+    registerHandlers(nsp, socket, rooms);
   });
 
   setRealtimeBridge({
     sessionEnded: (inst, id) => {
+      // Sockets that were in the room find out on their next event (`current`), on every instance.
       nsp.to(roomName(inst, id)).emit(S.sessionEnded, { sessionId: id });
       nsp.in(roomName(inst, id)).socketsLeave(roomName(inst, id));
-      const r = rooms.get(key(inst, id));
-      if (r)
-        for (const m of r.members.values())
-          for (const sockId of m.sockets) {
-            const s = nsp.sockets.get(sockId) as unknown as LiveSocket | undefined;
-            if (s) s.data.liveSessionId = undefined;
-          }
-      rooms.delete(key(inst, id));
+      rooms.drop(roomName(inst, id)).catch((err) => logger.warn({ err }, 'live room state not dropped'));
     },
-    onlineUserIds: (inst, id) => [...(rooms.get(key(inst, id))?.members.keys() ?? [])],
   });
+
+  if (recheckTimer) clearInterval(recheckTimer);
+  recheckTimer = setInterval(() => {
+    if (rechecking) return;
+    rechecking = true;
+    recheckLiveSockets()
+      .catch((err) => logger.error({ err }, 'live socket re-check failed'))
+      .finally(() => (rechecking = false));
+  }, RECHECK_INTERVAL_MS);
+  recheckTimer.unref();
   return io;
 }
 
-/** Disconnects this node's live-class sockets opened from a device (it was revoked). Returns how many. */
-export function disconnectDeviceSockets(deviceId: number): number {
+/** Disconnects the live-class sockets opened from a device, on every instance. */
+export function disconnectDeviceSockets(deviceId: number): void {
+  getLiveNamespace()?.in(deviceRoom(deviceId)).disconnectSockets(true);
+}
+
+/** The classes these sockets joined, as media seats of their user and device. */
+function seatsOf(sockets: PeerSocket[]): svc.MediaSeat[] {
+  const seats: svc.MediaSeat[] = [];
+  for (const { data } of sockets) {
+    const { ctx, liveSessionId } = data;
+    if (liveSessionId && ctx?.instituteId && ctx.userId && ctx.deviceId)
+      seats.push({ instituteId: ctx.instituteId, liveSessionId, userId: ctx.userId, deviceId: ctx.deviceId });
+  }
+  return seats;
+}
+const seatKey = (s: svc.MediaSeat) => `${s.instituteId}:${s.liveSessionId}:${s.userId}:${s.deviceId}`;
+
+/**
+ * Drops a device that signed out or was revoked from live classes: its sockets on every instance, and its media
+ * connections to the classes they joined and to every class live in the user's institutes (media needs no socket).
+ * Throws when the media server could not be told, so the device event job retries.
+ */
+export async function dropDevice(userId: number, deviceId: number): Promise<void> {
+  const nsp = getLiveNamespace();
+  // Read before disconnecting: leaving the class clears a socket's data.
+  const seats = seatsOf(nsp ? await socketsIn(nsp, deviceRoom(deviceId)) : []);
+  disconnectDeviceSockets(deviceId);
+  await svc.removeFromMedia([...seats, ...(await svc.liveSeatsOf(userId, deviceId))]);
+}
+
+/** A sign-out is undone by signing in again on the same device before the job runs: then nothing is dropped. */
+export async function dropSignedOutDevice(userId: number, deviceId: number): Promise<void> {
+  if (await isDeviceSignedIn(deviceId)) return;
+  await dropDevice(userId, deviceId);
+}
+
+/**
+ * Re-checks open sockets with `recheckSession` and drops those it refuses: this instance's sockets
+ * (every minute), or an institute's sockets on every instance (when its subscription or status
+ * changed). Their media connections go too, unless another kept socket has the same seat. Returns how
+ * many sockets were dropped. A database error keeps the socket.
+ */
+export async function recheckLiveSockets(instituteId?: number): Promise<number> {
   const nsp = getLiveNamespace();
   if (!nsp) return 0;
-  let count = 0;
-  for (const raw of nsp.sockets.values()) {
-    const socket = raw as unknown as LiveSocket;
-    if (socket.data?.ctx?.deviceId !== deviceId) continue;
+  const sockets: PeerSocket[] =
+    instituteId === undefined ? [...nsp.sockets.values()] : await socketsIn(nsp, instituteRoom(instituteId));
+  const verdicts = new Map<string, Promise<boolean>>();
+  const evicted: svc.MediaSeat[] = [];
+  const kept = new Set<string>();
+  let dropped = 0;
+  for (const socket of sockets) {
+    const ctx = socket.data.ctx;
+    if (!ctx) continue;
+    const key = `${ctx.deviceId}:${ctx.instituteId}:${ctx.activeBranchId ?? ''}:${ctx.impersonationSessionId ?? ''}`;
+    let allowed = verdicts.get(key);
+    if (!allowed) {
+      // A socket on another instance carries a serialised copy (no Set); the access is recomputed anyway.
+      const scope: RequestContext = { ...ctx, permissions: new Set() };
+      allowed = runWithContext(scope, () => stillAllowed(scope));
+      verdicts.set(key, allowed);
+    }
+    if (await allowed) {
+      for (const seat of seatsOf([socket])) kept.add(seatKey(seat));
+      continue;
+    }
+    evicted.push(...seatsOf([socket]));
     socket.disconnect(true);
-    count++;
+    dropped++;
   }
-  return count;
+  const gone = evicted.filter((seat) => !kept.has(seatKey(seat)));
+  if (gone.length)
+    await svc.removeFromMedia(gone).catch((err: unknown) => logger.warn({ err }, 'live media not removed'));
+  return dropped;
+}
+
+/** The handshake's checks again (see `recheckSession`); a database error keeps the socket. */
+async function stillAllowed(ctx: RequestContext): Promise<boolean> {
+  try {
+    const access = await recheckSession(ctx);
+    if (!access || !ctx.instituteId) return false;
+    if (!(ctx.isSuperAdmin && !ctx.impersonatorId) && !access.permissions.has(`${svc.MODULE}.view`))
+      return false;
+    return await isModuleEnabled(ctx.instituteId, svc.MODULE);
+  } catch (err) {
+    if (err instanceof AppError) return false;
+    logger.warn({ err }, 'live socket re-check skipped');
+    return true;
+  }
 }
 
 /** Closes the Socket.IO server (tests / graceful shutdown). */
 export async function closeLiveSockets() {
   const s = io;
   io = null;
-  rooms.clear();
+  if (recheckTimer) clearInterval(recheckTimer);
+  recheckTimer = null;
   if (s) await new Promise<void>((resolve) => s.close(() => resolve()));
 }
 
@@ -205,6 +359,7 @@ async function authenticateSocket(socket: LiveSocket) {
   const fakeReq = { ctx, header: (n: string) => headers[n.toLowerCase()] } as unknown as Request;
   await runWithContext(ctx, () => authenticate(fakeReq, {} as Response, () => {}));
   await runWithContext(ctx, async () => {
+    await assertOpenSession(ctx.deviceId!);
     if (!ctx.instituteId) throw Forbidden('Select an institute first', 'INSTITUTE_REQUIRED');
     if (!hasPermission(`${svc.MODULE}.view`)) throw Forbidden();
     if (!(await isModuleEnabled(ctx.instituteId, svc.MODULE)))
@@ -216,13 +371,15 @@ async function authenticateSocket(socket: LiveSocket) {
     user: { id: ctx.userId!, name: user?.name ?? '' },
     chatBudget: { tokens: CHAT_BURST, at: Date.now() },
   };
+  // Not needed any more; `fetchSockets` would otherwise copy it to other instances.
+  delete (socket.handshake.auth as { token?: unknown }).token;
 }
 
 /* ------------------------------------------------------------------ handlers */
 
 type Ack = (res: unknown) => void;
 
-function registerHandlers(nsp: Namespace, socket: LiveSocket) {
+function registerHandlers(nsp: Namespace, socket: LiveSocket, rooms: RoomStore) {
   const inst = socket.data.ctx.instituteId!;
   const userId = socket.data.user.id;
 
@@ -241,11 +398,26 @@ function registerHandlers(nsp: Namespace, socket: LiveSocket) {
     });
   };
 
-  /** The live class this socket joined (throws when it has not joined one). */
-  const current = () => {
+  /**
+   * The class this socket is in, or null. An ended class empties its room on every instance, so a
+   * socket that is no longer in the room has left it whatever its data says.
+   */
+  const joined = () => {
     const id = socket.data.liveSessionId;
-    if (!id || !socket.data.role) throw Conflict('Join a live class first', 'NOT_JOINED');
-    return { id, role: socket.data.role, room: roomState(inst, id), name: roomName(inst, id) };
+    const role = socket.data.role;
+    if (id && role && socket.rooms.has(roomName(inst, id))) return { id, role, name: roomName(inst, id) };
+    if (id) {
+      socket.data.liveSessionId = undefined;
+      socket.data.role = undefined;
+      void socket.leave(userRoom(inst, id, userId));
+    }
+    return null;
+  };
+  /** The class this socket joined (throws when it has not joined one). */
+  const current = () => {
+    const j = joined();
+    if (!j) throw Conflict('Join a live class first', 'NOT_JOINED');
+    return j;
   };
   const requireModerator = (role: LiveRole) => {
     if (role === 'student') throw Forbidden('Only the teacher can do this', 'NOT_CLASS_TEACHER');
@@ -253,38 +425,42 @@ function registerHandlers(nsp: Namespace, socket: LiveSocket) {
   const requireHost = (role: LiveRole) => {
     if (role !== 'host') throw Forbidden('Only the class teacher can do this', 'NOT_CLASS_TEACHER');
   };
-  const broadcastHands = (id: number, r: RoomState) =>
-    nsp.to(roomName(inst, id)).emit(S.handsUpdate, [...r.hands.values()]);
-  const broadcastSpeakers = (id: number, r: RoomState) =>
-    nsp.to(roomName(inst, id)).emit(S.speakersUpdate, [...r.speakers.values()]);
+  const broadcastHands = (name: string, hands: LiveUserRef[]) => nsp.to(name).emit(S.handsUpdate, hands);
+  const broadcastSpeakers = (name: string, speakers: LiveUserRef[]) =>
+    nsp.to(name).emit(S.speakersUpdate, speakers);
 
-  async function leaveCurrent() {
-    const id = socket.data.liveSessionId;
-    const role = socket.data.role;
-    if (!id) return;
+  /**
+   * Leaves the current class. The first part runs at once, while a disconnecting socket is still in
+   * its rooms; the user counts as left when no socket of theirs is in the class on any instance.
+   */
+  function leaveCurrent(): Promise<void> {
+    const j = joined();
+    if (!j) return Promise.resolve();
+    const { id, role, name } = j;
     socket.data.liveSessionId = undefined;
     socket.data.role = undefined;
-    void socket.leave(roomName(inst, id));
+    void socket.leave(name);
     void socket.leave(userRoom(inst, id, userId));
-    const r = rooms.get(key(inst, id));
-    const member = r?.members.get(userId);
-    if (!r || !member) return;
-    member.sockets.delete(socket.id);
-    if (member.sockets.size) return;
-    r.members.delete(userId);
-    await svc.markLeft(id, userId).catch((err) => logger.warn({ err }, 'live markLeft failed'));
-    nsp.to(roomName(inst, id)).emit(S.participantLeft, { userId, role });
-    if (r.hands.delete(userId)) broadcastHands(id, r);
-    if (r.speakers.delete(userId)) {
-      broadcastSpeakers(id, r);
-      void svc.setMicPermission(id, userId, false);
-    }
-    if (role === 'host') {
-      r.screenSharing = false;
-      nsp.to(roomName(inst, id)).emit(S.hostState, { online: hostOnline(r) });
-      nsp.to(roomName(inst, id)).emit(S.screenState, { sharing: false });
-    }
-    if (!r.members.size && !r.whiteboard.strokes.length) rooms.delete(key(inst, id));
+    return serial(`${inst}:${id}:${userId}`, async () => {
+      const others = await socketsIn(nsp, userRoom(inst, id, userId));
+      if (others.some((s) => s.id !== socket.id)) return;
+      await svc.markLeft(id, userId).catch((err) => logger.warn({ err }, 'live markLeft failed'));
+      nsp.to(name).emit(S.participantLeft, { userId, role });
+      if (role === 'host') {
+        // The class has one host: the session's teacher.
+        nsp.to(name).emit(S.hostState, { online: false });
+        nsp.to(name).emit(S.screenState, { sharing: false });
+        await rooms.setScreenSharing(name, false);
+      }
+      const hands = await rooms.lowerHand(name, userId);
+      if (hands.removed) broadcastHands(name, hands.hands);
+      const speakers = await rooms.revokeMic(name, userId);
+      if (speakers.removed) {
+        broadcastSpeakers(name, speakers.speakers);
+        void svc.setMicPermission(id, userId, false);
+      }
+      if (!(await socketsIn(nsp, name)).length && !(await rooms.hasStrokes(name))) await rooms.drop(name);
+    });
   }
 
   on(C.join, async (payload) => {
@@ -293,43 +469,45 @@ function registerHandlers(nsp: Namespace, socket: LiveSocket) {
     if (session.status !== 'live') throw Conflict(`The class is ${session.status}`, 'NOT_LIVE');
     if (socket.data.liveSessionId && socket.data.liveSessionId !== sessionId) await leaveCurrent();
 
-    const r = roomState(inst, sessionId);
-    let member = r.members.get(userId);
-    const firstSocket = !member;
-    if (!member) {
-      member = { user: socket.data.user, role, sockets: new Set() };
-      r.members.set(userId, member);
-    }
-    member.sockets.add(socket.id);
-    socket.data.liveSessionId = sessionId;
-    socket.data.role = role;
-    await socket.join([roomName(inst, sessionId), userRoom(inst, sessionId, userId)]);
+    const name = roomName(inst, sessionId);
+    const mine = userRoom(inst, sessionId, userId);
+    const firstSocket = await serial(`${inst}:${sessionId}:${userId}`, async () => {
+      const first = !(await socketsIn(nsp, mine)).length;
+      socket.data.liveSessionId = sessionId;
+      socket.data.role = role;
+      socket.data.hostUserId = session.teacherUserId;
+      await socket.join([name, mine]);
+      return first;
+    });
 
     if (firstSocket) {
       await svc.markJoined(sessionId, userId, role);
-      socket.to(roomName(inst, sessionId)).emit(S.participantJoined, { ...socket.data.user, role });
-      if (role === 'host') socket.to(roomName(inst, sessionId)).emit(S.hostState, { online: true });
+      socket.to(name).emit(S.participantJoined, { ...socket.data.user, role });
+      if (role === 'host') socket.to(name).emit(S.hostState, { online: true });
     }
 
-    const [participants, chat, questions, polls] = await Promise.all([
+    const [participants, chat, questions, polls, online, extras] = await Promise.all([
       svc.listParticipants(sessionId),
       svc.listChat(sessionId),
       svc.listQuestions(sessionId),
       svc.listPolls(sessionId),
+      socketsIn(nsp, name),
+      // Without the room state (Redis unreachable), the class still has presence, chat, questions and polls.
+      rooms.get(name).catch(() => EMPTY_EXTRAS),
     ]);
-    const onlineIds = new Set(r.members.keys());
+    const onlineIds = new Set(online.map((s) => s.data.user?.id));
     const state: LiveRoomState = {
       session: svc.toSessionDto(session, role),
       me: { ...socket.data.user, role },
-      hostOnline: hostOnline(r),
+      hostOnline: online.some((s) => s.data.role === 'host'),
       participants: participants.map((p) => ({ ...p, online: onlineIds.has(p.userId) })),
       chat,
       questions,
       polls,
-      raisedHands: [...r.hands.values()],
-      speakers: [...r.speakers.values()],
-      screenSharing: r.screenSharing,
-      whiteboard: r.whiteboard,
+      raisedHands: extras.hands,
+      speakers: extras.speakers,
+      screenSharing: extras.screenSharing,
+      whiteboard: extras.whiteboard,
     };
     return state;
   });
@@ -338,8 +516,11 @@ function registerHandlers(nsp: Namespace, socket: LiveSocket) {
     await leaveCurrent();
   });
 
-  socket.on('disconnect', () => {
-    void runWithContext({ ...socket.data.ctx }, () => leaveCurrent());
+  // `disconnecting`, not `disconnect`: the socket is still in its rooms.
+  socket.on('disconnecting', () => {
+    void runWithContext({ ...socket.data.ctx }, () => leaveCurrent()).catch((err) =>
+      logger.warn({ err }, 'live socket leave failed'),
+    );
   });
 
   /* chat & Q&A */
@@ -411,101 +592,90 @@ function registerHandlers(nsp: Namespace, socket: LiveSocket) {
   /* raise hand & microphone */
 
   on(C.handRaise, async () => {
-    const { id, role, room } = current();
+    const { role, name } = current();
     if (role !== 'student') throw Forbidden('Only students raise hands');
-    room.hands.set(userId, socket.data.user);
-    broadcastHands(id, room);
+    broadcastHands(name, await rooms.raiseHand(name, socket.data.user));
   });
 
   on(C.handLower, async (payload) => {
-    const { id, role, room } = current();
+    const { role, name } = current();
     const target = (payload as { userId?: number })?.userId ?? userId;
     if (target !== userId) requireModerator(role);
-    room.hands.delete(target);
-    broadcastHands(id, room);
+    broadcastHands(name, (await rooms.lowerHand(name, target)).hands);
   });
 
   on(C.micGrant, async (payload) => {
-    const { id, role, room } = current();
+    const { id, role, name } = current();
     requireModerator(role);
     const { userId: target } = parse(userSchema, payload);
-    const member = room.members.get(target);
-    if (!member || member.role !== 'student')
+    const [peer] = await socketsIn(nsp, userRoom(inst, id, target));
+    if (!peer?.data.user || peer.data.role !== 'student')
       throw Conflict('That student is not in the class', 'NOT_ONLINE');
     // A media server enforces publish rights: grant there first, so a failure changes nothing here.
     await svc.setMicPermission(id, target, true);
-    for (const previous of room.speakers.keys())
-      if (previous !== target) void svc.setMicPermission(id, previous, false);
     // One student speaks at a time: the teacher's client relays the speaker's audio to the class.
-    room.speakers.clear();
-    room.speakers.set(target, member.user);
-    room.hands.delete(target);
-    broadcastSpeakers(id, room);
-    broadcastHands(id, room);
+    const { hands, speakers, previous } = await rooms.grantMic(name, peer.data.user);
+    for (const p of previous) if (p.id !== target) void svc.setMicPermission(id, p.id, false);
+    broadcastSpeakers(name, speakers);
+    broadcastHands(name, hands);
   });
 
   on(C.micRevoke, async (payload) => {
-    const { id, role, room } = current();
+    const { id, role, name } = current();
     const { userId: target } = parse(userSchema, payload);
     if (target !== userId) requireModerator(role);
-    room.speakers.delete(target);
-    broadcastSpeakers(id, room);
+    broadcastSpeakers(name, (await rooms.revokeMic(name, target)).speakers);
     void svc.setMicPermission(id, target, false);
   });
 
   /* WebRTC signalling: only teacher ↔ participant (one-way class stream + granted student mic) */
 
   on(C.rtcSignal, async (payload) => {
-    const { id, role, room } = current();
+    const { id, role } = current();
     const signal = parse(signalSchema, payload);
-    const target = room.members.get(signal.to);
-    if (!target) throw Conflict('That participant is offline', 'NOT_ONLINE');
-    if (role !== 'host' && target.role !== 'host')
+    if (role !== 'host' && signal.to !== socket.data.hostUserId)
       throw Forbidden('Media is only exchanged with the teacher');
+    // Reaches the target's sockets in this class only (none when they're offline).
     nsp.to(userRoom(inst, id, signal.to)).emit(S.rtcSignal, { ...signal, from: userId });
   });
 
   on(C.screenState, async (payload) => {
-    const { role, room, name } = current();
+    const { role, name } = current();
     requireHost(role);
-    room.screenSharing = parse(screenSchema, payload).sharing;
-    socket.to(name).emit(S.screenState, { sharing: room.screenSharing });
+    const { sharing } = parse(screenSchema, payload);
+    await rooms.setScreenSharing(name, sharing);
+    socket.to(name).emit(S.screenState, { sharing });
   });
 
   /* whiteboard: teacher draws, everyone views */
 
   on(C.wbStroke, async (payload) => {
-    const { role, room, name } = current();
+    const { role, name } = current();
     requireModerator(role);
     const stroke = parse(strokeSchema, payload) as WhiteboardStroke;
-    room.whiteboard.strokes.push(stroke);
-    if (room.whiteboard.strokes.length > MAX_STROKES) room.whiteboard.strokes.shift();
+    await rooms.addStroke(name, stroke);
     socket.to(name).emit(S.wbStroke, stroke);
   });
 
   on(C.wbUndo, async (payload) => {
-    const { role, room, name } = current();
+    const { role, name } = current();
     requireModerator(role);
-    const strokeId = (payload as { id?: string })?.id;
-    const list = room.whiteboard.strokes;
-    const idx = strokeId ? list.findIndex((s) => s.id === strokeId) : list.length - 1;
-    if (idx >= 0) {
-      const [removed] = list.splice(idx, 1);
-      socket.to(name).emit(S.wbUndo, { id: removed.id });
-    }
+    const removed = await rooms.undoStroke(name, (payload as { id?: string })?.id);
+    if (removed) socket.to(name).emit(S.wbUndo, { id: removed });
   });
 
   on(C.wbClear, async () => {
-    const { role, room, name } = current();
+    const { role, name } = current();
     requireModerator(role);
-    room.whiteboard.strokes = [];
+    await rooms.clearStrokes(name);
     socket.to(name).emit(S.wbClear, {});
   });
 
   on(C.wbVisible, async (payload) => {
-    const { role, room, name } = current();
+    const { role, name } = current();
     requireModerator(role);
-    room.whiteboard.visible = parse(visibleSchema, payload).visible;
-    socket.to(name).emit(S.wbVisible, { visible: room.whiteboard.visible });
+    const { visible } = parse(visibleSchema, payload);
+    await rooms.setWhiteboardVisible(name, visible);
+    socket.to(name).emit(S.wbVisible, { visible });
   });
 }

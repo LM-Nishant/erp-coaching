@@ -14,6 +14,7 @@ import type {
   NotificationChannel,
   RecipientType,
 } from '@erp/shared';
+import { registerEncryptedColumns } from '../../infrastructure/database/encrypted-columns';
 import { registerTenantModel } from '../../shared/tenancy/tenant-model';
 
 type Attrs<M extends Model> = InferAttributes<M>;
@@ -298,6 +299,7 @@ export function initNotificationModels(sequelize: Sequelize) {
     { sequelize, tableName: 'notification_delivery_attempts', updatedAt: false },
   );
   registerTenantModel(NotificationProvider);
+  registerEncryptedColumns(NotificationProvider, ['secretsEncrypted']);
   registerTenantModel(NotificationTemplate);
   registerTenantModel(NotificationRule);
   registerTenantModel(NotificationPreference);

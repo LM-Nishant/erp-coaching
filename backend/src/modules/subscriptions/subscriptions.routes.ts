@@ -20,7 +20,7 @@ import { sendCheckoutReturn, verifyCheckoutReturn } from '../../shared/utilities
 import { logger } from '../../infrastructure/logger';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { Institute } from '../institutes/institute.model';
-import { User } from '../users/user.model';
+import { User, contactMobile } from '../users/user.model';
 import { Plan, Subscription, SubscriptionCreditNote } from './models';
 import {
   getAccessState,
@@ -286,7 +286,11 @@ function tenantRoutes(api: Router) {
     const result = await startCheckout(instituteId, id, {
       idempotencyKey: req.header('idempotency-key') ?? body.idempotencyKey ?? null,
       userId: user.id,
-      customer: { name: user.name, mobile: user.mobile, ...(user.email ? { email: user.email } : {}) },
+      customer: {
+        name: user.name,
+        mobile: contactMobile(user),
+        ...(user.email ? { email: user.email } : {}),
+      },
       returnTo: body.returnTo,
     });
     res.status(201).json(result);

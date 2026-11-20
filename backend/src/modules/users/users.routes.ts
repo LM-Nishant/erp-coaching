@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
 import { literal, Op, type WhereOptions } from 'sequelize';
 import { z } from 'zod';
 import type { DeviceUserDto } from '@erp/shared';
@@ -11,6 +10,7 @@ import { requireTenantContext, type TenantContext } from '../../shared/context';
 import { BadRequest, Forbidden, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
 import { getSequelize } from '../../infrastructure/database/sequelize';
+import { hashPassword } from '../../infrastructure/password';
 import { Branch } from '../branches/branch.model';
 import { Role, UserBranch, UserRole } from '../permissions/models';
 import {
@@ -18,8 +18,8 @@ import {
   memberManageWhere,
   memberVisibilityWhere,
 } from '../permissions/access.service';
-import { Device, listUserDevices, revokeDevice } from '../authentication/api';
-import { User } from './user.model';
+import { clearSignInLock, Device, listUserDevices, revokeDevice, signInLocks } from '../authentication/api';
+import { User, contactMobile, mobileLike } from './user.model';
 
 const assignmentSchema = z.object({
   roles: z
@@ -124,7 +124,7 @@ async function searchDeviceUsers(search?: string): Promise<DeviceUserDto[]> {
     where.push({
       [Op.or]: [
         { name: { [Op.like]: `%${search}%` } },
-        { mobile: { [Op.like]: `%${search}%` } },
+        ...mobileLike(`%${search}%`),
         { email: { [Op.like]: `%${search}%` } },
       ],
     });
@@ -137,17 +137,19 @@ async function searchDeviceUsers(search?: string): Promise<DeviceUserDto[]> {
     limit: 50,
   });
   if (!users.length) return [];
-  const devices = await Device.findAll({
-    where: { userId: users.map((u) => u.id), status: 'active' },
-    attributes: ['userId'],
-  });
+  const ids = users.map((u) => u.id);
+  const [devices, locks] = await Promise.all([
+    Device.findAll({ where: { userId: ids, status: 'active' }, attributes: ['userId'] }),
+    signInLocks(ids),
+  ]);
   return users.map((u) => ({
     id: u.id,
     name: u.name,
-    mobile: u.mobile,
+    mobile: contactMobile(u),
     email: u.email,
     status: u.status,
     activeDevices: devices.filter((d) => d.userId === u.id).length,
+    signInLockedUntil: locks.get(u.id)?.toISOString() ?? null,
   }));
 }
 
@@ -162,7 +164,7 @@ export function userRoutes(api: Router) {
       ? {
           [Op.or]: [
             { name: { [Op.like]: `%${q.search}%` } },
-            { mobile: { [Op.like]: `%${q.search}%` } },
+            ...mobileLike(`%${q.search}%`),
             { email: { [Op.like]: `%${q.search}%` } },
           ],
         }
@@ -224,7 +226,7 @@ export function userRoutes(api: Router) {
         name: body.name,
         mobile: body.mobile,
         email: body.email ?? null,
-        passwordHash: body.password ? await bcrypt.hash(body.password, 10) : null,
+        passwordHash: body.password ? await hashPassword(body.password) : null,
         lastLoginAt: null,
       });
     }
@@ -305,6 +307,14 @@ export function userRoutes(api: Router) {
     );
     await manageableMember(p.id);
     await revokeDevice(p.deviceId, p.id, req.ctx.userId!);
+    res.status(204).end();
+  });
+
+  // Ends the member's sign-in lock after failed attempts, on every device (audited).
+  r.delete('/:id/sign-in-lock', requirePermission('users', 'edit'), async (req, res) => {
+    const { id } = parse(idParam, req.params);
+    await manageableMember(id);
+    await clearSignInLock(id);
     res.status(204).end();
   });
 

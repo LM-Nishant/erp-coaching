@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { Capacitor } from '@capacitor/core';
-import type { AuthTokens, LoginResult, MeDto, PermissionKey } from '@erp/shared';
+import type { AuthTokens, LoginResult, MeDto, PermissionKey, SignInProfileDto } from '@erp/shared';
 import {
   ApiError,
   api,
@@ -30,13 +30,21 @@ export interface PendingOtp {
   reason: 'new_device' | 'otp_login';
 }
 
+/** "Who's signing in?": the verified number signs in to several accounts (children sharing a parent's mobile). */
+export interface PendingProfiles {
+  selectionToken: string;
+  /** `Date.now()` when the selection token expires. */
+  expiresAt: number;
+  profiles: SignInProfileDto[];
+}
+
 interface ImpersonationResponse {
   accessToken: string;
   expiresIn: number;
   sessionId: number;
 }
 
-export type NextStep = 'home' | 'otp' | 'select-institute' | 'device-limit';
+export type NextStep = 'home' | 'otp' | 'choose-profile' | 'select-institute' | 'device-limit';
 
 /** Why the last session ended; the login and unlock pages explain it. */
 export type SessionEndReason = 'idle' | 'revoked' | 'inactive' | 'expired';
@@ -65,6 +73,7 @@ export const useAuthStore = defineStore('auth', {
     me: null as MeDto | null,
     ready: false,
     pendingOtp: null as PendingOtp | null,
+    pendingProfiles: null as PendingProfiles | null,
     activeBranchId: null as number | null,
     /** Biometric unlock set up on this device (app only). With no session, the app shows the unlock screen. */
     biometric: null as BiometricRecord | null,
@@ -82,6 +91,9 @@ export const useAuthStore = defineStore('auth', {
     permissionSet: (s) => new Set<string>((s.me?.permissions as string[]) ?? []),
     /** Locked: no session, but biometric unlock can start one. */
     canUnlock: (s) => !s.me && !!s.biometric,
+    /** Other accounts sign in with this account's number (siblings on a parent's mobile): "Switch profile". */
+    canSwitchProfile: (s) =>
+      !!s.me && !s.me.impersonatedBy && !s.offline && (s.me.user.profileCount ?? 1) > 1,
     /** Minutes without activity before the app locks or signs out; 0 = never (and while impersonating). */
     idleTimeoutMinutes: (s) => (s.me && !s.me.impersonatedBy ? (s.me.session?.idleTimeoutMinutes ?? 0) : 0),
   },
@@ -189,7 +201,17 @@ export const useAuthStore = defineStore('auth', {
         return 'otp';
       }
       if (result.status === 'device_limit_reached') return 'device-limit';
+      if (result.status === 'choose_profile') {
+        this.pendingOtp = null;
+        this.pendingProfiles = {
+          selectionToken: result.selectionToken,
+          expiresAt: Date.now() + result.expiresIn * 1000,
+          profiles: result.profiles,
+        };
+        return 'choose-profile';
+      }
       this.pendingOtp = null;
+      this.pendingProfiles = null;
       pendingUnlockSecret = null;
       await saveSession({
         accessToken: result.accessToken,
@@ -210,6 +232,50 @@ export const useAuthStore = defineStore('auth', {
         return 'select-institute';
       }
       return 'home';
+    },
+
+    /** "Switch profile": a code to the signed-in account's number, then "Who's signing in?". */
+    async startProfileSwitch(): Promise<NextStep> {
+      if (!this.me) throw new Error('Not signed in');
+      return this.requestOtp(this.me.user.mobile);
+    },
+
+    /**
+     * "Who's signing in?": signs in as the chosen account. Switching profile (already signed in), choosing the
+     * current account changes nothing; once another is signed in, the current one is signed out on this device
+     * as `logout` does (requests still carrying its token retry with the new one). A chosen account at its device
+     * limit leaves the current one signed in and the selection open for another.
+     */
+    async selectProfile(userId: number): Promise<NextStep> {
+      const pending = this.pendingProfiles;
+      if (!pending) throw new Error('No profile selection in progress');
+      if (this.me?.user.id === userId) {
+        this.pendingProfiles = null;
+        return 'home';
+      }
+      const device = await getDeviceDescriptor();
+      const result = await api.post<LoginResult>(
+        '/auth/select-profile',
+        { selectionToken: pending.selectionToken, userId, device },
+        { anonymous: true },
+      );
+      if (result.status !== 'authenticated' || !this.me) return this.handleLogin(result);
+      await beforeLogout?.();
+      await this.forgetBiometricRecord();
+      await saveProfile(null);
+      const previous = await loadSession();
+      try {
+        return await this.handleLogin(result);
+      } catch (e) {
+        // Never show one account with the other's session: sign in again from the login page.
+        if (this.me?.user.id !== userId) await this.clear();
+        throw e;
+      } finally {
+        if (previous?.refreshToken && !previous.impersonator)
+          await api
+            .post('/auth/logout', { refreshToken: previous.refreshToken }, { anonymous: true })
+            .catch(() => undefined);
+      }
     },
 
     /**
@@ -385,6 +451,7 @@ export const useAuthStore = defineStore('auth', {
       this.offline = false;
       this.freshLogin = false;
       this.pendingOtp = null;
+      this.pendingProfiles = null;
       this.activeBranchId = null;
       this.endReason = null;
       applyBranding(null);

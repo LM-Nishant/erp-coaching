@@ -291,11 +291,11 @@ export interface ApplicationDto {
 }
 
 /**
- * Where admitting put the student: `enrolled` in the application's batch, `no_login` when the
- * student has no login of their own yet (a sibling sharing a mobile) so the batch is assigned later
- * in academics, or null when the application has no batch.
+ * Where admitting put the student: `enrolled` in the application's batch, or null when the
+ * application has no batch. Every student has a login of their own (siblings sharing a mobile
+ * included), so one with a batch is always enrolled.
  */
-export type AdmissionBatchEnrolment = 'enrolled' | 'no_login' | null;
+export type AdmissionBatchEnrolment = 'enrolled' | null;
 
 export interface AdmitApplicationResultDto {
   application: ApplicationDto;

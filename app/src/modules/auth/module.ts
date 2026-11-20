@@ -16,6 +16,13 @@ export default defineAppModule({
       component: () => import('./OtpPage.vue'),
       meta: { allowWhenSuspended: true },
     },
+    // "Who's signing in?" after an OTP to a number several accounts sign in with (also "Switch profile").
+    {
+      path: '/choose-profile',
+      name: 'choose-profile',
+      component: () => import('./ChooseProfilePage.vue'),
+      meta: { allowWhenSuspended: true },
+    },
     // App locked (inactivity / closed session) with biometric unlock set up.
     {
       path: '/unlock',

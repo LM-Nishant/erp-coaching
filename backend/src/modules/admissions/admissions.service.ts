@@ -24,7 +24,7 @@ import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { UserRole } from '../permissions/models';
 import { User } from '../users/user.model';
 import { Student } from '../students/api';
-import { recordHistory } from '../students/students.service';
+import { ensureStudentUser, recordHistory } from '../students/students.service';
 import { getStudentSettings } from '../students/settings';
 import { AdmissionApplication, Enquiry, EnquiryFollowUp } from './models';
 
@@ -337,18 +337,21 @@ export async function chooseAdmissionBatch(
  * Marks the application admitted (and its enquiry converted) and, when it names a batch, enrolls the
  * new student's login in it through academics (`batch_students`), inside the admit transaction so a
  * batch that can't take the student (409 BATCH_FULL / BATCH_CLOSED) rolls the admission back.
+ * Every student has a login of their own, siblings sharing a parent's mobile included; one recorded
+ * before that rule gets theirs here (`ensureStudentUser`).
  * `enrol: false` means the caller has already enrolled the student in `a.batchId` (e.g. a course
  * purchase picking a batch with free seats). Returns the student user ids newly added to the batch.
  */
 export async function completeAdmission(
   a: AdmissionApplication,
-  student: { id: number; userId: number | null },
+  student: Student,
   branchId: number,
   transaction: Transaction,
   opts: { enrol?: boolean } = {},
 ): Promise<{ batchEnrolment: AdmissionBatchEnrolment; enrolled: number[] }> {
   const studentId = student.id;
   const { userId } = requireTenantContext();
+  const studentUserId = await ensureStudentUser(student, transaction);
   await leaveWaitlist(a, transaction);
   await a.update(
     { status: 'admitted', studentId, decidedByUserId: userId ?? null, decidedAt: new Date() },
@@ -357,23 +360,20 @@ export async function completeAdmission(
   let batchEnrolment: AdmissionBatchEnrolment = null;
   let enrolled: number[] = [];
   if (a.batchId) {
-    // Siblings sharing a mobile get no login of their own and can't be enrolled by user id yet.
-    if (student.userId) {
-      if (opts.enrol !== false) {
-        // Same rules as any batch choice for a course: open, in the course and branch, a free seat.
-        if (a.courseId) {
-          const { reason } = await batchAvailability(a.batchId, {
-            courseId: a.courseId,
-            branchId,
-            studentUserId: student.userId,
-            transaction,
-          });
-          if (reason) throw batchUnavailableError(reason);
-        }
-        ({ enrolled } = await enrollStudentsInBatch(a.batchId, [student.userId], { branchId, transaction }));
+    if (opts.enrol !== false) {
+      // Same rules as any batch choice for a course: open, in the course and branch, a free seat.
+      if (a.courseId) {
+        const { reason } = await batchAvailability(a.batchId, {
+          courseId: a.courseId,
+          branchId,
+          studentUserId,
+          transaction,
+        });
+        if (reason) throw batchUnavailableError(reason);
       }
-      batchEnrolment = 'enrolled';
-    } else batchEnrolment = 'no_login';
+      ({ enrolled } = await enrollStudentsInBatch(a.batchId, [studentUserId], { branchId, transaction }));
+    }
+    batchEnrolment = 'enrolled';
   }
   if (a.courseId || a.batchId)
     await recordHistory(

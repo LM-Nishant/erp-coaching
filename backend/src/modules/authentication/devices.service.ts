@@ -9,9 +9,10 @@ import { notify } from '../notifications/api';
 import { Institute } from '../institutes/institute.model';
 import { membershipInstituteIds } from '../permissions/access.service';
 import { UserRole } from '../permissions/models';
-import { User } from '../users/user.model';
+import { User, contactMobile, mobileLike } from '../users/user.model';
 import { emitDeviceRevoked } from './device-events';
 import { Device, RefreshToken } from './models';
+import { signInLocks } from './sign-in-lock';
 
 export const DEVICE_REVOKED_NOTICE_JOB = 'authentication.device-revoked-notice';
 export const DEVICE_REVOKED_EVENT = 'auth.device-revoked';
@@ -131,18 +132,14 @@ export async function searchPlatformUsers(search: string): Promise<PlatformUserD
   const like = `%${search}%`;
   const users = await User.findAll({
     where: {
-      [Op.or]: [
-        { name: { [Op.like]: like } },
-        { mobile: { [Op.like]: like } },
-        { email: { [Op.like]: like } },
-      ],
+      [Op.or]: [{ name: { [Op.like]: like } }, ...mobileLike(like), { email: { [Op.like]: like } }],
     },
     order: [['name', 'ASC']],
     limit: 20,
   });
   if (!users.length) return [];
   const ids = users.map((u) => u.id);
-  const [devices, roles] = await Promise.all([
+  const [devices, roles, locks] = await Promise.all([
     Device.findAll({ where: { userId: ids, status: 'active' }, attributes: ['userId'] }),
     UserRole.findAll({
       where: { userId: ids },
@@ -150,6 +147,7 @@ export async function searchPlatformUsers(search: string): Promise<PlatformUserD
       // Platform admin lookup across tenants; only institute ids/names are returned.
       tenantBypass: true,
     } as object),
+    signInLocks(ids),
   ]);
   const instituteIds = [...new Set(roles.map((r) => r.instituteId))];
   const institutes = instituteIds.length
@@ -159,11 +157,12 @@ export async function searchPlatformUsers(search: string): Promise<PlatformUserD
   return users.map((u) => ({
     id: u.id,
     name: u.name,
-    mobile: u.mobile,
+    mobile: contactMobile(u),
     email: u.email,
     status: u.status,
     isSuperAdmin: u.isSuperAdmin,
     activeDevices: devices.filter((d) => d.userId === u.id).length,
+    signInLockedUntil: locks.get(u.id)?.toISOString() ?? null,
     institutes: [...new Set(roles.filter((r) => r.userId === u.id).map((r) => r.instituteId))].map((id) => ({
       id,
       name: instituteName.get(id) ?? '',

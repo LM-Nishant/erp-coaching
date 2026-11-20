@@ -35,6 +35,7 @@ const W = '/website';
 export const websiteApi = {
   site: () => api.get<WebsiteSiteDto>(`${W}/site`),
   saveSite: (b: WebsiteSiteInput) => api.patch<WebsiteSiteDto>(`${W}/site`, b),
+  verifyDomain: () => api.post<WebsiteSiteDto>(`${W}/site/domain/verify`),
 
   pages: () => api.get<WebsitePageSummaryDto[]>(`${W}/pages`),
   page: (id: number) => api.get<WebsitePageDto>(`${W}/pages/${id}`),

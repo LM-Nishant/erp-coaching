@@ -40,6 +40,9 @@ export class OtpChallenge extends Model<
   declare attempts: CreationOptional<number>;
   declare expiresAt: Date;
   declare consumedAt: Date | null;
+  /** HMAC of the "Who's signing in?" secret issued when the verified mobile has several accounts. */
+  declare selectionHash: CreationOptional<string | null>;
+  declare selectionExpiresAt: CreationOptional<Date | null>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -109,6 +112,8 @@ export function initAuthModels(sequelize: Sequelize) {
       attempts: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
       expiresAt: { type: DataTypes.DATE, allowNull: false },
       consumedAt: DataTypes.DATE,
+      selectionHash: DataTypes.STRING(64),
+      selectionExpiresAt: DataTypes.DATE,
       ...ts,
     },
     { sequelize, tableName: 'otp_challenges' },

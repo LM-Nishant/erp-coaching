@@ -19,7 +19,7 @@ import { audit } from '../../shared/audit/audit.service';
 import { runWithContext } from '../../shared/context';
 import { AppError, NotFound } from '../../shared/errors';
 import { UserRole } from '../permissions/models';
-import { User } from '../users/user.model';
+import { User, reachedOn } from '../users/user.model';
 import { NotificationPreference, NotificationProvider } from './models';
 import { applyDeliveryReceipts } from './notify.service';
 import { providerSettings } from './providers.service';
@@ -163,10 +163,8 @@ export async function processMessagingWebhook(input: {
 async function applyConsentKeyword(instituteId: number | null, inbound: InboundText): Promise<number> {
   const keyword = consentKeyword(inbound.text);
   if (!keyword || !inbound.from) return 0;
-  const users = await User.findAll({
-    where: { mobile: storedMobileForms(inbound.from) },
-    attributes: ['id'],
-  });
+  // Every account messaged at that number: its owner and siblings who share it.
+  const users = await User.findAll({ where: reachedOn(storedMobileForms(inbound.from)), attributes: ['id'] });
   if (!users.length) return 0;
   const roles = await UserRole.findAll({
     where: { userId: users.map((u) => u.id), ...(instituteId !== null ? { instituteId } : {}) },

@@ -28,7 +28,7 @@ Backups and restores are covered in [backup-restore.md](backup-restore.md), secu
 
 | Path                            | Purpose                                                                                                                                                                                 |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `deploy/docker-compose.yml`     | The stack: `mysql`, `migrate`, `api` and `web`; `backup` and `restore` (profile `ops`); `redis` (profile `redis`); the LiveKit services (profile `livekit`)                             |
+| `deploy/docker-compose.yml`     | The stack: `mysql`, `redis`, `migrate`, `api` and `web`; `backup` and `restore` (profile `ops`); the LiveKit services (profile `livekit`)                                               |
 | `deploy/.env.example`           | Template for `deploy/.env`, the stack's only configuration file                                                                                                                         |
 | `deploy/api.Dockerfile`         | `erp-api` image: the compiled backend, production dependencies, the database CLI and ffmpeg. Runs as the `node` user                                                                    |
 | `deploy/web.Dockerfile`         | `erp-web` image: the built web app, served by nginx                                                                                                                                     |
@@ -53,6 +53,7 @@ flowchart LR
         api["api: Node.js 22<br/>REST API, Socket.IO, jobs worker"]
         migrate["migrate: one-shot<br/>database migrations"]
         mysql[("mysql 8.4<br/>volume mysql-data")]
+        redis[("redis 8<br/>rate limits, live-class rooms")]
         storage[("media files<br/>volume storage")]
         backup["backup and restore<br/>profile ops"]
     end
@@ -63,6 +64,7 @@ flowchart LR
     certbot -.->|certificates| web
     web -->|HTTP on 4000| api
     api --> mysql
+    api --> redis
     api --> storage
     migrate --> mysql
     backup --> mysql
@@ -70,18 +72,18 @@ flowchart LR
     backup --> archives
 ```
 
-| Service              | Image                              | Role                                                                                  | State                                                                 |
-| -------------------- | ---------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `mysql`              | `mysql:8.4`                        | The database (utf8mb4). Not published on the host                                     | Volume `mysql-data`                                                   |
-| `migrate`            | `erp-api`                          | One-shot: runs `cli.js migrate` before the api starts, then exits                     | None                                                                  |
-| `api`                | `erp-api`                          | REST API on port 4000, Socket.IO for live classes, background jobs worker             | Volumes `storage` (media) and `api-tmp` (upload staging, transcoding) |
-| `web`                | `erp-web`                          | nginx on ports 80 and 443: TLS, the web app, the proxy to the api, institute websites | Read-only bind mounts `certs/` and `acme-webroot/`                    |
-| `backup` / `restore` | `erp-backup` (`mysql:8.4` + tools) | Profile `ops`, run on demand ([backup-restore.md](backup-restore.md))                 | Bind mount `backups/`; volume `storage` (read-only for `backup`)      |
-| `redis`              | `redis:8-alpine`                   | Profile `redis`. Not used by this release; reserved for [scaling](#scaling)           | Volume `redis-data`                                                   |
-| `livekit*`           | `livekit/*`, `redis:8-alpine`      | Profile `livekit`: self-hosted LiveKit server, Egress recorder and their Redis        | Volume `livekit-recordings` (recordings until they are imported)      |
+| Service              | Image                              | Role                                                                                                                   | State                                                                 |
+| -------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `mysql`              | `mysql:8.4`                        | The database (utf8mb4). Not published on the host                                                                      | Volume `mysql-data`                                                   |
+| `migrate`            | `erp-api`                          | One-shot: runs `cli.js migrate` before the api starts, then exits                                                      | None                                                                  |
+| `api`                | `erp-api`                          | REST API on port 4000, Socket.IO for live classes, background jobs worker                                              | Volumes `storage` (media) and `api-tmp` (upload staging, transcoding) |
+| `web`                | `erp-web`                          | nginx on ports 80 and 443: TLS, the web app, the proxy to the api, institute websites                                  | Read-only bind mounts `certs/` and `acme-webroot/`                    |
+| `backup` / `restore` | `erp-backup` (`mysql:8.4` + tools) | Profile `ops`, run on demand ([backup-restore.md](backup-restore.md))                                                  | Bind mount `backups/`; volume `storage` (read-only for `backup`)      |
+| `redis`              | `redis:8-alpine`                   | Rate-limit counters and live-class rooms, shared by the api processes ([scaling](#scaling)). Not published on the host | Volume `redis-data`                                                   |
+| `livekit*`           | `livekit/*`, `redis:8-alpine`      | Profile `livekit`: self-hosted LiveKit server, Egress recorder and their Redis                                         | Volume `livekit-recordings` (recordings until they are imported)      |
 
-Start order: `mysql` is healthy, then `migrate` exits with 0, then `api` is healthy (`/api/ready`), then `web` starts. If a
-migration fails, the api doesn't start and `docker compose up` exits non-zero.
+Start order: `mysql` is healthy, then `migrate` exits with 0; with `redis` healthy too, `api` starts and becomes healthy
+(`/api/ready`), then `web` starts. If a migration fails, the api doesn't start and `docker compose up` exits non-zero.
 
 ### Request routing
 
@@ -124,12 +126,14 @@ request therefore share one `requestId`.
 - **DNS:**
   - an `A`/`AAAA` record for `SERVER_NAME`;
   - a wildcard record `*.SITES_DOMAIN` if institutes use subdomains;
-  - institutes point their custom domains at the server, with a `CNAME` to `SERVER_NAME` or `A`/`AAAA` records.
+  - institutes point their custom domains at the server, with a `CNAME` to `SERVER_NAME` or `A`/`AAAA` records, and
+    add a `TXT` record to verify them ([custom domains](#institute-custom-domains)).
 - **Firewall:**
   - inbound: TCP 80 and 443 (plus SSH). MySQL is not published;
   - live classes with LiveKit: the [media and TURN ports](integrations/live-streaming.md#ports) of the self-hosted
     profile, or outbound HTTPS to LiveKit Cloud and its recordings bucket;
-  - outbound: HTTPS for ACME and for the AI provider, if you use one.
+  - outbound: HTTPS for ACME and for the AI provider, if you use one, and DNS (the API looks up the custom-domain
+    `TXT` records).
 - **Certificates:** certbot (or another ACME client) on the host. The wildcard certificate also needs your DNS
   provider's certbot plugin.
 - **Clock:** time synchronisation (NTP). Tokens, OTPs and certificates depend on the clock.
@@ -163,24 +167,29 @@ Format rules:
 | `ERP_REGISTRY`, `ERP_IMAGE_TAG`                                                                                                                                          | Image names are `${ERP_REGISTRY}erp-api:${ERP_IMAGE_TAG}`, and likewise for `erp-web` and `erp-backup`. The tag is the release. It is reported as `version` by `/api/ready` and in every log line and error event |
 | `SERVER_NAME`, `PUBLIC_URL`                                                                                                                                              | Host name and origin of the app and API. `PUBLIC_URL` is compiled into the web image, so changing it means rebuilding `erp-web`. If `HTTPS_PORT` isn't 443, include the port (`https://app.example.com:8443`)     |
 | `PUBLIC_WEB_URL`                                                                                                                                                         | Origin of the web app in links the API builds (institute website buttons, course checkout). Blank: `PUBLIC_URL`                                                                                                   |
-| `SITES_DOMAIN`                                                                                                                                                           | Optional parent domain of the institute subdomains (`<subdomain>.sites.example.com`)                                                                                                                              |
+| `SITES_DOMAIN`                                                                                                                                                           | Optional parent domain of the institute subdomains (`<subdomain>.sites.example.com`). The API serves a subdomain site only on a host directly under it; blank: verified custom domains only                       |
 | `HTTP_PORT`, `HTTPS_PORT`                                                                                                                                                | Published ports, 80 and 443 by default                                                                                                                                                                            |
 | `CORS_EXTRA_ORIGINS`                                                                                                                                                     | Allowed origins after `PUBLIC_URL`, for the Capacitor apps ([mobile apps](#mobile-apps-and-cors))                                                                                                                 |
 | `TLS_SELF_SIGNED_FALLBACK`                                                                                                                                               | Keep it `true` only until the first real certificate is installed ([TLS](#tls-certificates))                                                                                                                      |
 | `SPA_CSP_MODE`, `SPA_CSP_REPORT_URI`                                                                                                                                     | Content Security Policy of the web app ([security headers](#web-app-security-headers))                                                                                                                            |
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`                                                                                                                                      | Application database and user. The `mysql` container creates them on its first start only; later edits don't change MySQL ([rotation](#rotating-secrets))                                                         |
-| `JWT_ACCESS_SECRET`, `ENCRYPTION_KEY`, `FILE_URL_SECRET`                                                                                                                 | Required: in production the API refuses to start without them ([secrets](#secrets))                                                                                                                               |
+| `JWT_ACCESS_SECRET`, `ENCRYPTION_KEY`, `FILE_URL_SECRET`, `OTP_HASH_SECRET`                                                                                              | Required: in production the API refuses to start without them ([secrets](#secrets))                                                                                                                               |
+| `ENCRYPTION_PREVIOUS_KEYS`                                                                                                                                               | Only while [rotating the encryption key](#rotating-the-encryption-key): the earlier keys, comma separated                                                                                                         |
 | `LOG_LEVEL`                                                                                                                                                              | `info` by default; `debug` for troubleshooting                                                                                                                                                                    |
 | `ACCESS_TOKEN_TTL_SECONDS`, `REFRESH_TOKEN_TTL_DAYS`, `IMPERSONATION_TTL_SECONDS`, `OTP_TTL_SECONDS`, `OTP_MAX_ATTEMPTS`, `MAX_ACTIVE_DEVICES`, `SIGNED_URL_TTL_SECONDS` | Session, OTP, device and signed-URL limits                                                                                                                                                                        |
+| `OTP_REQUESTS_PER_MOBILE`, `LOGIN_LOCKOUT_THRESHOLD`, `LOGIN_LOCKOUT_BASE_SECONDS`, `LOGIN_LOCKOUT_MAX_SECONDS`                                                          | OTP requests per mobile number in 10 minutes, and the [sign-in locks](#sign-in-locks)                                                                                                                             |
+| `PASSWORD_HASH_COST`, `UV_THREADPOOL_SIZE`                                                                                                                               | Password hashing: the scrypt cost of new hashes (15 to 18; each step doubles the time and memory) and the threads that run it ([scaling](#scaling))                                                               |
 | `MAX_UPLOAD_MB`                                                                                                                                                          | The API's upload limit. nginx accepts `MAX_UPLOAD_MB` + 10 MB per request                                                                                                                                         |
 | `ERROR_TRACKING_PROVIDER`, `ERROR_TRACKING_WEBHOOK_URL`                                                                                                                  | [Error tracking](#error-tracking)                                                                                                                                                                                 |
 | `RATE_LIMIT_*`                                                                                                                                                           | [Rate limiting](#rate-limiting-behind-the-proxy)                                                                                                                                                                  |
+| `REDIS_URL`                                                                                                                                                              | Blank: the stack's `redis` service. Another Redis: a `redis://` or `rediss://` URL with its password ([scaling](#scaling))                                                                                        |
 | `JOBS_WORKER_ENABLED`, `JOBS_POLL_INTERVAL_MS`                                                                                                                           | [Background jobs](#background-jobs)                                                                                                                                                                               |
 | `PAYMENT_RECONCILE_INTERVAL_MINUTES`                                                                                                                                     | Minutes between checks of open gateway payments, 10 by default ([payment gateways](integrations/payments.md#reconciliation-and-idempotency))                                                                      |
 | `ADMS_ALLOW_HTTP`, `ADMS_MAX_BODY_KB`, `ADMS_MAX_RECORDS`, `ADMS_BACKFILL_DAYS`                                                                                          | ZKTeco/eSSL biometric devices ([biometric.md](integrations/biometric.md#server-setup)). `ADMS_ALLOW_HTTP=true` also serves `/iclock/` on `HTTP_PORT`, for firmware without HTTPS                                  |
 | `AI_BASE_URL`, `AI_MODEL`, `AI_API_KEY`, `AI_TIMEOUT_MS`                                                                                                                 | Defaults for the AI features; the Super Admin can override them in the app                                                                                                                                        |
 | `SMS_PROVIDER`, `WHATSAPP_PROVIDER`, `EMAIL_PROVIDER`, `PUSH_PROVIDER`, `PAYMENT_GATEWAY`, `STREAMING_PROVIDER`, `BIOMETRIC_PROVIDER`                                    | Integration adapters. This release only has `console` and `mock` implementations ([before going live](#before-going-live))                                                                                        |
 | `MESSAGING_TIMEOUT_MS`, `MESSAGING_DEFAULT_COUNTRY_CODE`                                                                                                                 | Messaging vendor requests. MSG91, Twilio, WhatsApp Cloud, SMTP and FCM/APNs are configured in the app ([messaging](integrations/messaging.md))                                                                    |
+| `BIOMETRIC_PUSH_MAX_KB`                                                                                                                                                  | Largest biometric device push the API reads: 256 KB by default, at most 1024                                                                                                                                      |
 | `LIVEKIT_*`                                                                                                                                                              | Live classes with `STREAMING_PROVIDER=livekit` ([live streaming](integrations/live-streaming.md#settings))                                                                                                        |
 | `SEED_SUPERADMIN_MOBILE`, `SEED_SUPERADMIN_PASSWORD`, `SEED_DEMO_DATA`                                                                                                   | First deployment only ([seeding](#first-deployment))                                                                                                                                                              |
 | `BACKUP_HOST_DIR`, `BACKUP_KEEP_COUNT`, `BACKUP_KEEP_DAYS`, `BACKUP_UID`, `BACKUP_GID`                                                                                   | [backup-restore.md](backup-restore.md)                                                                                                                                                                            |
@@ -195,7 +204,9 @@ The compose file sets the following for the API itself, overriding any value in 
 - `API_PUBLIC_URL=$PUBLIC_URL`;
 - `PUBLIC_WEB_URL=$PUBLIC_WEB_URL`, or `$PUBLIC_URL` when blank (also for `migrate`: the API refuses to start in
   production without it);
-- `CORS_ORIGINS=$PUBLIC_URL,$CORS_EXTRA_ORIGINS`.
+- `CORS_ORIGINS=$PUBLIC_URL,$CORS_EXTRA_ORIGINS`;
+- `REDIS_URL=$REDIS_URL`, or `redis://redis:6379` when blank;
+- `UV_THREADPOOL_SIZE=$UV_THREADPOOL_SIZE`, or 4 when blank.
 
 The image sets `NODE_ENV=production` and `APP_VERSION`.
 
@@ -240,13 +251,14 @@ Relative paths are relative to `deploy/`. `ERP_ENV_FILE` names the env file that
 
 ### Secrets
 
-| Secret                        | Generate with                                | Purpose                                                                                                                                                                          |
-| ----------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DB_PASSWORD`                 | `openssl rand -hex 24`                       | MySQL password of `DB_USER`                                                                                                                                                      |
-| `secrets/mysql_root_password` | `openssl rand -hex 32`                       | MySQL root password, used by `backup` and `restore`. MySQL reads it only on the first start of an empty `mysql-data` volume                                                      |
-| `JWT_ACCESS_SECRET`           | `openssl rand -base64 48`                    | Signs access tokens and live-class join tokens                                                                                                                                   |
-| `ENCRYPTION_KEY`              | `openssl rand -base64 32` (exactly 32 bytes) | Encrypts stored integration credentials: AI keys, payment and notification settings, offline LMS keys. **It is not in the backups.** Without it, those values can't be decrypted |
-| `FILE_URL_SECRET`             | `openssl rand -hex 32`                       | Signs short-lived file and media URLs                                                                                                                                            |
+| Secret                        | Generate with                                | Purpose                                                                                                                                                                                                                     |
+| ----------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DB_PASSWORD`                 | `openssl rand -hex 24`                       | MySQL password of `DB_USER`                                                                                                                                                                                                 |
+| `secrets/mysql_root_password` | `openssl rand -hex 32`                       | MySQL root password, used by `backup` and `restore`. MySQL reads it only on the first start of an empty `mysql-data` volume                                                                                                 |
+| `JWT_ACCESS_SECRET`           | `openssl rand -base64 48`                    | Signs access tokens and live-class join tokens                                                                                                                                                                              |
+| `ENCRYPTION_KEY`              | `openssl rand -base64 32` (exactly 32 bytes) | Encrypts stored integration credentials: AI keys, payment and notification settings, offline LMS keys. **It is not in the backups.** Without it, those values can't be decrypted ([rotation](#rotating-the-encryption-key)) |
+| `FILE_URL_SECRET`             | `openssl rand -hex 32`                       | Signs short-lived file and media URLs                                                                                                                                                                                       |
+| `OTP_HASH_SECRET`             | `openssl rand -hex 32`                       | Keys the stored OTP codes, the OTP counters per mobile number and the sign-in locks of unregistered numbers and emails                                                                                                      |
 
 - **Where secrets live:**
   - on the server, only in `deploy/.env` and `deploy/secrets/` (mode 600, owned by root or the deploy user);
@@ -276,8 +288,43 @@ Relative paths are relative to `deploy/`. `ERP_ENV_FILE` names the env file that
   apps renew their sessions without asking users to sign in.
 - **`FILE_URL_SECRET`:** set the new value and run `docker compose up -d --wait`. Only signed URLs from the last
   `SIGNED_URL_TTL_SECONDS` become invalid.
-- **`ENCRYPTION_KEY`:** can't be rotated in place, because there is no key versioning or re-encryption tool. After a
-  change, the stored integration credentials (AI keys, payment and notification settings) must be entered again.
+- **`ENCRYPTION_KEY`:** follow [rotating the encryption key](#rotating-the-encryption-key).
+- **`OTP_HASH_SECRET`:** set the new value and run `docker compose up -d --wait`. Codes already sent stop working, so
+  users request a new one. The OTP counters per mobile number and the sign-in locks of unregistered numbers and emails
+  start again from zero.
+
+#### Rotating the encryption key
+
+Every encrypted value carries the id of the key that wrote it (`v2:<key id>:…`, derived from the key). `ENCRYPTION_KEY`
+encrypts, and both it and the keys in `ENCRYPTION_PREVIOUS_KEYS` decrypt. Values saved before key ids existed (`v1:`)
+are tried with each key until they are re-encrypted. The stored secrets are the AI keys, payment gateway credentials,
+notification and platform integration settings, and offline LMS content keys.
+
+1. Back up ([backup-restore.md](backup-restore.md)). Keep the old key in your vault as long as you keep backups made
+   before the rotation: they can only be restored with it.
+2. Generate the new key with `openssl rand -base64 32` and save it in your vault.
+3. In `.env`, move the old key to `ENCRYPTION_PREVIOUS_KEYS` (comma separated, after any older key still listed) and
+   set the new one as `ENCRYPTION_KEY`.
+4. Run `docker compose up -d --wait`. Secrets saved from now on use the new key, and the existing ones still decrypt.
+5. Re-encrypt the stored secrets with the new key. The command can run while the API serves traffic:
+
+   ```sh
+   docker compose run --rm migrate node dist/infrastructure/database/cli.js secrets:reencrypt --dry-run
+   docker compose run --rm migrate node dist/infrastructure/database/cli.js secrets:reencrypt
+   ```
+
+   It prints a table per column and exits non-zero if no configured key decrypts some values, listing their ids. Add
+   the missing key to `ENCRYPTION_PREVIOUS_KEYS` and run it again, or enter those secrets again in the app. Until it
+   has run, saving an enabled platform integration repeats its connection test.
+
+6. When a dry run reports `Every stored secret uses the current key`, empty `ENCRYPTION_PREVIOUS_KEYS` and run
+   `docker compose up -d --wait`.
+
+With several API processes, rotate in two phases, so that no process meets a value it can't decrypt: first add the new
+key to `ENCRYPTION_PREVIOUS_KEYS` on every process, then make it `ENCRYPTION_KEY` (with the old key in
+`ENCRYPTION_PREVIOUS_KEYS`) on every process, and only then re-encrypt.
+
+Outside Docker, run `npm run secrets:reencrypt -- --dry-run` and `npm run secrets:reencrypt` in `backend/`.
 
 ## TLS certificates
 
@@ -345,15 +392,23 @@ The hook installs it as `certs/sites/_wildcard/`.
 
 ### Institute custom domains
 
-The API serves an institute's website on its custom domain once two things are true: the institute has saved the
-domain in its website settings, and the domain's DNS points at the server. Until a certificate is installed, HTTPS on
-that domain shows the platform certificate. To issue one:
+The API serves an institute's website on a custom domain only after the institute has proved that it controls the
+domain's DNS. In the website settings, the institute saves the domain, adds the `TXT` record that the page then shows,
+and selects **Verify domain**:
 
-1. Check that the domain is registered for an institute and resolves to this server:
+| Name                                | Type  | Value                      |
+| ----------------------------------- | ----- | -------------------------- |
+| `_erp-verification.<custom domain>` | `TXT` | `erp-verification=<token>` |
+
+The token is random and new each time the institute changes the domain. Until the domain is verified, the custom
+domain gets a 404 and the site's links use its subdomain. Once it's verified and its DNS points at the server, HTTPS on
+the domain shows the platform certificate until you install one. To issue one:
+
+1. Check that the domain is verified for an institute and resolves to this server:
 
    ```sh
    docker compose exec mysql mysql -uroot -p erp_coaching \
-     -e "SELECT custom_domain FROM website_sites WHERE custom_domain IS NOT NULL"
+     -e "SELECT verified_domain, domain_verified_at FROM website_sites WHERE verified_domain IS NOT NULL"
    dig +short www.institute-example.com
    ```
 
@@ -380,15 +435,35 @@ docker compose exec web erp-certs --reload
 
 Caveats:
 
-- **Ownership:** the app doesn't verify that an institute owns the domain it enters. A domain claimed by one institute
-  can't be used by another, so confirm ownership before you issue a certificate.
-- **Host matching:** the API matches the host exactly against the custom domains. Failing that, it matches the host's
-  first DNS label against the institute subdomains, for any parent domain.
-- **Cache:** the mapping is cached in the API process for 60 seconds.
+- **Ownership:**
+  - several institutes may save the same domain, but only the one that verifies it is served. If another institute
+    later verifies the domain with its own record, the domain moves to that institute; the previous institute's site
+    falls back to its subdomain. Both institutes' audit logs record the move (`website.domain_released` and
+    `website.domain_verified`).
+  - changing or clearing the domain un-verifies it at once.
+  - the institute may delete the `TXT` record after verifying. It needs the record again only to take the domain back
+    after another institute has verified it.
+- **Upgrading:** domains saved before domain verification existed start unverified, so those sites fall back to their
+  subdomains until the institute verifies. To keep serving a domain whose ownership you've already confirmed, apply
+  the migrations first ([upgrades](#upgrades), step 4), mark the domain verified, then switch:
+
+  ```sh
+  docker compose exec mysql mysql -uroot -p erp_coaching -e "UPDATE website_sites \
+    SET verified_domain = custom_domain, domain_verified_at = UTC_TIMESTAMP() WHERE custom_domain = 'www.institute-example.com'"
+  ```
+
+- **DNS lookups:** the api container queries the record through its resolver, with a 4-second timeout and two tries.
+  If the lookup fails, **Verify domain** answers 503 `DNS_LOOKUP_FAILED` and the institute can retry; a missing or
+  different record answers 422 `DOMAIN_NOT_VERIFIED`. New records can take a while to propagate.
+- **Host matching:** the API matches the host (without its port) exactly against the verified custom domains. Failing
+  that, it serves a subdomain site only for a host one label directly under `SITES_DOMAIN`; other hosts get a 404.
+  Set `SITES_DOMAIN` if institutes use subdomains.
+- **Cache:** the mapping is cached in each API process for 60 seconds. Verifying clears the cache of the process that
+  handled it.
 - **Reserved subdomains:** `www`, `api`, `app`, `admin`, `mail`, `static`, `cdn` and `public`.
-- **Automation:** the domain list is in the database, so a nightly job can issue certificates for new domains with
+- **Automation:** the verified domains are in the database, so a nightly job can issue certificates for new ones with
   the commands above. A fully automatic alternative is a Caddy front end with on-demand TLS, but its `ask` endpoint
-  must approve registered domains only, and the API has no such endpoint yet.
+  must approve verified domains only, and the API has no such endpoint yet.
 
 ### Behind a CDN or load balancer
 
@@ -457,14 +532,15 @@ to. Keep at least the previous release's images on the server.
    - `ERP_IMAGE_TAG`;
    - `SERVER_NAME` and `PUBLIC_URL`;
    - `SITES_DOMAIN`, or leave it empty;
-   - `DB_PASSWORD`, `JWT_ACCESS_SECRET`, `ENCRYPTION_KEY` and `FILE_URL_SECRET`;
+   - `DB_PASSWORD`, `JWT_ACCESS_SECRET`, `ENCRYPTION_KEY`, `FILE_URL_SECRET` and `OTP_HASH_SECRET`;
    - `SEED_SUPERADMIN_MOBILE`: the super admin's login mobile number.
 
    Generate the secrets, paste them into `.env` and save them in your vault:
 
    ```sh
-   printf 'DB_PASSWORD=%s\nJWT_ACCESS_SECRET=%s\nENCRYPTION_KEY=%s\nFILE_URL_SECRET=%s\n' \
-     "$(openssl rand -hex 24)" "$(openssl rand -base64 48)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)"
+   printf 'DB_PASSWORD=%s\nJWT_ACCESS_SECRET=%s\nENCRYPTION_KEY=%s\nFILE_URL_SECRET=%s\nOTP_HASH_SECRET=%s\n' \
+     "$(openssl rand -hex 24)" "$(openssl rand -base64 48)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" \
+     "$(openssl rand -hex 32)"
    ```
 
 3. Build or pull the images ([building images](#building-images)).
@@ -547,6 +623,34 @@ This release only ships development adapters for the external integrations:
 
 If `migrate` fails, `up` exits non-zero and the api stays down. Read `docker compose logs migrate`, then fix forward or
 follow the [migration rollback plan](#migration-rollback-plan).
+
+### Student login accounts backfill
+
+Before shared-mobile accounts, a sibling admitted on a mobile another student already used got no login account
+(`students.user_id` is null). Admitting them couldn't put them in their batch, and a course they bought waited for a
+batch. After upgrading to the release that adds `users.shared_mobile`, give them accounts and enrol them:
+
+```sh
+docker compose run --rm migrate node dist/infrastructure/database/cli.js students:backfill-accounts --dry-run
+docker compose run --rm migrate node dist/infrastructure/database/cli.js students:backfill-accounts
+```
+
+- **Dry run:** changes nothing. It prints, per institute, the accounts it would create (owning the student's mobile,
+  or sharing a mobile that another account owns), the existing accounts it would link, the batch enrolments and the
+  course purchases it would retry, and what would need attention.
+- **Run:** for each such student, it creates or links the account as admitting them does now, and enrols them in the
+  batch their admission named, if that batch is still open, of their course and branch, and has a free seat. It
+  retries the course purchases that waited for a login and fills the account into fee and appointment rows. The
+  student and guardians are notified of enrolments as usual.
+- **Needs attention:** it exits with status 1 and lists what it couldn't do, such as a full or closed batch. Place
+  those students with **Enroll students** under Batches, or from Course enrolments for course purchases.
+- **Again:** a second run only picks up what is still missing, and lists the remaining items again.
+  `--institute=<id>[,<id>…]` limits a run to those institutes.
+- **Outside Docker:** run `npm run students:backfill-accounts -- --dry-run` and `npm run students:backfill-accounts`
+  in `backend/`.
+- **Rollback:** once accounts share a mobile, `migrate:undo` refuses to revert the migration that adds
+  `users.shared_mobile`, since they would lose their sign-in. [Roll back the images](#rollback) and keep the schema,
+  or restore the pre-upgrade backup.
 
 ## Rollback
 
@@ -715,26 +819,47 @@ the API takes the client address from the last `X-Forwarded-For` entry, which ng
 balancer in front, configure [real IP in nginx](#behind-a-cdn-or-load-balancer) and keep `TRUST_PROXY=1`. Don't raise
 it: clients that bypass the CDN could then choose their own address.
 
-The limits apply per client IP:
+The limits apply per client IP, except the per-URL media limit:
 
-| Variable                     | Default    | Applies to                                                    |
-| ---------------------------- | ---------- | ------------------------------------------------------------- |
-| `RATE_LIMIT_API_PER_MIN`     | 600/min    | Every `/api` request except media                             |
-| `RATE_LIMIT_MEDIA_PER_MIN`   | 3000/min   | Signed file downloads and HLS segments                        |
-| `RATE_LIMIT_AUTH_MAX`        | 30/15 min  | Password login and OTP request and verify                     |
-| `RATE_LIMIT_TOKEN_MAX`       | 600/15 min | Token refresh and logout                                      |
-| `RATE_LIMIT_PUBLIC_FORM_MAX` | 60/15 min  | Public forms: enquiries, checkout, coupons, self-registration |
-| `RATE_LIMIT_DEVICE_PER_MIN`  | 120/min    | Biometric device pushes                                       |
-| `RATE_LIMIT_ADMS_PER_MIN`    | 600/min    | ZKTeco/eSSL device pushes and command polls (`/iclock/`)      |
-| `RATE_LIMIT_WEBHOOK_PER_MIN` | 300/min    | Payment gateway webhooks and checkout returns                 |
+| Variable                             | Default    | Applies to                                                                        |
+| ------------------------------------ | ---------- | --------------------------------------------------------------------------------- |
+| `RATE_LIMIT_API_PER_MIN`             | 600/min    | Every `/api` request except signed media and the public website                   |
+| `RATE_LIMIT_MEDIA_PER_MIN`           | 3000/min   | Signed file downloads, HLS segments and website images                            |
+| `RATE_LIMIT_MEDIA_PER_TOKEN_PER_MIN` | 300/min    | Each signed file or HLS URL, whatever the client IP: caps a leaked or shared link |
+| `RATE_LIMIT_WEBSITE_PER_MIN`         | 300/min    | Institute website pages, sitemaps, `robots.txt` and redirects                     |
+| `RATE_LIMIT_AUTH_MAX`                | 30/15 min  | Password login and OTP request and verify                                         |
+| `RATE_LIMIT_TOKEN_MAX`               | 600/15 min | Token refresh and logout                                                          |
+| `RATE_LIMIT_PUBLIC_FORM_MAX`         | 60/15 min  | Public forms: enquiries, checkout, coupons, self-registration                     |
+| `RATE_LIMIT_DEVICE_PER_MIN`          | 120/min    | Biometric device pushes                                                           |
+| `RATE_LIMIT_ADMS_PER_MIN`            | 600/min    | ZKTeco/eSSL device pushes and command polls (`/iclock/`)                          |
+| `RATE_LIMIT_WEBHOOK_PER_MIN`         | 300/min    | Payment gateway and messaging webhooks, and checkout returns                      |
 
 Over the limit, the API answers 429 with the standard `RateLimit` headers.
 
 - **Shared addresses:** clients behind one NAT, such as an institute's Wi-Fi, share one budget. Raise the limits for
   large centres.
-- **Restarts:** the counters live in memory, so they reset on a restart, and each API process counts separately
-  ([scaling](#rate-limits)).
+- **Shared counters:** with `REDIS_URL` (the stack's default), the counters live in Redis: every API process counts
+  against the same budget and a restart keeps them. Without Redis, or while it is unreachable, each process counts in
+  memory ([scaling](#rate-limits)).
 - **Turning them off:** `RATE_LIMIT_ENABLED=false` is only for load tests.
+
+### Sign-in locks
+
+Failed passwords, OTP codes and biometric unlocks lock an account's sign-in:
+
+- **When:** after `LOGIN_LOCKOUT_THRESHOLD` failures (5) the account is locked for `LOGIN_LOCKOUT_BASE_SECONDS` (60 s).
+  Each further failure doubles that, up to `LOGIN_LOCKOUT_MAX_SECONDS` (15 minutes). Attempts during a lock get 429
+  `ACCOUNT_LOCKED` with `Retry-After` and don't extend it.
+- **Where:** each device the user has signed in on before counts on its own until it's revoked, and all other devices
+  share one count. Failures from elsewhere lock only sign-in on new devices, so users keep signing in on their own
+  devices.
+- **Until when:** a successful sign-in clears the count for that device. Failures are forgotten a day after the last
+  one.
+- **Clearing a lock:** institute admins with permission to edit users use the user's devices page (Users), and the
+  super admin uses Admin › Users. A cleared account locks again if the attempts go on, so check the audit log first.
+- **Auditing:** the audit log records every lock (`auth.sign_in_locked`, with the method and device) and every clear
+  (`auth.sign_in_unlocked`).
+- **Turning it off:** `LOGIN_LOCKOUT_THRESHOLD=0`. The per-IP `auth` limit still applies.
 
 ### Background jobs
 
@@ -848,30 +973,58 @@ The apps need a publicly trusted certificate on `SERVER_NAME`: self-signed certi
 
 ## Scaling
 
-This release runs one API process. Node.js handles requests on one thread, and that includes password hashing
-(bcryptjs; see [load-testing.md](load-testing.md)). Extra cores mostly help MySQL and ffmpeg. Running several API
-processes or servers needs the following changes:
+This release runs one API process. Node.js handles requests on one thread. Password hashing (scrypt) runs on libuv's
+thread pool instead, so sign-ins use other cores without holding up requests ([load-testing.md](load-testing.md)). The
+pool has `UV_THREADPOOL_SIZE` threads (4 by default), which bounds the sign-ins one process hashes at once, and also
+serves file reads; on a server with more cores, raise it towards the core count. Extra cores also help MySQL and
+ffmpeg. Running several API processes or servers needs the following changes:
 
-| Component       | Today                                                 | Needed for more than one API process                                                          |
-| --------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Live classes    | Room state in process memory (`realtime.ts`)          | Sticky sessions, the Socket.IO Redis adapter and room state in Redis ([below](#live-classes)) |
-| Rate limits     | In-memory counters per process                        | A shared store, for example `rate-limit-redis` for `express-rate-limit`                       |
-| Background jobs | MySQL `jobs` table, `SKIP LOCKED`                     | Nothing: several workers are safe                                                             |
-| Media storage   | Local volume `storage`                                | A shared file system, or object storage (the S3/R2 adapter is not implemented yet)            |
-| Website cache   | In-process, 60 s TTL                                  | Nothing: each process may serve 60 s stale site settings                                      |
-| Authentication  | JWT access tokens; refresh tokens in MySQL            | Nothing                                                                                       |
-| Upgrades        | One api container; the site is down during the switch | Rolling restarts behind a load balancer, which needs everything above                         |
+| Component       | Today                                                                                | Needed for more than one API process                                               |
+| --------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| Live classes    | The Socket.IO Redis adapter; hands, speakers, screen sharing and whiteboard in Redis | Sticky sessions for the long-polling fallback ([below](#live-classes))             |
+| Rate limits     | Counters in Redis                                                                    | Nothing ([below](#rate-limits))                                                    |
+| Background jobs | MySQL `jobs` table, `SKIP LOCKED`                                                    | Nothing: several workers are safe                                                  |
+| Media storage   | Local volume `storage`                                                               | A shared file system, or object storage (the S3/R2 adapter is not implemented yet) |
+| Website cache   | In-process, 60 s TTL                                                                 | Nothing: each process may serve 60 s stale site settings                           |
+| Authentication  | JWT access tokens; refresh tokens in MySQL; sign-in locks and OTP counters in Redis  | Nothing                                                                            |
+| Upgrades        | One api container; the site is down during the switch                                | Rolling restarts behind a load balancer, which needs everything above              |
 
-The `redis` service (`docker compose --profile redis up -d redis`, with AOF persistence) is prepared for these
-changes. Nothing uses it yet.
+Redis is the stack's `redis` service (AOF persistence, not published on the host). Every API process must use the same
+Redis (`REDIS_URL`); for a Redis outside the stack, use `rediss://` with a password. Its keys:
+
+- `rl:<limiter>:<client>`: rate-limit counters, and the OTP counters (`rl:otp-mobile:*` per mobile number and device,
+  `rl:otp-decoy:*` for the challenges of unregistered numbers), which expire with their window;
+- `signin:<account>`: failed sign-ins and [sign-in locks](#sign-in-locks), which expire a day after the last failure;
+- `signin-gate:<account>:<device>`: the gate that runs one sign-in attempt per account and device at a time (10
+  seconds at most);
+- `live:room:<institute>:<class>:*`: a class's hands, speakers, screen sharing and whiteboard, which expire after 12
+  hours;
+- the `socket.io#*` channels: the adapter's publish and subscribe traffic.
+
+While Redis is unreachable, the API keeps working and logs a warning at most once a minute per kind:
+
+- **Rate limits and OTP counters:** each process counts in memory.
+- **Sign-in locks:** each process keeps failures and locks in memory, so a lock applies only on the process that set it.
+- **Live classes:** each process sees only its own sockets, so participants on other processes miss events. Joining
+  works without the hands and the whiteboard; hands, microphones, screen sharing and the whiteboard answer
+  `LIVE_STATE_UNAVAILABLE` (503).
+
+Everything goes back to Redis by itself once it is reachable.
 
 ### Live classes
 
 Live classes use Socket.IO (namespace `/live`, path `/api/live-classes/socket.io`) for signalling, chat, polls, hands
 and attendance:
 
-- **Room state:** each room's state lives in a `Map` in the API process. A restart ends every running class: clients
-  reconnect, but the room state is gone.
+- **Room state:** chat, questions, polls and attendance are in MySQL. Who is online is read from the room's sockets.
+  Raised hands, speakers, screen sharing and the whiteboard are in Redis, or in the API process without `REDIS_URL`.
+  After an API restart the clients reconnect and rejoin; without Redis, the hands and the whiteboard are gone.
+- **Re-checks:** open sockets are re-checked every minute with the REST API's session checks. A revoked or idle
+  device, an inactive user, a lost membership or branch, a suspended subscription or an inactive institute drops them.
+  A change of an institute's subscription or status re-checks its sockets at once, and signing a device out or revoking
+  it drops its sockets within seconds (a background job). With LiveKit, the media connections of dropped sockets and
+  devices are removed too ([live streaming](integrations/live-streaming.md#how-a-class-runs)). The app then asks the
+  REST API, which explains why, and reconnects if it is allowed.
 - **Media:** with `STREAMING_PROVIDER=mock`, media flows peer to peer over WebRTC. The teacher's browser sends one
   stream to each student, so a class is limited by the teacher's upload bandwidth, roughly 15 to 25 viewers (see
   `backend/src/modules/live-classes/README.md`). With `STREAMING_PROVIDER=livekit`, a LiveKit media server forwards
@@ -883,13 +1036,12 @@ and attendance:
 
 To run live classes on several API processes:
 
-1. **Sticky sessions.** The Socket.IO long-polling transport needs every request of a session to reach the same
-   process. In nginx, use `hash $remote_addr consistent;` or a cookie hash in the `erp_api` upstream. Otherwise, make
-   the client use the WebSocket transport only.
-2. **[`@socket.io/redis-adapter`](https://socket.io/docs/v4/redis-adapter/)**, so that broadcasts reach the sockets on
+1. **One Redis.** Set the same `REDIS_URL` on every process. The
+   [`@socket.io/redis-adapter`](https://socket.io/docs/v4/redis-adapter/) then carries a class's events to the sockets on
    the other processes.
-3. **Room state in Redis.** Move the participants, hands and polls out of the in-memory `Map`. Alternatively, route
-   each room to one owner process.
+2. **Sticky sessions.** The app connects over WebSocket and falls back to long polling, which needs every request of a
+   session to reach the same process. In nginx, use `hash $remote_addr consistent;` or a cookie hash in the `erp_api`
+   upstream.
 
 TURN with [coturn](https://github.com/coturn/coturn):
 
@@ -932,9 +1084,10 @@ TURN with [coturn](https://github.com/coturn/coturn):
 
 ### Rate limits
 
-The `express-rate-limit` counters live in memory. With N API processes, a client gets up to N times the budget, and a
-restart resets the counters. Before scaling out, move them to a shared store such as `rate-limit-redis` with the
-`redis` service.
+With `REDIS_URL`, the `express-rate-limit` counters live in Redis (`rate-limit-redis`), so every API process counts
+against one budget per client. Without it, each process counts in memory: with N processes, a client gets up to N times
+the budget, and a restart resets the counters. While Redis is unreachable, the processes count in memory and log
+`Redis rate-limit store failed; counting in memory`; they use Redis again once it is back.
 
 ### Jobs and workers
 
@@ -986,6 +1139,7 @@ The `backup-restore` job runs `deploy/backup/restore-test.sh` against MySQL 8.4;
 | A biometric device doesn't send punches             | The device's last error in Attendance setup → Biometric, and [biometric.md](integrations/biometric.md#troubleshooting)                                                                                     |
 | CORS errors in the mobile apps                      | `CORS_ORIGINS` (`docker compose exec api printenv CORS_ORIGINS`) must contain the app's origin                                                                                                             |
 | A certificate error on a custom domain              | `docker compose exec web erp-certs --reload` reports skipped certificates; `openssl s_client -servername <host> -connect <host>:443` shows the certificate in use                                          |
+| A user gets 429 `ACCOUNT_LOCKED` at sign-in         | Repeated failed attempts locked the account ([sign-in locks](#sign-in-locks)). The audit log shows `auth.sign_in_locked`; an admin can clear it                                                            |
 | Clients all share one rate limit                    | A proxy in front of nginx without [real IP](#behind-a-cdn-or-load-balancer) configured                                                                                                                     |
 | Lectures stay "processing"                          | Stale `running` jobs ([background jobs](#background-jobs)), or the image was built with `INSTALL_FFMPEG=false`                                                                                             |
 | Disk full                                           | Docker log rotation, `BACKUP_KEEP_COUNT`/`BACKUP_KEEP_DAYS`, `docker system df`, old images (`docker image prune`)                                                                                         |
@@ -999,7 +1153,7 @@ There is no password-reset command, and the seeder never changes an existing pas
    ```sh
    ( read -rsp 'New password: ' NEW_PASSWORD && echo && export NEW_PASSWORD &&
      docker compose run --rm --no-deps -e NEW_PASSWORD migrate \
-       node -e "require('bcryptjs').hash(process.env.NEW_PASSWORD, 10).then(console.log)" )
+       node -e "require('./dist/infrastructure/password').hashPassword(process.env.NEW_PASSWORD).then(console.log)" )
    ```
 
 2. Store the hash. Run `docker compose exec mysql mysql -uroot -p erp_coaching`, then:

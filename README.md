@@ -54,7 +54,7 @@ cp app/.env.example app/.env           # VITE_API_URL (default http://localhost:
 npm install                            # installs all workspaces and builds @erp/shared
 ```
 
-In development, `JWT_ACCESS_SECRET`, `ENCRYPTION_KEY` and `FILE_URL_SECRET` fall back to insecure defaults. In production they are **required**.
+In development, `JWT_ACCESS_SECRET`, `ENCRYPTION_KEY`, `FILE_URL_SECRET` and `OTP_HASH_SECRET` fall back to insecure defaults. In production they are **required**.
 
 ## 3. Migrate and seed
 
@@ -128,6 +128,7 @@ Native project notes:
 
 - **Auth**
   - Mobile + password login, and mobile + OTP login.
+  - Siblings who share a parent's mobile each have their own account; OTP sign-in on that number asks "Who's signing in?".
   - JWT access tokens, plus rotating refresh tokens stored hashed.
   - Device registration capped at 2 active devices, with OTP required on a new device.
 - **Multi-tenancy**

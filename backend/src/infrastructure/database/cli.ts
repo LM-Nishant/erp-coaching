@@ -1,11 +1,17 @@
-/* Database CLI: create | migrate | migrate:undo | migrate:status | seed | seed:undo | reset | make:migration <module> <name> */
+/*
+ * Database CLI: create | migrate | migrate:undo | migrate:status | seed | seed:undo | reset
+ * | make:migration <module> <name> | secrets:reencrypt [--dry-run]
+ * | students:backfill-accounts [--dry-run] [--institute=<id>[,<id>…]]
+ */
 import fs from 'node:fs';
 import path from 'node:path';
 import mysql from 'mysql2/promise';
 import { config } from '../config';
 import { closeSequelize, getSequelize } from './sequelize';
 import { createMigrator, createSeeder } from './migrator';
-import { initModels } from '../../bootstrap';
+import { bootstrap, initModels } from '../../bootstrap';
+import { backfillStudentAccounts } from '../../modules/students/account-backfill';
+import { reencryptStoredSecrets } from './encrypted-columns';
 
 async function createDatabase(name = config.DB_NAME) {
   const conn = await mysql.createConnection({
@@ -52,6 +58,66 @@ export const down: Migration = async ({ context: { queryInterface } }) => {
 `,
   );
   console.log(`Created ${path.relative(process.cwd(), file)}`);
+}
+
+/** Moves stored secrets to the current ENCRYPTION_KEY. Returns false when some value can't be decrypted. */
+async function reencryptSecrets(dryRun: boolean): Promise<boolean> {
+  const reports = await reencryptStoredSecrets({ dryRun });
+  console.table(
+    reports.map((r) => ({
+      column: `${r.table}.${r.column}`,
+      values: r.total,
+      'on current key': r.current,
+      [dryRun ? 'to re-encrypt' : 're-encrypted']: r.reencrypted,
+      ...(dryRun ? {} : { 'changed meanwhile': r.changedMeanwhile }),
+      'cannot decrypt': r.failedIds.length,
+    })),
+  );
+  const failed = reports.filter((r) => r.failedIds.length);
+  for (const r of failed)
+    console.error(`${r.table}.${r.column}: no configured key decrypts ids ${r.failedIds.join(', ')}`);
+  const left = reports.reduce((n, r) => n + (dryRun ? r.reencrypted : r.changedMeanwhile), 0);
+  if (failed.length)
+    console.error(
+      'Add the missing keys to ENCRYPTION_PREVIOUS_KEYS and run again, or re-enter those secrets.',
+    );
+  else if (left)
+    console.log(`${left} values are on a previous key${dryRun ? '' : ': run the command again'}.`);
+  else console.log('Every stored secret uses the current key: ENCRYPTION_PREVIOUS_KEYS can be emptied.');
+  return !failed.length;
+}
+
+/** Gives students without a login account one (see account-backfill.ts). Returns false when something is left. */
+async function backfillAccounts(dryRun: boolean, instituteIds?: number[]): Promise<boolean> {
+  const report = await backfillStudentAccounts({ dryRun, instituteIds });
+  if (!report.institutes.length) {
+    console.log('Every student has a login account and no admission or course purchase is waiting for one.');
+    return true;
+  }
+  const verb = dryRun ? 'to ' : '';
+  console.table(
+    report.institutes.map((r) => ({
+      institute: r.instituteId,
+      [`${verb}create (own mobile)`]: r.accountsOwningMobile,
+      [`${verb}create (shared mobile)`]: r.accountsSharingMobile,
+      [`${verb}link existing`]: r.accountsLinked,
+      [dryRun ? 'to enrol in batch' : 'enrolled in batch']: r.enrolledInBatch,
+      'already in batch': r.alreadyInBatch,
+      [dryRun ? 'course purchases to retry' : 'course purchases placed']: r.coursePurchases,
+    })),
+  );
+  const copies = Object.entries(report.copies).filter(([, n]) => n);
+  if (copies.length)
+    console.log(
+      `${dryRun ? "Rows without the student's login" : "Rows given the student's login"}: ${copies
+        .map(([table, n]) => `${table} ${n}`)
+        .join(', ')}`,
+    );
+  if (report.problems.length) {
+    console.error(`${dryRun ? 'Would need' : 'Needs'} an admin's attention:`);
+    console.table(report.problems);
+  } else console.log(dryRun ? 'Nothing would need attention.' : 'Done: nothing needs attention.');
+  return !report.problems.length;
 }
 
 async function main() {
@@ -102,6 +168,21 @@ async function main() {
       await migrator.up();
       await initModels();
       await seeder.up();
+      break;
+    }
+    case 'secrets:reencrypt':
+      await initModels();
+      if (!(await reencryptSecrets(args.includes('--dry-run')))) process.exitCode = 1;
+      break;
+    case 'students:backfill-accounts': {
+      // `--institute=<id>[,<id>…]` limits the run to those institutes.
+      const scope = args.find((a) => a.startsWith('--institute='))?.slice('--institute='.length);
+      const instituteIds = scope?.split(',').map(Number);
+      if (instituteIds?.some((id) => !Number.isInteger(id) || id <= 0))
+        throw new Error('Usage: students:backfill-accounts [--dry-run] [--institute=<id>[,<id>…]]');
+      // The full boot: enrolments notify students and guardians through resolvers wired in onReady.
+      await bootstrap();
+      if (!(await backfillAccounts(args.includes('--dry-run'), instituteIds))) process.exitCode = 1;
       break;
     }
     default:

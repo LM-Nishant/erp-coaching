@@ -6,7 +6,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue';
+import { computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { IonBadge, IonButton, IonIcon } from '@ionic/vue';
 import { notificationsOutline } from 'ionicons/icons';
@@ -18,14 +18,20 @@ const router = useRouter();
 const enabled = computed(() => !!auth.me?.institute && auth.can('notification-inbox.view'));
 let timer: ReturnType<typeof setInterval> | null = null;
 
-onMounted(() => {
+function start() {
+  if (timer) clearInterval(timer);
+  timer = null;
   if (!enabled.value) return;
   void refreshUnread();
   // An impersonating admin's device must not take over the user's pushes.
   if (auth.can('notification-inbox.edit') && !auth.me!.impersonatedBy)
     void registerPush(auth.me!.user.id, () => void router.push({ name: 'notifications-inbox' }));
   timer = setInterval(refreshUnread, 60_000);
-});
+}
+
+onMounted(start);
+// "Switch profile" keeps the page and this bell: the count and pushes follow the account now signed in.
+watch(() => [auth.me?.user.id, auth.me?.institute?.id], start);
 onUnmounted(() => timer && clearInterval(timer));
 </script>
 

@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { Branch } from '../src/modules/branches/branch.model';
+import { User } from '../src/modules/users/user.model';
 import { USERS, bearer, getApp, login } from './helpers';
 
 const year = new Date().getFullYear();
@@ -138,13 +139,20 @@ describe('students', () => {
       .set(bearer(apex));
     expect(byId.body[0].matchedOn.sort()).toEqual(['email', 'idNumber']);
 
-    // A sibling sharing the family mobile can be admitted deliberately; it gets no login of its own.
+    // A sibling sharing the family mobile can be admitted deliberately; it gets a login of its own that
+    // shares the mobile rather than owning it.
     const sibling = await request(app)
       .post('/api/students')
       .set(bearer(apex))
       .send({ name: 'Dup Sibling', mobile: m, allowDuplicate: true });
     expect(sibling.status).toBe(201);
-    expect(sibling.body.userId).toBeNull();
+    expect(sibling.body.userId).toEqual(expect.any(Number));
+    expect(sibling.body.userId).not.toBe(first.body.userId);
+    const accounts = await User.findAll({ where: { id: [first.body.userId, sibling.body.userId] } });
+    expect(Object.fromEntries(accounts.map((u) => [u.name, [u.mobile, u.sharedMobile]]))).toEqual({
+      'Dup One': [m, null],
+      'Dup Sibling': [null, m],
+    });
   });
 
   it('runs the status lifecycle and branch transfer with history', async () => {

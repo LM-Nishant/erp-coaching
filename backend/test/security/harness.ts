@@ -230,7 +230,11 @@ export async function purgeInstitutes(instituteIds: number[], mobilePrefix: stri
     );
     await purgeRows('institutes', ids);
   }
-  const users = await query<{ id: number }>('SELECT id FROM users WHERE mobile LIKE ?', [`${mobilePrefix}%`]);
+  // Siblings' accounts only share a parent's mobile.
+  const users = await query<{ id: number }>(
+    'SELECT id FROM users WHERE mobile LIKE ? OR shared_mobile LIKE ?',
+    [`${mobilePrefix}%`, `${mobilePrefix}%`],
+  );
   await purgeRows(
     'users',
     users.map((u) => u.id),
@@ -286,6 +290,15 @@ export function installTenantProbe(opts: { includeSystem?: boolean } = {}) {
 
 /** Tables never compared by `snapshotInstitute` (append-only side effects of any request). */
 const SNAPSHOT_SKIP = new Set(['audit_events', 'jobs', 'refresh_tokens']);
+
+/**
+ * Columns left out of a table's checksum. `authenticate` records a device's activity (and Sequelize bumps
+ * `updated_at` with it) at most once per ACTIVITY_TOUCH_INTERVAL_MS, so an attacker who is also a member of
+ * the victim institute changes these on their own device once a run takes longer than that.
+ */
+const SNAPSHOT_SKIP_COLUMNS: Record<string, string[]> = {
+  devices: ['last_seen_at', 'last_ip', 'updated_at'],
+};
 
 type Columns = Map<string, string[]>;
 let columnsCache: Columns | null = null;
@@ -344,7 +357,11 @@ export async function snapshotInstitute(
     const hasId = cols.includes('id');
     const limit = opts.existingOnly && hasId ? opts.since?.maxId.get(table) : undefined;
     const filter = limit !== undefined ? `${where} AND id <= ${limit}` : where;
-    const list = cols.map((c) => `\`${c}\``).join(', ');
+    const skip = SNAPSHOT_SKIP_COLUMNS[table] ?? [];
+    const list = cols
+      .filter((c) => !skip.includes(c))
+      .map((c) => `\`${c}\``)
+      .join(', ');
     const [row] = await query<{ n: number; h: string | null; m: number | null }>(
       `SELECT COUNT(*) AS n, CAST(BIT_XOR(CRC32(CONCAT_WS('|', ${list}))) AS CHAR) AS h,
               ${hasId ? 'MAX(id)' : 'NULL'} AS m

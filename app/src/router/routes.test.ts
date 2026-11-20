@@ -8,6 +8,7 @@ describe('pages reachable while the subscription is suspended', () => {
   it.each([
     'login',
     'otp',
+    'choose-profile',
     'unlock',
     'select-institute',
     'forbidden',

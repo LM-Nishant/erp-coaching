@@ -260,6 +260,8 @@ export const PUBLIC_OUTSIDE_PUBLIC_PREFIX: Record<string, string> = {
   'POST /api/auth/login': 'sign-in',
   'POST /api/auth/otp/request': 'sign-in',
   'POST /api/auth/otp/verify': 'sign-in',
+  'POST /api/auth/select-profile':
+    'sign-in (single-use selection token from a verified OTP is the credential)',
   'POST /api/auth/biometric/unlock': 'sign-in (device-bound unlock key is the credential)',
   'POST /api/auth/refresh': 'refresh token is the credential',
   'POST /api/auth/logout': 'refresh token is the credential',
@@ -345,12 +347,7 @@ export const UNIFORM_RESPONSE: Record<string, string> = {
  * remove the entry: an entry that no longer fails is stale and fails the suite. Critical and high
  * findings must be fixed, never listed here. Also listed in docs/security.md.
  */
-export const KNOWN_FINDINGS: Record<string, string> = {
-  'branch-lists GET /api/guardians':
-    'low: a guardian with children in several branches lists all of them (names included) to staff restricted to one of those branches',
-  'branch-lists GET /api/audit-events':
-    'medium: the audit log is not branch-filtered, so branch-restricted staff with audit access see events (and their metadata) from every branch',
-};
+export const KNOWN_FINDINGS: Record<string, string> = {};
 
 /**
  * Routes the crawls cannot probe yet, with the reason. A stale entry (the route is gone, or now

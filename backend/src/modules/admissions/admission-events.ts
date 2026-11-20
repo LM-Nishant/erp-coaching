@@ -9,8 +9,8 @@ export interface AdmissionCompletedEvent {
   applicationId: number;
   /** `students.id` of the admitted student. */
   studentId: number;
-  /** Login user id (null for siblings sharing a mobile). */
-  studentUserId: number | null;
+  /** Login user id of the student (every student has one, siblings sharing a mobile included). */
+  studentUserId: number;
   branchId: number;
   courseId: number | null;
   batchId: number | null;

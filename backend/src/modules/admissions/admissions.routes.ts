@@ -756,7 +756,7 @@ export function admissionRoutes(api: Router) {
     await emitAdmissionCompleted({
       applicationId: a.id,
       studentId: student.id,
-      studentUserId: student.userId ?? null,
+      studentUserId: student.userId!,
       branchId: student.branchId,
       courseId: a.courseId ?? null,
       batchId: a.batchId ?? null,

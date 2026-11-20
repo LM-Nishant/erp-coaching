@@ -43,7 +43,11 @@ export function toLinkDto(link: StudentGuardian, guardian: Guardian): StudentGua
   };
 }
 
-export function toGuardianDto(g: Guardian, students: Map<number, string>): GuardianDto {
+/**
+ * `students` maps child ids to names. With `visibleOnly`, children missing from it (in branches the
+ * user cannot see) are left out instead of listed without a name.
+ */
+export function toGuardianDto(g: Guardian, students: Map<number, string>, visibleOnly = false): GuardianDto {
   return {
     id: g.id,
     userId: g.userId,
@@ -52,13 +56,15 @@ export function toGuardianDto(g: Guardian, students: Map<number, string>): Guard
     email: g.email ?? null,
     occupation: g.occupation ?? null,
     address: g.address ?? null,
-    children: (g.links ?? []).map((l) => ({
-      linkId: l.id,
-      studentId: l.studentId,
-      name: students.get(l.studentId) ?? '',
-      relation: l.relation,
-      status: l.status,
-    })),
+    children: (g.links ?? [])
+      .filter((l) => !visibleOnly || students.has(l.studentId))
+      .map((l) => ({
+        linkId: l.id,
+        studentId: l.studentId,
+        name: students.get(l.studentId) ?? '',
+        relation: l.relation,
+        status: l.status,
+      })),
   };
 }
 
@@ -112,7 +118,7 @@ export async function linkGuardian(
           instituteId,
           userId: user.id,
           name: input.name,
-          mobile: user.mobile,
+          mobile: input.mobile,
           email: input.email ?? user.email ?? null,
           occupation: input.occupation ?? null,
           address: input.address ?? null,
