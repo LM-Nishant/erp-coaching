@@ -22,6 +22,14 @@ export default defineModule({
     {
       module: 'live-classes',
       label: 'Live classes',
+      area: 'Learning & exams',
+      describe: {
+        view: ['Join live classes', 'See and join scheduled live classes'],
+        create: ['Schedule live classes', 'Schedule and start live classes'],
+        edit: ['Edit live classes', 'Reschedule and run live classes'],
+        delete: ['Cancel live classes', 'Cancel live classes and delete recordings'],
+        configure: ['Live class setup', 'Video provider and recording settings'],
+      },
       actions: ['view', 'create', 'edit', 'delete', 'configure'],
       grants: {
         'branch-admin': 'all',

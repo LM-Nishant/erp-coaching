@@ -11,6 +11,15 @@ export default defineModule({
     {
       module: 'question-bank',
       label: 'Question bank',
+      area: 'Learning & exams',
+      describe: {
+        view: ['View questions', 'Browse the question bank'],
+        create: ['Add questions', 'Write and import questions'],
+        edit: ['Edit questions', 'Change questions and their answers'],
+        delete: ['Delete questions', 'Remove questions'],
+        export: ['Export questions', 'Download question papers and the question bank'],
+        configure: ['Question bank setup', 'Topics, tags and difficulty levels'],
+      },
       actions: ['view', 'create', 'edit', 'delete', 'export', 'configure'],
       grants: {
         'branch-admin': 'all',

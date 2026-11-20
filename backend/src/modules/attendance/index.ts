@@ -13,6 +13,16 @@ export default defineModule({
     {
       module: 'attendance',
       label: 'Student attendance',
+      area: 'Academics',
+      describe: {
+        view: ['View attendance', 'See attendance registers and summaries'],
+        create: ['Mark attendance', 'Take attendance for a class session'],
+        edit: ['Correct attendance', 'Change attendance already marked'],
+        delete: ['Delete attendance', 'Remove attendance sessions'],
+        approve: ['Approve student leave', 'Decide leave requests from students and parents'],
+        export: ['Export attendance', 'Download attendance registers and reports'],
+        configure: ['Attendance setup', 'Rules, absence alerts and biometric/RFID devices'],
+      },
       actions: ['view', 'create', 'edit', 'delete', 'approve', 'export', 'configure'],
       grants: { 'branch-admin': 'all', teacher: ['view', 'create'], accountant: ['view', 'export'] },
     },
@@ -20,6 +30,11 @@ export default defineModule({
       // Students checking in and viewing their own attendance; parents for linked children.
       module: 'attendance-self',
       label: 'My attendance',
+      area: 'My account',
+      describe: {
+        view: ['Own attendance', "See their own (or their children's) attendance"],
+        create: ['Check in', 'Check in to class and apply for leave'],
+      },
       actions: ['view', 'create'],
       grants: { student: 'all', parent: 'all' },
       selfService: true,

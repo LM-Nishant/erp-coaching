@@ -18,6 +18,12 @@ export default defineModule({
     {
       module: 'institute',
       label: 'Institute profile & settings',
+      area: 'Institute',
+      adminOnly: ['configure'],
+      describe: {
+        view: ['View institute profile', "See the institute's name, logo and contact details"],
+        configure: ['Institute settings', 'Profile, branding, messaging and other institute-wide settings'],
+      },
       actions: ['view', 'configure'],
       grants: {
         'branch-admin': ['view'],

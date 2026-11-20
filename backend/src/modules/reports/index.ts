@@ -12,6 +12,11 @@ export default defineModule({
     {
       module: 'reports',
       label: 'Reports & analytics',
+      area: 'Reports & files',
+      describe: {
+        view: ['View reports', 'Open reports and dashboards for the areas they can see'],
+        export: ['Export reports', 'Download reports as Excel, CSV or PDF'],
+      },
       actions: ['view', 'export'],
       // Each report also needs the source module's permission; scope narrows rows per role.
       grants: {

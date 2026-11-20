@@ -4,8 +4,10 @@ import request from 'supertest';
 import { Model, QueryTypes } from 'sequelize';
 import { vi } from 'vitest';
 import { getSequelize } from '../../src/infrastructure/database/sequelize';
+import { discoverModules } from '../../src/infrastructure/module-loader';
 import { logger } from '../../src/infrastructure/logger';
 import { getContext } from '../../src/shared/context';
+import { nonGrantableKeys } from '../../src/modules/permissions/catalog.service';
 import { User } from '../../src/modules/users/user.model';
 import { bearer, getApp, lastOtpFor, login, purgeRows, stableDevice } from '../helpers';
 
@@ -188,10 +190,20 @@ export async function createStaff(
   admin: Actor,
   opts: { label: string; mobile: string; permissions: string[]; branchId: number | null },
 ): Promise<Actor> {
+  const locked = nonGrantableKeys(await discoverModules());
   const role = await ok(admin, 'POST', '/api/roles', {
     name: `Isolation ${opts.label} ${crypto.randomBytes(3).toString('hex')}`,
-    permissions: opts.permissions,
+    permissions: opts.permissions.filter((key) => !locked.has(key)),
   });
+  // The API refuses admin-only and self-service keys on custom roles; probes that need them (e.g. a
+  // branch-restricted user holding everything) get them straight in the database.
+  const extra = opts.permissions.filter((key) => locked.has(key));
+  if (extra.length) {
+    await getSequelize().query(
+      'INSERT INTO role_permissions (role_id, permission_id) SELECT ?, id FROM permissions WHERE `key` IN (?)',
+      { replacements: [role.id, extra] },
+    );
+  }
   await ok(admin, 'POST', '/api/users', {
     name: `Isolation ${opts.label}`,
     mobile: opts.mobile,
