@@ -80,7 +80,7 @@ describe('permission catalog', () => {
     const areas = catalog.map((p) => PERMISSION_AREAS.indexOf(p.area));
     expect(areas).toEqual([...areas].sort((a, b) => a - b));
     const modules = await discoverModules();
-    const byKey = new Map(catalog.map((p) => [p.key, p.access]));
+    const byKey = new Map<string, string>(catalog.map((p) => [p.key, p.access]));
     for (const key of adminOnlyKeys(modules)) expect(byKey.get(key), key).toBe('admin-only');
     expect(byKey.get('roles.create')).toBe('admin-only');
     expect(byKey.get('student-portal.view')).toBe('self-service');
