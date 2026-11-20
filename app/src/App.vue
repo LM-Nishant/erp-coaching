@@ -189,6 +189,8 @@ async function switchProfile() {
     const next = await auth.startProfileSwitch();
     await menuController.close();
     if (next === 'otp') await router.push({ name: 'otp' });
+    // Without a code (AUTH_DEV_SKIP_OTP in local development) the API answers with the profiles at once.
+    else if (next === 'choose-profile') await router.push({ name: 'choose-profile' });
   } catch (e) {
     await toastError(e);
   }

@@ -126,6 +126,8 @@ export function apiServerEnv(): Record<string, string> {
     JOBS_WORKER_ENABLED: 'true',
     JOBS_POLL_INTERVAL_MS: '500',
     RATE_LIMIT_ENABLED: 'false',
+    // The specs sign in with real OTPs (read from the outbox), as in production.
+    AUTH_DEV_SKIP_OTP: 'false',
     MAX_ACTIVE_DEVICES: String(MAX_ACTIVE_DEVICES),
     // Dev/test providers: messages go to the console and DEV_OUTBOX_FILE, payments to the mock gateway.
     SMS_PROVIDER: 'console',

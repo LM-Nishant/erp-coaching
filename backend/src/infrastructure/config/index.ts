@@ -5,6 +5,7 @@ import { z } from 'zod';
 dotenv.config({ path: path.resolve(__dirname, '../../../.env'), quiet: true });
 
 const isProd = process.env.NODE_ENV === 'production';
+const isDevelopment = (process.env.NODE_ENV?.trim() || 'development') === 'development';
 const devDefault = (value: string) => (isProd ? z.string().min(16) : z.string().min(1).default(value));
 const bool = (def: boolean) =>
   z
@@ -100,6 +101,12 @@ const schema = z.object({
     .max(18)
     .default(15),
 
+  /**
+   * Local development only: sign in without OTPs (new-device check after a password, mobile OTP login,
+   * "Who's signing in?" and "Switch profile"). On by default when NODE_ENV=development, off otherwise;
+   * the API refuses to start with it on in production. See docs/security.md.
+   */
+  AUTH_DEV_SKIP_OTP: bool(isDevelopment),
   OTP_TTL_SECONDS: z.coerce.number().default(300),
   OTP_MAX_ATTEMPTS: z.coerce.number().default(5),
   /** OTP requests per mobile number per 10 minutes, whether or not the number has an account. */
@@ -234,6 +241,8 @@ if (!parsed.success) {
   throw new Error('Invalid environment configuration');
 }
 if (isProd && parsed.data.DEV_OUTBOX_FILE) throw new Error('DEV_OUTBOX_FILE must not be set in production');
+if (isProd && parsed.data.AUTH_DEV_SKIP_OTP)
+  throw new Error('AUTH_DEV_SKIP_OTP must not be enabled in production');
 if (parsed.data.ERROR_TRACKING_PROVIDER === 'webhook' && !parsed.data.ERROR_TRACKING_WEBHOOK_URL)
   throw new Error('ERROR_TRACKING_WEBHOOK_URL is required when ERROR_TRACKING_PROVIDER=webhook');
 if (
