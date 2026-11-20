@@ -591,6 +591,8 @@ This release only ships development adapters for the external integrations:
 - **Biometrics:** ZKTeco and eSSL devices connect directly over ADMS push
   ([biometric.md](integrations/biometric.md)). `BIOMETRIC_PROVIDER=mock` is only the payload format of the punch API,
   for other devices and middleware.
+- **Accounting (Tally):** nothing to set up on the server. Accountants download TallyPrime XML files (also importable
+  into Tally.ERP 9) from **Tally export** and import them in Tally ([tally.md](integrations/tally.md)).
 - **Storage:** `STORAGE_DRIVER` must stay `local`, because the S3/R2 adapter is not implemented.
 - **Google Calendar:** `CALENDAR_PROVIDER=mock` keeps parent-teacher meetings out of Google Calendar. Turning on
   `google` needs the platform's Google OAuth client, and Google's verification of its consent screen can take weeks

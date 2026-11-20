@@ -352,6 +352,7 @@ Set a per-checkout `TEST_DB_NAME` in `backend/.env` (e.g. `erp_coaching_test_<mo
 | `953…`           | `calendar.test.ts` (Google Calendar)                                                                                                           |
 | `954…`           | `livekit-streaming.test.ts`                                                                                                                    |
 | `955…`           | `biometric-adms.test.ts`                                                                                                                       |
+| `956…`           | `tally.test.ts` (Tally accounting export)                                                                                                      |
 | `957…`           | `promotion-fees.test.ts`                                                                                                                       |
 | `959…`           | sibling accounts on a shared mobile: `sibling-accounts.test.ts` 9590, browser E2E `sibling-profiles.spec.ts` 9591                              |
 
