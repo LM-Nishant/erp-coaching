@@ -10,7 +10,7 @@ import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { instituteToday } from '../../shared/timezone';
 import { Role, UserRole } from '../permissions/models';
 import { memberVisibilityWhere } from '../permissions/access.service';
-import { User } from '../users/user.model';
+import { User, contactMobile, mobileLike } from '../users/user.model';
 import { Branch } from '../branches/branch.model';
 import {
   AcademicSession,
@@ -127,11 +127,11 @@ export async function assertStudents(userIds: number[], transaction?: Transactio
 export async function listUsersWithRole(roleSlug: string, search?: string) {
   const { instituteId } = requireTenantContext();
   const match = search
-    ? { [Op.or]: [{ name: { [Op.like]: `%${search}%` } }, { mobile: { [Op.like]: `%${search}%` } }] }
+    ? { [Op.or]: [{ name: { [Op.like]: `%${search}%` } }, ...mobileLike(`%${search}%`)] }
     : undefined;
   const visible = memberVisibilityWhere();
   const users = await User.findAll({
-    attributes: ['id', 'name', 'mobile'],
+    attributes: ['id', 'name', 'mobile', 'sharedMobile'],
     where: match && visible ? { [Op.and]: [match, visible] } : (match ?? visible),
     // Keeps the role filter in the join (a LIMIT subquery cannot see the nested role include).
     subQuery: false,
@@ -150,7 +150,7 @@ export async function listUsersWithRole(roleSlug: string, search?: string) {
   return users.map((u) => ({
     id: u.id,
     name: u.name,
-    mobile: u.mobile,
+    mobile: contactMobile(u),
     branchIds: ((u as unknown as { roleAssignments: UserRole[] }).roleAssignments ?? [])
       .map((a) => a.branchId)
       .filter((b): b is number => b !== null),

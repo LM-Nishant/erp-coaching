@@ -19,7 +19,7 @@ import {
   memberVisibilityWhere,
 } from '../permissions/access.service';
 import { clearSignInLock, Device, listUserDevices, revokeDevice, signInLocks } from '../authentication/api';
-import { User } from './user.model';
+import { User, contactMobile, mobileLike } from './user.model';
 
 const assignmentSchema = z.object({
   roles: z
@@ -124,7 +124,7 @@ async function searchDeviceUsers(search?: string): Promise<DeviceUserDto[]> {
     where.push({
       [Op.or]: [
         { name: { [Op.like]: `%${search}%` } },
-        { mobile: { [Op.like]: `%${search}%` } },
+        ...mobileLike(`%${search}%`),
         { email: { [Op.like]: `%${search}%` } },
       ],
     });
@@ -145,7 +145,7 @@ async function searchDeviceUsers(search?: string): Promise<DeviceUserDto[]> {
   return users.map((u) => ({
     id: u.id,
     name: u.name,
-    mobile: u.mobile,
+    mobile: contactMobile(u),
     email: u.email,
     status: u.status,
     activeDevices: devices.filter((d) => d.userId === u.id).length,
@@ -164,7 +164,7 @@ export function userRoutes(api: Router) {
       ? {
           [Op.or]: [
             { name: { [Op.like]: `%${q.search}%` } },
-            { mobile: { [Op.like]: `%${q.search}%` } },
+            ...mobileLike(`%${q.search}%`),
             { email: { [Op.like]: `%${q.search}%` } },
           ],
         }

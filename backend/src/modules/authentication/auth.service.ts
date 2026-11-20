@@ -7,6 +7,7 @@ import type {
   BiometricUnlockInput,
   LoginResult,
   MeDto,
+  SignInProfileDto,
 } from '@erp/shared';
 import { config } from '../../infrastructure/config';
 import { getSequelize } from '../../infrastructure/database/sequelize';
@@ -20,7 +21,7 @@ import { AppError, BadRequest, Forbidden, Unauthorized, NotFound } from '../../s
 import { getContext } from '../../shared/context';
 import { audit } from '../../shared/audit/audit.service';
 import { getIdleTimeoutMinutes, isIdle } from '../../shared/session-policy';
-import { User } from '../users/user.model';
+import { User, accountsOnMobile, contactMobile } from '../users/user.model';
 import { Institute } from '../institutes/institute.model';
 import { Branch } from '../branches/branch.model';
 import { loadAssignments, computeAccess, membershipInstituteIds } from '../permissions/access.service';
@@ -142,13 +143,21 @@ async function checkDevice(user: User, input: DeviceInput, otpVerified: boolean)
 
 /**
  * Whom failed attempts count against: the account, per device it is signed in on (else the shared scope 0),
- * or the identifier's tag when there is no account.
+ * or the identifier's tag when there is no account. `scopeUserIds` are the accounts whose devices count as
+ * the account's own: for OTP sign-in, every account the number reaches (children sharing a parent's mobile
+ * sign in with it on their own devices).
  */
-async function signInSubject(user: User | null, tag: string, deviceUid: string): Promise<SignInSubject> {
+async function signInSubject(
+  user: User | null,
+  tag: string,
+  deviceUid: string,
+  scopeUserIds: number[] = user ? [user.id] : [],
+): Promise<SignInSubject> {
   // Looked up without an account too, so both take the same time.
   const device = await Device.findOne({
-    where: { userId: user?.id ?? 0, deviceUid, status: 'active' },
+    where: { userId: scopeUserIds.length ? scopeUserIds : 0, deviceUid, status: 'active' },
     attributes: ['id'],
+    order: [['id', 'ASC']],
   });
   return user ? userSubject(user.id, device?.id ?? 0) : tagSubject(tag);
 }
@@ -186,16 +195,18 @@ const otpExceeded = () => new AppError(429, 'OTP_ATTEMPTS_EXCEEDED', 'Too many a
  * Sends a code to `user`'s number, or to nobody when there is no such (active) user: the response looks
  * the same, but nothing is stored or sent. A failed SMS for an OTP login is reported to the operator but
  * answered alike too (an outage, or a vendor refusing one number, must not reveal the account); after a
- * correct password (`new_device`) the failure is returned. Returns the challenge id.
+ * correct password (`new_device`) the failure is returned. `scopeUserIds` as for `signInSubject`.
+ * Returns the challenge id.
  */
 async function createChallenge(
   user: User | null,
   mobile: string,
   purpose: OtpChallenge['purpose'],
   deviceUid: string,
+  scopeUserIds?: number[],
 ): Promise<string> {
   const tag = identifierTag(mobile);
-  const { scope } = await signInSubject(user, tag, deviceUid);
+  const { scope } = await signInSubject(user, tag, deviceUid, scopeUserIds);
   if ((await otpRequests.hit(`${tag}:${scope}`)) > config.OTP_REQUESTS_PER_MOBILE)
     throw new AppError(429, 'OTP_RATE_LIMITED', 'Too many OTP requests. Try again later.');
   const id = challengeIdFor(tag);
@@ -237,8 +248,13 @@ async function createChallenge(
 /** Checks a code; wrong codes count towards the challenge's attempts and the sign-in lock. */
 async function consumeChallenge(challengeId: string, code: string, deviceUid: string) {
   const found = await OtpChallenge.findByPk(challengeId);
-  const user = await User.findByPk(found?.userId ?? 0);
-  const subject = await signInSubject(user, challengeTag(challengeId), deviceUid);
+  // Both looked up for every challenge (also decoys), so the work doesn't depend on what exists.
+  const [user, onMobile] = await Promise.all([
+    User.findByPk(found?.userId ?? 0),
+    accountsOnMobile(found?.mobile ?? '', { active: true }),
+  ]);
+  const scopeIds = found?.purpose === 'login' ? onMobile.map((u) => u.id) : undefined;
+  const subject = await signInSubject(user, challengeTag(challengeId), deviceUid, scopeIds);
   return guardSignIn(subject, async (attempt) => {
     if (!found) {
       const key = `${challengeId}:${deviceUid}`;
@@ -292,12 +308,14 @@ export async function loginWithPassword(
   if ('limitReached' in check)
     return { status: 'device_limit_reached', maxDevices: config.MAX_ACTIVE_DEVICES };
   if ('otpRequired' in check) {
-    const challengeId = await createChallenge(user, user.mobile, 'new_device', device.uid);
+    // Accounts without a number of their own get the code on the number they share.
+    const mobile = contactMobile(user);
+    const challengeId = await createChallenge(user, mobile, 'new_device', device.uid);
     return {
       status: 'otp_required',
       challengeId,
       reason: 'new_device',
-      maskedMobile: maskMobile(user.mobile),
+      maskedMobile: maskMobile(mobile),
     };
   }
   await audit({
@@ -310,15 +328,101 @@ export async function loginWithPassword(
   return { status: 'authenticated', ...(await issueTokens(user, check.device)) };
 }
 
-/** Always returns a challenge to avoid revealing whether the mobile is registered. */
+/**
+ * Always returns a challenge, to avoid revealing whether the mobile is registered or how many accounts it
+ * reaches. A number shared by several accounts (children on a parent's mobile) gets one code; which account
+ * signs in is chosen once it is verified (`verifyOtp`). The challenge belongs to the number's first account.
+ */
 export async function requestLoginOtp(mobile: string, device: DeviceInput): Promise<LoginResult> {
-  const user = await User.findOne({ where: { mobile, status: 'active' } });
-  const challengeId = await createChallenge(user, mobile, 'login', device.uid);
+  const accounts = await accountsOnMobile(mobile, { active: true });
+  const ids = accounts.map((u) => u.id);
+  const challengeId = await createChallenge(accounts[0] ?? null, mobile, 'login', device.uid, ids);
   return {
     status: 'otp_required',
     challengeId,
     reason: 'otp_login',
     maskedMobile: maskMobile(mobile),
+  };
+}
+
+/**
+ * The accounts a verified number signs in as: its active accounts, less those that only share it and
+ * belong nowhere (made for a student whose record was since deleted). Owner first, then by id.
+ */
+async function numberAccounts(mobile: string): Promise<User[]> {
+  const accounts = await accountsOnMobile(mobile, { active: true });
+  const sharing = accounts.filter((u) => u.mobile === null).map((u) => u.id);
+  if (!sharing.length) return accounts;
+  const members = (await UserRole.findAll({
+    where: { userId: sharing },
+    attributes: ['userId'],
+    // Cross-tenant by design: the verified number's own accounts.
+    tenantBypass: true,
+  } as object)) as UserRole[];
+  const member = new Set(members.map((r) => r.userId));
+  return accounts.filter((u) => u.mobile !== null || u.isSuperAdmin || member.has(u.id));
+}
+
+/** Selection tokens are kept as an HMAC keyed with OTP_HASH_SECRET, like the codes. */
+const selectionHash = (challengeId: string, secret: string) =>
+  crypto.createHmac('sha256', config.OTP_HASH_SECRET).update(`select:${challengeId}:${secret}`).digest('hex');
+
+const selectionInvalid = () =>
+  new AppError(401, 'PROFILE_SELECTION_INVALID', 'This sign-in has expired. Please sign in again.');
+
+/** The accounts offered by "Who's signing in?", with the institutes and roles that tell them apart. */
+async function signInProfiles(accounts: User[]): Promise<SignInProfileDto[]> {
+  const roles = (await UserRole.findAll({
+    where: { userId: accounts.map((u) => u.id) },
+    include: [{ model: Role, as: 'role', attributes: ['slug'] }],
+    order: [
+      ['instituteId', 'ASC'],
+      ['id', 'ASC'],
+    ],
+    // Cross-tenant by design: the verified number's own accounts.
+    tenantBypass: true,
+  } as object)) as UserRole[];
+  const instituteIds = [...new Set(roles.map((r) => r.instituteId))];
+  const institutes = new Map(
+    (instituteIds.length ? await Institute.findAll({ where: { id: instituteIds } }) : []).map((i) => [
+      i.id,
+      i.toBranding(),
+    ]),
+  );
+  return accounts.map((u) => {
+    const memberships = new Map<number, SignInProfileDto['memberships'][number]>();
+    for (const r of roles) {
+      const inst = r.userId === u.id ? institutes.get(r.instituteId) : undefined;
+      if (!inst) continue;
+      const m = memberships.get(inst.id) ?? {
+        id: inst.id,
+        name: inst.name,
+        logoUrl: inst.logoUrl,
+        primaryColor: inst.primaryColor,
+        roles: [] as string[],
+      };
+      if (r.role && !m.roles.includes(r.role.slug)) m.roles.push(r.role.slug);
+      memberships.set(inst.id, m);
+    }
+    return { id: u.id, name: u.name, memberships: [...memberships.values()] };
+  });
+}
+
+/**
+ * The verified code stands for the number, which reaches several accounts: hands out a single-use token,
+ * bound to this device, to sign in as one of them (`selectProfile`).
+ */
+async function offerProfiles(ch: OtpChallenge, accounts: User[]): Promise<LoginResult> {
+  const secret = randomToken(32);
+  await ch.update({
+    selectionHash: selectionHash(ch.id, secret),
+    selectionExpiresAt: new Date(Date.now() + config.OTP_TTL_SECONDS * 1000),
+  });
+  return {
+    status: 'choose_profile',
+    selectionToken: `${ch.id}.${secret}`,
+    expiresIn: config.OTP_TTL_SECONDS,
+    profiles: await signInProfiles(accounts),
   };
 }
 
@@ -328,7 +432,21 @@ export async function verifyOtp(
   device: DeviceInput,
 ): Promise<LoginResult> {
   const ch = await consumeChallenge(challengeId, code, device.uid);
-  const user = await User.findByPk(ch.userId!);
+  let user: User | null;
+  if (ch.purpose === 'login') {
+    // The code proves the number: any of its accounts may sign in, so several are offered.
+    const accounts = await numberAccounts(ch.mobile);
+    if (accounts.length > 1) return offerProfiles(ch, accounts);
+    user = accounts[0] ?? null;
+    // The code was checked under the challenge's account (the number's first, possibly one that belongs
+    // nowhere); a different account signing in keeps its own lock, as in `selectProfile`.
+    if (user && user.id !== ch.userId)
+      await guardSignIn(await signInSubject(user, identifierTag(ch.mobile), device.uid), (attempt) =>
+        attempt.succeeded(),
+      );
+  } else {
+    user = await User.findByPk(ch.userId!);
+  }
   if (!user || user.status !== 'active') throw otpInvalid();
 
   const check = await checkDevice(user, device, true);
@@ -341,6 +459,60 @@ export async function verifyOtp(
     entityId: user.id,
     instituteId: null,
     metadata: { method: 'otp', purpose: ch.purpose },
+  });
+  return { status: 'authenticated', ...(await issueTokens(user, check.device)) };
+}
+
+/**
+ * Signs in as the account picked in "Who's signing in?". The token from `verifyOtp` works once, on the device
+ * that verified the code, until it expires; the account must still be active on that number. The chosen
+ * account's own sign-in lock and device policy apply as for any sign-in.
+ */
+export async function selectProfile(
+  selectionToken: string,
+  userId: number,
+  device: DeviceInput,
+): Promise<LoginResult> {
+  const dot = selectionToken.indexOf('.');
+  const challengeId = dot > 0 ? selectionToken.slice(0, dot) : '';
+  const secret = selectionToken.slice(dot + 1);
+  const ch = /^[0-9a-f-]{36}$/i.test(challengeId) ? await OtpChallenge.findByPk(challengeId) : null;
+  const hash = ch ? selectionHash(ch.id, secret) : '';
+  if (
+    !ch?.selectionHash ||
+    ch.purpose !== 'login' ||
+    !ch.consumedAt ||
+    !safeEqual(ch.selectionHash, hash) ||
+    !ch.selectionExpiresAt ||
+    ch.selectionExpiresAt < new Date() ||
+    ch.deviceUid !== device.uid
+  )
+    throw selectionInvalid();
+  const user = (await numberAccounts(ch.mobile)).find((u) => u.id === userId);
+  if (!user) throw selectionInvalid();
+  // A locked account isn't opened through its number either.
+  await guardSignIn(await signInSubject(user, identifierTag(ch.mobile), device.uid), async (attempt) => {
+    const [claimed] = await OtpChallenge.update(
+      { selectionHash: null },
+      { where: { id: ch.id, selectionHash: hash } },
+    );
+    if (!claimed) throw selectionInvalid();
+    await attempt.succeeded();
+  });
+
+  const check = await checkDevice(user, device, true);
+  if ('limitReached' in check) {
+    // Another of the number's accounts may still be chosen.
+    await OtpChallenge.update({ selectionHash: hash }, { where: { id: ch.id, selectionHash: null } });
+    return { status: 'device_limit_reached', maxDevices: config.MAX_ACTIVE_DEVICES };
+  }
+  if ('otpRequired' in check) throw selectionInvalid();
+  await audit({
+    action: 'auth.login',
+    entityType: 'user',
+    entityId: user.id,
+    instituteId: null,
+    metadata: { method: 'otp', purpose: 'login', profileChosen: true },
   });
   return { status: 'authenticated', ...(await issueTokens(user, check.device)) };
 }
@@ -614,13 +786,17 @@ export async function buildMe(): Promise<MeDto> {
   }
   const isPlatformAdmin = user.isSuperAdmin && !ctx.impersonatorId;
   const device = ctx.deviceId && !ctx.impersonatorId ? await Device.findByPk(ctx.deviceId) : null;
+  const mobile = contactMobile(user);
+  const profileCount = (await numberAccounts(mobile)).length;
   return {
     user: {
       id: user.id,
       name: user.name,
-      mobile: user.mobile,
+      mobile,
       email: user.email,
       isSuperAdmin: user.isSuperAdmin,
+      sharesMobile: user.mobile === null,
+      profileCount,
     },
     institute,
     branches,

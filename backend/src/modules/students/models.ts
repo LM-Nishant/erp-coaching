@@ -18,7 +18,10 @@ export class Student extends Model<InferAttributes<Student>, InferCreationAttrib
   declare id: CreationOptional<number>;
   declare instituteId: number;
   declare branchId: number;
-  /** Login account (student role). Null only for duplicates explicitly allowed by an admin. */
+  /**
+   * Login account (student role). Every student gets one; a sibling's shares the mobile (`users.shared_mobile`).
+   * Null only for students admitted before that, until `students:backfill-accounts` runs.
+   */
   declare userId: number | null;
   declare admissionNumber: string;
   declare rollNumber: CreationOptional<string | null>;

@@ -230,7 +230,11 @@ export async function purgeInstitutes(instituteIds: number[], mobilePrefix: stri
     );
     await purgeRows('institutes', ids);
   }
-  const users = await query<{ id: number }>('SELECT id FROM users WHERE mobile LIKE ?', [`${mobilePrefix}%`]);
+  // Siblings' accounts only share a parent's mobile.
+  const users = await query<{ id: number }>(
+    'SELECT id FROM users WHERE mobile LIKE ? OR shared_mobile LIKE ?',
+    [`${mobilePrefix}%`, `${mobilePrefix}%`],
+  );
   await purgeRows(
     'users',
     users.map((u) => u.id),

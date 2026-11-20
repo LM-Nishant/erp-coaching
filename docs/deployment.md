@@ -624,6 +624,34 @@ This release only ships development adapters for the external integrations:
 If `migrate` fails, `up` exits non-zero and the api stays down. Read `docker compose logs migrate`, then fix forward or
 follow the [migration rollback plan](#migration-rollback-plan).
 
+### Student login accounts backfill
+
+Before shared-mobile accounts, a sibling admitted on a mobile another student already used got no login account
+(`students.user_id` is null). Admitting them couldn't put them in their batch, and a course they bought waited for a
+batch. After upgrading to the release that adds `users.shared_mobile`, give them accounts and enrol them:
+
+```sh
+docker compose run --rm migrate node dist/infrastructure/database/cli.js students:backfill-accounts --dry-run
+docker compose run --rm migrate node dist/infrastructure/database/cli.js students:backfill-accounts
+```
+
+- **Dry run:** changes nothing. It prints, per institute, the accounts it would create (owning the student's mobile,
+  or sharing a mobile that another account owns), the existing accounts it would link, the batch enrolments and the
+  course purchases it would retry, and what would need attention.
+- **Run:** for each such student, it creates or links the account as admitting them does now, and enrols them in the
+  batch their admission named, if that batch is still open, of their course and branch, and has a free seat. It
+  retries the course purchases that waited for a login and fills the account into fee and appointment rows. The
+  student and guardians are notified of enrolments as usual.
+- **Needs attention:** it exits with status 1 and lists what it couldn't do, such as a full or closed batch. Place
+  those students with **Enroll students** under Batches, or from Course enrolments for course purchases.
+- **Again:** a second run only picks up what is still missing, and lists the remaining items again.
+  `--institute=<id>[,<id>…]` limits a run to those institutes.
+- **Outside Docker:** run `npm run students:backfill-accounts -- --dry-run` and `npm run students:backfill-accounts`
+  in `backend/`.
+- **Rollback:** once accounts share a mobile, `migrate:undo` refuses to revert the migration that adds
+  `users.shared_mobile`, since they would lose their sign-in. [Roll back the images](#rollback) and keep the schema,
+  or restore the pre-upgrade backup.
+
 ## Rollback
 
 A rollback deploys the previous release's images and leaves the database as it is:

@@ -110,7 +110,10 @@
                 {{ humanize(d.kind) }}: {{ d.name }} ({{ d.reference ?? d.mobile }}) – matched on
                 {{ d.matchedOn.join(', ') }}
               </p>
-              <p>Siblings may share a mobile; saving anyway creates the student without a separate login.</p>
+              <p>
+                Siblings may share a mobile; saving anyway gives the student a login of their own on that
+                mobile.
+              </p>
               <ion-button size="small" @click="save(true)">Save anyway</ion-button>
             </ion-card-content>
           </ion-card>

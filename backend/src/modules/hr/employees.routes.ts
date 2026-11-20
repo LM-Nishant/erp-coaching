@@ -10,7 +10,7 @@ import { BadRequest, Conflict } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { getSequelize } from '../../infrastructure/database/sequelize';
-import { User } from '../users/user.model';
+import { User, contactMobile, mobileLike } from '../users/user.model';
 import { Role, UserRole } from '../permissions/models';
 import { memberVisibilityWhere } from '../permissions/access.service';
 import { uploadMiddleware } from '../files/files.routes';
@@ -191,7 +191,7 @@ export function employeeRoutes(r: Router) {
     const q = parse(z.object({ search: z.string().trim().max(100).optional() }), req.query);
     const { instituteId } = requireTenantContext();
     const search = q.search
-      ? { [Op.or]: [{ name: { [Op.like]: `%${q.search}%` } }, { mobile: { [Op.like]: `%${q.search}%` } }] }
+      ? { [Op.or]: [{ name: { [Op.like]: `%${q.search}%` } }, ...mobileLike(`%${q.search}%`)] }
       : undefined;
     const visible = memberVisibilityWhere();
     const linked = (
@@ -218,7 +218,7 @@ export function employeeRoutes(r: Router) {
       const u = byUser.get(m.userId) ?? {
         id: m.userId,
         name: m.user.name,
-        mobile: m.user.mobile,
+        mobile: contactMobile(m.user),
         email: m.user.email,
         roles: [],
       };
@@ -240,7 +240,7 @@ export function employeeRoutes(r: Router) {
     if (body.userId) {
       const user = (await User.findByPk(body.userId))!;
       name ??= user.name;
-      mobile ??= user.mobile;
+      mobile ??= contactMobile(user);
       email ??= user.email;
       if (isTeacher === undefined) {
         const { instituteId } = requireTenantContext();

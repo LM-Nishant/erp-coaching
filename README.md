@@ -128,6 +128,7 @@ Native project notes:
 
 - **Auth**
   - Mobile + password login, and mobile + OTP login.
+  - Siblings who share a parent's mobile each have their own account; OTP sign-in on that number asks "Who's signing in?".
   - JWT access tokens, plus rotating refresh tokens stored hashed.
   - Device registration capped at 2 active devices, with OTP required on a new device.
 - **Multi-tenancy**

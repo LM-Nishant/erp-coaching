@@ -88,9 +88,14 @@ describe('admissions', () => {
 
   afterAll(async () => {
     const mine = async (table: string) => {
-      const [rows] = await getSequelize().query(`SELECT id FROM \`${table}\` WHERE mobile LIKE ?`, {
-        replacements: [`${PREFIX}%`],
-      });
+      // Siblings' accounts share a mobile rather than owning one.
+      const shared = table === 'users' ? ' OR shared_mobile LIKE :like' : '';
+      const [rows] = await getSequelize().query(
+        `SELECT id FROM \`${table}\` WHERE mobile LIKE :like${shared}`,
+        {
+          replacements: { like: `${PREFIX}%` },
+        },
+      );
       return (rows as { id: number }[]).map((r) => r.id);
     };
     for (const table of ['admission_applications', 'enquiries', 'students', 'users'])
@@ -491,18 +496,25 @@ describe('admissions', () => {
     });
     expect(await BatchStudent.count({ where: { instituteId: 1, batchId: roomyBatch } })).toBe(0);
 
-    // A sibling sharing the first student's mobile gets no login of their own yet, so they are
-    // admitted with the batch noted but can't be enrolled in it.
+    // A sibling sharing the first student's mobile gets a login of their own on that mobile, so they
+    // are enrolled like anyone else.
     const sibling = await apply({ name: 'Edit Sibling', mobile: familyMobile, courseId: courseA });
     expect((await admit(sibling.id, { batchId: roomyBatch })).body.error.code).toBe('DUPLICATE_STUDENT');
     const shared = await admit(sibling.id, { batchId: roomyBatch, allowDuplicate: true });
     expect(shared.status).toBe(201);
     expect(shared.body).toMatchObject({
-      batchEnrolment: 'no_login',
-      student: { userId: null },
+      batchEnrolment: 'enrolled',
+      student: { userId: expect.any(Number) },
       application: { status: 'admitted', batchId: roomyBatch },
     });
-    expect(await BatchStudent.count({ where: { instituteId: 1, batchId: roomyBatch } })).toBe(0);
+    const siblingUserId = shared.body.student.userId as number;
+    expect(siblingUserId).not.toBe(userId);
+    expect(await User.findByPk(siblingUserId)).toMatchObject({ mobile: null, sharedMobile: familyMobile });
+    expect(
+      (await BatchStudent.findAll({ where: { instituteId: 1, batchId: roomyBatch } })).map(
+        (b) => b.studentUserId,
+      ),
+    ).toEqual([siblingUserId]);
   });
 
   it("keeps a registered student's own details on their profile and admits them into a batch", async () => {

@@ -18,7 +18,30 @@ export interface AuthTokens {
 export type LoginResult =
   | ({ status: 'authenticated' } & AuthTokens)
   | { status: 'otp_required'; challengeId: string; reason: 'new_device' | 'otp_login'; maskedMobile: string }
-  | { status: 'device_limit_reached'; maxDevices: number };
+  | { status: 'device_limit_reached'; maxDevices: number }
+  | {
+      /** The verified number signs in to several accounts (e.g. children sharing a parent's mobile). */
+      status: 'choose_profile';
+      /** Single-use proof of the verified code for `POST /auth/select-profile`, valid on this device only. */
+      selectionToken: string;
+      /** Seconds the selection token stays valid. */
+      expiresIn: number;
+      profiles: SignInProfileDto[];
+    };
+
+/** An account offered by "Who's signing in?" after a mobile number is verified. */
+export interface SignInProfileDto {
+  id: number;
+  name: string;
+  /** Institutes the account belongs to, with its role slugs there. */
+  memberships: {
+    id: number;
+    name: string;
+    logoUrl: string | null;
+    primaryColor: string | null;
+    roles: string[];
+  }[];
+}
 
 export interface InstituteBranding {
   id: number;
@@ -34,7 +57,18 @@ export interface MembershipDto extends InstituteBranding {
 }
 
 export interface MeDto {
-  user: { id: number; name: string; mobile: string; email: string | null; isSuperAdmin: boolean };
+  user: {
+    id: number;
+    name: string;
+    /** The number the account is reached on: its own, or the one it shares (`sharesMobile`). */
+    mobile: string;
+    email: string | null;
+    isSuperAdmin: boolean;
+    /** The account has no number of its own and uses another account's (e.g. a sibling's on a parent's). */
+    sharesMobile?: boolean;
+    /** Active accounts signing in with this number (including this one); more than 1 offers "Switch profile". */
+    profileCount?: number;
+  };
   institute: InstituteBranding | null;
   branches: { id: number; name: string }[];
   /** null = all branches of the institute. */

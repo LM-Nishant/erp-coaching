@@ -64,6 +64,17 @@
               Switch
             </ion-button>
             <ion-button
+              v-if="auth.canSwitchProfile"
+              slot="end"
+              fill="clear"
+              size="small"
+              aria-label="Switch profile"
+              title="Switch profile"
+              @click="switchProfile"
+            >
+              <ion-icon slot="icon-only" :icon="peopleOutline" />
+            </ion-button>
+            <ion-button
               slot="end"
               fill="clear"
               size="small"
@@ -88,6 +99,8 @@
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
+  alertController,
+  menuController,
   IonApp,
   IonButton,
   IonContent,
@@ -105,8 +118,9 @@ import {
   IonSplitPane,
   IonToolbar,
 } from '@ionic/vue';
-import { logOutOutline } from 'ionicons/icons';
+import { logOutOutline, peopleOutline } from 'ionicons/icons';
 import { appModules } from '@/core/modules';
+import { toastError } from '@/core/toast';
 import { worksOffline } from '@/router';
 import { useAuthStore } from '@/stores/auth';
 import BiometricOffer from '@/components/BiometricOffer.vue';
@@ -154,6 +168,29 @@ async function changeBranch(value: number) {
 async function logout() {
   await auth.logout();
   await router.replace({ name: 'login' });
+}
+
+/** Another account on this number (e.g. a sibling on a parent's mobile): verify the number again, then choose. */
+async function switchProfile() {
+  const user = auth.me?.user;
+  if (!user) return;
+  const alert = await alertController.create({
+    header: 'Switch profile?',
+    message: `We'll send a code to ${user.mobile}. Then choose who's signing in; ${user.name} will be signed out on this device.`,
+    buttons: [
+      { text: 'Cancel', role: 'cancel' },
+      { text: 'Send code', role: 'confirm' },
+    ],
+  });
+  await alert.present();
+  if ((await alert.onDidDismiss()).role !== 'confirm') return;
+  try {
+    const next = await auth.startProfileSwitch();
+    await menuController.close();
+    if (next === 'otp') await router.push({ name: 'otp' });
+  } catch (e) {
+    await toastError(e);
+  }
 }
 </script>
 

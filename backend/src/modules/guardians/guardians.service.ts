@@ -118,7 +118,7 @@ export async function linkGuardian(
           instituteId,
           userId: user.id,
           name: input.name,
-          mobile: user.mobile,
+          mobile: input.mobile,
           email: input.email ?? user.email ?? null,
           occupation: input.occupation ?? null,
           address: input.address ?? null,

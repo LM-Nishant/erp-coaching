@@ -260,6 +260,8 @@ export const PUBLIC_OUTSIDE_PUBLIC_PREFIX: Record<string, string> = {
   'POST /api/auth/login': 'sign-in',
   'POST /api/auth/otp/request': 'sign-in',
   'POST /api/auth/otp/verify': 'sign-in',
+  'POST /api/auth/select-profile':
+    'sign-in (single-use selection token from a verified OTP is the credential)',
   'POST /api/auth/biometric/unlock': 'sign-in (device-bound unlock key is the credential)',
   'POST /api/auth/refresh': 'refresh token is the credential',
   'POST /api/auth/logout': 'refresh token is the credential',

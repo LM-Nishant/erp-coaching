@@ -2,7 +2,7 @@
   <ion-page>
     <ion-header>
       <ion-toolbar>
-        <ion-buttons slot="start"><ion-back-button default-href="/login" /></ion-buttons>
+        <ion-buttons slot="start"><ion-back-button :default-href="backTo" /></ion-buttons>
         <ion-title>Verify OTP</ion-title>
       </ion-toolbar>
     </ion-header>
@@ -41,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   IonBackButton,
@@ -65,6 +65,8 @@ const route = useRoute();
 const code = ref('');
 const busy = ref(false);
 const error = ref('');
+// A profile switch starts from a signed-in session, so backing out returns there.
+const backTo = computed(() => (auth.me ? '/home' : '/login'));
 
 async function verify() {
   busy.value = true;
@@ -73,6 +75,7 @@ async function verify() {
     const next = await auth.verifyOtp(code.value.trim());
     if (next === 'device-limit')
       error.value = 'Device limit reached. Ask your institute admin to remove an old device.';
+    else if (next === 'choose-profile') await router.replace({ name: 'choose-profile', query: route.query });
     else if (next === 'select-institute') await router.replace({ name: 'select-institute' });
     else await router.replace((route.query.redirect as string) || '/home');
   } catch (e) {

@@ -19,7 +19,7 @@ import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { audit } from '../../shared/audit/audit.service';
 import { assertWithinLimit } from '../subscriptions/subscription.service';
 import { Branch } from '../branches/branch.model';
-import { User } from '../users/user.model';
+import { User, accountsOnMobile } from '../users/user.model';
 import { FileObject } from '../files/file.model';
 import { signedUrlFor } from '../files/files.service';
 import { Guardian, StudentGuardian } from '../guardians/models';
@@ -277,40 +277,126 @@ export async function resolveBranch(requested?: number | null): Promise<Branch> 
 
 // ---------------------------------------------------------------- user accounts
 
-/**
- * Finds the global user for a mobile or creates one. The email is only stored on a new account
- * when no other account already uses it (emails are globally unique).
- */
-export async function findOrCreateUser(
-  input: { name: string; mobile: string; email?: string | null; password?: string | null },
-  transaction?: Transaction,
-): Promise<{ user: User; created: boolean }> {
-  const existing = await User.findOne({ where: { mobile: input.mobile }, transaction });
-  if (existing) return { user: existing, created: false };
+type AccountInput = { name: string; mobile: string; email?: string | null; password?: string | null };
+
+/** A new account; the email is only stored when no other account uses it (emails are globally unique). */
+async function newUser(input: AccountInput, ownsMobile: boolean, transaction?: Transaction): Promise<User> {
   const emailTaken = input.email ? await User.count({ where: { email: input.email }, transaction }) : 0;
-  const user = await User.create(
+  return User.create(
     {
       name: input.name,
-      mobile: input.mobile,
+      mobile: ownsMobile ? input.mobile : null,
+      sharedMobile: ownsMobile ? null : input.mobile,
       email: input.email && !emailTaken ? input.email : null,
       passwordHash: input.password ? await hashPassword(input.password) : null,
       lastLoginAt: null,
     },
     { transaction },
   );
-  return { user, created: true };
+}
+
+/**
+ * Finds the global user that owns a mobile or creates one. Accounts that only share the mobile (siblings
+ * on a parent's number) are never returned: they belong to a particular student.
+ */
+export async function findOrCreateUser(
+  input: AccountInput,
+  transaction?: Transaction,
+): Promise<{ user: User; created: boolean }> {
+  const existing = await User.findOne({ where: { mobile: input.mobile }, transaction });
+  if (existing) return { user: existing, created: false };
+  return { user: await newUser(input, true, transaction), created: true };
+}
+
+const sameName = (a: string, b: string) =>
+  a.trim().replace(/\s+/g, ' ').toLowerCase() === b.trim().replace(/\s+/g, ' ').toLowerCase();
+
+/**
+ * The login account for a student of the institute, by their mobile. Accounts already used by another
+ * student here are skipped (one account per student). In order:
+ * - an account on the mobile with the student's name (the same person: e.g. a student of another
+ *   institute, or a sibling whose account was made earlier);
+ * - the account that owns the mobile, while no other student here gives that mobile (the first child,
+ *   whose account is often also their parent's);
+ * - a new account owning the mobile when nobody owns it;
+ * - else a new account of the student's own that shares the mobile (a sibling): its OTPs and messages go
+ *   to the mobile, and signing in with the mobile's OTP offers it in "Who's signing in?".
+ * `reuse: false` only creates (public self-registration, where nobody proved they own an account).
+ */
+async function studentAccount(
+  input: AccountInput,
+  opts: { instituteId: number; reuse?: boolean; excludeStudentId?: number; transaction: Transaction },
+): Promise<User> {
+  const { instituteId, transaction } = opts;
+  const accounts = await accountsOnMobile(input.mobile, { transaction });
+  const owner = accounts.find((u) => u.mobile !== null) ?? null;
+  if (opts.reuse !== false && accounts.length) {
+    const others = opts.excludeStudentId ? { id: { [Op.ne]: opts.excludeStudentId } } : {};
+    const taken = new Set(
+      (
+        await Student.findAll({
+          where: { instituteId, userId: accounts.map((u) => u.id), ...others },
+          attributes: ['userId'],
+          transaction,
+        })
+      ).map((s) => s.userId),
+    );
+    const same = accounts.find((u) => !taken.has(u.id) && sameName(u.name, input.name));
+    if (same) return same;
+    if (owner && !taken.has(owner.id)) {
+      const mobileUsed = await Student.count({
+        where: { instituteId, mobile: input.mobile, ...others },
+        transaction,
+      });
+      if (!mobileUsed) return owner;
+    }
+  }
+  return newUser(input, !owner, transaction);
+}
+
+/**
+ * Gives a student without a login account one (see `studentAccount`) and the Student role in their branch,
+ * and sets it on `student`. Students admitted now always have one; this covers earlier records (siblings
+ * admitted on a mobile another student already used got none). Returns the user id.
+ */
+export async function ensureStudentUser(student: Student, transaction: Transaction): Promise<number> {
+  if (student.userId) return student.userId;
+  const current = await Student.findOne({
+    where: { instituteId: student.instituteId, id: student.id },
+    transaction,
+    lock: transaction.LOCK.UPDATE,
+  });
+  if (!current) throw NotFound('Student');
+  if (!current.userId) {
+    const user = await studentAccount(
+      { name: current.name, mobile: current.mobile, email: current.email },
+      { instituteId: current.instituteId, excludeStudentId: current.id, transaction },
+    );
+    await current.update({ userId: user.id }, { transaction });
+    await syncBranchRoles(user.id, 'student', [current.branchId], transaction);
+  }
+  student.set('userId', current.userId);
+  return current.userId!;
 }
 
 // ---------------------------------------------------------------- create
 
 export interface CreateStudentOptions {
   source: StudentSource;
-  /** Skip the duplicate block (siblings sharing a phone). Duplicates get no login account. */
+  /**
+   * Skip the duplicate block (siblings sharing a phone). A sibling gets a login account of their own that
+   * shares the mobile (see `studentAccount`).
+   */
   allowDuplicate?: boolean;
   /** Password for a newly created login account. */
   password?: string | null;
   /** Use this user as the login account (self-registration after verifying the password). */
   userId?: number | null;
+  /**
+   * Without `userId`: whether an existing account on the mobile may become the login (default true).
+   * Self-registration passes false, as nobody proved they own one.
+   */
+  reuseAccount?: boolean;
   /** Extra writes in the same transaction (e.g. mark the enquiry converted). */
   afterCreate?: (student: Student, transaction: Transaction) => Promise<void>;
 }
@@ -346,17 +432,14 @@ export async function createStudent(input: StudentFields, opts: CreateStudentOpt
 
   const student = await withLockRetry(() =>
     getSequelize().transaction(async (transaction) => {
-      let userId: number | null = opts.userId ?? null;
-      // A mobile already used by a student here (a sibling) can't be the login of a second one.
-      const mobileHasStudent = dupes.some((d) => d.matchedOn.includes('mobile'));
-      if (userId === null && !mobileHasStudent) {
-        const { user } = await findOrCreateUser(
-          { name: input.name, mobile: input.mobile, email: input.email, password: opts.password },
-          transaction,
-        );
-        const taken = await Student.count({ where: { instituteId, userId: user.id }, transaction });
-        userId = taken ? null : user.id;
-      }
+      const userId =
+        opts.userId ??
+        (
+          await studentAccount(
+            { name: input.name, mobile: input.mobile, email: input.email, password: opts.password },
+            { instituteId, reuse: opts.reuseAccount, transaction },
+          )
+        ).id;
       const s = await Student.create(
         {
           instituteId,
@@ -383,7 +466,7 @@ export async function createStudent(input: StudentFields, opts: CreateStudentOpt
         },
         { transaction },
       );
-      if (userId) await syncBranchRoles(userId, 'student', [branch.id], transaction);
+      await syncBranchRoles(userId, 'student', [branch.id], transaction);
       await recordHistory(
         s.id,
         'admitted',

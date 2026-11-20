@@ -20,7 +20,7 @@ import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { FileObject } from '../files/file.model';
 import { signedUrlFor } from '../files/files.service';
 import { Institute } from '../institutes/institute.model';
-import { User } from '../users/user.model';
+import { User, contactMobile } from '../users/user.model';
 import { getEvent } from './catalogue';
 import {
   DeliveryAttempt,
@@ -240,7 +240,7 @@ async function dispatch(input: DispatchInput): Promise<NotifyResult> {
           ? tokens
               .filter((t) => t.userId === user.id && !(vendorPush && t.platform === 'web'))
               .map((t) => t.token)
-          : [channel === 'email' ? user.email : user.mobile].filter((a): a is string => !!a);
+          : [channel === 'email' ? user.email : contactMobile(user)].filter((a): a is string => !!a);
       if (!addresses.length) {
         skip(channel === 'push' ? 'No registered device' : `No ${channel === 'email' ? 'email' : 'mobile'}`);
         continue;

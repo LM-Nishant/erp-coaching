@@ -178,6 +178,8 @@ export function selfRegistrationRoutes(api: Router) {
           source: 'self_registration',
           password: body.password,
           userId,
+          // Never attach someone else's account (e.g. a sibling's on a shared mobile) without proof.
+          reuseAccount: false,
           afterCreate: async (s, transaction) => {
             if (!body.parent) return;
             // A brand-new parent account is linked straight away; an existing account is linked
