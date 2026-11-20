@@ -98,6 +98,8 @@ export default defineAppModule({
       path: '/attendance/check-in',
       icon: qrCodeOutline,
       permission: 'attendance-self.create',
+      // Parents hold it too, to request leave or corrections for their children.
+      roles: ['student'],
       planModule: 'attendance',
       order: 30,
     },

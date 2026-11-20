@@ -70,10 +70,11 @@ permissions: [{
 }],
 ```
 
-- Protect every route with `authenticate`, then `requirePermission('students', 'create')`. Institute admin implicitly holds all permissions.
+- Protect every route with `authenticate`, then `requirePermission('students', 'create')`. Institute admin implicitly holds all permissions except self-service ones.
 - If the module is a sellable plan feature, also add `requireModule('students')`, and put the key in plan `enabledModules`.
 - Actions are limited to `view | create | edit | delete | approve | export | publish | configure`.
 - Self-service data, such as a student viewing their own results, still needs a permission check plus an ownership check in the service. Ownership comes from `getContext().userId`.
+- Mark a permission that only means "my own data" with `selfService: true` (or the self-service actions only, e.g. `selfService: ['view']`) and grant it to the persona roles. Institute admin then doesn't get it, so its menu hides those pages. In the app, a persona page guarded by a staff permission (e.g. _My timetable_ on `academics.view`) also sets `roles` on its menu item.
 
 ### 4b. Mounting routes and public routes
 
@@ -500,7 +501,7 @@ CI has no `backend/.env`: the backend runs on its defaults plus the `DB_*` and `
   - an institute user on platform routes (403 `SUPER_ADMIN_ONLY`);
   - a user of an institute whose plan lacks the module (403 `MODULE_DISABLED`).
 - **`tenant-isolation.test.ts`** builds an attacker institute and a victim institute with two branches, students, guardians and employees (`victim-data.ts`). It then probes every route with a record id in its path:
-  - another institute's admin (and, on self-service routes, its student, guardian or employee) gets **404**, no victim row is even loaded while serving the request, and nothing of the victim changes;
+  - another institute's admin (on the routes its role may call) and, on self-service routes, its student, guardian or employee get **404**, no victim row is even loaded while serving the request, and nothing of the victim changes;
   - staff restricted to branch 1 get 403/404 for branch 2 records;
   - student 1, guardian 1 and employee 1 get 403/404 for student 2's, student 2's children's and employee 2's records;
   - list endpoints never include another institute's or branch's rows, even when the query string names them by id;

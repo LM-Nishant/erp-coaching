@@ -567,6 +567,13 @@ describe('SaaS billing', () => {
     o = await overview(A);
     expect(o.plan.id).toBe(planIds.pro);
     expect(o.subscription.pendingPlanId).toBe(planIds.basic);
+    // The dashboard Plan card reads the plan names from GET /api/subscription.
+    const card = await request(app).get('/api/subscription').set(bearer(A.token));
+    expect(card.status).toBe(200);
+    expect(card.body.subscription).toMatchObject({
+      plan: { id: planIds.pro, name: 'BT Pro' },
+      pendingPlan: { id: planIds.basic, name: 'BT Basic' },
+    });
 
     expect((await request(app).delete('/api/subscription/plan-change').set(bearer(A.token))).status).toBe(
       204,

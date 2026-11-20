@@ -42,6 +42,7 @@ describe('attendance module', () => {
   let admin: string;
   let teacher: string;
   let zenith: string;
+  let zenithStudent: string;
   let accountant: string;
   let s1: string; // student 1 (has a parent)
   let s2: string;
@@ -58,6 +59,7 @@ describe('attendance module', () => {
     admin = (await login(USERS.apexAdmin)).accessToken;
     teacher = (await login(USERS.apexTeacher)).accessToken;
     zenith = (await login(USERS.zenithAdmin)).accessToken;
+    zenithStudent = (await login({ mobile: '9200000005', password: DEMO_PASSWORD })).accessToken;
     branchId = (await Branch.findOne({ where: { instituteId: 1 }, order: [['id', 'ASC']] }))!.id;
     // A fresh accountant (the seeded one's device history belongs to the auth tests).
     const roles = await request(app).get('/api/roles').set(bearer(admin));
@@ -275,7 +277,7 @@ describe('attendance module', () => {
     // An Apex token is meaningless in Zenith.
     const cross = await request(app)
       .post('/api/attendance/check-in')
-      .set(bearer(zenith))
+      .set(bearer(zenithStudent))
       .send({ method: 'qr', token: qr.body.token });
     expect(cross.body.error.code).toBe('QR_INVALID');
   });

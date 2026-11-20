@@ -28,6 +28,8 @@ export default defineModule({
         'branch-admin': ['configure'],
         parent: ['view'],
       },
+      // view: a parent's own children; configure (monthly report runs) stays with admins.
+      selfService: ['view'],
     },
   ],
   jobs: {

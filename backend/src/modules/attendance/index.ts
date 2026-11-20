@@ -22,6 +22,7 @@ export default defineModule({
       label: 'My attendance',
       actions: ['view', 'create'],
       grants: { student: 'all', parent: 'all' },
+      selfService: true,
     },
   ],
   jobs: { [ABSENT_ALERTS_JOB]: sendAbsentAlerts },

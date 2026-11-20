@@ -21,6 +21,7 @@ export default defineModule({
         teacher: ['view', 'edit', 'approve'],
         parent: ['view', 'create'],
       },
+      selfService: ['create'],
     },
   ],
   jobs: {

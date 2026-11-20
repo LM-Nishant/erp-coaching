@@ -69,6 +69,7 @@ export default defineAppModule({
       path: '/my-timetable',
       icon: calendarOutline,
       permission: 'academics.view',
+      roles: ['teacher', 'student'],
       planModule: 'academics',
       order: 30,
     },

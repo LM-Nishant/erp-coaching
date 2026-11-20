@@ -21,6 +21,7 @@ export default defineModule({
       label: 'Parent portal',
       actions: ['view'],
       grants: { parent: ['view'] },
+      selfService: true,
     },
   ],
 });

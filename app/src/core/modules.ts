@@ -1,6 +1,6 @@
 import type { Component } from 'vue';
 import type { RouteLocationNormalized, RouteLocationRaw, RouteRecordRaw } from 'vue-router';
-import type { ParentChildDto, PermissionKey } from '@erp/shared';
+import type { ParentChildDto, PermissionKey, SystemRoleSlug } from '@erp/shared';
 
 export interface MenuItem {
   title: string;
@@ -9,6 +9,11 @@ export interface MenuItem {
   icon: string;
   /** Shown only when the user has this permission. */
   permission?: PermissionKey;
+  /**
+   * Persona page whose permission other roles hold too: shown only to users with one of these roles
+   * (e.g. My timetable needs `academics.view`, which staff have, but lists a teacher's or student's classes).
+   */
+  roles?: readonly SystemRoleSlug[];
   /** Platform (super admin, not impersonating) menu. */
   superAdmin?: boolean;
   /** Hidden when the institute's plan doesn't enable this module id (backend `requireModule`). */
@@ -82,6 +87,10 @@ export interface DashboardWidget<S extends WidgetSlot = WidgetSlot> {
 export function defineAppModule(m: AppModule): AppModule {
   return m;
 }
+
+/** Whether a user with `roles` is someone `item` is for (see `MenuItem.roles`). */
+export const fitsPersona = (item: MenuItem, roles: readonly string[] = []) =>
+  !item.roles || item.roles.some((r) => roles.includes(r));
 
 /**
  * Auto-discovers every `src/modules/<name>/module.ts`. A new feature module only adds its own folder —

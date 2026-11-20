@@ -98,6 +98,8 @@ export default defineAppModule({
       path: '/lms',
       icon: playCircleOutline,
       permission: 'lms.view',
+      // Staff only get a pointer to Learning content there.
+      roles: ['student', 'parent'],
       planModule: 'lms',
       order: 41,
     },

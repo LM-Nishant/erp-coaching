@@ -11,6 +11,12 @@ export interface PermissionDeclaration {
   actions: readonly PermissionAction[];
   /** Default grants for system roles; synced on every boot. */
   grants?: Partial<Record<SystemRoleSlug, readonly PermissionAction[] | 'all'>>;
+  /**
+   * Self-service actions (`true` = all): the user acts on their own records or their linked
+   * children's, e.g. a student's fees. Institute Admin's every-permission default skips them so
+   * staff menus hold no persona pages; grant them explicitly (`grants` or a custom role) instead.
+   */
+  selfService?: true | readonly PermissionAction[];
 }
 
 /**

@@ -40,9 +40,9 @@ import { type Synthesize, type World, buildWorld, synthesizer } from './victim-d
  * Tenant isolation, branch restriction and self-service ownership, probed over every record route
  * in the route registry (see CONTRIBUTING.md › "Authorization and tenant-isolation suite"):
  *
- * - cross-tenant: another institute's admin (and, for self-service routes, its student, guardian or
- *   employee) gets 404 for every record of the victim institute, no victim row is even loaded while
- *   serving it, and nothing of the victim changes;
+ * - cross-tenant: another institute's admin (on every route its role may call) and, for self-service
+ *   routes, its student, guardian or employee get 404 for every record of the victim institute, no
+ *   victim row is even loaded while serving it, and nothing of the victim changes;
  * - branch: a user restricted to branch 1 gets 403/404 for branch 2 records;
  * - portals: student 1, guardian 1 and employee 1 get 403/404 for the records of student 2,
  *   student 2's children views and employee 2;
@@ -222,7 +222,14 @@ describe('tenant isolation', () => {
     'cross-tenant: every record route answers 404 to another institute, without loading or changing anything',
     async () => {
       const v = world.victim.id;
-      // Self-service routes are probed on records of their owner, also by the outsider of that family.
+      // Self-service routes are probed on records of their owner, also by the outsider of that family;
+      // the admin skips those its role cannot call at all (student portal, my fees...).
+      const admin = world.attacker.admin;
+      const adminPerms = new Set(
+        ((await send(admin, 'GET', '/api/auth/me')).body as { permissions: string[] }).permissions,
+      );
+      const mayCall = (attacker: Actor, route: RouteInfo) =>
+        attacker !== admin || route.permissions.every((k) => adminPerms.has(k));
       const groups = [
         {
           probes: await resolveAll(
@@ -231,7 +238,7 @@ describe('tenant isolation', () => {
             'cross-tenant',
           ),
           owner: world.victim.admin,
-          attackers: [world.attacker.admin],
+          attackers: [admin],
         },
       ];
       for (const portal of PORTALS) {
@@ -242,7 +249,7 @@ describe('tenant isolation', () => {
             'cross-tenant',
           ),
           owner: portal.owner(world),
-          attackers: [world.attacker.admin, portal.outsider(world)],
+          attackers: [admin, portal.outsider(world)],
         });
       }
       expect(groups.reduce((n, g) => n + g.probes.length, 0)).toBeGreaterThan(250);
@@ -252,8 +259,9 @@ describe('tenant isolation', () => {
       try {
         for (const group of groups) {
           for (const attacker of group.attackers) {
+            const probes = group.probes.filter((p) => mayCall(attacker, p.route));
             failures.push(
-              ...(await attack('cross-tenant', group.probes, attacker, {
+              ...(await attack('cross-tenant', probes, attacker, {
                 denied: [404],
                 forbidden: world.marker,
                 onRequest: probe.setLabel,
