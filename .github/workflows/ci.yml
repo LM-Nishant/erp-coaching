@@ -239,7 +239,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       # Capacitor 8 compiles with Java 21 (capacitor.build.gradle) and needs compileSdk 36.
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
