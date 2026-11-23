@@ -48,7 +48,8 @@ const WINDOW_15M = 15 * MINUTE;
  * Token-authorised media (signed files, HLS) and the public website have their own limiters: a video
  * or a page with images is many requests, and website visitors shouldn't use up the app's budget.
  */
-export const OWN_LIMITER_PATH = /^\/(files\/signed|lms\/public\/hls|public\/sites)\//;
+export const OWN_LIMITER_PATH =
+  /^\/(files\/signed|lms\/public\/hls|marketplace\/public\/(hls|media)|public\/sites)\//;
 
 /** Every /api request except media and the public website. */
 export const apiRateLimit = limiter('api', MINUTE, config.RATE_LIMIT_API_PER_MIN, {

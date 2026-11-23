@@ -255,6 +255,17 @@ Deployment, TLS, backups and scaling are covered in [docs/deployment.md](docs/de
 
   Rows registered with `retainOnInstituteDeletion` (the operator's SaaS invoices, payments and credit notes) are kept with `institute_id` set to NULL. Every step is audited. An institute reactivated during the grace period is never deleted.
 
+## Course marketplace (`marketplace`)
+
+A Udemy-style public marketplace shared by every institute. Courses are sold by **sellers** (`mkt_sellers`): an institute storefront or an independent instructor with no institute. Anyone can browse; any signed-in user can buy from any seller.
+
+- **Not tenant data.** Marketplace tables (`mkt_*`) are platform tables keyed by seller and learner user ids, not `institute_id`. Isolation is by seller (studio routes only see the caller's seller) and by learner (carts, orders, enrolments, progress). `NOT_INSTITUTE_RECORDS` in `test/security/coverage.ts` exempts `/api/marketplace/` from the cross-institute crawl; `test/marketplace.test.ts` covers cross-seller and cross-learner isolation.
+- **Accounts.** `POST /api/marketplace/public/signup` creates a user with no membership (a learner). Such users skip institute selection (`needsInstitute` needs memberships) and land on My learning. Anyone can become an independent instructor with `PUT /api/marketplace/instructor-profile` while `instructor_signup_open` is on.
+- **APIs.** `/api/marketplace/public/*` (catalog, landing, preview lectures, signed media/HLS, signup, checkout return), `/api/marketplace/*` (account, cart, checkout, orders, learning, progress), `/api/marketplace/instructor/*` and `/api/marketplace/institute/*` (the same studio: profile, media, courses, curriculum, coupons, sales; the institute scope needs `marketplace.*` permissions), `/api/admin/marketplace/*` (platform admin: review, publish, categories, settings, sellers, platform coupons, ledger).
+- **Course lifecycle.** draft → in_review → published / rejected (with reason) → unpublished. Submission requires the readiness checklist (`GET …/courses/:id/readiness`). Edits to a published course stay live; learners keep access after unpublishing.
+- **Media.** Own store (`mkt_media`) with chunked uploads; videos reuse the LMS transcoder (`getVideoTranscoder` from `lms/api`) in the `marketplace.transcode` job. Playback uses short-lived HMAC-signed links; preview lectures are public, others need an enrolment or seller/admin access.
+- **Money.** Checkout uses the existing gateway adapters (mock by default) through `mkt_orders`. Coupons are per seller or platform-wide. On payment success (verify, return or webhook, idempotent) the learner is enrolled and one `mkt_sale_ledger` row per item records gross, commission (platform `commission_percent`, overridable per seller, charged on the amount paid after coupons) and seller net. `payout_id` is left null for the payouts work. Free courses enrol without an order.
+
 ## Frontend app
 
 ```

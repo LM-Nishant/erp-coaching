@@ -405,6 +405,7 @@ export default defineAppModule({
   - Route paths are prefixed with the module id.
   - Always lazy-load pages.
   - Set `meta.permission` (or `meta.superAdmin` for platform screens).
+  - Public pages go in `publicRoutes`. Add `meta.shell: true` to keep the side menu for signed-in users (as the course marketplace does).
   - A suspended institute can only open routes with `meta.allowWhenSuspended: true`, such as sign-in, Subscription & billing, data export and Member devices. Set it only when every API call the page makes is still allowed while suspended (`ALWAYS_ALLOWED` in `subscriptions/access-guard.ts`).
 - **Pages.** Wrap every page in `<AppPage title="…">`, which provides the header, menu button and pull-to-refresh.
 - **UI.** Use Ionic components so the app works on web, Android and iOS.

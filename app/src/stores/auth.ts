@@ -87,7 +87,9 @@ export const useAuthStore = defineStore('auth', {
   getters: {
     isAuthenticated: (s) => !!s.me,
     isPlatformAdmin: (s) => !!s.me?.user.isSuperAdmin && !s.me.impersonatedBy,
-    needsInstitute: (s) => !!s.me && !s.me.institute && !s.me.user.isSuperAdmin,
+    /** Member of institutes but none chosen yet. Marketplace learners and instructors belong to none and skip this. */
+    needsInstitute: (s) =>
+      !!s.me && !s.me.institute && !s.me.user.isSuperAdmin && s.me.memberships.length > 0,
     permissionSet: (s) => new Set<string>((s.me?.permissions as string[]) ?? []),
     /** Locked: no session, but biometric unlock can start one. */
     canUnlock: (s) => !s.me && !!s.biometric,
@@ -229,7 +231,7 @@ export const useAuthStore = defineStore('auth', {
           await this.selectInstitute(me.memberships[0]!.id);
           return 'home';
         }
-        return 'select-institute';
+        if (me.memberships.length) return 'select-institute';
       }
       return 'home';
     },

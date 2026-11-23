@@ -132,7 +132,9 @@ const route = useRoute();
 const router = useRouter();
 
 const institute = computed(() => auth.me?.institute ?? null);
-const showMenu = computed(() => auth.isAuthenticated && !auth.needsInstitute && !route.meta.public);
+const showMenu = computed(
+  () => auth.isAuthenticated && !auth.needsInstitute && (!route.meta.public || !!route.meta.shell),
+);
 const roleLabel = computed(() => auth.me?.roles.map((r) => r.replace(/-/g, ' ')).join(', ') ?? '');
 const branchOptions = computed(() => auth.me?.branches ?? []);
 // Room for the banner at the bottom (impersonation / offline).

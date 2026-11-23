@@ -24,6 +24,8 @@ declare module 'vue-router' {
     offline?: boolean | ((to: RouteLocation) => boolean);
     /** Stays reachable while the institute's subscription is suspended (billing, data export). */
     allowWhenSuspended?: boolean;
+    /** Public page that keeps the side menu for signed-in users (e.g. the course marketplace). */
+    shell?: boolean;
   }
 }
 
