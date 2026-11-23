@@ -34,6 +34,19 @@ export const REFUND_STATUS_COLORS: Record<MktRefundStatus, string> = {
   failed: 'danger',
 };
 
+/** What a refund call did: the gateway may refuse it, in which case the refund is saved as failed. */
+export function refundOutcome(r: MktRefundDto): { message: string; color: 'success' | 'danger' } {
+  return r.status === 'failed'
+    ? { message: `Refund failed: ${r.decisionNote ?? 'the payment gateway refused it'}`, color: 'danger' }
+    : { message: 'Refunded', color: 'success' };
+}
+
+export const REFUND_INITIATOR_LABELS: Record<MktRefundDto['initiatedBy'], string> = {
+  learner: 'by learner',
+  admin: 'by admin',
+  system: 'automatic (paid twice)',
+};
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** Chart label for a revenue period: `2026-11` → `Nov 26`, `2026-11-05` → `5 Nov`. */
@@ -117,6 +130,7 @@ export const payoutAdminApi = {
     api.get<MktPage<MktRefundDto>>(`${admin}/refunds`, q),
   approveRefund: (id: number, note?: string) =>
     api.post<MktRefundDto>(`${admin}/refunds/${id}/approve`, { note: note || null }),
+  retryRefund: (id: number) => api.post<MktRefundDto>(`${admin}/refunds/${id}/retry`),
   rejectRefund: (id: number, note: string) =>
     api.post<MktRefundDto>(`${admin}/refunds/${id}/reject`, { note }),
   refundOrder: (orderId: number, input: { courseId?: number | null; reason: string }) =>

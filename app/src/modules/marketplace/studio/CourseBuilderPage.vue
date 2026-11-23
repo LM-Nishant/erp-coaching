@@ -6,7 +6,8 @@
           MKT_COURSE_STATUS_LABELS[course.status]
         }}</ion-badge>
         <span v-if="course.status === 'in_review'" class="muted"
-          >Our team is reviewing this course. Editing is locked.</span
+          >Our team is reviewing this course. Editing is locked; withdraw it from review to make
+          changes.</span
         >
         <span v-else-if="course.status === 'published'" class="muted">
           Live on the marketplace.
@@ -329,6 +330,16 @@
           @click="unpublish"
           >Unpublish</ion-button
         >
+        <ion-button
+          v-if="course.status === 'in_review' && canPublish"
+          expand="block"
+          color="medium"
+          fill="outline"
+          :disabled="busy"
+          data-testid="withdraw-review"
+          @click="withdraw"
+          >Withdraw from review</ion-button
+        >
         <p class="muted">
           Courses are checked by our team before they go live, usually within two working days. Published
           courses keep their learners even if you unpublish later.
@@ -612,6 +623,10 @@ function moveLecture(si: number, li: number, by: number) {
 
 const submit = () => run(() => studio.submit(id), 'Submitted for review');
 const unpublish = () => run(() => studio.unpublish(id), 'Unpublished');
+async function withdraw() {
+  if (!(await confirm('Withdraw from review?', 'You can edit the course and submit it again.'))) return;
+  await run(() => studio.unpublish(id), 'Withdrawn from review');
+}
 
 async function removeCourse() {
   if (!(await confirm('Delete course?', 'The draft and its lectures are removed.'))) return;

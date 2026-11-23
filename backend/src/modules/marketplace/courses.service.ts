@@ -455,14 +455,18 @@ export async function submitForReview(sellerId: number, id: number) {
   return toStudioDto(c);
 }
 
-/** The seller takes a published course off the catalog (enrolled learners keep access). */
+/**
+ * The seller takes a published course off the catalog (enrolled learners keep access), or withdraws a
+ * course from review: it goes back to draft (unpublished when it was on sale before) and can be edited.
+ */
 export async function sellerUnpublish(sellerId: number, id: number) {
   const c = await ownCourse(sellerId, id);
   if (c.status !== 'published' && c.status !== 'in_review')
     throw Conflict('Only published or in-review courses can be withdrawn', 'INVALID_STATUS');
-  await c.update({ status: c.status === 'in_review' ? 'draft' : 'unpublished' });
+  const withdrawn = c.status === 'in_review';
+  await c.update({ status: withdrawn && !c.publishedAt ? 'draft' : 'unpublished' });
   await audit({
-    action: 'marketplace.course.unpublished',
+    action: withdrawn ? 'marketplace.course.withdrawn' : 'marketplace.course.unpublished',
     entityType: 'mkt_course',
     entityId: id,
     instituteId: getContext().instituteId ?? null,

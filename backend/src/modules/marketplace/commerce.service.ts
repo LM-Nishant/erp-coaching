@@ -234,9 +234,11 @@ export async function getOrder(id: number) {
 /**
  * Grants what a paid order bought, inside the caller's transaction: enrolments, one ledger row
  * per item (gross, commission, seller net), coupon usage, course counters, cart cleanup. The
- * ledger's unique (entry_type, order_item_id) key makes it safe to run twice.
+ * ledger's unique (entry_type, order_item_id) key makes it safe to run twice. Items for courses the
+ * learner already owns through another order (the basket was checked out and paid twice) are neither
+ * enrolled nor credited: their ids are returned so the caller refunds them.
  */
-async function fulfil(o: MktOrder, transaction: Transaction) {
+async function fulfil(o: MktOrder, transaction: Transaction): Promise<number[]> {
   const items = await MktOrderItem.findAll({ where: { orderId: o.id }, transaction });
   const settings = await platformSettings();
   const sellers = await MktSeller.findAll({
@@ -244,13 +246,24 @@ async function fulfil(o: MktOrder, transaction: Transaction) {
     attributes: ['id', 'commissionPercent'],
     transaction,
   });
+  const duplicates: number[] = [];
   for (const i of items) {
-    const [, created] = await MktEnrolment.findOrCreate({
+    const [enrolment, created] = await MktEnrolment.findOrCreate({
       where: { userId: o.userId, courseId: i.courseId },
       defaults: { userId: o.userId, courseId: i.courseId, orderId: o.id, source: 'purchase' },
       transaction,
     });
     if (created) await MktCourse.increment('enrolmentCount', { where: { id: i.courseId }, transaction });
+    else if (enrolment.orderId !== o.id && i.paidPaise > 0) {
+      const credited = await MktSaleLedger.count({
+        where: { entryType: 'sale', orderItemId: i.id },
+        transaction,
+      });
+      if (!credited) {
+        duplicates.push(i.id);
+        continue;
+      }
+    }
     if (
       i.paidPaise > 0 &&
       !(await MktSaleLedger.count({ where: { entryType: 'sale', orderItemId: i.id }, transaction }))
@@ -273,11 +286,13 @@ async function fulfil(o: MktOrder, transaction: Transaction) {
       );
     }
   }
-  if (o.couponId) await MktCoupon.increment('usedCount', { where: { id: o.couponId }, transaction });
+  if (o.couponId && duplicates.length < items.length)
+    await MktCoupon.increment('usedCount', { where: { id: o.couponId }, transaction });
   await MktCartItem.destroy({
     where: { userId: o.userId, courseId: items.map((i) => i.courseId) },
     transaction,
   });
+  return duplicates;
 }
 
 const RECENT_CHECKOUT_MS = 30 * 60_000;
@@ -460,6 +475,7 @@ export type MktWebhookOutcome =
   | 'failed'
   | 'pending'
   | 'already_processed'
+  | 'extra_payment'
   | 'amount_mismatch'
   | 'unmatched'
   | 'duplicate'
@@ -468,6 +484,8 @@ export type MktWebhookOutcome =
 /**
  * Applies a verified gateway status once: the (gateway, event key) row is written in the same
  * transaction, so a replay hits the unique index; the order row is locked and its status checked.
+ * Only a pending or failed order can become paid: a paid or refunded order never goes back, and a
+ * different captured payment for it (the learner paid twice) is refunded, not credited.
  */
 async function applyVerified(gateway: string, v: VerifiedPayment, eventKey: string) {
   const key = eventKey.slice(0, 191);
@@ -476,6 +494,7 @@ async function applyVerified(gateway: string, v: VerifiedPayment, eventKey: stri
     attributes: ['id'],
   });
   let outcome: MktWebhookOutcome = 'pending';
+  let duplicates: number[] = [];
   try {
     await getSequelize().transaction(async (transaction) => {
       const event = await MktWebhookEvent.create(
@@ -485,8 +504,11 @@ async function applyVerified(gateway: string, v: VerifiedPayment, eventKey: stri
       const o = pre ? await MktOrder.findByPk(pre.id, { transaction, lock: transaction.LOCK.UPDATE }) : null;
       if (!o) outcome = 'unmatched';
       else if (v.status === 'success') {
-        if (o.status === 'paid') outcome = 'already_processed';
-        else if (v.amountPaise !== o.totalPaise) {
+        if (o.status === 'paid' || o.status === 'refunded') {
+          const samePayment =
+            !v.gatewayPaymentId || !o.gatewayPaymentId || v.gatewayPaymentId === o.gatewayPaymentId;
+          outcome = samePayment ? 'already_processed' : 'extra_payment';
+        } else if (v.amountPaise !== o.totalPaise) {
           outcome = 'amount_mismatch';
           logger.error(
             { orderId: o.id, expected: o.totalPaise, got: v.amountPaise },
@@ -502,7 +524,7 @@ async function applyVerified(gateway: string, v: VerifiedPayment, eventKey: stri
             },
             { transaction },
           );
-          await fulfil(o, transaction);
+          duplicates = await fulfil(o, transaction);
           outcome = 'paid';
         }
       } else if (v.status === 'failed') {
@@ -534,7 +556,15 @@ async function applyVerified(gateway: string, v: VerifiedPayment, eventKey: stri
       entityType: 'mkt_order',
       entityId: pre.id,
       instituteId: null,
+      metadata: duplicates.length ? { alreadyOwnedItems: duplicates } : undefined,
     });
+  // Refunds call the gateway, so they run after the payment is committed.
+  if (pre && (final === 'extra_payment' || duplicates.length)) {
+    const refunds = await import('./refunds.service');
+    if (final === 'extra_payment')
+      await refunds.refundExtraPayment(pre.id, v.gatewayPaymentId, v.amountPaise);
+    else await refunds.refundDuplicatePurchase(pre.id, duplicates);
+  }
   return { outcome: final, orderId: pre?.id ?? null };
 }
 

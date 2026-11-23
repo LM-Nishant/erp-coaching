@@ -99,6 +99,7 @@
                 </td>
                 <td>
                   <ion-badge v-if="r.carriedForward" color="medium">Carried forward</ion-badge>
+                  <ion-badge v-else-if="r.suspended" color="danger">Suspended: held</ion-badge>
                   <ion-badge v-else-if="!r.hasAccount" color="danger">No payout details</ion-badge>
                 </td>
               </tr>

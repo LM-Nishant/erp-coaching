@@ -189,6 +189,8 @@ interface SellerSum {
   ids: number[];
 }
 
+const SUSPENDED_HOLD = 'Seller suspended';
+
 /**
  * Unpaid ledger rows a run may pay: sales older than the hold window (refund window), refunded sales
  * of any age (they net out with their refund), and every unpaid refund (deducted as soon as possible,
@@ -268,6 +270,7 @@ async function computePreview(periodEnd: string | undefined, transaction?: Trans
       ...s,
       seller: sellers.find((x) => x.id === s.sellerId)!,
       account: accounts.find((a) => a.sellerId === s.sellerId) ?? null,
+      suspended: sellers.find((x) => x.id === s.sellerId)?.status === 'suspended',
       carriedForward: s.netPaise <= 0 || s.netPaise < settings.minPayoutPaise,
     }))
     .sort((a, b) => b.netPaise - a.netPaise);
@@ -284,6 +287,7 @@ export async function previewPayouts(periodEnd?: string): Promise<MktPayoutPrevi
     netPaise: r.netPaise,
     entries: r.entries,
     hasAccount: !!r.account,
+    suspended: r.suspended,
     carriedForward: r.carriedForward,
   }));
   return {
@@ -342,7 +346,8 @@ const sellerInclude = { model: MktSeller, as: 'seller', include: [{ model: MktMe
 
 /**
  * Creates a payout run: one payout per seller owed at least the minimum, reserving the ledger rows
- * it covers (`payout_id`). Sellers without payout details are put on hold. One open run at a time.
+ * it covers (`payout_id`). Sellers without payout details, and suspended sellers, are put on hold.
+ * One open run at a time.
  */
 export async function createRun(periodEnd?: string): Promise<MktPayoutRunDetailDto> {
   const runId = await getSequelize().transaction(async (transaction) => {
@@ -369,8 +374,8 @@ export async function createRun(periodEnd?: string): Promise<MktPayoutRunDetailD
         {
           runId: run.id,
           sellerId: r.sellerId,
-          status: r.account ? 'pending' : 'held',
-          holdReason: r.account ? null : 'No payout details',
+          status: r.account && !r.suspended ? 'pending' : 'held',
+          holdReason: r.suspended ? SUSPENDED_HOLD : r.account ? null : 'No payout details',
           grossPaise: r.grossPaise,
           commissionPaise: r.commissionPaise,
           refundsPaise: r.refundsPaise,
@@ -507,6 +512,12 @@ export async function releasePayout(id: number) {
   await getSequelize().transaction(async (transaction) => {
     const { p } = await lockedPayout(id, transaction);
     if (p.status !== 'held') throw Conflict('This payout is not on hold');
+    const seller = await MktSeller.findByPk(p.sellerId, { transaction });
+    if (seller?.status === 'suspended')
+      throw Conflict(
+        'The seller is suspended; reinstate them before releasing the payout',
+        'SELLER_SUSPENDED',
+      );
     if (!(await MktPayoutAccount.count({ where: { sellerId: p.sellerId }, transaction })))
       throw BadRequest('The seller has no payout details yet');
     await p.update({ status: 'pending', holdReason: null }, { transaction });

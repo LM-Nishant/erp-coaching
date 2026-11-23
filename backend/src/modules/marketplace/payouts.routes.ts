@@ -163,6 +163,9 @@ function adminRoutes(api: Router) {
     const { note } = parse(z.object({ note: optNote }), req.body ?? {});
     res.json(await refunds.approveRefund(parse(idParam, req.params).id, note));
   });
+  a.post('/refunds/:id/retry', async (req, res) => {
+    res.json(await refunds.retryRefund(parse(idParam, req.params).id));
+  });
   a.post('/refunds/:id/reject', async (req, res) => {
     const { note } = parse(z.object({ note: reason(1000) }), req.body ?? {});
     res.json(await refunds.rejectRefund(parse(idParam, req.params).id, note));
