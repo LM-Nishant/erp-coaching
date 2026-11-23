@@ -1,104 +1,146 @@
 <template>
-  <AppPage title="Plans" :on-refresh="load">
+  <AppPage :title="t('admin.plans.title')" :on-refresh="load">
     <template #actions>
-      <ion-button aria-label="New plan" @click="edit()"><ion-icon slot="icon-only" :icon="add" /></ion-button>
+      <ion-button :aria-label="t('admin.plans.new')" @click="edit()"
+        ><ion-icon slot="icon-only" :icon="add"
+      /></ion-button>
     </template>
     <ion-list>
       <ion-item v-for="p in plans" :key="p.id" button @click="edit(p)">
         <ion-label>
-          <h2>{{ p.name }} <ion-badge v-if="!p.isActive" color="medium">inactive</ion-badge></h2>
+          <h2>{{ p.name }} <StatusChip v-if="!p.isActive" :label="t('common.status.inactive')" /></h2>
           <p>
-            ₹{{ (p.priceMonthlyPaise / 100).toLocaleString() }}/mo · ₹{{
-              (p.priceYearlyPaise / 100).toLocaleString()
-            }}/yr · {{ p.trialDays }}-day trial · {{ p.activeSubscriptions ?? 0 }} active subscription(s)
-          </p>
-          <p>
-            Students {{ lim(p.limits.maxStudents) }} · Branches {{ lim(p.limits.maxBranches) }} · Teachers
-            {{ lim(p.limits.maxTeachers) }} · Storage {{ lim(p.limits.storageMb) }} MB · AI
-            {{ lim(p.limits.aiTokensMonthly) }} tokens/mo
-          </p>
-          <p>Modules: {{ p.limits.enabledModules?.join(', ') ?? 'all' }}</p>
-          <p v-if="p.addons.length">
-            Add-ons:
+            {{ t('admin.plans.perMonth', { amount: formatMoney(p.priceMonthlyPaise) }) }} ·
+            {{ t('admin.plans.perYear', { amount: formatMoney(p.priceYearlyPaise) }) }} ·
+            {{ t('admin.plans.trial', { n: p.trialDays }) }} ·
             {{
-              p.addons
-                .map((a) => (a.kind === 'module' ? `${a.moduleKey} module` : ADDON_LABELS[a.kind]))
-                .join(', ')
+              t(
+                'admin.plans.activeSubscriptions',
+                { n: formatNumber(p.activeSubscriptions ?? 0) },
+                p.activeSubscriptions ?? 0,
+              )
+            }}
+          </p>
+          <p>
+            {{
+              t('admin.plans.limitsLine', {
+                students: lim(p.limits.maxStudents),
+                branches: lim(p.limits.maxBranches),
+                teachers: lim(p.limits.maxTeachers),
+                storage: lim(p.limits.storageMb),
+                ai: lim(p.limits.aiTokensMonthly),
+              })
+            }}
+          </p>
+          <p>
+            {{
+              t('admin.plans.modules', {
+                list: p.limits.enabledModules?.join(', ') ?? t('admin.plans.allModules'),
+              })
+            }}
+          </p>
+          <p v-if="p.addons.length">
+            {{
+              t('admin.plans.addons', {
+                list: p.addons
+                  .map((a) =>
+                    a.kind === 'module'
+                      ? t('admin.plans.moduleAddon', { key: a.moduleKey })
+                      : ADDON_LABELS[a.kind],
+                  )
+                  .join(', '),
+              })
             }}
           </p>
           <p v-if="Object.keys(p.usagePricing).length">
-            Billed beyond the limit:
             {{
-              METERED_METRICS.filter((m) => p.usagePricing[m])
-                .map((m) => METRIC_LABELS[m])
-                .join(', ')
+              t('admin.plans.billedBeyond', {
+                list: METERED_METRICS.filter((m) => p.usagePricing[m])
+                  .map((m) => METRIC_LABELS[m])
+                  .join(', '),
+              })
             }}
           </p>
         </ion-label>
       </ion-item>
     </ion-list>
+    <p v-if="loaded && !plans.length" class="muted">{{ t('admin.plans.empty') }}</p>
 
     <ion-modal :is-open="!!form" @did-dismiss="form = null">
       <ion-header>
         <ion-toolbar>
-          <ion-title>{{ editingId ? 'Edit plan' : 'New plan' }}</ion-title>
-          <ion-buttons slot="end"><ion-button @click="form = null">Close</ion-button></ion-buttons>
+          <ion-title>{{ editingId ? t('admin.plans.edit') : t('admin.plans.new') }}</ion-title>
+          <ion-buttons slot="end"
+            ><ion-button @click="form = null">{{ t('common.actions.close') }}</ion-button></ion-buttons
+          >
         </ion-toolbar>
       </ion-header>
       <ion-content class="ion-padding">
         <form v-if="form" @submit.prevent="save">
           <ion-list>
             <ion-item
-              ><ion-input v-model="form.code" label="Code" label-placement="stacked" required
+              ><ion-input
+                v-model="form.code"
+                :label="t('admin.plans.code')"
+                label-placement="stacked"
+                required
             /></ion-item>
             <ion-item
-              ><ion-input v-model="form.name" label="Name" label-placement="stacked" required
+              ><ion-input
+                v-model="form.name"
+                :label="t('common.labels.name')"
+                label-placement="stacked"
+                required
             /></ion-item>
             <ion-item
               ><ion-input
                 v-model.number="priceMonthly"
-                label="Monthly price (₹)"
+                :label="t('admin.plans.monthlyPrice')"
                 label-placement="stacked"
                 type="number"
             /></ion-item>
             <ion-item
               ><ion-input
                 v-model.number="priceYearly"
-                label="Yearly price (₹)"
+                :label="t('admin.plans.yearlyPrice')"
                 label-placement="stacked"
                 type="number"
             /></ion-item>
             <ion-item
               ><ion-input
                 v-model.number="form.trialDays"
-                label="Trial days"
+                :label="t('admin.plans.trialDays')"
                 label-placement="stacked"
                 type="number"
             /></ion-item>
-            <ion-list-header>Limits (empty = unlimited)</ion-list-header>
+            <ion-list-header>{{ t('admin.plans.limitsHeading') }}</ion-list-header>
             <ion-item v-for="f in limitFields" :key="f.key">
-              <ion-input v-model="limits[f.key]" :label="f.label" label-placement="stacked" type="number" />
+              <ion-input
+                v-model="limits[f.key]"
+                :label="t(`admin.plans.limits.${f.key}`)"
+                label-placement="stacked"
+                type="number"
+              />
             </ion-item>
             <ion-item>
               <ion-input
                 v-model="modules"
-                label="Enabled modules (comma separated, empty = all)"
+                :label="t('admin.plans.enabledModules')"
                 label-placement="stacked"
               />
             </ion-item>
-            <p class="muted hint">Module keys: {{ PLAN_MODULE_KEYS.join(', ') }}</p>
-            <ion-item><ion-toggle v-model="form.isActive">Active</ion-toggle></ion-item>
+            <p class="muted hint">{{ t('admin.plans.moduleKeys', { list: PLAN_MODULE_KEYS.join(', ') }) }}</p>
+            <ion-item
+              ><ion-toggle v-model="form.isActive">{{ t('common.status.active') }}</ion-toggle></ion-item
+            >
 
-            <ion-list-header>Add-on packs</ion-list-header>
-            <p class="muted hint">
-              Packs institutes can buy on top of the plan. Recurring packs renew with the subscription; AI
-              credit packs are one-time for the current month. A blank yearly price means 12 × monthly.
-            </p>
+            <ion-list-header>{{ t('admin.plans.addonsHeading') }}</ion-list-header>
+            <p class="muted hint">{{ t('admin.plans.addonsHint') }}</p>
             <template v-for="(a, idx) in addons" :key="a.uid">
               <ion-item>
                 <ion-select
                   :value="a.kind"
-                  label="Add-on"
+                  :label="t('admin.plans.addon')"
                   label-placement="stacked"
                   interface="popover"
                   @ion-change="setKind(a, $event.detail.value)"
@@ -107,28 +149,30 @@
                     ADDON_LABELS[k]
                   }}</ion-select-option>
                 </ion-select>
-                <ion-button slot="end" fill="clear" color="danger" @click="addons.splice(idx, 1)"
-                  >Remove</ion-button
-                >
+                <ion-button slot="end" fill="clear" color="danger" @click="addons.splice(idx, 1)">{{
+                  t('common.actions.remove')
+                }}</ion-button>
               </ion-item>
               <ion-item>
                 <ion-input
                   v-if="a.kind === 'module'"
                   v-model="a.moduleKey"
-                  label="Module key (e.g. lms)"
+                  :label="t('admin.plans.moduleKey')"
                   label-placement="stacked"
                 />
                 <ion-input
                   v-else
                   v-model="a.unitSize"
-                  :label="`Pack size (${UNIT_WORDS[a.kind]})`"
+                  :label="t('admin.plans.packSize', { unit: t(`admin.plans.units.${UNIT_WORDS[a.kind]}`) })"
                   label-placement="stacked"
                   type="number"
                   :min="1"
                 />
                 <ion-input
                   v-model="a.monthly"
-                  :label="a.kind === 'ai_credits' ? 'Price per pack (₹)' : 'Per month (₹)'"
+                  :label="
+                    a.kind === 'ai_credits' ? t('admin.plans.pricePerPack') : t('admin.plans.perMonthPrice')
+                  "
                   label-placement="stacked"
                   type="number"
                   :min="0"
@@ -136,20 +180,19 @@
                 <ion-input
                   v-if="a.kind !== 'ai_credits'"
                   v-model="a.yearly"
-                  label="Per year (₹)"
+                  :label="t('admin.plans.perYearPrice')"
                   label-placement="stacked"
                   type="number"
                   :min="0"
                 />
               </ion-item>
             </template>
-            <ion-button fill="clear" size="small" @click="addAddon">Add a pack</ion-button>
+            <ion-button fill="clear" size="small" @click="addAddon">{{
+              t('admin.plans.addPack')
+            }}</ion-button>
 
-            <ion-list-header>Usage beyond the limits</ion-list-header>
-            <p class="muted hint">
-              A limit normally blocks further use. Price a metric to bill usage above it monthly instead
-              (seats: the month's peak, AI: the month's total), optionally up to a cap.
-            </p>
+            <ion-list-header>{{ t('admin.plans.usageHeading') }}</ion-list-header>
+            <p class="muted hint">{{ t('admin.plans.usageHint') }}</p>
             <template v-for="m in METERED_METRICS" :key="m">
               <ion-item>
                 <ion-toggle v-model="overage[m].enabled">{{ METRIC_LABELS[m] }}</ion-toggle>
@@ -157,21 +200,21 @@
               <ion-item v-if="overage[m].enabled">
                 <ion-input
                   v-model="overage[m].unitSize"
-                  :label="`Block (${OVERAGE_UNIT_WORDS[m]})`"
+                  :label="t('admin.plans.block', { unit: t(`admin.plans.units.${OVERAGE_UNIT_WORDS[m]}`) })"
                   label-placement="stacked"
                   type="number"
                   :min="1"
                 />
                 <ion-input
                   v-model="overage[m].price"
-                  label="Price per block (₹)"
+                  :label="t('admin.plans.pricePerBlock')"
                   label-placement="stacked"
                   type="number"
                   :min="0"
                 />
                 <ion-input
                   v-model="overage[m].maxOverage"
-                  label="Cap (units, blank = none)"
+                  :label="t('admin.plans.cap')"
                   label-placement="stacked"
                   type="number"
                   :min="0"
@@ -179,7 +222,9 @@
               </ion-item>
             </template>
           </ion-list>
-          <ion-button expand="block" type="submit" :disabled="busy">Save</ion-button>
+          <ion-button expand="block" type="submit" :disabled="busy">{{
+            t('common.actions.save')
+          }}</ion-button>
         </form>
       </ion-content>
     </ion-modal>
@@ -188,8 +233,8 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
-  IonBadge,
   IonButton,
   IonButtons,
   IonContent,
@@ -221,24 +266,29 @@ import {
   type PlanUsagePricing,
 } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { formatMoney, formatNumber } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
 import { adminApi, type PlanDto, type PlanInput } from './api';
 
 type NumericLimit = Exclude<keyof PlanLimits, 'enabledModules'>;
-const limitFields: { key: NumericLimit; label: string }[] = [
-  { key: 'maxStudents', label: 'Max students' },
-  { key: 'maxBranches', label: 'Max branches' },
-  { key: 'maxTeachers', label: 'Max teachers' },
-  { key: 'storageMb', label: 'Storage (MB)' },
-  { key: 'aiTokensMonthly', label: 'AI tokens per month (0 = AI disabled)' },
+const { t } = useI18n();
+
+const limitFields: { key: NumericLimit }[] = [
+  { key: 'maxStudents' },
+  { key: 'maxBranches' },
+  { key: 'maxTeachers' },
+  { key: 'storageMb' },
+  { key: 'aiTokensMonthly' },
 ];
 
+/** Pack-size units, keys of `admin.plans.units`. */
 const UNIT_WORDS: Record<AddonKind, string> = {
   students: 'students',
   branches: 'branches',
   teachers: 'teachers',
-  storage: 'MB',
-  ai_credits: 'AI tokens',
+  storage: 'mb',
+  ai_credits: 'aiTokens',
   module: 'module',
 };
 const DEFAULT_PACK: Record<AddonKind, number> = {
@@ -253,7 +303,7 @@ const OVERAGE_UNIT_WORDS: Record<MeteredMetric, string> = {
   students: 'students',
   branches: 'branches',
   teachers: 'teachers',
-  storageMb: 'MB',
+  storageMb: 'mb',
   aiTokens: 'tokens',
 };
 const DEFAULT_BLOCK: Record<MeteredMetric, number> = {
@@ -300,8 +350,9 @@ const modules = ref('');
 const priceMonthly = ref(0);
 const priceYearly = ref(0);
 const busy = ref(false);
+const loaded = ref(false);
 
-const lim = (n: number | null) => (n === null ? '∞' : n.toLocaleString());
+const lim = (n: number | null) => (n === null ? '∞' : formatNumber(n));
 const rupeesText = (paise: number) => String(paise / 100);
 const text = (v: unknown) => String(v ?? '').trim();
 const isWhole = (v: string, min: number) => /^\d+$/.test(v) && Number(v) >= min;
@@ -337,13 +388,17 @@ function buildAddons(): PlanAddonPrice[] | string {
     const label = ADDON_LABELS[a.kind];
     const moduleKey = a.kind === 'module' ? text(a.moduleKey).toLowerCase() : null;
     if (a.kind === 'module' && !/^[a-z0-9-]{2,40}$/.test(moduleKey ?? ''))
-      return 'Give each module add-on a module key (letters, digits, dashes)';
+      return t('admin.plans.errors.moduleKey');
     if (a.kind !== 'module' && !isWhole(text(a.unitSize), 1))
-      return `${label}: the pack size must be at least 1`;
-    if (!isAmount(text(a.monthly))) return `${label}: enter the price`;
-    if (text(a.yearly) !== '' && !isAmount(text(a.yearly))) return `${label}: the yearly price is invalid`;
+      return t('admin.plans.errors.packSize', { label });
+    if (!isAmount(text(a.monthly))) return t('admin.plans.errors.price', { label });
+    if (text(a.yearly) !== '' && !isAmount(text(a.yearly)))
+      return t('admin.plans.errors.yearlyPrice', { label });
     const key = `${a.kind}:${moduleKey ?? ''}`;
-    if (seen.has(key)) return `${a.kind === 'module' ? `The ${moduleKey} module` : label} is listed twice`;
+    if (seen.has(key))
+      return a.kind === 'module'
+        ? t('admin.plans.errors.moduleTwice', { key: moduleKey })
+        : t('admin.plans.errors.listedTwice', { label });
     seen.add(key);
     out.push({
       kind: a.kind,
@@ -363,10 +418,11 @@ function buildUsagePricing(): PlanUsagePricing | string {
   for (const m of METERED_METRICS) {
     const o = overage[m];
     if (!o.enabled) continue;
-    if (!isWhole(text(o.unitSize), 1)) return `${METRIC_LABELS[m]}: the block size must be at least 1`;
-    if (!isAmount(text(o.price))) return `${METRIC_LABELS[m]}: enter the price per block`;
+    const label = METRIC_LABELS[m];
+    if (!isWhole(text(o.unitSize), 1)) return t('admin.plans.errors.blockSize', { label });
+    if (!isAmount(text(o.price))) return t('admin.plans.errors.blockPrice', { label });
     if (text(o.maxOverage) !== '' && !isWhole(text(o.maxOverage), 0))
-      return `${METRIC_LABELS[m]}: the cap must be a whole number`;
+      return t('admin.plans.errors.cap', { label });
     out[m] = {
       unitSize: Number(text(o.unitSize)),
       pricePaise: Math.round(Number(text(o.price)) * 100),
@@ -378,6 +434,7 @@ function buildUsagePricing(): PlanUsagePricing | string {
 
 async function load() {
   plans.value = await adminApi.plans().catch((e) => (toastError(e), []));
+  loaded.value = true;
 }
 
 function edit(p?: PlanDto) {
@@ -447,7 +504,7 @@ async function save() {
   const usagePricing = buildUsagePricing();
   const problem = typeof planAddons === 'string' ? planAddons : usagePricing;
   if (typeof problem === 'string' || typeof planAddons === 'string' || typeof usagePricing === 'string') {
-    await toast(typeof problem === 'string' ? problem : 'Check the plan details', 'warning');
+    await toast(typeof problem === 'string' ? problem : t('admin.plans.errors.check'), 'warning');
     return;
   }
   const body: PlanInput = {
@@ -476,7 +533,7 @@ async function save() {
     if (editingId.value) await adminApi.updatePlan(editingId.value, body);
     else await adminApi.createPlan(body);
     form.value = null;
-    await toast('Plan saved');
+    await toast(t('admin.plans.saved'));
     await load();
   } catch (e) {
     await toastError(e);

@@ -1,17 +1,26 @@
 <template>
-  <AppPage title="New complaint" back-href="/grievances/my">
+  <AppPage :title="t('grievances.new.title')" back-href="/grievances/my">
     <form @submit.prevent="submit">
       <ion-list>
         <ion-item v-if="children.length">
-          <ion-select v-model="form.onBehalfOfUserId" label="Filing for" label-placement="stacked">
-            <ion-select-option :value="null">Myself</ion-select-option>
+          <ion-select
+            v-model="form.onBehalfOfUserId"
+            :label="t('grievances.new.filingFor')"
+            label-placement="stacked"
+          >
+            <ion-select-option :value="null">{{ t('grievances.new.myself') }}</ion-select-option>
             <ion-select-option v-for="c in children" :key="c.id" :value="c.id">{{
               c.name
             }}</ion-select-option>
           </ion-select>
         </ion-item>
         <ion-item>
-          <ion-select v-model="form.categoryId" label="Category" label-placement="stacked" required>
+          <ion-select
+            v-model="form.categoryId"
+            :label="t('grievances.fields.category')"
+            label-placement="stacked"
+            required
+          >
             <ion-select-option v-for="c in categories" :key="c.id" :value="c.id">{{
               c.name
             }}</ion-select-option>
@@ -21,16 +30,20 @@
           <ion-label class="muted">{{ selectedCategory.description }}</ion-label>
         </ion-item>
         <ion-item>
-          <ion-select v-model="form.priority" label="Priority" label-placement="stacked">
+          <ion-select
+            v-model="form.priority"
+            :label="t('grievances.fields.priority')"
+            label-placement="stacked"
+          >
             <ion-select-option v-for="p in GRIEVANCE_PRIORITIES" :key="p" :value="p">{{
-              p
+              t(priorityKey(p))
             }}</ion-select-option>
           </ion-select>
         </ion-item>
         <ion-item>
           <ion-input
             v-model="form.subject"
-            label="Subject"
+            :label="t('grievances.fields.subject')"
             label-placement="stacked"
             :maxlength="200"
             required
@@ -39,7 +52,7 @@
         <ion-item>
           <ion-textarea
             v-model="form.description"
-            label="Describe the issue"
+            :label="t('grievances.new.description')"
             label-placement="stacked"
             :auto-grow="true"
             :rows="5"
@@ -49,18 +62,26 @@
         </ion-item>
         <ion-item>
           <ion-label>
-            <p>Attachments (optional)</p>
+            <p>{{ t('grievances.new.attachments') }}</p>
             <input ref="fileInput" type="file" multiple @change="pickFiles" />
-            <p v-for="f in files" :key="f.name">{{ f.name }} ({{ Math.ceil(f.size / 1024) }} KB)</p>
+            <p v-for="f in files" :key="f.name">
+              {{ f.name }} ({{ t('grievances.fileSize', { size: formatNumber(fileSizeKb(f.size)) }) }})
+            </p>
           </ion-label>
         </ion-item>
       </ion-list>
       <p v-if="selectedCategory" class="muted ion-padding-horizontal">
-        Expected response within {{ selectedCategory.slaHours }} hours.
+        {{
+          t(
+            'grievances.new.expectedResponse',
+            { n: formatNumber(selectedCategory.slaHours) },
+            selectedCategory.slaHours,
+          )
+        }}
       </p>
-      <ion-button expand="block" type="submit" :disabled="saving || !form.categoryId"
-        >Submit complaint</ion-button
-      >
+      <ion-button expand="block" type="submit" :disabled="saving || !form.categoryId">{{
+        t('grievances.new.submit')
+      }}</ion-button>
     </form>
   </AppPage>
 </template>
@@ -68,6 +89,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import {
   IonButton,
   IonInput,
@@ -85,9 +107,11 @@ import {
   type GrievanceUserRef,
 } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import { formatNumber } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
-import { grievancesApi } from './api';
+import { fileSizeKb, grievancesApi, priorityKey } from './api';
 
+const { t } = useI18n();
 const router = useRouter();
 const categories = ref<GrievanceCategoryDto[]>([]);
 const children = ref<GrievanceUserRef[]>([]);
@@ -109,17 +133,20 @@ function pickFiles(ev: Event) {
 async function submit() {
   saving.value = true;
   try {
-    const t = await grievancesApi.create({ ...form });
+    const ticket = await grievancesApi.create({ ...form });
     const failed: string[] = [];
     for (const f of files.value) {
-      await grievancesApi.attach(t.id, f).catch(() => failed.push(f.name));
+      await grievancesApi.attach(ticket.id, f).catch(() => failed.push(f.name));
     }
     await toast(
       failed.length
-        ? `Complaint ${t.ticketNumber} submitted, but these files failed: ${failed.join(', ')}`
-        : `Complaint ${t.ticketNumber} submitted`,
+        ? t('grievances.new.submittedWithFailures', {
+            number: ticket.ticketNumber,
+            files: failed.join(', '),
+          })
+        : t('grievances.new.submitted', { number: ticket.ticketNumber }),
     );
-    await router.replace(`/grievances/${t.id}`);
+    await router.replace(`/grievances/${ticket.id}`);
   } catch (e) {
     await toastError(e);
   } finally {

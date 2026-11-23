@@ -2,9 +2,9 @@
   <ion-list lines="none">
     <AppointmentItem v-for="a in items" :key="a.id" :appointment="a" hide-requester />
     <ion-item v-if="loaded && !items.length">
-      <ion-label class="muted ion-text-wrap"
-        >No upcoming meetings with {{ child.name }}'s teachers.</ion-label
-      >
+      <ion-label class="muted ion-text-wrap">{{
+        t('appointments.widget.empty', { name: child.name })
+      }}</ion-label>
     </ion-item>
   </ion-list>
   <ion-button
@@ -12,13 +12,14 @@
     fill="clear"
     size="small"
     :router-link="`/appointments/request?studentId=${child.studentId}`"
-    >Request a meeting</ion-button
+    >{{ t('appointments.request.title') }}</ion-button
   >
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { IonButton, IonItem, IonLabel, IonList } from '@ionic/vue';
+import { useI18n } from 'vue-i18n';
 import type { AppointmentDto, ParentChildDto } from '@erp/shared';
 import { toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
@@ -26,6 +27,7 @@ import AppointmentItem from './AppointmentItem.vue';
 import { appointmentsApi, todayIso } from '../api';
 
 const props = defineProps<{ child: ParentChildDto }>();
+const { t } = useI18n();
 const auth = useAuthStore();
 const items = ref<AppointmentDto[]>([]);
 const loaded = ref(false);

@@ -5,15 +5,16 @@
     <template v-if="dash">
       <p class="context">{{ dash.period.label }}</p>
       <MetricGrid :metrics="tiles" :timezone="dash.period.timezone" />
-      <ion-button size="small" fill="outline" router-link="/reports/platform"
-        >Open platform analytics</ion-button
-      >
+      <ion-button size="small" fill="outline" router-link="/reports/platform">{{
+        t('reports.widget.openPlatform')
+      }}</ion-button>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { IonButton, IonProgressBar } from '@ionic/vue';
 import type { SaasDashboardDto } from '@erp/shared';
 import { errorMessage } from '@/core/api';
@@ -22,6 +23,7 @@ import MetricGrid from '../components/MetricGrid.vue';
 import type { Metric } from '../format';
 import { platformHeadline, platformRevenue, platformUsage } from '../platform';
 
+const { t } = useI18n();
 const dash = ref<SaasDashboardDto | null>(null);
 const loading = ref(false);
 const error = ref('');

@@ -1,0 +1,118 @@
+{
+  "title": "Integrations",
+  "tabs": {
+    "gateways": "Payment gateways",
+    "messaging": "Notification providers",
+    "storage": "Storage",
+    "live": "Live classes"
+  },
+  "hints": {
+    "gateways": "The gateway marked for subscription payments collects SaaS invoices from institutes. A gateway offered to institutes is their fee-collection fallback: an institute's own enabled gateway always takes precedence. Credentials are encrypted at rest, and enabling a gateway runs a connection test first.",
+    "messaging": "Platform defaults per channel. They send login OTPs and act as the fallback for institutes without a provider of their own; an institute's provider always takes precedence. Without one the built-in console provider logs messages instead of sending them.",
+    "live": "The media server that carries live-class audio and video, records classes and reports attendance.",
+    "storage": "Where uploaded files (documents, media, exports) are stored for every institute. Credentials are encrypted at rest."
+  },
+  "labels": {
+    "mockGateway": "Mock gateway (testing)",
+    "email": "Email",
+    "push": "Push notifications",
+    "localDisk": "Local disk"
+  },
+  "status": {
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "builtInConsole": "Built-in console",
+    "sandbox": "Sandbox",
+    "live": "Live"
+  },
+  "test": {
+    "passed": "Test passed",
+    "failed": "Test failed",
+    "notTested": "Not tested yet. Enabling runs a connection test first.",
+    "connection": "Test connection",
+    "result": "{outcome}: {message}"
+  },
+  "webhookCopied": "Webhook URL copied",
+  "copyFailed": "Copy failed; select the URL instead",
+  "copyWebhook": "Copy webhook URL",
+  "removeTitle": "Remove {name}?",
+  "removed": "{name} removed",
+  "saved": "{name} saved",
+  "gateway": {
+    "subscriptionPayments": "Subscription payments",
+    "instituteFallback": "Institute fallback",
+    "mockNote": "Simulated payments for development and testing. It can't be enabled in production.",
+    "websitePlaceholder": "Blank: WEBSTAGING (test) or DEFAULT (live)",
+    "sandboxMode": "Sandbox (test) mode",
+    "useForSubscriptions": "Use for SaaS subscription payments",
+    "offerToInstitutes": "Offer to institutes without their own fee gateway",
+    "secretAgain": "Sandbox and live use different keys: enter the {field} for {mode} mode.",
+    "modeSandbox": "sandbox",
+    "modeLive": "live",
+    "webhookUrl": "Subscription payment webhook URL:",
+    "removeMessage": "Its saved credentials are deleted and it stops taking payments."
+  },
+  "messaging": {
+    "provider": "Provider",
+    "testTo": {
+      "sms": "Test mobile number",
+      "whatsapp": "Test WhatsApp number",
+      "email": "Test email address",
+      "push": "Test device token"
+    },
+    "testHelp": {
+      "sms": "Send test sends the login OTP text (123456 is your verification code…) through the OTP template",
+      "whatsapp": "Send test uses it; enabling an untested configuration needs a passing test or key check",
+      "email": "Send test uses it; enabling an untested configuration sends a test here first",
+      "push": "Send test uses it; enabling an untested configuration needs a passing test or key check"
+    },
+    "testTemplate": "Test template",
+    "testTemplateHelp": "WhatsApp sends approved templates only: use one without variables",
+    "checkKeys": "Check keys",
+    "sendTest": "Send test",
+    "enterFirst": "Enter the {field} first",
+    "saved": "{channel} provider saved",
+    "removeTitle": "Remove the {channel} provider?",
+    "removeMessage": "Its saved credentials are deleted and messages fall back to the built-in console provider.",
+    "removed": "Provider removed"
+  },
+  "storage": {
+    "title": "File storage",
+    "serving": "Serving files: {driver}",
+    "serverDefault": "Server default: {driver}",
+    "active": "{driver} active",
+    "savedInactive": "{driver} saved, not active",
+    "driver": "Driver",
+    "bucket": "Bucket *",
+    "region": "Region",
+    "endpointRequired": "Endpoint *",
+    "endpointOptional": "Endpoint (optional)",
+    "accessKeyId": "Access key id *",
+    "secretAccessKey": "Secret access key *",
+    "secretSaved": "Saved ({hint}); blank keeps it",
+    "hidden": "hidden",
+    "useForFiles": "Use this storage for files",
+    "note": "Local disk keeps files in the server's storage directory. Switching drivers doesn't copy existing files: move them to the new location before activating it. Without an active configuration the server default is used.",
+    "s3Note": "The S3-compatible adapter isn't included in this build yet, so its connection test fails until it is implemented.",
+    "saved": "Storage settings saved"
+  },
+  "live": {
+    "provider": "Provider: {name}",
+    "builtIn": "Built-in (development)",
+    "mediaServer": "Media server",
+    "peerToPeer": "Peer-to-peer (development)",
+    "settings": {
+      "url": "Client URL (LIVEKIT_URL)",
+      "apiUrl": "Server API URL",
+      "apiKey": "API key",
+      "roomPrefix": "Room name prefix",
+      "recordingOutput": "Recording output",
+      "recordingLocation": "Recordings location"
+    },
+    "vendorNote": "Set on the server with STREAMING_PROVIDER and the LIVEKIT_* settings (see docs/integrations/live-streaming.md). Secrets are never shown here.",
+    "devNote": "The built-in development provider connects browsers to each other through the classroom socket with public STUN servers only, so it works on one network but not across most mobile or office networks. Set STREAMING_PROVIDER=livekit on the server for production classes.",
+    "webhookNote": "Webhook URL to configure on the LiveKit server or Cloud project — attendance and recordings come from it:",
+    "lastWebhook": "Last verified webhook: {when}",
+    "noWebhook": "none received yet"
+  }
+}

@@ -1,8 +1,8 @@
 <template>
-  <AppPage title="Assets & exits" :on-refresh="load">
+  <AppPage :title="t('hr.assets.title')" :on-refresh="load">
     <ion-segment v-model="tab">
-      <ion-segment-button value="assets">Assets</ion-segment-button>
-      <ion-segment-button value="exits">Resignations & exits</ion-segment-button>
+      <ion-segment-button value="assets">{{ t('hr.assets.tabAssets') }}</ion-segment-button>
+      <ion-segment-button value="exits">{{ t('hr.assets.tabExits') }}</ion-segment-button>
     </ion-segment>
 
     <template v-if="tab === 'assets'">
@@ -13,61 +13,72 @@
               {{ a.name }} <span v-if="a.assetTag">({{ a.assetTag }})</span>
             </h3>
             <p>
-              {{ nameOf(a.employeeId) }} · issued {{ a.issuedOn
-              }}<span v-if="a.returnedOn"> · returned {{ a.returnedOn }}</span>
+              {{ nameOf(a.employeeId) }} · {{ t('hr.assets.issuedOn', { date: formatDate(a.issuedOn) })
+              }}<span v-if="a.returnedOn">
+                · {{ t('hr.assets.returnedOn', { date: formatDate(a.returnedOn) }) }}</span
+              >
             </p>
           </ion-label>
-          <ion-badge
+          <StatusChip
             slot="end"
-            :color="a.status === 'issued' ? 'warning' : a.status === 'lost' ? 'danger' : 'success'"
-          >
-            {{ a.status }}
-          </ion-badge>
+            :label="t(ASSET_STATUS[a.status].label)"
+            :tone="ASSET_STATUS[a.status].tone"
+          />
           <template v-if="a.status === 'issued'">
-            <ion-button slot="end" v-can="'hr.edit'" fill="clear" @click="setAsset(a.id, 'returned')"
-              >Returned</ion-button
-            >
+            <ion-button slot="end" v-can="'hr.edit'" fill="clear" @click="setAsset(a.id, 'returned')">{{
+              t('hr.assets.markReturned')
+            }}</ion-button>
             <ion-button
               slot="end"
               v-can="'hr.edit'"
               fill="clear"
               color="danger"
               @click="setAsset(a.id, 'lost')"
-              >Lost</ion-button
+              >{{ t('hr.assets.markLost') }}</ion-button
             >
           </template>
         </ion-item>
-        <ion-item v-if="!assets.length"><ion-label class="muted">No assets issued.</ion-label></ion-item>
+        <ion-item v-if="!assets.length"
+          ><ion-label class="muted">{{ t('hr.assets.empty') }}</ion-label></ion-item
+        >
       </ion-list>
       <form v-can="'hr.edit'" @submit.prevent="addAsset">
         <ion-list>
-          <ion-list-header>Issue asset</ion-list-header>
+          <ion-list-header>{{ t('hr.assets.issueTitle') }}</ion-list-header>
           <ion-item>
-            <ion-select v-model="assetForm.employeeId" label="Employee" label-placement="stacked">
+            <ion-select v-model="assetForm.employeeId" :label="t('hr.employee')" label-placement="stacked">
               <ion-select-option v-for="e in employees" :key="e.id" :value="e.id">{{
                 e.name
               }}</ion-select-option>
             </ion-select>
           </ion-item>
           <ion-item
-            ><ion-input v-model="assetForm.name" label="Asset" label-placement="stacked" required
+            ><ion-input
+              v-model="assetForm.name"
+              :label="t('hr.assets.asset')"
+              label-placement="stacked"
+              required
           /></ion-item>
           <ion-item
-            ><ion-input v-model="assetForm.assetTag" label="Tag / serial" label-placement="stacked"
+            ><ion-input v-model="assetForm.assetTag" :label="t('hr.assets.tag')" label-placement="stacked"
           /></ion-item>
           <ion-item
-            ><ion-input v-model="assetForm.issuedOn" type="date" label="Issued on" label-placement="stacked"
+            ><ion-input
+              v-model="assetForm.issuedOn"
+              type="date"
+              :label="t('hr.assets.issuedOnLabel')"
+              label-placement="stacked"
           /></ion-item>
           <ion-item>
             <ion-input
               v-model="assetValue"
               type="number"
-              label="Value (₹, recovered if not returned)"
+              :label="t('hr.assets.value')"
               label-placement="stacked"
             />
           </ion-item>
         </ion-list>
-        <ion-button expand="block" type="submit">Issue</ion-button>
+        <ion-button expand="block" type="submit">{{ t('hr.assets.issue') }}</ion-button>
       </form>
     </template>
 
@@ -75,18 +86,27 @@
       <ion-list>
         <ion-item v-for="s in separations" :key="s.id">
           <ion-label class="ion-text-wrap">
-            <h3>{{ s.employee?.name }} · {{ s.type }}</h3>
+            <h3>{{ s.employee?.name }} · {{ t(`hr.separationType.${s.type}`) }}</h3>
             <p>
-              Submitted {{ s.submittedOn }} · last day {{ s.lastWorkingDay }} · notice
-              {{ s.noticePeriodDays }} days
+              {{
+                t('hr.exits.line', {
+                  submitted: formatDate(s.submittedOn),
+                  lastDay: formatDate(s.lastWorkingDay),
+                  notice: t('hr.days', s.noticePeriodDays),
+                })
+              }}
             </p>
             <p v-if="s.reason">{{ s.reason }}</p>
           </ion-label>
-          <ion-badge slot="end">{{ s.status }}</ion-badge>
+          <StatusChip
+            slot="end"
+            :label="t(SEPARATION_STATUS[s.status].label)"
+            :tone="SEPARATION_STATUS[s.status].tone"
+          />
           <template v-if="s.status === 'submitted'">
-            <ion-button slot="end" v-can="'hr.approve'" fill="clear" @click="transition(s, 'accept')"
-              >Accept</ion-button
-            >
+            <ion-button slot="end" v-can="'hr.approve'" fill="clear" @click="transition(s, 'accept')">{{
+              t('hr.exits.accept')
+            }}</ion-button>
             <ion-button
               slot="end"
               v-can="'hr.approve'"
@@ -94,7 +114,7 @@
               color="danger"
               @click="transition(s, 'reject')"
             >
-              Reject
+              {{ t('common.actions.reject') }}
             </ion-button>
           </template>
           <ion-button
@@ -103,48 +123,54 @@
             v-can="'hr.approve'"
             fill="clear"
             @click="transition(s, 'complete')"
-            >Complete exit</ion-button
+            >{{ t('hr.exits.complete') }}</ion-button
           >
         </ion-item>
-        <ion-item v-if="!separations.length"><ion-label class="muted">No separations.</ion-label></ion-item>
+        <ion-item v-if="!separations.length"
+          ><ion-label class="muted">{{ t('hr.exits.empty') }}</ion-label></ion-item
+        >
       </ion-list>
       <form v-can="'hr.create'" @submit.prevent="addSeparation">
         <ion-list>
-          <ion-list-header>Record resignation / termination</ion-list-header>
+          <ion-list-header>{{ t('hr.exits.recordTitle') }}</ion-list-header>
           <ion-item>
-            <ion-select v-model="sepForm.employeeId" label="Employee" label-placement="stacked">
+            <ion-select v-model="sepForm.employeeId" :label="t('hr.employee')" label-placement="stacked">
               <ion-select-option v-for="e in employees" :key="e.id" :value="e.id">{{
                 e.name
               }}</ion-select-option>
             </ion-select>
           </ion-item>
           <ion-item>
-            <ion-select v-model="sepForm.type" label="Type" label-placement="stacked">
-              <ion-select-option value="resignation">Resignation</ion-select-option>
-              <ion-select-option value="termination">Termination</ion-select-option>
-              <ion-select-option value="retirement">Retirement</ion-select-option>
+            <ion-select v-model="sepForm.type" :label="t('hr.exits.type')" label-placement="stacked">
+              <ion-select-option v-for="st in SEPARATION_TYPES" :key="st" :value="st">{{
+                t(`hr.separationType.${st}`)
+              }}</ion-select-option>
             </ion-select>
           </ion-item>
           <ion-item
             ><ion-input
               v-model="sepForm.submittedOn"
               type="date"
-              label="Submitted on"
+              :label="t('hr.exits.submittedOn')"
               label-placement="stacked"
           /></ion-item>
           <ion-item>
             <ion-input
               v-model="sepForm.lastWorkingDay"
               type="date"
-              label="Last working day (blank = per notice)"
+              :label="t('hr.exits.lastWorkingDay')"
               label-placement="stacked"
             />
           </ion-item>
           <ion-item
-            ><ion-textarea v-model="sepForm.reason" label="Reason" label-placement="stacked" auto-grow
+            ><ion-textarea
+              v-model="sepForm.reason"
+              :label="t('hr.reason')"
+              label-placement="stacked"
+              auto-grow
           /></ion-item>
         </ion-list>
-        <ion-button expand="block" type="submit">Save</ion-button>
+        <ion-button expand="block" type="submit">{{ t('common.actions.save') }}</ion-button>
       </form>
     </template>
   </AppPage>
@@ -152,8 +178,8 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
-  IonBadge,
   IonButton,
   IonInput,
   IonItem,
@@ -167,10 +193,23 @@ import {
   IonTextarea,
   alertController,
 } from '@ionic/vue';
-import type { AssetStatus, EmployeeDto } from '@erp/shared';
+import type { AssetStatus, EmployeeDto, SeparationType } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { formatDate } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
-import { blankToNull, hrApi, todayIso, type Asset, type Separation } from './api';
+import {
+  ASSET_STATUS,
+  SEPARATION_STATUS,
+  blankToNull,
+  hrApi,
+  todayIso,
+  type Asset,
+  type Separation,
+} from './api';
+
+const { t } = useI18n();
+const SEPARATION_TYPES: SeparationType[] = ['resignation', 'termination', 'retirement'];
 
 const tab = ref('assets');
 const assets = ref<Asset[]>([]);
@@ -203,7 +242,7 @@ async function addAsset() {
     });
     assetForm.value = { issuedOn: todayIso() };
     assetValue.value = '';
-    await toast('Asset issued');
+    await toast(t('hr.assets.issued'));
     await load();
   } catch (e) {
     await toastError(e);
@@ -222,22 +261,22 @@ async function addSeparation() {
       reason: blankToNull(sepForm.value.reason) as string | null,
     });
     sepForm.value = { type: 'resignation', submittedOn: todayIso() };
-    await toast('Saved');
+    await toast(t('common.saved'));
     await load();
   } catch (e) {
     await toastError(e);
   }
 }
 
-async function transition(s: Separation, t: 'accept' | 'reject' | 'complete') {
-  if (t !== 'accept') return hrApi.transitionSeparation(s.id, t).then(load).catch(toastError);
+async function transition(s: Separation, action: 'accept' | 'reject' | 'complete') {
+  if (action !== 'accept') return hrApi.transitionSeparation(s.id, action).then(load).catch(toastError);
   const alert = await alertController.create({
-    header: 'Accept resignation',
+    header: t('hr.exits.acceptTitle'),
     inputs: [{ name: 'lwd', type: 'date', value: s.lastWorkingDay }],
     buttons: [
-      { text: 'Cancel', role: 'cancel' },
+      { text: t('common.actions.cancel'), role: 'cancel' },
       {
-        text: 'Accept',
+        text: t('hr.exits.accept'),
         handler: (v: { lwd?: string }) =>
           hrApi
             .transitionSeparation(s.id, 'accept', v.lwd || undefined)

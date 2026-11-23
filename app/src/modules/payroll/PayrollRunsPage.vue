@@ -1,41 +1,49 @@
 <template>
-  <AppPage title="Payroll runs" :on-refresh="load">
+  <AppPage :title="t('payroll.runs.title')" :on-refresh="load">
     <form v-can="'payroll.create'" class="row" @submit.prevent="create">
       <ion-item>
         <ion-input
           v-model="month"
           type="month"
-          label="New run for month"
+          :label="t('payroll.runs.newRunMonth')"
           label-placement="stacked"
           required
         />
       </ion-item>
-      <ion-button type="submit" :disabled="saving">Create draft run</ion-button>
+      <ion-button type="submit" :disabled="saving">{{ t('payroll.runs.create') }}</ion-button>
     </form>
     <ion-list>
       <ion-item v-for="r in runs" :key="r.id" :router-link="`/payroll/runs/${r.id}`" button>
         <ion-label>
-          <h2>{{ MONTHS[r.periodMonth - 1] }} {{ r.periodYear }}</h2>
-          <p>{{ r.employeeCount }} employee(s) · net {{ rupees(r.totalNet) }}</p>
+          <h2>{{ formatMonth(r.periodYear, r.periodMonth) }}</h2>
+          <p>
+            {{ t('payroll.employees', r.employeeCount) }} ·
+            {{ t('payroll.runs.net', { amount: formatMoney(r.totalNet) }) }}
+          </p>
         </ion-label>
-        <ion-badge slot="end" :color="STATUS_COLORS[r.status]">{{ r.status }}</ion-badge>
+        <StatusChip slot="end" :label="t(RUN_STATUS[r.status].label)" :tone="RUN_STATUS[r.status].tone" />
       </ion-item>
-      <ion-item v-if="!runs.length"><ion-label class="muted">No payroll runs yet.</ion-label></ion-item>
+      <ion-item v-if="!runs.length"
+        ><ion-label class="muted">{{ t('payroll.runs.empty') }}</ion-label></ion-item
+      >
     </ion-list>
   </AppPage>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
-import { IonBadge, IonButton, IonInput, IonItem, IonLabel, IonList } from '@ionic/vue';
+import { IonButton, IonInput, IonItem, IonLabel, IonList } from '@ionic/vue';
 import type { PayrollRunDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { formatMoney } from '@/core/format';
 import { toastError } from '@/core/toast';
-import { MONTHS, rupees, todayIso } from '../hr/api';
-import { payrollApi } from './api';
+import { formatMonth, todayIso } from '../hr/api';
+import { RUN_STATUS, payrollApi } from './api';
 
-const STATUS_COLORS = { draft: 'medium', approved: 'warning', locked: 'success' } as const;
+const { t } = useI18n();
 const router = useRouter();
 const runs = ref<PayrollRunDto[]>([]);
 const month = ref(todayIso().slice(0, 7));

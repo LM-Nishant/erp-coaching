@@ -49,7 +49,7 @@ test('report export → download from the report and from "Report exports"', asy
     const row = content.locator('ion-item').filter({ hasText: 'Capacity and utilisation' });
     await expect(row).toHaveCount(1);
     await expect(row).toContainText('CSV');
-    await expect(row.locator('ion-badge')).toHaveText('Ready');
+    await expect(row.locator('.status-chip')).toHaveText('Ready');
 
     const again = await savedDownload(page, DOWNLOAD_URL, () =>
       row.getByRole('button', { name: 'Download' }).click(),

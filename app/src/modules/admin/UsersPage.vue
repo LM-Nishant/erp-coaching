@@ -1,12 +1,10 @@
 <template>
-  <AppPage title="Users & devices" :on-refresh="load">
-    <p class="muted ion-padding-horizontal">
-      Find any user on the platform to review the devices they are signed in on, or sign a device out.
-    </p>
+  <AppPage :title="t('admin.users.title')" :on-refresh="load">
+    <p class="muted ion-padding-horizontal">{{ t('admin.users.intro') }}</p>
     <ion-searchbar
       v-model="search"
       :debounce="400"
-      placeholder="Name, mobile or email (3+ characters)"
+      :placeholder="t('admin.users.searchPlaceholder')"
       @ion-input="load"
     />
     <ion-list>
@@ -14,16 +12,16 @@
         <ion-label>
           <h2>
             {{ u.name }}
-            <ion-badge v-if="u.isSuperAdmin" color="tertiary">super admin</ion-badge>
-            <ion-badge v-if="u.status !== 'active'" color="medium">{{ u.status }}</ion-badge>
+            <StatusChip v-if="u.isSuperAdmin" :label="t('admin.users.superAdmin')" tone="primary" />
+            <StatusChip v-if="u.status !== 'active'" :label="statusLabel(u.status)" />
           </h2>
           <p>{{ [u.mobile, u.email].filter(Boolean).join(' · ') }}</p>
-          <p>{{ u.institutes.map((i) => i.name).join(', ') || 'No institute' }}</p>
+          <p>{{ u.institutes.map((i) => i.name).join(', ') || t('admin.users.noInstitute') }}</p>
         </ion-label>
-        <ion-note slot="end">{{ u.activeDevices }} signed in</ion-note>
+        <ion-note slot="end">{{ t('admin.users.signedIn', { n: formatNumber(u.activeDevices) }) }}</ion-note>
       </ion-item>
       <ion-item v-if="searched && !users.length"
-        ><ion-label class="muted">No users found.</ion-label></ion-item
+        ><ion-label class="muted">{{ t('admin.users.empty') }}</ion-label></ion-item
       >
     </ion-list>
 
@@ -39,13 +37,17 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import { IonBadge, IonItem, IonLabel, IonList, IonNote, IonSearchbar } from '@ionic/vue';
+import { useI18n } from 'vue-i18n';
+import { IonItem, IonLabel, IonList, IonNote, IonSearchbar } from '@ionic/vue';
 import type { PlatformUserDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
 import UserDevicesModal from '@/components/UserDevicesModal.vue';
+import { formatNumber } from '@/core/format';
 import { toastError } from '@/core/toast';
-import { adminApi } from './api';
+import { adminApi, statusLabel } from './api';
 
+const { t } = useI18n();
 const search = ref('');
 const users = ref<PlatformUserDto[]>([]);
 const searched = ref(false);

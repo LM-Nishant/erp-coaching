@@ -7,7 +7,33 @@
       "close": "Close",
       "more": "More",
       "showMore": "Show more options",
-      "showLess": "Show fewer options"
+      "showLess": "Show fewer options",
+      "add": "Add",
+      "edit": "Edit",
+      "delete": "Delete",
+      "remove": "Remove",
+      "submit": "Submit",
+      "send": "Send",
+      "search": "Search",
+      "filter": "Filter",
+      "back": "Back",
+      "view": "View",
+      "open": "Open",
+      "download": "Download",
+      "export": "Export",
+      "approve": "Approve",
+      "reject": "Reject",
+      "confirm": "Confirm",
+      "refresh": "Refresh",
+      "next": "Next",
+      "previous": "Previous",
+      "loadMore": "Load more",
+      "create": "Create",
+      "update": "Update",
+      "share": "Share",
+      "copy": "Copy",
+      "yes": "Yes",
+      "no": "No"
     },
     "status": {
       "pending": "Pending",
@@ -19,7 +45,24 @@
       "late": "Late",
       "upcoming": "Upcoming",
       "live": "Live now",
-      "done": "Done"
+      "done": "Done",
+      "open": "Open",
+      "inProgress": "In progress",
+      "resolved": "Resolved",
+      "closed": "Closed",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "cancelled": "Cancelled",
+      "draft": "Draft",
+      "active": "Active",
+      "inactive": "Inactive",
+      "scheduled": "Scheduled",
+      "completed": "Completed",
+      "failed": "Failed",
+      "published": "Published",
+      "processing": "Processing",
+      "expired": "Expired",
+      "confirmed": "Confirmed"
     },
     "empty": {
       "title": "Nothing here yet"
@@ -40,6 +83,30 @@
       "settings": "Settings",
       "platform": "Platform",
       "other": "Other"
-    }
+    },
+    "labels": {
+      "loading": "Loading…",
+      "all": "All",
+      "none": "None",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "date": "Date",
+      "from": "From",
+      "to": "To",
+      "amount": "Amount",
+      "status": "Status",
+      "name": "Name",
+      "notes": "Notes",
+      "total": "Total",
+      "optional": "Optional",
+      "required": "Required",
+      "searchPlaceholder": "Search",
+      "noResults": "No results match your search."
+    },
+    "errors": {
+      "generic": "Something went wrong. Please try again.",
+      "offline": "You are offline. Check your connection."
+    },
+    "saved": "Saved"
   }
 }

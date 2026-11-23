@@ -8,6 +8,7 @@ import type {
   LoginResult,
   MeDto,
   SignInProfileDto,
+  AppLocale,
 } from '@erp/shared';
 import { config } from '../../infrastructure/config';
 import { getSequelize } from '../../infrastructure/database/sequelize';
@@ -765,6 +766,23 @@ export async function stopImpersonation(sessionId: number) {
 
 // ---------------------------------------------------------------- me
 
+/** Saves the user's app language so every device opens in it. */
+export async function setUserLocale(userId: number, locale: AppLocale) {
+  const user = await User.findByPk(userId);
+  if (!user) throw Unauthorized();
+  const before = user.locale ?? null;
+  if (before !== locale) {
+    await user.update({ locale });
+    await audit({
+      action: 'user.locale_changed',
+      entityType: 'user',
+      entityId: userId,
+      metadata: { before, after: locale },
+    });
+  }
+  return { locale };
+}
+
 export async function buildMe(): Promise<MeDto> {
   const ctx = getContext();
   const user = await User.findByPk(ctx.userId!);
@@ -813,6 +831,7 @@ export async function buildMe(): Promise<MeDto> {
       isSuperAdmin: user.isSuperAdmin,
       sharesMobile: user.mobile === null,
       profileCount,
+      locale: (user.locale as AppLocale | null) ?? null,
     },
     institute,
     branches,

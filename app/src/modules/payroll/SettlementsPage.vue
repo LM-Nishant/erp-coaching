@@ -1,30 +1,35 @@
 <template>
-  <AppPage title="Full & final settlement" :on-refresh="load">
+  <AppPage :title="t('payroll.settlements.title')" :on-refresh="load">
     <ion-list v-can="'payroll.create'">
-      <ion-list-header>Accepted separations awaiting settlement</ion-list-header>
+      <ion-list-header>{{ t('payroll.settlements.awaiting') }}</ion-list-header>
       <ion-item v-for="s in pending" :key="s.id">
         <ion-label>
           <h3>{{ s.employee?.name }}</h3>
-          <p>Last working day {{ s.lastWorkingDay }}</p>
+          <p>{{ t('payroll.settlements.lastDay', { date: formatDate(s.lastWorkingDay) }) }}</p>
         </ion-label>
-        <ion-button slot="end" @click="compute(s.id)">Compute</ion-button>
+        <ion-button slot="end" @click="compute(s.id)">{{ t('payroll.settlements.compute') }}</ion-button>
       </ion-item>
-      <ion-item v-if="!pending.length"><ion-label class="muted">None.</ion-label></ion-item>
+      <ion-item v-if="!pending.length"
+        ><ion-label class="muted">{{ t('common.labels.none') }}</ion-label></ion-item
+      >
     </ion-list>
 
     <ion-list>
-      <ion-list-header>Settlements</ion-list-header>
+      <ion-list-header>{{ t('payroll.settlements.list') }}</ion-list-header>
       <ion-item v-for="s in settlements" :key="s.id" button @click="selected = s">
         <ion-label>
           <h3>{{ s.employee?.name }}</h3>
-          <p>LWD {{ s.lastWorkingDay }} · net {{ rupees(s.net) }}</p>
+          <p>
+            {{
+              t('payroll.settlements.row', { date: formatDate(s.lastWorkingDay), amount: formatMoney(s.net) })
+            }}
+          </p>
         </ion-label>
-        <ion-badge
+        <StatusChip
           slot="end"
-          :color="s.status === 'paid' ? 'success' : s.status === 'approved' ? 'warning' : 'medium'"
-        >
-          {{ s.status }}
-        </ion-badge>
+          :label="t(SETTLEMENT_STATUS[s.status].label)"
+          :tone="SETTLEMENT_STATUS[s.status].tone"
+        />
       </ion-item>
     </ion-list>
 
@@ -32,7 +37,9 @@
       <ion-header>
         <ion-toolbar>
           <ion-title>{{ selected?.employee?.name }}</ion-title>
-          <ion-buttons slot="end"><ion-button @click="selected = null">Close</ion-button></ion-buttons>
+          <ion-buttons slot="end"
+            ><ion-button @click="selected = null">{{ t('common.actions.close') }}</ion-button></ion-buttons
+          >
         </ion-toolbar>
       </ion-header>
       <ion-content v-if="selected">
@@ -40,13 +47,15 @@
           <ion-item v-for="(l, i) in selected.lines" :key="i">
             <ion-label class="ion-text-wrap">{{ l.name }}</ion-label>
             <ion-note slot="end" :color="l.type === 'deduction' ? 'danger' : undefined">
-              {{ l.type === 'deduction' ? '−' : '' }}{{ rupees(l.amount) }}
+              {{ l.type === 'deduction' ? '−' : '' }}{{ formatMoney(l.amount) }}
             </ion-note>
           </ion-item>
           <ion-item>
-            <ion-label><strong>Net payable</strong></ion-label>
+            <ion-label
+              ><strong>{{ t('payroll.settlements.netPayable') }}</strong></ion-label
+            >
             <ion-note slot="end"
-              ><strong>{{ rupees(selected.net) }}</strong></ion-note
+              ><strong>{{ formatMoney(selected.net) }}</strong></ion-note
             >
           </ion-item>
         </ion-list>
@@ -58,11 +67,11 @@
               fill="outline"
               @click="compute(selected.separationId, true)"
             >
-              Recompute waiving notice recovery
+              {{ t('payroll.settlements.recompute') }}
             </ion-button>
-            <ion-button v-can="'payroll.approve'" expand="block" @click="transition('approve')"
-              >Approve</ion-button
-            >
+            <ion-button v-can="'payroll.approve'" expand="block" @click="transition('approve')">{{
+              t('common.actions.approve')
+            }}</ion-button>
           </template>
           <ion-button
             v-if="selected.status === 'approved'"
@@ -71,7 +80,7 @@
             color="success"
             @click="transition('pay')"
           >
-            Mark paid
+            {{ t('payroll.settlements.markPaid') }}
           </ion-button>
         </div>
       </ion-content>
@@ -81,8 +90,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
-  IonBadge,
   IonButton,
   IonButtons,
   IonContent,
@@ -97,9 +106,13 @@ import {
   IonToolbar,
 } from '@ionic/vue';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { formatDate, formatMoney } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
-import { hrApi, rupees, type Separation } from '../hr/api';
-import { payrollApi, type Settlement } from './api';
+import { hrApi, type Separation } from '../hr/api';
+import { SETTLEMENT_STATUS, payrollApi, type Settlement } from './api';
+
+const { t } = useI18n();
 
 const settlements = ref<Settlement[]>([]);
 const separations = ref<Separation[]>([]);
@@ -137,7 +150,7 @@ async function transition(action: 'approve' | 'pay') {
       ...selected.value,
       ...(await payrollApi.transitionSettlement(selected.value.id, action)),
     };
-    await toast(action === 'pay' ? 'Marked paid' : 'Approved');
+    await toast(action === 'pay' ? t('payroll.settlements.markedPaid') : t('common.status.approved'));
     await load();
   } catch (e) {
     await toastError(e);

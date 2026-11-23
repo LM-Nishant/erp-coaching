@@ -36,14 +36,14 @@ test('website publish → visitor enquiry → staff see the lead', async ({ http
     const home = content
       .locator('ion-item')
       .filter({ has: page.getByRole('heading', { name: 'Home', exact: true }) });
-    await expect(home.locator('ion-badge')).toHaveText('Draft');
+    await expect(home.locator('.status-chip')).toHaveText('Draft');
     await home.click();
     await expect(page).toHaveURL(/\/website\/pages\/\d+$/);
 
     await expect(content.getByText('Not published yet')).toBeVisible();
     await content.getByRole('button', { name: 'Publish', exact: true }).click();
     await expectToast(page, 'Published v1');
-    await expect(content.locator('ion-badge').filter({ hasText: 'Published' })).toBeVisible();
+    await expect(content.locator('.status-chip').filter({ hasText: 'Published' })).toBeVisible();
     await expect(content.getByText(/Live version v1 · /)).toBeVisible();
   });
 

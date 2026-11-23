@@ -1,39 +1,50 @@
 <template>
-  <AppPage title="Staff" :on-refresh="load">
+  <AppPage :title="t('hr.employees.title')" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'hr.create'" aria-label="New staff member" @click="openEditor"
+      <ion-button v-can="'hr.create'" :aria-label="t('hr.employees.new')" @click="openEditor"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
 
-    <ion-searchbar v-model="search" :debounce="300" placeholder="Name, code, mobile" @ion-input="load" />
+    <ion-searchbar
+      v-model="search"
+      :debounce="300"
+      :placeholder="t('hr.employees.searchPlaceholder')"
+      @ion-input="load"
+    />
     <ion-segment v-model="status" @ion-change="load">
-      <ion-segment-button value="active">Active</ion-segment-button>
-      <ion-segment-button value="on_notice">On notice</ion-segment-button>
-      <ion-segment-button value="exited">Exited</ion-segment-button>
-      <ion-segment-button value="">All</ion-segment-button>
+      <ion-segment-button value="active">{{ t('common.status.active') }}</ion-segment-button>
+      <ion-segment-button value="on_notice">{{ t('hr.status.onNotice') }}</ion-segment-button>
+      <ion-segment-button value="exited">{{ t('hr.status.exited') }}</ion-segment-button>
+      <ion-segment-button value="">{{ t('common.labels.all') }}</ion-segment-button>
     </ion-segment>
     <ion-list>
       <ion-item v-for="e in employees" :key="e.id" :router-link="`/hr/employees/${e.id}`" button>
         <ion-label>
           <h2>
             {{ e.name }}
-            <ion-badge v-if="e.isTeacher" color="tertiary">Teacher</ion-badge>
+            <StatusChip v-if="e.isTeacher" :label="t('hr.teacher')" tone="primary" />
           </h2>
           <p>{{ [e.employeeCode, e.designation, e.department].filter(Boolean).join(' · ') }}</p>
         </ion-label>
-        <ion-badge slot="end" :color="e.status === 'active' ? 'success' : 'medium'">{{ e.status }}</ion-badge>
+        <StatusChip
+          slot="end"
+          :label="t(EMPLOYEE_STATUS[e.status].label)"
+          :tone="EMPLOYEE_STATUS[e.status].tone"
+        />
       </ion-item>
       <ion-item v-if="!loading && !employees.length"
-        ><ion-label class="muted">No staff found.</ion-label></ion-item
+        ><ion-label class="muted">{{ t('hr.employees.empty') }}</ion-label></ion-item
       >
     </ion-list>
 
     <ion-modal :is-open="!!form" @did-dismiss="form = null">
       <ion-header>
         <ion-toolbar>
-          <ion-title>New staff member</ion-title>
-          <ion-buttons slot="end"><ion-button @click="form = null">Close</ion-button></ion-buttons>
+          <ion-title>{{ t('hr.employees.new') }}</ion-title>
+          <ion-buttons slot="end"
+            ><ion-button @click="form = null">{{ t('common.actions.close') }}</ion-button></ion-buttons
+          >
         </ion-toolbar>
       </ion-header>
       <ion-content class="ion-padding">
@@ -42,46 +53,72 @@
             <ion-item>
               <ion-select
                 v-model="form.userId"
-                label="Linked user login (optional)"
+                :label="t('hr.employees.linkedUser')"
                 label-placement="stacked"
               >
-                <ion-select-option :value="null">No login</ion-select-option>
+                <ion-select-option :value="null">{{ t('hr.employees.noLogin') }}</ion-select-option>
                 <ion-select-option v-for="c in candidates" :key="c.id" :value="c.id">
                   {{ c.name }} ({{ c.roles.join(', ') }})
                 </ion-select-option>
               </ion-select>
             </ion-item>
             <ion-item v-if="!form.userId">
-              <ion-input v-model="form.name" label="Name" label-placement="stacked" required />
+              <ion-input
+                v-model="form.name"
+                :label="t('hr.fields.name')"
+                label-placement="stacked"
+                required
+              />
             </ion-item>
             <ion-item v-if="!form.userId">
-              <ion-input v-model="form.mobile" label="Mobile" label-placement="stacked" type="tel" />
+              <ion-input
+                v-model="form.mobile"
+                :label="t('hr.fields.mobile')"
+                label-placement="stacked"
+                type="tel"
+              />
             </ion-item>
             <ion-item>
-              <ion-input v-model="form.designation" label="Designation" label-placement="stacked" />
+              <ion-input
+                v-model="form.designation"
+                :label="t('hr.fields.designation')"
+                label-placement="stacked"
+              />
             </ion-item>
             <ion-item>
-              <ion-input v-model="form.department" label="Department" label-placement="stacked" />
+              <ion-input
+                v-model="form.department"
+                :label="t('hr.fields.department')"
+                label-placement="stacked"
+              />
             </ion-item>
             <ion-item>
-              <ion-select v-model="form.employmentType" label="Employment type" label-placement="stacked">
-                <ion-select-option v-for="t in EMPLOYMENT_TYPES" :key="t" :value="t">{{
-                  t
+              <ion-select
+                v-model="form.employmentType"
+                :label="t('hr.fields.employmentType')"
+                label-placement="stacked"
+              >
+                <ion-select-option v-for="et in EMPLOYMENT_TYPES" :key="et" :value="et">{{
+                  t(`hr.employmentType.${et}`)
                 }}</ion-select-option>
               </ion-select>
             </ion-item>
-            <ion-item><ion-checkbox v-model="form.isTeacher">Teacher</ion-checkbox></ion-item>
+            <ion-item
+              ><ion-checkbox v-model="form.isTeacher">{{ t('hr.teacher') }}</ion-checkbox></ion-item
+            >
             <ion-item>
               <ion-input
                 v-model="form.dateOfJoining"
-                label="Date of joining"
+                :label="t('hr.fields.dateOfJoining')"
                 label-placement="stacked"
                 type="date"
                 required
               />
             </ion-item>
           </ion-list>
-          <ion-button expand="block" type="submit" :disabled="saving">Save</ion-button>
+          <ion-button expand="block" type="submit" :disabled="saving">{{
+            t('common.actions.save')
+          }}</ion-button>
         </form>
       </ion-content>
     </ion-modal>
@@ -90,9 +127,9 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import {
-  IonBadge,
   IonButton,
   IonButtons,
   IonCheckbox,
@@ -115,8 +152,11 @@ import {
 import { add } from 'ionicons/icons';
 import { EMPLOYMENT_TYPES, type EmployeeDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
 import { toast, toastError } from '@/core/toast';
-import { blankToNull, hrApi, todayIso, type Candidate } from './api';
+import { EMPLOYEE_STATUS, blankToNull, hrApi, todayIso, type Candidate } from './api';
+
+const { t } = useI18n();
 
 const router = useRouter();
 const employees = ref<EmployeeDto[]>([]);
@@ -162,7 +202,7 @@ async function save() {
       department: blankToNull(f.department) as string | null,
     });
     form.value = null;
-    await toast('Staff member added');
+    await toast(t('hr.employees.added'));
     await router.push(`/hr/employees/${emp.id}`);
   } catch (e) {
     await toastError(e);

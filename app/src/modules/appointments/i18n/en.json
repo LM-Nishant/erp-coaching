@@ -1,0 +1,136 @@
+{
+  "status": {
+    "requested": "Requested",
+    "noShow": "No-show"
+  },
+  "action": {
+    "requested": "Requested",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "rescheduled": "Rescheduled",
+    "cancelled": "Cancelled",
+    "completed": "Completed",
+    "noShow": "No show",
+    "notesUpdated": "Notes updated",
+    "reminderSent": "Reminder sent"
+  },
+  "mode": {
+    "label": "Mode",
+    "online": "Online",
+    "offline": "In person",
+    "both": "Online or in person",
+    "onlineOnly": "Online only",
+    "offlineOnly": "In person only"
+  },
+  "fields": {
+    "branch": "Branch",
+    "location": "Location"
+  },
+  "downloadCsv": "Download CSV",
+  "item": {
+    "with": "with {name}",
+    "by": "by {name}"
+  },
+  "list": {
+    "title": "Parent meetings",
+    "request": "Request",
+    "history": "History",
+    "branchWide": "All meetings in my branches",
+    "empty": "No meetings here."
+  },
+  "widget": {
+    "empty": "No upcoming meetings with {name}'s teachers."
+  },
+  "slotPicker": {
+    "loading": "Loading free times…",
+    "empty": "No free times in this range. Try later dates."
+  },
+  "request": {
+    "title": "Request a meeting",
+    "child": "Child",
+    "teacher": "Teacher",
+    "choose": "Choose",
+    "noTeachers": "No teachers found for this child's batches.",
+    "pickTime": "Pick a free time",
+    "at": "At {location}",
+    "agenda": "What would you like to discuss?",
+    "submit": "Request meeting",
+    "submitAt": "Request {when}",
+    "sent": "Request sent. The teacher will confirm."
+  },
+  "detail": {
+    "title": "Meeting",
+    "titleWithId": "Meeting #{id}",
+    "rescheduledTimes": "rescheduled {n} time | rescheduled {n} times",
+    "student": "Student",
+    "requestedBy": "Requested by",
+    "agenda": "Agenda",
+    "join": "Join online meeting",
+    "googleCalendar": "Google Calendar",
+    "teacherNote": "Teacher's note",
+    "reason": "Reason",
+    "reschedule": "Reschedule",
+    "cancelMeeting": "Cancel meeting",
+    "markHeld": "Mark held",
+    "newTime": "New time",
+    "start": "Start",
+    "end": "End",
+    "reasonOptional": "Reason (optional)",
+    "saveNewTime": "Save new time",
+    "notes": "Meeting notes",
+    "sharedSummary": "Summary shared with the parent",
+    "privateNotes": "Private notes (staff only)",
+    "saveNotes": "Save notes",
+    "noSummary": "The teacher has not shared a summary yet.",
+    "approveTitle": "Approve meeting",
+    "approveLinkHint": "Leave the meeting link blank to get a video meeting link automatically.",
+    "notePlaceholder": "Note to the parent (optional)",
+    "linkPlaceholder": "Meeting link (optional)",
+    "invalidLink": "Enter the full meeting link, starting with https://",
+    "confirmed": "Meeting confirmed",
+    "rejectTitle": "Reject request",
+    "reasonPlaceholder": "Reason (shared with the other side)",
+    "reasonRequired": "Please give a reason",
+    "rejected": "Request rejected",
+    "cancelled": "Meeting cancelled",
+    "pickNewTime": "Pick a new time",
+    "rescheduledToast": "Meeting rescheduled",
+    "newTimeRequested": "New time requested",
+    "markedHeld": "Marked as held",
+    "markedNoShow": "Marked as no-show",
+    "notesSaved": "Notes saved"
+  },
+  "availability": {
+    "title": "Meeting availability",
+    "mySlots": "My slots",
+    "every": "Every {day}",
+    "meetingLength": "{length} meetings",
+    "emptyTitle": "No availability yet",
+    "emptyMessage": "Parents can only request meetings inside your slots.",
+    "add": "Add availability",
+    "weekly": "Weekly",
+    "oneDate": "One date",
+    "day": "Day",
+    "length": "Meeting length",
+    "locationPlaceholder": "Room 4",
+    "startingOptional": "Starting (optional)",
+    "untilOptional": "Until (optional)",
+    "addSlot": "Add slot",
+    "added": "Availability added"
+  },
+  "reports": {
+    "title": "Meeting reports",
+    "allBranches": "All branches",
+    "meetings": "Meetings",
+    "held": "Held",
+    "avgResponse": "Avg. response",
+    "inPerson": "{n} in person",
+    "noShows": "No-shows",
+    "byBranch": "By branch",
+    "branchNumber": "Branch #{id}",
+    "heldOf": "{held} held / {total}",
+    "byTeacher": "By teacher",
+    "teacherLine": "{total} requests · {confirmed} upcoming · {held} held · {rejected} rejected · {cancelled} cancelled",
+    "empty": "No meetings in this period."
+  }
+}
