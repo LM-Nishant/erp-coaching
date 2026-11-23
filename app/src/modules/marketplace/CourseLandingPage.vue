@@ -323,8 +323,9 @@ watch(
   .landing {
     grid-template-columns: 1fr;
   }
-  .buy {
+  .landing .buy {
     order: -1;
+    position: static;
   }
   .buy-thumb {
     display: none;

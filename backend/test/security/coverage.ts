@@ -293,6 +293,28 @@ export const SELF_SERVICE_ROUTES: Record<string, string> = {
   'PATCH /api/marketplace/instructor/coupons/:id': 'own instructor storefront',
   'DELETE /api/marketplace/instructor/coupons/:id': 'own instructor storefront',
   'GET /api/marketplace/instructor/sales': 'own instructor storefront',
+  // Marketplace reviews, Q&A and wishlist: enrolment (or course ownership) is checked in the services.
+  'GET /api/marketplace/courses/:id/reviews/me': 'own review of a course',
+  'PUT /api/marketplace/courses/:id/reviews/me': 'own review of an enrolled course',
+  'DELETE /api/marketplace/courses/:id/reviews/me': 'own review of a course',
+  'POST /api/marketplace/reviews/:id/report': 'report a public review',
+  'GET /api/marketplace/courses/:id/questions': 'Q&A of an enrolled or own course',
+  'POST /api/marketplace/courses/:id/questions': 'Q&A of an enrolled course',
+  'GET /api/marketplace/courses/:id/questions/:questionId': 'Q&A of an enrolled or own course',
+  'DELETE /api/marketplace/courses/:id/questions/:questionId': 'own question, or the seller',
+  'POST /api/marketplace/courses/:id/questions/:questionId/answers': 'Q&A of an enrolled or own course',
+  'DELETE /api/marketplace/courses/:id/questions/:questionId/answers/:answerId': 'own answer, or the seller',
+  'PUT /api/marketplace/courses/:id/questions/:questionId/answered': 'own question, or the seller',
+  'GET /api/marketplace/wishlist': 'own wishlist',
+  'GET /api/marketplace/wishlist/ids': 'own wishlist',
+  'POST /api/marketplace/wishlist': 'own wishlist',
+  'DELETE /api/marketplace/wishlist/:id': 'own wishlist',
+  'POST /api/marketplace/wishlist/:id/move-to-cart': 'own wishlist and cart',
+  'GET /api/marketplace/instructor/reviews': 'own instructor storefront',
+  'PUT /api/marketplace/instructor/reviews/:id/reply': 'own instructor storefront',
+  'GET /api/marketplace/instructor/questions': 'own instructor storefront',
+  'POST /api/marketplace/instructor/questions/:id/answers': 'own instructor storefront',
+  'PUT /api/marketplace/instructor/questions/:id/answered': 'own instructor storefront',
 };
 
 /** Public routes outside `/public/` (everything else public must live under `/api/public/...`). */
