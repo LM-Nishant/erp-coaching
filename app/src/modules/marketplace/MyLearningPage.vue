@@ -25,7 +25,27 @@
         </div>
       </router-link>
     </div>
-    <div v-else-if="loaded" class="empty">
+    <section v-if="certificates.length" class="certificates" data-testid="my-certificates">
+      <h2>Certificates</h2>
+      <ion-list lines="full">
+        <ion-item v-for="c in certificates" :key="c.code" :data-testid="`certificate-${c.code}`">
+          <ion-icon slot="start" :icon="ribbonOutline" color="success" />
+          <ion-label class="ion-text-wrap">
+            <h3>{{ c.courseTitle }}</h3>
+            <p>{{ c.sellerName }} · {{ new Date(c.issuedAt).toLocaleDateString('en-IN') }} · {{ c.code }}</p>
+          </ion-label>
+          <ion-buttons slot="end">
+            <ion-button aria-label="Download certificate" @click="openFileLink(certificatePdfUrl(c.code))">
+              <ion-icon slot="icon-only" :icon="downloadOutline" />
+            </ion-button>
+            <ion-button aria-label="View certificate" :router-link="c.verifyPath">
+              <ion-icon slot="icon-only" :icon="openOutline" />
+            </ion-button>
+          </ion-buttons>
+        </ion-item>
+      </ion-list>
+    </section>
+    <div v-if="loaded && !items.length" class="empty">
       <p>You haven't joined any course yet.</p>
       <ion-button router-link="/market">Browse courses</ion-button>
     </div>
@@ -34,18 +54,22 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { IonButton, IonProgressBar } from '@ionic/vue';
-import type { MktEnrolmentDto } from '@erp/shared';
+import { IonButton, IonButtons, IonIcon, IonItem, IonLabel, IonList, IonProgressBar } from '@ionic/vue';
+import { downloadOutline, openOutline, ribbonOutline } from 'ionicons/icons';
+import type { MktCertificateDto, MktEnrolmentDto } from '@erp/shared';
+import { openFileLink } from '@/core/downloads';
 import { toastError } from '@/core/toast';
+import { certificatePdfUrl, quizApi } from './quiz-api';
 import MarketShell from './components/MarketShell.vue';
 import { marketApi } from './api';
 
 const items = ref<MktEnrolmentDto[]>([]);
 const loaded = ref(false);
+const certificates = ref<MktCertificateDto[]>([]);
 
 async function load() {
   try {
-    items.value = await marketApi.myLearning();
+    [items.value, certificates.value] = await Promise.all([marketApi.myLearning(), quizApi.certificates()]);
   } catch (e) {
     void toastError(e);
   } finally {
@@ -85,6 +109,12 @@ h3 {
   color: var(--ion-color-medium);
   font-size: 12px;
   margin: 6px 0 0;
+}
+.certificates {
+  margin-top: 24px;
+}
+.certificates h2 {
+  font-size: 18px;
 }
 .empty {
   text-align: center;

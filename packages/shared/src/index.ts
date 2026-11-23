@@ -23,3 +23,4 @@ export * from './billing';
 export * from './devices';
 export * from './tally';
 export * from './marketplace';
+export * from './marketplace-quiz';

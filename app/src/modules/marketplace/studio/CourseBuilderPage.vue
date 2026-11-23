@@ -218,7 +218,7 @@
                   {{ l.type }}<template v-if="l.durationSeconds"> · {{ clock(l.durationSeconds) }}</template>
                   <template v-if="l.preview"> · <ion-text color="primary">Free preview</ion-text></template>
                   <template v-if="l.media && l.media.status !== 'ready'"> · {{ l.media.status }}</template>
-                  <template v-if="l.type !== 'article' && !l.media">
+                  <template v-if="l.type !== 'article' && l.type !== 'quiz' && !l.media">
                     · <ion-text color="danger">no file</ion-text></template
                   >
                 </p>
@@ -237,6 +237,15 @@
                   @click="moveLecture(si, li, 1)"
                 >
                   <ion-icon slot="icon-only" :icon="arrowDownOutline" />
+                </ion-button>
+                <ion-button
+                  v-if="l.type === 'quiz'"
+                  :disabled="locked"
+                  aria-label="Edit questions"
+                  :data-testid="`quiz-questions-${l.id}`"
+                  @click="quizFor = l"
+                >
+                  <ion-icon slot="icon-only" :icon="listOutline" />
                 </ion-button>
                 <ion-button :disabled="locked" aria-label="Edit lecture" @click="editLecture(s.id, l)">
                   <ion-icon slot="icon-only" :icon="createOutline" />
@@ -344,6 +353,17 @@
         @save="saveLecture"
       />
     </ion-modal>
+    <ion-modal :is-open="!!quizFor" @did-dismiss="quizFor = null">
+      <QuizEditor
+        v-if="quizFor"
+        :scope="scope"
+        :course-id="id"
+        :lecture-id="quizFor.id"
+        :title="quizFor.title"
+        @close="quizFor = null"
+        @saved="refreshReadiness"
+      />
+    </ion-modal>
   </AppPage>
 </template>
 
@@ -374,7 +394,14 @@ import {
   IonTextarea,
   IonToggle,
 } from '@ionic/vue';
-import { addOutline, arrowDownOutline, arrowUpOutline, createOutline, trashOutline } from 'ionicons/icons';
+import {
+  addOutline,
+  arrowDownOutline,
+  arrowUpOutline,
+  createOutline,
+  listOutline,
+  trashOutline,
+} from 'ionicons/icons';
 import {
   MKT_COURSE_LEVEL_LABELS,
   MKT_COURSE_STATUS_LABELS,
@@ -392,6 +419,7 @@ import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import LectureEditor from './LectureEditor.vue';
 import MediaUpload from './MediaUpload.vue';
+import QuizEditor from './QuizEditor.vue';
 import { STATUS_COLORS } from './status';
 import { clock, marketApi, studioApi, type StudioScope } from '../api';
 import { lectureIcon } from '../lecture-icons';
@@ -412,6 +440,7 @@ const readiness = ref<MktReadinessDto | null>(null);
 const tab = ref<'details' | 'curriculum' | 'publish'>((route.query.tab as 'curriculum') || 'details');
 const busy = ref(false);
 const editing = ref<{ sectionId: number; lecture: MktLectureDto | null } | null>(null);
+const quizFor = ref<MktLectureDto | null>(null);
 const locked = computed(() => course.value?.status === 'in_review');
 
 const lines = (v: string) =>
@@ -555,7 +584,15 @@ async function saveLecture(input: MktLectureInput) {
   const ok = await run(() =>
     e.lecture ? studio.updateLecture(id, e.lecture.id, input) : studio.addLecture(id, e.sectionId, input),
   );
-  if (ok) editing.value = null;
+  if (!ok) return;
+  editing.value = null;
+  // A new quiz opens straight into its question editor.
+  if (!e.lecture && input.type === 'quiz')
+    quizFor.value =
+      course.value?.sections
+        .find((s) => s.id === e.sectionId)
+        ?.lectures.filter((l) => l.type === 'quiz')
+        .at(-1) ?? null;
 }
 
 function order() {

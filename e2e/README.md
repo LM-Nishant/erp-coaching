@@ -20,6 +20,7 @@ sending an enquiry) are driven in the browser.
 | `sibling-profiles.spec.ts`             | Sibling on a shared mobile → batch, attendance, sign-in   | Admin admits a sibling on the parent's mobile into its batch. Teacher marks P/A. OTP sign-in asks "Who's signing in?"; switch profile        |
 | `roles-permissions.spec.ts`            | Custom role → grant → assign → menu                       | Admin creates "Front desk" with View students and adds staff with it. Member sees Students, not Fees; admin adds View fees                   |
 | `marketplace-browse-buy-watch.spec.ts` | Marketplace browse → buy (mock gateway) → watch           | Visitor searches, opens a preview lecture, signs up as a learner, buys, pays, starts learning and marks lectures complete (50%, then 100%)   |
+| `marketplace-quiz-certificate.spec.ts` | Marketplace quiz → certificate                            | Instructor builds a quiz; learner fails, retakes, passes (100%), gets a certificate and verifies it publicly                                 |
 
 Each spec also checks the server-side outcome where it matters, for example:
 

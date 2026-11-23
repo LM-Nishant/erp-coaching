@@ -1,12 +1,16 @@
 import { defineModule } from '../../shared/module';
 import { associateMarketplaceModels, initMarketplaceModels } from './models';
 import { marketplaceRoutes } from './marketplace.routes';
+import { initQuizModels } from './quiz-models';
 import { MKT_TRANSCODE_JOB, runMarketplaceTranscode } from './media.service';
 import { MARKETPLACE } from './util';
 
 export default defineModule({
   name: MARKETPLACE,
-  models: initMarketplaceModels,
+  models: (sequelize) => {
+    initMarketplaceModels(sequelize);
+    initQuizModels(sequelize);
+  },
   associate: associateMarketplaceModels,
   routes: marketplaceRoutes,
   permissions: [

@@ -74,6 +74,12 @@ export default defineAppModule({
       component: () => import('./InstructorPage.vue'),
       meta: { shell: true },
     },
+    {
+      path: '/market/certificates/:code',
+      name: 'market-certificate',
+      component: () => import('./CertificatePage.vue'),
+      meta: { shell: true },
+    },
     { path: '/market/signup', name: 'market-signup', component: () => import('./SignupPage.vue') },
   ],
   routes: [
