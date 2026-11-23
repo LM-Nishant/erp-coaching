@@ -5,8 +5,9 @@
  * review.
  * Browser: a second learner sees that review on the landing page, saves the course to their wishlist, moves it to the
  * cart from the Wishlist page and pays with the mock gateway. In the player they ask a question; the instructor
- * answers it from the studio's "Q&A and reviews" page and the learner reads the answer. Finally the learner rates the
- * course 5 stars, which moves the course rating from 4.0 to 4.5.
+ * answers it from the studio's "Q&A and reviews" page; the learner (who has no institute) gets it in the notification
+ * inbox and reads the answer. Finally the learner rates the course 5 stars, which moves the course rating from 4.0 to
+ * 4.5.
  */
 import { expect, test } from '../support/fixtures';
 import { Api, loginWithPassword, newDevice, type Session } from '../support/api';
@@ -184,6 +185,19 @@ test('wishlist → buy → ask the instructor → rate the course', async ({ htt
     await card.getByTestId(`studio-answer-${questionId}`).locator('textarea').fill(answer);
     await card.getByTestId(`studio-answer-send-${questionId}`).click();
     await expect(card).toContainText(answer);
+  });
+
+  await test.step('the learner, who has no institute, is notified in the app', async () => {
+    await page.goto('/market');
+    const bell = activePage(page).getByTestId('notification-bell');
+    await expect(bell.locator('ion-badge')).toHaveText('1');
+    await bell.click();
+    await expect(page).toHaveURL(/\/notifications$/);
+    const inbox = activePage(page);
+    await expect(inbox.getByText(`New answer on ${title}`)).toBeVisible();
+    await expect(inbox.getByText(`answered your question "${question}"`)).toBeVisible();
+    await inbox.getByText(`New answer on ${title}`).click();
+    await expect(bell.locator('ion-badge')).toHaveCount(0);
   });
 
   await test.step('the learner reads the answer and marks the question answered', async () => {

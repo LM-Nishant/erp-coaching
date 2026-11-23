@@ -319,6 +319,13 @@ export const SELF_SERVICE_ROUTES: Record<string, string> = {
   'POST /api/marketplace/courses/:id/questions/:questionId/answers': 'Q&A of an enrolled or own course',
   'DELETE /api/marketplace/courses/:id/questions/:questionId/answers/:answerId': 'own answer, or the seller',
   'PUT /api/marketplace/courses/:id/questions/:questionId/answered': 'own question, or the seller',
+  // Personal inbox (users without an institute): filtered by the caller's own user id.
+  'GET /api/notifications/personal/inbox': 'own personal notifications',
+  'GET /api/notifications/personal/inbox/unread-count': 'own personal notifications',
+  'POST /api/notifications/personal/inbox/read-all': 'own personal notifications',
+  'POST /api/notifications/personal/inbox/:id/read': 'own personal notifications',
+  'POST /api/notifications/personal/push-tokens': 'own push devices',
+  'DELETE /api/notifications/personal/push-tokens': 'own push devices',
   'GET /api/marketplace/wishlist': 'own wishlist',
   'GET /api/marketplace/wishlist/ids': 'own wishlist',
   'POST /api/marketplace/wishlist': 'own wishlist',
@@ -435,6 +442,9 @@ export const NOT_INSTITUTE_RECORDS: Record<string, string> = {
   '/api/marketplace/':
     'public course marketplace: carts, orders, enrolments and courses belong to a learner or a seller ' +
     'across institutes; cross-seller and cross-learner isolation is tested in test/marketplace.test.ts',
+  '/api/notifications/personal/':
+    'personal inbox of users without an institute: rows belong to a user, not an institute; ' +
+    'cross-user isolation is tested in test/notifications-platform-inbox.test.ts',
 };
 
 /**

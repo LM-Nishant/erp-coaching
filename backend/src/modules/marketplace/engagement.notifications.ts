@@ -1,7 +1,7 @@
 import type { NotificationEventDef } from '@erp/shared';
 import { logger } from '../../infrastructure/logger';
 import { runWithContext } from '../../shared/context';
-import { notify, registerNotificationEvents } from '../notifications/api';
+import { notify, notifyPlatformUsers, registerNotificationEvents } from '../notifications/api';
 import { UserRole } from '../permissions/models';
 
 export const QUESTION_ASKED_EVENT = 'marketplace.question.asked';
@@ -37,7 +37,7 @@ export function registerEngagementNotificationEvents() {
 /**
  * Notifications live in an institute's inbox, while marketplace users may belong to several institutes or
  * none. Each recipient is notified in `preferInstituteId` when they are a member there, else in their first
- * institute; users without any institute have no inbox and are skipped (they see the studio/course Q&A).
+ * institute; users without any institute get it in their personal (platform) inbox.
  * Never throws: a failed notification must not fail the learner's request.
  */
 export async function notifyMarketplaceUsers(input: {
@@ -57,11 +57,15 @@ export async function notifyMarketplaceUsers(input: {
       tenantBypass: true,
     } as object);
     const byInstitute = new Map<number, number[]>();
+    const withoutInstitute: number[] = [];
     for (const userId of userIds) {
       const mine = memberships.filter((m) => m.userId === userId).map((m) => m.instituteId);
       const instituteId =
         input.preferInstituteId && mine.includes(input.preferInstituteId) ? input.preferInstituteId : mine[0];
-      if (!instituteId) continue;
+      if (!instituteId) {
+        withoutInstitute.push(userId);
+        continue;
+      }
       byInstitute.set(instituteId, [...(byInstitute.get(instituteId) ?? []), userId]);
     }
     for (const [instituteId, ids] of byInstitute) {
@@ -74,6 +78,14 @@ export async function notifyMarketplaceUsers(input: {
         });
         delivered += r.messageIds.length;
       });
+    }
+    if (withoutInstitute.length) {
+      const r = await notifyPlatformUsers({
+        event: input.event,
+        userIds: withoutInstitute,
+        data: input.data,
+      });
+      delivered += r.messageIds.length;
     }
   } catch (err) {
     logger.warn({ event: input.event, reason: (err as Error).message }, 'Marketplace notification failed');

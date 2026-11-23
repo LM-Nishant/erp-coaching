@@ -3,6 +3,8 @@ import { associateNotificationModels, initNotificationModels } from './models';
 import { notificationRoutes } from './notifications.routes';
 import { CAMPAIGN_JOB, DELIVER_JOB, deliverMessage, runCampaign } from './notify.service';
 import { registerNotificationIntegrations } from './integrations';
+import { PLATFORM_PUSH_JOB, pushPlatformMessage } from './platform-inbox';
+import { initPlatformInboxModels } from './platform-inbox.models';
 
 /**
  * Notifications & communication (spec §4.14). Other modules use the public API exported from
@@ -10,7 +12,10 @@ import { registerNotificationIntegrations } from './integrations';
  */
 export default defineModule({
   name: 'notifications',
-  models: initNotificationModels,
+  models: (sequelize) => {
+    initNotificationModels(sequelize);
+    initPlatformInboxModels(sequelize);
+  },
   associate: associateNotificationModels,
   routes: notificationRoutes,
   permissions: [
@@ -48,6 +53,7 @@ export default defineModule({
   jobs: {
     [DELIVER_JOB]: (payload) => deliverMessage(payload as { messageId: number }),
     [CAMPAIGN_JOB]: (payload) => runCampaign(payload as { campaignId: number }),
+    [PLATFORM_PUSH_JOB]: (payload) => pushPlatformMessage(payload as { messageId: number }),
   },
   onReady: registerNotificationIntegrations,
 });

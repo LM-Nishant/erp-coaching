@@ -12,6 +12,7 @@ import { audit } from '../../shared/audit/audit.service';
 import { sha256 } from '../../infrastructure/crypto';
 import { findEvent } from './catalogue';
 import { NotificationMessage, NotificationPreference, PushToken } from './models';
+import { PlatformPushToken } from './platform-inbox.models';
 import { messageRepo, unreadCount } from './notify.service';
 import { resolveProvider } from './providers.service';
 
@@ -155,6 +156,7 @@ export function inboxRoutes(r: Router) {
     const tokenHash = sha256(body.token);
     const existing = await tokenRepo.findOne({ where: { tokenHash } });
     // A device token belongs to whoever signed in on that device most recently.
+    await PlatformPushToken.destroy({ where: { tokenHash } });
     const values = {
       userId,
       token: body.token,
