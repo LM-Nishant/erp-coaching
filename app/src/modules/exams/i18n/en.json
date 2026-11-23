@@ -1,0 +1,11 @@
+{
+  "toCheck": {
+    "allDone": "Nothing to publish",
+    "allDoneHint": "Tests that have ended appear here until you publish results.",
+    "ended": "ended {date}",
+    "publishResults": "Publish results"
+  },
+  "widgets": {
+    "teacherToCheck": "Tests to publish"
+  }
+}

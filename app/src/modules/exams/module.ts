@@ -1,3 +1,4 @@
+import { defineAsyncComponent } from 'vue';
 import { codeWorkingOutline, documentTextOutline, ribbonOutline, schoolOutline } from 'ionicons/icons';
 import { defineAppModule } from '@/core/modules';
 
@@ -113,6 +114,18 @@ export default defineAppModule({
       permission: 'exam-portal.view',
       planModule: 'exams',
       order: 42,
+    },
+  ],
+  widgets: [
+    {
+      id: 'exams.teacher-to-check',
+      slot: 'teacher-home',
+      title: 'Tests to publish',
+      component: defineAsyncComponent(() => import('./widgets/ExamsToCheckWidget.vue')),
+      permission: 'exams.edit',
+      planModule: 'exams',
+      order: 30,
+      size: 'half',
     },
   ],
 });

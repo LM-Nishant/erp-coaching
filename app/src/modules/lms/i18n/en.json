@@ -1,0 +1,11 @@
+{
+  "toCheck": {
+    "allDone": "All checked",
+    "allDoneHint": "Homework submissions waiting for marks show up here.",
+    "due": "due {date}",
+    "toGrade": "{n} to check"
+  },
+  "widgets": {
+    "teacherToCheck": "Homework to check"
+  }
+}

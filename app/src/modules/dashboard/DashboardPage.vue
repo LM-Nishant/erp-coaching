@@ -1,8 +1,11 @@
 <template>
   <AppPage title="Dashboard" :on-refresh="refresh">
-    <h2 class="hello">Hello, {{ auth.me?.user.name }}</h2>
+    <!-- The teacher persona gets a "Today" home (teacher-home widgets) instead of plan and usage numbers. -->
+    <TeacherHome v-if="auth.persona === 'teacher'" :key="refreshKey" />
+    <h2 v-else class="hello">Hello, {{ auth.me?.user.name }}</h2>
 
-    <template v-if="auth.isPlatformAdmin">
+    <template v-if="auth.persona === 'teacher'" />
+    <template v-else-if="auth.isPlatformAdmin">
       <ion-grid v-if="platform">
         <ion-row>
           <ion-col v-for="s in platform.institutesByStatus" :key="s.status" size="6" size-md="3">
@@ -74,6 +77,7 @@ import { IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonCol, IonGrid, 
 import type { PlanLimits, SubscriptionDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import StatCard from '@/components/StatCard.vue';
+import TeacherHome from './TeacherHome.vue';
 import { api } from '@/core/api';
 import { widgetsFor } from '@/core/modules';
 import { useAuthStore } from '@/stores/auth';
@@ -105,7 +109,8 @@ const widgets = computed(() =>
 
 async function load() {
   if (auth.isPlatformAdmin) platform.value = await api.get<PlatformStats>('/admin/dashboard');
-  else if (auth.can('subscription.view')) sub.value = await api.get<SubscriptionInfo>('/subscription');
+  else if (auth.persona !== 'teacher' && auth.can('subscription.view'))
+    sub.value = await api.get<SubscriptionInfo>('/subscription');
 }
 
 async function refresh() {
