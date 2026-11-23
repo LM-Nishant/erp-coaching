@@ -61,7 +61,7 @@ export function setMarketplaceGatewayResolver(fn: MarketplaceGatewayResolver | n
 }
 
 /** Without a configured gateway the mock gateway serves development and tests (never production). */
-async function resolveGateway(gateway: string | undefined, purpose: 'checkout' | 'verify') {
+export async function resolveGateway(gateway: string | undefined, purpose: 'checkout' | 'verify') {
   const cfg = gatewayResolver ? await gatewayResolver({ gateway, purpose }) : null;
   if (cfg) return cfg;
   if ((gateway ?? 'mock') === 'mock' && !config.isProd)

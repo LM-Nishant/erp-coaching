@@ -1,5 +1,6 @@
 import {
   cartOutline,
+  cashOutline,
   checkmarkDoneCircleOutline,
   easelOutline,
   flagOutline,
@@ -50,6 +51,24 @@ function studioRoutes(scope: 'instructor' | 'institute'): RouteRecordRaw[] {
       name: `market-sales-${scope}`,
       component: () => import('./studio/SalesPage.vue'),
       meta: meta('view'),
+    },
+    {
+      path: `${base}/revenue`,
+      name: `market-revenue-${scope}`,
+      component: () => import('./studio/RevenuePage.vue'),
+      meta: meta('view'),
+    },
+    {
+      path: `${base}/payouts/:id(\\d+)?`,
+      name: `market-payouts-${scope}`,
+      component: () => import('./studio/PayoutsPage.vue'),
+      meta: meta('view'),
+    },
+    {
+      path: `${base}/payout-account`,
+      name: `market-payout-account-${scope}`,
+      component: () => import('./studio/PayoutAccountPage.vue'),
+      meta: meta('configure'),
     },
   ];
 }
@@ -131,6 +150,24 @@ export default defineAppModule({
       meta: { superAdmin: true },
     },
     {
+      path: '/admin/marketplace/payouts',
+      name: 'market-admin-payouts',
+      component: () => import('./admin/PayoutRunsPage.vue'),
+      meta: { superAdmin: true },
+    },
+    {
+      path: '/admin/marketplace/payouts/:id(\\d+)',
+      name: 'market-admin-payout-run',
+      component: () => import('./admin/PayoutRunPage.vue'),
+      meta: { superAdmin: true },
+    },
+    {
+      path: '/admin/marketplace/refunds',
+      name: 'market-admin-refunds',
+      component: () => import('./admin/RefundsPage.vue'),
+      meta: { superAdmin: true },
+    },
+    {
       path: '/admin/marketplace/sales',
       name: 'market-admin-sales',
       component: () => import('./studio/SalesPage.vue'),
@@ -185,6 +222,13 @@ export default defineAppModule({
       icon: settingsOutline,
       superAdmin: true,
       order: 63,
+    },
+    {
+      title: 'Marketplace payouts',
+      path: '/admin/marketplace/payouts',
+      icon: cashOutline,
+      superAdmin: true,
+      order: 64,
     },
   ],
   navigationGuards: [

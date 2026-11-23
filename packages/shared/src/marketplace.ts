@@ -496,6 +496,8 @@ export interface MktSettingsDto {
 /** One course sold: what the buyer paid, the platform's commission and what the seller is owed. */
 export interface MktLedgerEntryDto {
   id: number;
+  /** `refund` rows reverse a sale; their amounts are deducted from the seller's totals. */
+  entryType: 'sale' | 'refund';
   orderId: number;
   orderNumber: string;
   courseId: number;

@@ -7,6 +7,7 @@ import type {
   MktSettingsDto,
   MktStudioCourseDto,
 } from '@erp/shared';
+import { literal } from 'sequelize';
 import { getContext } from '../../shared/context';
 import { BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
@@ -228,38 +229,20 @@ export async function ledger(q: {
     }),
     MktSaleLedger.findOne({
       where,
-      attributes: [
-        [
-          MktSaleLedger.sequelize!.fn(
-            'COALESCE',
-            MktSaleLedger.sequelize!.fn('SUM', MktSaleLedger.sequelize!.col('gross_paise')),
-            0,
-          ),
-          'g',
-        ],
-        [
-          MktSaleLedger.sequelize!.fn(
-            'COALESCE',
-            MktSaleLedger.sequelize!.fn('SUM', MktSaleLedger.sequelize!.col('commission_paise')),
-            0,
-          ),
-          'c',
-        ],
-        [
-          MktSaleLedger.sequelize!.fn(
-            'COALESCE',
-            MktSaleLedger.sequelize!.fn('SUM', MktSaleLedger.sequelize!.col('net_paise')),
-            0,
-          ),
-          'n',
-        ],
-      ],
+      // Refund rows reverse a sale, so they count negatively.
+      attributes: (['gross', 'commission', 'net'] as const).map((c) => [
+        literal(
+          `COALESCE(SUM(CASE WHEN entry_type = 'refund' THEN -CAST(${c}_paise AS SIGNED) ELSE CAST(${c}_paise AS SIGNED) END), 0)`,
+        ),
+        c[0],
+      ]),
       raw: true,
     }) as Promise<{ g: string; c: string; n: string } | null>,
   ]);
   return {
     items: rows.map((r) => ({
       id: r.id,
+      entryType: r.entryType,
       orderId: r.orderId,
       orderNumber: r.order?.number ?? '',
       courseId: r.courseId,

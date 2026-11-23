@@ -38,6 +38,7 @@ import { engagementRoutes } from './engagement.routes';
 import * as learning from './learning.service';
 import * as media from './media.service';
 import { certificatePublicRoutes, quizAdminRoutes, quizLearnerRoutes, quizStudioRoutes } from './quiz.routes';
+import { payoutRoutes } from './payouts.routes';
 import * as sellers from './sellers.service';
 import { MARKETPLACE } from './util';
 
@@ -646,4 +647,5 @@ export function marketplaceRoutes(api: Router) {
   const institute = studioRoutes('institute', (action) => [requirePermission(MARKETPLACE, action)]);
   api.use('/marketplace/institute', authenticate, institute);
   learnerRoutes(api);
+  payoutRoutes(api);
 }
