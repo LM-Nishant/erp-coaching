@@ -18,6 +18,8 @@ export interface MenuItem {
   superAdmin?: boolean;
   /** Hidden when the institute's plan doesn't enable this module id (backend `requireModule`). */
   planModule?: string;
+  /** Extra check, run first: when it returns false the item is hidden; when true the other checks still apply. */
+  visible?: () => boolean;
   /** Lower comes first. Default 100. */
   order?: number;
 }

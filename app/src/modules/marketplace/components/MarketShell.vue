@@ -29,6 +29,9 @@
             <ion-icon slot="icon-only" :icon="cartOutline" />
             <ion-badge v-if="cartCount" color="danger" data-testid="cart-count">{{ cartCount }}</ion-badge>
           </ion-button>
+          <template v-if="auth.isAuthenticated">
+            <component :is="item" v-for="(item, i) in toolbarItems" :key="i" />
+          </template>
           <ion-button
             v-if="!auth.isAuthenticated"
             :router-link="{ name: 'login', query: { redirect: route.fullPath } }"
@@ -71,6 +74,7 @@ import {
   type RefresherCustomEvent,
 } from '@ionic/vue';
 import { cartOutline, heartOutline, searchOutline } from 'ionicons/icons';
+import { toolbarItems } from '@/core/modules';
 import { useAuthStore } from '@/stores/auth';
 import { useMarketAccount } from '../store';
 

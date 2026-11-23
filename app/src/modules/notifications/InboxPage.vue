@@ -3,6 +3,7 @@
     <template #actions>
       <ion-button :disabled="!unread" @click="readAll">Mark all read</ion-button>
       <ion-button
+        v-if="!auth.personalInbox"
         v-can="'notification-inbox.edit'"
         router-link="/notifications/preferences"
         aria-label="Preferences"
@@ -57,9 +58,11 @@ import { mailOpenOutline, mailUnreadOutline, settingsOutline } from 'ionicons/ic
 import type { InboxItemDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import { toastError } from '@/core/toast';
+import { useAuthStore } from '@/stores/auth';
 import { formatDate, inboxApi } from './api';
 import { unread } from './push';
 
+const auth = useAuthStore();
 const items = ref<InboxItemDto[]>([]);
 const total = ref(0);
 const page = ref(1);

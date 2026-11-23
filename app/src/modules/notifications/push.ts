@@ -2,6 +2,7 @@ import { ref } from 'vue';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { getDeviceDescriptor } from '@/core/device';
+import { useAuthStore } from '@/stores/auth';
 import { inboxApi } from './api';
 
 /** Unread in-app count shared by the bell and the inbox page. */
@@ -30,6 +31,7 @@ async function firebaseConfigured(): Promise<boolean> {
 let registeredFor: number | null = null;
 /** The token last sent to the API for `registeredFor`; removed again at sign-out. */
 let registeredToken: string | null = null;
+let registeredPersonal = false;
 
 /**
  * Registers this device for push once per signed-in user. Native: @capacitor/push-notifications gives an FCM token on
@@ -42,8 +44,12 @@ export async function registerPush(userId: number, openInbox: () => void): Promi
   registeredFor = userId;
   const device = await getDeviceDescriptor();
   const save = async (token: string) => {
+    const personal = useAuthStore().personalInbox;
     await inboxApi.registerPushToken({ token, platform: device.platform, deviceUid: device.uid });
-    if (registeredFor === userId) registeredToken = token;
+    if (registeredFor === userId) {
+      registeredToken = token;
+      registeredPersonal = personal;
+    }
   };
   try {
     if (!Capacitor.isNativePlatform()) return await save(`web-mock-${device.uid}`);
@@ -72,5 +78,5 @@ export async function unregisterPush(): Promise<void> {
   registeredFor = null;
   registeredToken = null;
   if (Capacitor.isNativePlatform()) await PushNotifications.removeAllListeners().catch(() => undefined);
-  if (token) await inboxApi.removePushToken(token).catch(() => undefined);
+  if (token) await inboxApi.removePushToken(token, registeredPersonal).catch(() => undefined);
 }

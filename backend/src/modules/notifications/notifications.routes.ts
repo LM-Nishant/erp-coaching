@@ -33,6 +33,7 @@ import {
 import { campaignRepo, createCampaign, effectiveRule, retryMessage } from './notify.service';
 import { renderTemplate, sampleVars } from './templates';
 import { inboxRoutes } from './inbox.routes';
+import { platformInboxRoutes } from './platform-inbox';
 import { processMessagingWebhook, whatsappHandshake, type MessagingWebhookVendor } from './webhooks.service';
 
 export const templateRepo = new TenantRepository(NotificationTemplate, { entity: 'Template' });
@@ -516,6 +517,7 @@ export function notificationRoutes(api: Router) {
   publicWebhookRoutes(api);
   const r = Router();
   r.use(authenticate);
+  platformInboxRoutes(r);
   inboxRoutes(r);
   notificationAdminRoutes(r);
   api.use('/notifications', r);

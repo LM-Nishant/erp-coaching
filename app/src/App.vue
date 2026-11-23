@@ -153,6 +153,7 @@ const menu = computed(() =>
     .filter((item) => {
       // Offline (app, cached profile): only pages that work without network.
       if (auth.offline && !worksOffline(router.resolve(item.path))) return false;
+      if (item.visible && !item.visible()) return false;
       if (item.superAdmin) return auth.isPlatformAdmin;
       if (auth.isPlatformAdmin) return !item.permission;
       if (item.permission && !auth.can(item.permission)) return false;

@@ -182,6 +182,7 @@ await notify({
 
 - **Events.** The catalogue lives in `packages/shared/src/notifications.ts` (`NOTIFICATION_EVENTS`). Add new events there, or at runtime with `registerNotificationEvents([...])`. Each event defines label, category, variables, default channels, recipient types and default title/body. Unknown event keys throw.
 - **Context.** `notify()` needs tenant context: call it from a request handler or a job, not at module load. Inside a job it uses the job's institute.
+- **Users without an institute.** `notify()` only reaches institute members. For marketplace learners and independent instructors, call `notifyPlatformUsers({ event, userIds, data })`. It writes to the personal inbox (`notification_platform_messages`, served at `/api/notifications/personal/*`, which the app's bell uses when no institute is selected) and pushes via the platform's default provider. It takes the catalogue's default title and body (no institute templates, rules or preferences) and needs no tenant context.
 - **Receipts.** Provider webhooks should call `recordDeliveryReceipt({ provider, providerMessageId, status })`.
 - **Tests.** Run `processDueJobs()` and assert on `consoleOutbox` (from `infrastructure/messaging`) to check what would have been sent.
 

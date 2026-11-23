@@ -1,7 +1,7 @@
 import { SYSTEM_ROLES } from '@erp/shared';
 import { logger } from '../../infrastructure/logger';
 import { runWithContext } from '../../shared/context';
-import { notify, registerNotificationEvents } from '../notifications/api';
+import { notify, notifyPlatformUsers, registerNotificationEvents } from '../notifications/api';
 import { UserRole } from '../permissions/models';
 import type { MktSeller } from './models';
 
@@ -25,7 +25,7 @@ export function registerPayoutNotificationEvents() {
 /**
  * Notifies the seller that a payout was sent: an institute storefront's admins, or the independent
  * instructor. notify() is institute-scoped, so an instructor is reached through an institute they
- * belong to; one with none still sees the payout on their Payouts page. Never throws.
+ * belong to; one with none gets it in their personal (platform) inbox. Never throws.
  */
 export async function notifyPayoutPaid(
   seller: MktSeller,
@@ -60,8 +60,12 @@ export async function notifyPayoutPaid(
       tenantBypass: true,
     } as Parameters<typeof UserRole.findOne>[0]);
     if (!membership?.instituteId) {
-      logger.info({ sellerId: seller.id }, 'Payout notice skipped: instructor belongs to no institute');
-      return false;
+      const r = await notifyPlatformUsers({
+        event: PAYOUT_PAID_EVENT,
+        userIds: [seller.userId],
+        data: payload,
+      });
+      return r.messageIds.length > 0;
     }
     await runWithContext({ system: true, instituteId: membership.instituteId, allowedBranchIds: null }, () =>
       notify({
