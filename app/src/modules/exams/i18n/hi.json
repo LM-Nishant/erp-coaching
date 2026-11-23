@@ -1,0 +1,13 @@
+{
+  "widgets": {
+    "upcoming": "आने वाले टेस्ट",
+    "latestResult": "ताज़ा रिज़ल्ट",
+    "noTests": "कोई टेस्ट आने वाला नहीं",
+    "noResults": "अभी कोई रिज़ल्ट नहीं",
+    "minutes": "{n} मिनट",
+    "startNow": "अभी शुरू करें",
+    "score": "{max} में से {got} अंक",
+    "rank": "रैंक {n}",
+    "percentile": "{n}% छात्रों से बेहतर"
+  }
+}

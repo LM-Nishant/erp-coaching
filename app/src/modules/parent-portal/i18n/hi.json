@@ -1,0 +1,27 @@
+{
+  "home": {
+    "title": "होम",
+    "greeting": "नमस्ते, {name} जी",
+    "chooseChild": "बच्चा चुनें",
+    "noChildren": "अभी कोई बच्चा जुड़ा नहीं है",
+    "noChildrenHint": "संस्थान ऑफ़िस से अपने बच्चे को इस मोबाइल नंबर से जोड़ने को कहें।"
+  },
+  "widgets": {
+    "schedule": "इस हफ़्ते की कक्षाएँ",
+    "summary": "और जानकारी",
+    "notifications": "सूचनाएँ",
+    "grievances": "शिकायतें और अनुरोध"
+  },
+  "schedule": {
+    "loading": "लोड हो रहा है…",
+    "none": "अगले 7 दिनों में कोई कक्षा नहीं।",
+    "more": "पूरा हफ़्ता देखें",
+    "less": "कम दिखाएँ",
+    "status": { "completed": "हो गई", "cancelled": "रद्द", "scheduled": "तय" }
+  },
+  "notifications": {
+    "caughtUp": "कोई नई सूचना नहीं।",
+    "all": "सभी सूचनाएँ"
+  },
+  "summary": { "empty": "अभी दिखाने को कुछ नहीं।" }
+}

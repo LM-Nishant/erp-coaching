@@ -1,0 +1,56 @@
+{
+  "my": {
+    "title": "मेरी फ़ीस",
+    "due": "{amount} बाकी",
+    "allPaid": "सारी फ़ीस जमा है",
+    "allPaidHint": "अभी कुछ जमा नहीं करना है। रसीदें नीचे हैं।",
+    "next": "अगली किस्त: {amount}, {date} तक",
+    "overdueNote": "{amount} की तारीख निकल चुकी है। लेट फ़ीस से बचने के लिए जल्द जमा करें।",
+    "payOnline": "ऑनलाइन भुगतान करें",
+    "payThis": "यह फ़ीस जमा करें",
+    "ofTotal": "कुल {amount} में से",
+    "dueOn": "अंतिम तिथि {date}",
+    "lateFee": "लेट फ़ीस {amount} सहित",
+    "concessions": "छूट: {amount}",
+    "payments": "भुगतान और रसीदें",
+    "noPayments": "अभी कोई भुगतान नहीं।",
+    "downloadReceipt": "रसीद डाउनलोड करें",
+    "sendWhatsapp": "WhatsApp पर भेजें",
+    "checkStatus": "स्थिति देखें",
+    "office": {
+      "title": "ऑफ़िस में जमा करें",
+      "message": "आपके संस्थान ने अभी ऑनलाइन भुगतान शुरू नहीं किया है। {name} पर नकद, UPI या चेक से जमा करें।",
+      "call": "ऑफ़िस को कॉल करें",
+      "email": "ऑफ़िस को ईमेल करें"
+    },
+    "state": {
+      "paid": "जमा",
+      "waived": "माफ़",
+      "overdue": "तारीख निकल गई",
+      "dueSoon": "जल्द देय",
+      "pending": "आगामी"
+    },
+    "paymentStatus": {
+      "pending": "लंबित",
+      "failed": "असफल",
+      "successful": "सफल",
+      "partially_refunded": "आंशिक वापसी",
+      "refunded": "वापस किया गया",
+      "cancelled": "रद्द"
+    },
+    "mode": {
+      "online": "ऑनलाइन",
+      "cash": "नकद",
+      "upi": "UPI",
+      "bank_transfer": "बैंक ट्रांसफ़र",
+      "cheque": "चेक"
+    }
+  },
+  "widgets": {
+    "due": "फ़ीस",
+    "payNow": "अभी जमा करें",
+    "view": "फ़ीस देखें",
+    "nothingDue": "कोई फ़ीस बाकी नहीं",
+    "nextDue": "अगली {amount}, {date} तक"
+  }
+}

@@ -145,6 +145,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import {
   IonBadge,
   IonButton,
@@ -185,6 +186,7 @@ const REQ_COLOR: Record<string, string> = {
   cancelled: 'medium',
 };
 
+const route = useRoute();
 const tab = ref<'summary' | 'requests'>('summary');
 const year = ref(new Date().getFullYear());
 const years = [year.value, year.value - 1, year.value - 2];
@@ -267,7 +269,11 @@ async function cancelCorrection(id: number) {
 
 onMounted(async () => {
   children.value = await attendanceApi.children().catch(() => []);
-  childId.value = children.value[0]?.studentUserId ?? null;
+  const asked = Number(route.query.child);
+  childId.value =
+    children.value.find((c) => c.studentUserId === asked)?.studentUserId ??
+    children.value[0]?.studentUserId ??
+    null;
   await load();
 });
 watch(tab, load);

@@ -19,6 +19,7 @@
             :stream="lecture.stream"
             :start-at="lecture.positionSeconds"
             :poster="player.course.thumbnailUrl"
+            controls-bar
             data-testid="lecture-video"
             @time="onTime"
             @pause="(t) => save({ positionSeconds: t })"
