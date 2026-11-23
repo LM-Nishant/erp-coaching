@@ -17,6 +17,8 @@ export default defineAppModule({
     {
       title: 'Member devices',
       path: '/users/devices',
+      group: 'settings',
+      titleKey: 'nav.users.devices',
       icon: phonePortraitOutline,
       permission: 'users.view',
       order: 92,

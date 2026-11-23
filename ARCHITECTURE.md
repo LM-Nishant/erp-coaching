@@ -327,7 +327,10 @@ With several roles the most capable wins: staff, teacher, student, parent.
 - `group`: section of the grouped menu, one of `MENU_GROUPS` (`home`, `learning`, `classes`, `tests`, `people`, `fees`, `messages`, `hr`, `reports`, `website`, `marketplace`, `settings`, `platform`, `other`). Labels are `common.menuGroups.<group>`.
 - `personas`: shown only to these personas. Omit for everyone the other checks allow.
 - `tab`: bottom-tab position per persona, e.g. `{ student: 2 }`. `tabsFor(items, persona)` takes the `MAX_TABS - 1` (4) lowest; "More" is always last. `groupMenu(items)` builds the grouped list.
-- `titleKey`: i18n key for the title; `title` stays the English fallback.
+- `titleKey`: i18n key for the title, `nav.<module>.<item>` in `i18n/locales/{en,hi}.json` (owned by the shell, so module JSON files stay conflict-free); `title` stays the English fallback and is what E2E selects by.
+- `tabTitleKey`: shorter bottom-tab label when the menu title is too long for a tab (`nav.tabs.*`, e.g. "Classes" for "Live classes").
+
+**Shell** (`App.vue`, `core/navigation.ts`, `components/TabBar.vue`): `useMenu()` filters every module's menu for the signed-in user (offline, `visible`, permission, persona, plan module), sorts by `order` and drops repeated paths. Phones (below Ionic's `lg`, 992 px) get the persona's tabs plus "More", which opens the menu; wider screens show the menu beside the page. The menu is grouped by `group`, searchable (label in the user's language, English title or group name) and ends with Display settings: language and text size (`theme/text-size.ts`, 100/115/130 %, key `erp.textSize`). Parents opening `/home` land on `/parent-home`. Sign-in opens on mobile OTP with a language switch. `AppPage`'s `loading` prop shows skeleton rows during a first load.
 
 **Widget slots**: `home` (generic dashboard), `parent-home`, `platform-home`, and the persona homes `student-home`, `teacher-home`, `staff-home` (no props; load your own data). See CONTRIBUTING.md, "Dashboard widgets".
 
@@ -336,7 +339,7 @@ With several roles the most capable wins: staff, teacher, student, parent.
 **Strings** (`i18n/index.ts`, vue-i18n in Composition mode, `const { t } = useI18n()`):
 
 - Shared words: `i18n/locales/{en,hi}.json` under `common.*` (`common.actions.save`, `common.status.overdue`).
-- A module's words: `modules/<folder>/i18n/{en,hi}.json`, namespaced by the camel-cased folder name (`parent-portal` → `parentPortal.*`). Group keys by page: `fees.myFees.payNow`, `fees.menu.myFees`.
+- A module's words: `modules/<folder>/i18n/{en,hi}.json`, namespaced by the camel-cased folder name (`parent-portal` → `parentPortal.*`). Group keys by page: `fees.myFees.payNow`. Menu titles are the exception: `nav.*` in the core files (see `titleKey`).
 - English is complete; Hindi may lag and falls back to English. A test fails when `hi.json` has a key `en.json` lacks.
 - `setLocale('hi')` switches the app and remembers the choice on the device (`localStorage`, key `erp.locale`). The side menu's language switch calls `chooseLocale()` (`core/locale-sync.ts`), which also saves it on the account (`users.locale`, `PUT /api/auth/me/locale`). After `/auth/me` the app opens in the account's language; an account without one adopts the device's choice.
 
@@ -352,7 +355,7 @@ With several roles the most capable wins: staff, teacher, student, parent.
 | WS4 admin, front desk, accountant | `staff-home` widgets, fee accounts and collection, communication compose, students, batches, admissions, subscriptions; backend setup status                                 |
 | WS5 doubts, Hindi, formatting     | the new doubts module (backend, app, shared), `users.locale`, Hindi and `core/format.ts` adoption in modules no other stream owns                                            |
 
-Streams other than WS1 edit only `routes:` and `widgets:` in a `module.ts`. `core/modules.ts`, `core/persona.ts`, `core/format.ts`, `i18n/index.ts`, `main.ts` and `app/package.json` change only by agreement; add strings to your module's own JSON, not to `common`, unless every stream needs them.
+Streams other than WS1 edit only `routes:` and `widgets:` in a `module.ts`; a new module (WS5 doubts) asks WS1 for its menu entry and `nav.*` strings, or adds them once WS1 has merged. `core/modules.ts`, `core/persona.ts`, `core/format.ts`, `i18n/index.ts`, `main.ts` and `app/package.json` change only by agreement; add strings to your module's own JSON, not to `common`, unless every stream needs them.
 
 ## Mobile and device security (spec 4.18) and platform limits (spec 9)
 

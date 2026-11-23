@@ -108,5 +108,202 @@
       "offline": "आप ऑफ़लाइन हैं। अपना कनेक्शन जाँचें।"
     },
     "saved": "सेव हो गया"
+  },
+  "nav": {
+    "dashboard": {
+      "home": "होम"
+    },
+    "parentPortal": {
+      "home": "होम",
+      "monthlyReports": "मासिक रिपोर्ट"
+    },
+    "academics": {
+      "myTimetable": "मेरी समय-सारिणी",
+      "sessions": "शैक्षणिक सत्र",
+      "courses": "कोर्स",
+      "syllabus": "पाठ्यक्रम",
+      "batches": "बैच",
+      "classrooms": "कक्षाएँ",
+      "timetable": "समय-सारिणी"
+    },
+    "account": {
+      "myDevices": "मेरे डिवाइस"
+    },
+    "admin": {
+      "institutes": "संस्थान",
+      "users": "उपयोगकर्ता और डिवाइस",
+      "plans": "प्लान",
+      "ai": "AI सेटिंग",
+      "audit": "ऑडिट लॉग"
+    },
+    "admissions": {
+      "enquiries": "पूछताछ",
+      "applications": "आवेदन",
+      "forms": "प्रवेश फ़ॉर्म"
+    },
+    "ai": {
+      "usage": "AI उपयोग"
+    },
+    "appointments": {
+      "meetings": "अभिभावक मीटिंग",
+      "availability": "मेरी उपलब्धता",
+      "reports": "मीटिंग रिपोर्ट"
+    },
+    "attendance": {
+      "take": "हाज़िरी लें",
+      "requests": "हाज़िरी अनुरोध",
+      "reports": "हाज़िरी रिपोर्ट",
+      "setup": "हाज़िरी सेटअप",
+      "checkIn": "चेक-इन",
+      "my": "मेरी हाज़िरी"
+    },
+    "branches": {
+      "branches": "शाखाएँ"
+    },
+    "calendar": {
+      "sync": "कैलेंडर सिंक",
+      "google": "Google कैलेंडर"
+    },
+    "exams": {
+      "exams": "परीक्षाएँ",
+      "prompts": "AI जाँच निर्देश",
+      "myExams": "मेरी परीक्षाएँ",
+      "results": "परीक्षा परिणाम"
+    },
+    "fees": {
+      "fees": "फ़ीस",
+      "accounts": "फ़ीस खाते",
+      "structures": "फ़ीस ढाँचा",
+      "approvals": "फ़ीस मंज़ूरी",
+      "courseEnrolments": "कोर्स नामांकन",
+      "reports": "फ़ीस रिपोर्ट",
+      "accounting": "लेखा",
+      "settings": "फ़ीस सेटिंग",
+      "myFees": "मेरी फ़ीस"
+    },
+    "grievances": {
+      "queue": "शिकायतें",
+      "my": "मेरी शिकायतें",
+      "reports": "शिकायत रिपोर्ट",
+      "setup": "शिकायत सेटअप"
+    },
+    "guardians": {
+      "guardians": "अभिभावक",
+      "myChildren": "मेरे बच्चे"
+    },
+    "hr": {
+      "staff": "स्टाफ़",
+      "attendance": "स्टाफ़ हाज़िरी",
+      "leaves": "छुट्टी अनुरोध",
+      "assets": "संपत्ति और विदाई",
+      "settings": "HR सेटिंग",
+      "me": "मेरी छुट्टी और हाज़िरी"
+    },
+    "institute": {
+      "profile": "संस्थान प्रोफ़ाइल"
+    },
+    "liveClasses": {
+      "liveClasses": "लाइव क्लास"
+    },
+    "lms": {
+      "content": "पढ़ाई की सामग्री",
+      "myCourses": "मेरे कोर्स",
+      "homework": "होमवर्क",
+      "offline": "ऑफ़लाइन लेक्चर",
+      "grants": "कोर्स एक्सेस देना"
+    },
+    "marketplace": {
+      "market": "कोर्स बाज़ार",
+      "learning": "मेरी पढ़ाई",
+      "cart": "कार्ट",
+      "wishlist": "विशलिस्ट",
+      "orders": "ख़रीद इतिहास",
+      "teach": "मार्केटप्लेस पर पढ़ाएँ",
+      "storefront": "मार्केटप्लेस स्टोरफ़्रंट",
+      "reviews": "कोर्स समीक्षा",
+      "ratings": "रेटिंग मॉडरेशन",
+      "sales": "मार्केटप्लेस बिक्री",
+      "coupons": "प्लेटफ़ॉर्म कूपन",
+      "settings": "मार्केटप्लेस सेटिंग",
+      "payouts": "मार्केटप्लेस भुगतान"
+    },
+    "notifications": {
+      "communication": "संदेश भेजें",
+      "notifications": "सूचनाएँ"
+    },
+    "payroll": {
+      "runs": "वेतन भुगतान",
+      "structures": "वेतन ढाँचा",
+      "workUnits": "लेक्चर और प्रोत्साहन",
+      "settlements": "अंतिम हिसाब",
+      "reports": "वेतन रिपोर्ट",
+      "components": "वैधानिक घटक",
+      "payslips": "मेरी वेतन पर्ची"
+    },
+    "permissions": {
+      "roles": "भूमिकाएँ और अनुमतियाँ"
+    },
+    "platform": {
+      "integrations": "इंटीग्रेशन"
+    },
+    "questionBank": {
+      "questionBank": "प्रश्न बैंक"
+    },
+    "reports": {
+      "reports": "रिपोर्ट",
+      "platform": "प्लेटफ़ॉर्म एनालिटिक्स"
+    },
+    "students": {
+      "students": "विद्यार्थी",
+      "myProfile": "मेरी प्रोफ़ाइल"
+    },
+    "subscriptions": {
+      "billing": "सब्सक्रिप्शन और बिलिंग",
+      "subscriptions": "सब्सक्रिप्शन",
+      "invoices": "SaaS इनवॉइस",
+      "payments": "SaaS भुगतान",
+      "settings": "बिलिंग सेटिंग"
+    },
+    "tally": {
+      "export": "Tally एक्सपोर्ट"
+    },
+    "tenantData": {
+      "data": "डेटा एक्सपोर्ट और हटाना",
+      "deletion": "डेटा हटाना"
+    },
+    "users": {
+      "devices": "सदस्यों के डिवाइस"
+    },
+    "website": {
+      "builder": "वेबसाइट बिल्डर",
+      "announcements": "वेबसाइट घोषणाएँ",
+      "coupons": "कूपन",
+      "referrals": "रेफ़रल",
+      "settings": "वेबसाइट सेटिंग और SEO"
+    },
+    "tabs": {
+      "classes": "क्लास",
+      "study": "पढ़ाई",
+      "tests": "टेस्ट",
+      "attendance": "हाज़िरी",
+      "fees": "फ़ीस",
+      "progress": "प्रगति",
+      "assign": "काम दें",
+      "messages": "संदेश",
+      "explore": "खोजें"
+    }
+  },
+  "shell": {
+    "tabsLabel": "मुख्य",
+    "searchMenu": "मेनू में खोजें",
+    "noMatch": "“{query}” से कुछ नहीं मिला",
+    "display": "डिस्प्ले",
+    "textSize": "अक्षर का आकार",
+    "textSizes": {
+      "100": "सामान्य",
+      "115": "बड़ा",
+      "130": "बहुत बड़ा"
+    },
+    "loading": "लोड हो रहा है"
   }
 }

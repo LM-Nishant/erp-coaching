@@ -15,6 +15,8 @@ export default defineAppModule({
     {
       title: 'Roles & permissions',
       path: '/roles',
+      group: 'settings',
+      titleKey: 'nav.permissions.roles',
       icon: shieldCheckmarkOutline,
       permission: 'roles.view',
       order: 93,

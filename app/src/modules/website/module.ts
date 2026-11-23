@@ -51,6 +51,8 @@ export default defineAppModule({
     {
       title: 'Website builder',
       path: '/website',
+      group: 'website',
+      titleKey: 'nav.website.builder',
       icon: globeOutline,
       permission: 'website.view',
       planModule: 'website',
@@ -59,6 +61,8 @@ export default defineAppModule({
     {
       title: 'Website announcements',
       path: '/website/announcements',
+      group: 'website',
+      titleKey: 'nav.website.announcements',
       icon: megaphoneOutline,
       permission: 'website.view',
       planModule: 'website',
@@ -67,6 +71,8 @@ export default defineAppModule({
     {
       title: 'Coupons',
       path: '/website/coupons',
+      group: 'website',
+      titleKey: 'nav.website.coupons',
       icon: pricetagOutline,
       permission: 'website.view',
       planModule: 'website',
@@ -75,6 +81,8 @@ export default defineAppModule({
     {
       title: 'Referrals',
       path: '/website/referrals',
+      group: 'website',
+      titleKey: 'nav.website.referrals',
       icon: peopleCircleOutline,
       permission: 'website.view',
       planModule: 'website',
@@ -83,6 +91,8 @@ export default defineAppModule({
     {
       title: 'Website settings & SEO',
       path: '/website/settings',
+      group: 'website',
+      titleKey: 'nav.website.settings',
       icon: settingsOutline,
       permission: 'website.configure',
       planModule: 'website',

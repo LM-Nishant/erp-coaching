@@ -19,7 +19,7 @@ export default async function globalSetup(): Promise<void> {
   try {
     const page = await browser.newPage();
     await page.goto(`${WEB_URL}/login`, { timeout: 120_000 });
-    await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByRole('button', { name: 'Send OTP' })).toBeVisible({ timeout: 120_000 });
   } finally {
     await browser.close();
   }

@@ -64,6 +64,8 @@ export default defineAppModule({
     {
       title: 'Payroll runs',
       path: '/payroll/runs',
+      group: 'hr',
+      titleKey: 'nav.payroll.runs',
       icon: cashOutline,
       permission: 'payroll.view',
       planModule: 'payroll',
@@ -72,6 +74,8 @@ export default defineAppModule({
     {
       title: 'Salary structures',
       path: '/payroll/structures',
+      group: 'hr',
+      titleKey: 'nav.payroll.structures',
       icon: walletOutline,
       permission: 'payroll.view',
       planModule: 'payroll',
@@ -80,6 +84,8 @@ export default defineAppModule({
     {
       title: 'Lectures & incentives',
       path: '/payroll/work-units',
+      group: 'hr',
+      titleKey: 'nav.payroll.workUnits',
       icon: briefcaseOutline,
       permission: 'payroll.view',
       planModule: 'payroll',
@@ -88,6 +94,8 @@ export default defineAppModule({
     {
       title: 'Full & final',
       path: '/payroll/settlements',
+      group: 'hr',
+      titleKey: 'nav.payroll.settlements',
       icon: receiptOutline,
       permission: 'payroll.view',
       planModule: 'payroll',
@@ -96,6 +104,8 @@ export default defineAppModule({
     {
       title: 'Payroll reports',
       path: '/payroll/reports',
+      group: 'reports',
+      titleKey: 'nav.payroll.reports',
       icon: documentTextOutline,
       permission: 'payroll.export',
       planModule: 'payroll',
@@ -104,6 +114,8 @@ export default defineAppModule({
     {
       title: 'Statutory components',
       path: '/payroll/components',
+      group: 'hr',
+      titleKey: 'nav.payroll.components',
       icon: calculatorOutline,
       permission: 'payroll.configure',
       planModule: 'payroll',
@@ -112,6 +124,8 @@ export default defineAppModule({
     {
       title: 'My payslips',
       path: '/me/payslips',
+      group: 'hr',
+      titleKey: 'nav.payroll.payslips',
       icon: receiptOutline,
       permission: 'hr-self-service.view',
       planModule: 'payroll',

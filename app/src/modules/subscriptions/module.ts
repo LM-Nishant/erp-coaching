@@ -64,6 +64,8 @@ export default defineAppModule({
     {
       title: 'Subscription & billing',
       path: '/subscription',
+      group: 'settings',
+      titleKey: 'nav.subscriptions.billing',
       icon: cardOutline,
       permission: 'subscription.view',
       order: 85,
@@ -71,6 +73,8 @@ export default defineAppModule({
     {
       title: 'Subscriptions',
       path: '/admin/billing/subscriptions',
+      group: 'platform',
+      titleKey: 'nav.subscriptions.subscriptions',
       icon: ribbonOutline,
       superAdmin: true,
       order: 12,
@@ -78,6 +82,8 @@ export default defineAppModule({
     {
       title: 'SaaS invoices',
       path: '/admin/billing/invoices',
+      group: 'platform',
+      titleKey: 'nav.subscriptions.invoices',
       icon: documentTextOutline,
       superAdmin: true,
       order: 14,
@@ -85,6 +91,8 @@ export default defineAppModule({
     {
       title: 'SaaS payments',
       path: '/admin/billing/payments',
+      group: 'platform',
+      titleKey: 'nav.subscriptions.payments',
       icon: walletOutline,
       superAdmin: true,
       order: 16,
@@ -92,6 +100,8 @@ export default defineAppModule({
     {
       title: 'Billing settings',
       path: '/admin/billing/settings',
+      group: 'platform',
+      titleKey: 'nav.subscriptions.settings',
       icon: settingsOutline,
       superAdmin: true,
       order: 25,
