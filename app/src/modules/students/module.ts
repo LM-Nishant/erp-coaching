@@ -33,10 +33,21 @@ export default defineAppModule({
     { path: '/register/:slug', name: 'register', component: () => import('./RegisterPage.vue') },
   ],
   menu: [
-    { title: 'Students', path: '/students', icon: peopleOutline, permission: 'students.view', order: 30 },
+    {
+      title: 'Students',
+      path: '/students',
+      group: 'people',
+      titleKey: 'nav.students.students',
+      tab: { staff: 2, teacher: 4 },
+      icon: peopleOutline,
+      permission: 'students.view',
+      order: 30,
+    },
     {
       title: 'My profile',
       path: '/my-profile',
+      group: 'people',
+      titleKey: 'nav.students.myProfile',
       icon: idCardOutline,
       permission: 'student-portal.view',
       order: 15,

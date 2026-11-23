@@ -89,6 +89,9 @@ export default defineAppModule({
     {
       title: 'Learning content',
       path: '/lms/content',
+      group: 'learning',
+      titleKey: 'nav.lms.content',
+      tab: { teacher: 8 },
       icon: libraryOutline,
       permission: 'lms.edit',
       planModule: 'lms',
@@ -97,6 +100,10 @@ export default defineAppModule({
     {
       title: 'My courses',
       path: '/lms',
+      group: 'learning',
+      titleKey: 'nav.lms.myCourses',
+      tab: { student: 3 },
+      tabTitleKey: 'nav.tabs.study',
       icon: playCircleOutline,
       permission: 'lms.view',
       // Staff only get a pointer to Learning content there.
@@ -107,6 +114,10 @@ export default defineAppModule({
     {
       title: 'Homework',
       path: '/lms/homework',
+      group: 'learning',
+      titleKey: 'nav.lms.homework',
+      tab: { teacher: 3, student: 6 },
+      tabTitleKey: 'nav.tabs.assign',
       icon: documentTextOutline,
       permission: 'lms-assignments.view',
       planModule: 'lms',
@@ -115,6 +126,8 @@ export default defineAppModule({
     {
       title: 'Offline lectures',
       path: '/lms/offline',
+      group: 'learning',
+      titleKey: 'nav.lms.offline',
       icon: cloudDownloadOutline,
       permission: 'lms.view',
       planModule: 'lms',
@@ -123,6 +136,8 @@ export default defineAppModule({
     {
       title: 'Course access grants',
       path: '/lms/grants',
+      group: 'learning',
+      titleKey: 'nav.lms.grants',
       icon: keyOutline,
       permission: 'lms.configure',
       planModule: 'lms',

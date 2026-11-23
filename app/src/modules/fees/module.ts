@@ -92,6 +92,9 @@ export default defineAppModule({
     {
       title: 'Fees',
       path: '/fees',
+      group: 'fees',
+      titleKey: 'nav.fees.fees',
+      tab: { staff: 3 },
       icon: walletOutline,
       permission: 'fees.view',
       planModule: 'fees',
@@ -100,6 +103,8 @@ export default defineAppModule({
     {
       title: 'Fee accounts',
       path: '/fees/accounts',
+      group: 'fees',
+      titleKey: 'nav.fees.accounts',
       icon: peopleOutline,
       permission: 'fees.view',
       planModule: 'fees',
@@ -108,6 +113,8 @@ export default defineAppModule({
     {
       title: 'Fee structures',
       path: '/fees/structures',
+      group: 'fees',
+      titleKey: 'nav.fees.structures',
       icon: layersOutline,
       permission: 'fees.view',
       planModule: 'fees',
@@ -116,6 +123,8 @@ export default defineAppModule({
     {
       title: 'Fee approvals',
       path: '/fees/approvals',
+      group: 'fees',
+      titleKey: 'nav.fees.approvals',
       icon: checkmarkDoneOutline,
       permission: 'fees.view',
       planModule: 'fees',
@@ -124,6 +133,8 @@ export default defineAppModule({
     {
       title: 'Course enrolments',
       path: '/fees/course-enrolments',
+      group: 'fees',
+      titleKey: 'nav.fees.courseEnrolments',
       icon: schoolOutline,
       permission: 'fees.view',
       planModule: 'fees',
@@ -132,6 +143,8 @@ export default defineAppModule({
     {
       title: 'Fee reports',
       path: '/fees/reports',
+      group: 'reports',
+      titleKey: 'nav.fees.reports',
       icon: barChartOutline,
       permission: 'fees.view',
       planModule: 'fees',
@@ -140,6 +153,8 @@ export default defineAppModule({
     {
       title: 'Accounting',
       path: '/accounting',
+      group: 'fees',
+      titleKey: 'nav.fees.accounting',
       icon: businessOutline,
       permission: 'accounting.view',
       planModule: 'fees',
@@ -148,6 +163,8 @@ export default defineAppModule({
     {
       title: 'Fee settings',
       path: '/fees/settings',
+      group: 'fees',
+      titleKey: 'nav.fees.settings',
       icon: settingsOutline,
       permission: 'fees.configure',
       planModule: 'fees',
@@ -156,6 +173,10 @@ export default defineAppModule({
     {
       title: 'My fees',
       path: '/my-fees',
+      group: 'fees',
+      titleKey: 'nav.fees.myFees',
+      tab: { parent: 3, student: 7 },
+      tabTitleKey: 'nav.tabs.fees',
       icon: cardOutline,
       permission: 'my-fees.view',
       planModule: 'fees',

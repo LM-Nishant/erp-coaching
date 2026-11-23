@@ -34,6 +34,8 @@ export default defineAppModule({
     {
       title: 'Reports',
       path: '/reports',
+      group: 'reports',
+      titleKey: 'nav.reports.reports',
       icon: barChartOutline,
       permission: 'reports.view',
       planModule: 'reports',
@@ -42,6 +44,9 @@ export default defineAppModule({
     {
       title: 'Platform analytics',
       path: '/reports/platform',
+      group: 'platform',
+      titleKey: 'nav.reports.platform',
+      tab: { platform: 4 },
       icon: analyticsOutline,
       superAdmin: true,
       order: 15,

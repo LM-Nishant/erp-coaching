@@ -45,6 +45,8 @@ export default defineAppModule({
     {
       title: 'Question bank',
       path: '/question-bank',
+      group: 'tests',
+      titleKey: 'nav.questionBank.questionBank',
       icon: libraryOutline,
       permission: 'question-bank.view',
       planModule: 'question-bank',

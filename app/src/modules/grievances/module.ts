@@ -45,6 +45,8 @@ export default defineAppModule({
     {
       title: 'Complaint queue',
       path: '/grievances',
+      group: 'messages',
+      titleKey: 'nav.grievances.queue',
       icon: fileTrayFullOutline,
       permission: 'grievances.edit',
       planModule: 'grievances',
@@ -53,6 +55,8 @@ export default defineAppModule({
     {
       title: 'My complaints',
       path: '/grievances/my',
+      group: 'messages',
+      titleKey: 'nav.grievances.my',
       icon: chatbubblesOutline,
       permission: 'grievances.create',
       planModule: 'grievances',
@@ -61,6 +65,8 @@ export default defineAppModule({
     {
       title: 'Grievance reports',
       path: '/grievances/reports',
+      group: 'reports',
+      titleKey: 'nav.grievances.reports',
       icon: statsChartOutline,
       permission: 'grievances.export',
       planModule: 'grievances',
@@ -69,6 +75,8 @@ export default defineAppModule({
     {
       title: 'Grievance setup',
       path: '/grievances/setup',
+      group: 'messages',
+      titleKey: 'nav.grievances.setup',
       icon: settingsOutline,
       permission: 'grievances.configure',
       planModule: 'grievances',

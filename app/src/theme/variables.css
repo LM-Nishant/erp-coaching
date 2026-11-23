@@ -3,6 +3,8 @@
   --app-max-width: 1100px;
   /* Minimum height/width of anything tappable (buttons, rows, tabs). */
   --app-tap-target: 48px;
+  /* Bottom tab bar on phones (components/TabBar.vue), without the safe area; grows with the text size. */
+  --app-tab-bar-height: 3.5rem;
 }
 
 .page-container {

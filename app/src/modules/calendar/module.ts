@@ -21,6 +21,8 @@ export default defineAppModule({
     {
       title: 'Calendar sync',
       path: '/calendar',
+      group: 'settings',
+      titleKey: 'nav.calendar.sync',
       icon: calendarOutline,
       permission: 'institute.configure',
       planModule: 'appointments',
@@ -29,6 +31,8 @@ export default defineAppModule({
     {
       title: 'Google Calendar',
       path: '/admin/calendar',
+      group: 'platform',
+      titleKey: 'nav.calendar.google',
       icon: logoGoogle,
       superAdmin: true,
       order: 33,

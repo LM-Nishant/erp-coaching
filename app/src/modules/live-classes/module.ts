@@ -28,6 +28,10 @@ export default defineAppModule({
     {
       title: 'Live classes',
       path: '/live-classes',
+      group: 'classes',
+      titleKey: 'nav.liveClasses.liveClasses',
+      tab: { student: 2, teacher: 7 },
+      tabTitleKey: 'nav.tabs.classes',
       icon: radioOutline,
       permission: 'live-classes.view',
       planModule: 'live-classes',

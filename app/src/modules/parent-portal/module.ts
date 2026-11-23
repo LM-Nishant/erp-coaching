@@ -24,8 +24,11 @@ export default defineAppModule({
   ],
   menu: [
     {
-      title: 'Parent home',
+      title: 'Home',
       path: '/parent-home',
+      group: 'home',
+      titleKey: 'nav.parentPortal.home',
+      tab: { parent: 1 },
       icon: homeOutline,
       permission: 'parent-portal.view',
       planModule: 'parent-portal',
@@ -34,6 +37,8 @@ export default defineAppModule({
     {
       title: 'Monthly reports',
       path: '/parent-home/reports',
+      group: 'reports',
+      titleKey: 'nav.parentPortal.monthlyReports',
       icon: documentTextOutline,
       permission: 'parent-portal.view',
       planModule: 'parent-portal',

@@ -41,5 +41,202 @@
       "platform": "Platform",
       "other": "Other"
     }
+  },
+  "nav": {
+    "dashboard": {
+      "home": "Home"
+    },
+    "parentPortal": {
+      "home": "Home",
+      "monthlyReports": "Monthly reports"
+    },
+    "academics": {
+      "myTimetable": "My timetable",
+      "sessions": "Academic sessions",
+      "courses": "Courses",
+      "syllabus": "Syllabus",
+      "batches": "Batches",
+      "classrooms": "Classrooms",
+      "timetable": "Timetable"
+    },
+    "account": {
+      "myDevices": "My devices"
+    },
+    "admin": {
+      "institutes": "Institutes",
+      "users": "Users & devices",
+      "plans": "Plans",
+      "ai": "AI configuration",
+      "audit": "Audit log"
+    },
+    "admissions": {
+      "enquiries": "Enquiries",
+      "applications": "Applications",
+      "forms": "Admission forms"
+    },
+    "ai": {
+      "usage": "AI usage"
+    },
+    "appointments": {
+      "meetings": "Parent meetings",
+      "availability": "My availability",
+      "reports": "Meeting reports"
+    },
+    "attendance": {
+      "take": "Take attendance",
+      "requests": "Attendance requests",
+      "reports": "Attendance reports",
+      "setup": "Attendance setup",
+      "checkIn": "Check in",
+      "my": "My attendance"
+    },
+    "branches": {
+      "branches": "Branches"
+    },
+    "calendar": {
+      "sync": "Calendar sync",
+      "google": "Google Calendar"
+    },
+    "exams": {
+      "exams": "Exams",
+      "prompts": "AI grading prompts",
+      "myExams": "My exams",
+      "results": "Exam results"
+    },
+    "fees": {
+      "fees": "Fees",
+      "accounts": "Fee accounts",
+      "structures": "Fee structures",
+      "approvals": "Fee approvals",
+      "courseEnrolments": "Course enrolments",
+      "reports": "Fee reports",
+      "accounting": "Accounting",
+      "settings": "Fee settings",
+      "myFees": "My fees"
+    },
+    "grievances": {
+      "queue": "Complaint queue",
+      "my": "My complaints",
+      "reports": "Grievance reports",
+      "setup": "Grievance setup"
+    },
+    "guardians": {
+      "guardians": "Guardians",
+      "myChildren": "My children"
+    },
+    "hr": {
+      "staff": "Staff",
+      "attendance": "Staff attendance",
+      "leaves": "Leave requests",
+      "assets": "Assets & exits",
+      "settings": "HR settings",
+      "me": "My leave & attendance"
+    },
+    "institute": {
+      "profile": "Institute profile"
+    },
+    "liveClasses": {
+      "liveClasses": "Live classes"
+    },
+    "lms": {
+      "content": "Learning content",
+      "myCourses": "My courses",
+      "homework": "Homework",
+      "offline": "Offline lectures",
+      "grants": "Course access grants"
+    },
+    "marketplace": {
+      "market": "Course marketplace",
+      "learning": "My learning",
+      "cart": "Cart",
+      "wishlist": "Wishlist",
+      "orders": "Purchase history",
+      "teach": "Teach on the marketplace",
+      "storefront": "Marketplace storefront",
+      "reviews": "Course reviews",
+      "ratings": "Rating moderation",
+      "sales": "Marketplace sales",
+      "coupons": "Platform coupons",
+      "settings": "Marketplace settings",
+      "payouts": "Marketplace payouts"
+    },
+    "notifications": {
+      "communication": "Communication",
+      "notifications": "Notifications"
+    },
+    "payroll": {
+      "runs": "Payroll runs",
+      "structures": "Salary structures",
+      "workUnits": "Lectures & incentives",
+      "settlements": "Full & final",
+      "reports": "Payroll reports",
+      "components": "Statutory components",
+      "payslips": "My payslips"
+    },
+    "permissions": {
+      "roles": "Roles & permissions"
+    },
+    "platform": {
+      "integrations": "Integrations"
+    },
+    "questionBank": {
+      "questionBank": "Question bank"
+    },
+    "reports": {
+      "reports": "Reports",
+      "platform": "Platform analytics"
+    },
+    "students": {
+      "students": "Students",
+      "myProfile": "My profile"
+    },
+    "subscriptions": {
+      "billing": "Subscription & billing",
+      "subscriptions": "Subscriptions",
+      "invoices": "SaaS invoices",
+      "payments": "SaaS payments",
+      "settings": "Billing settings"
+    },
+    "tally": {
+      "export": "Tally export"
+    },
+    "tenantData": {
+      "data": "Data export & deletion",
+      "deletion": "Data deletion"
+    },
+    "users": {
+      "devices": "Member devices"
+    },
+    "website": {
+      "builder": "Website builder",
+      "announcements": "Website announcements",
+      "coupons": "Coupons",
+      "referrals": "Referrals",
+      "settings": "Website settings & SEO"
+    },
+    "tabs": {
+      "classes": "Classes",
+      "study": "Study",
+      "tests": "Tests",
+      "attendance": "Attendance",
+      "fees": "Fees",
+      "progress": "Progress",
+      "assign": "Assign",
+      "messages": "Messages",
+      "explore": "Explore"
+    }
+  },
+  "shell": {
+    "tabsLabel": "Main",
+    "searchMenu": "Search menu",
+    "noMatch": "Nothing matches “{query}”",
+    "display": "Display",
+    "textSize": "Text size",
+    "textSizes": {
+      "100": "Normal",
+      "115": "Large",
+      "130": "Extra large"
+    },
+    "loading": "Loading"
   }
 }
