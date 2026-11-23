@@ -16,8 +16,11 @@
         <h1 data-testid="course-title">{{ course.title }}</h1>
         <p v-if="course.subtitle" class="subtitle">{{ course.subtitle }}</p>
         <p class="meta">
-          <span v-if="course.ratingCount" class="rating"
-            >★ {{ course.ratingAvg.toFixed(1) }} ({{ course.ratingCount }} ratings)</span
+          <a v-if="course.ratingCount" href="#reviews" class="rating" @click.prevent="scrollToReviews"
+            >{{ course.ratingAvg.toFixed(1) }} <RatingStars :rating="course.ratingAvg" /> ({{
+              course.ratingCount
+            }}
+            {{ course.ratingCount === 1 ? 'rating' : 'ratings' }})</a
           >
           <span>{{ course.enrolmentCount }} {{ course.enrolmentCount === 1 ? 'learner' : 'learners' }}</span>
           <span>{{ MKT_COURSE_LEVEL_LABELS[course.level] }}</span>
@@ -111,6 +114,13 @@
             </div>
           </router-link>
         </section>
+        <ReviewsSection
+          id="reviews"
+          :course-id="course.id"
+          :slug="course.slug"
+          :enrolled="access.enrolled"
+          @changed="onRatingChanged"
+        />
       </div>
 
       <aside class="buy">
@@ -146,6 +156,7 @@
               >Buy now</ion-button
             >
           </template>
+          <WishlistButton v-if="!access.enrolled" :course-id="course.id" block />
           <ul class="includes">
             <li v-if="course.durationSeconds">{{ durationLabel(course.durationSeconds) }} of content</li>
             <li>{{ course.lectureCount }} lectures</li>
@@ -200,6 +211,7 @@ import {
   MKT_COURSE_LEVEL_LABELS,
   type MktCourseDetailDto,
   type MktLectureOutlineDto,
+  type MktReviewSummaryDto,
   type MktStreamDto,
 } from '@erp/shared';
 import { errorMessage } from '@/core/api';
@@ -207,6 +219,9 @@ import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import MarketShell from './components/MarketShell.vue';
 import StreamPlayer from './components/StreamPlayer.vue';
+import RatingStars from './components/RatingStars.vue';
+import ReviewsSection from './components/ReviewsSection.vue';
+import WishlistButton from './components/WishlistButton.vue';
 import { clock, durationLabel, languageLabel, marketApi, priceLabel } from './api';
 import { lectureIcon } from './lecture-icons';
 import { useMarketAccount } from './store';
@@ -228,6 +243,7 @@ async function load() {
     course.value = await marketApi.course(String(route.params.slug));
     if (auth.isAuthenticated && !auth.offline)
       Object.assign(access, await marketApi.access(course.value.id).catch(() => access));
+    if (route.hash === '#reviews') setTimeout(scrollToReviews, 300);
   } catch (e) {
     error.value = errorMessage(e);
   }
@@ -270,6 +286,14 @@ async function enrol() {
   }
 }
 
+function onRatingChanged(s: MktReviewSummaryDto) {
+  if (course.value) Object.assign(course.value, { ratingAvg: s.ratingAvg, ratingCount: s.ratingCount });
+}
+
+function scrollToReviews() {
+  document.getElementById('reviews')?.scrollIntoView({ behavior: 'smooth' });
+}
+
 async function openPreview(l: MktLectureOutlineDto) {
   preview.value = { title: l.title, stream: null, articleBody: null };
   try {
@@ -299,8 +323,9 @@ watch(
   .landing {
     grid-template-columns: 1fr;
   }
-  .buy {
+  .landing .buy {
     order: -1;
+    position: static;
   }
   .buy-thumb {
     display: none;
@@ -328,6 +353,7 @@ h1 {
 .rating {
   color: var(--ion-color-warning-shade);
   font-weight: 600;
+  text-decoration: none;
 }
 .media {
   margin: 16px 0;

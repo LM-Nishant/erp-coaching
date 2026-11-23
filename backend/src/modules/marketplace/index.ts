@@ -1,17 +1,26 @@
 import { defineModule } from '../../shared/module';
 import { associateMarketplaceModels, initMarketplaceModels } from './models';
 import { marketplaceRoutes } from './marketplace.routes';
-import { initQuizModels } from './quiz-models';
+import { associateEngagementModels, initEngagementModels } from './engagement.models';
+import { registerEngagementNotificationEvents } from './engagement.notifications';
 import { MKT_TRANSCODE_JOB, runMarketplaceTranscode } from './media.service';
+import { initQuizModels } from './quiz-models';
 import { MARKETPLACE } from './util';
+
+// Catalogue entries must exist before any request calls notify().
+registerEngagementNotificationEvents();
 
 export default defineModule({
   name: MARKETPLACE,
   models: (sequelize) => {
     initMarketplaceModels(sequelize);
+    initEngagementModels(sequelize);
     initQuizModels(sequelize);
   },
-  associate: associateMarketplaceModels,
+  associate: () => {
+    associateMarketplaceModels();
+    associateEngagementModels();
+  },
   routes: marketplaceRoutes,
   permissions: [
     {

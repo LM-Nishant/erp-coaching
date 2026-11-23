@@ -17,6 +17,14 @@
           <ion-button v-if="search" router-link="/market/search" aria-label="Search courses">
             <ion-icon slot="icon-only" :icon="searchOutline" />
           </ion-button>
+          <ion-button
+            v-if="auth.isAuthenticated"
+            router-link="/market/wishlist"
+            aria-label="Wishlist"
+            data-testid="wishlist-link"
+          >
+            <ion-icon slot="icon-only" :icon="heartOutline" />
+          </ion-button>
           <ion-button router-link="/market/cart" aria-label="Cart" class="cart-btn">
             <ion-icon slot="icon-only" :icon="cartOutline" />
             <ion-badge v-if="cartCount" color="danger" data-testid="cart-count">{{ cartCount }}</ion-badge>
@@ -62,7 +70,7 @@ import {
   IonToolbar,
   type RefresherCustomEvent,
 } from '@ionic/vue';
-import { cartOutline, searchOutline } from 'ionicons/icons';
+import { cartOutline, heartOutline, searchOutline } from 'ionicons/icons';
 import { useAuthStore } from '@/stores/auth';
 import { useMarketAccount } from '../store';
 

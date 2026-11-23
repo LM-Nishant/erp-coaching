@@ -34,6 +34,7 @@ import * as catalog from './catalog.service';
 import * as commerce from './commerce.service';
 import * as coupons from './coupons.service';
 import * as courses from './courses.service';
+import { engagementRoutes } from './engagement.routes';
 import * as learning from './learning.service';
 import * as media from './media.service';
 import { certificatePublicRoutes, quizAdminRoutes, quizLearnerRoutes, quizStudioRoutes } from './quiz.routes';
@@ -635,6 +636,7 @@ function adminRoutes(api: Router) {
 }
 
 export function marketplaceRoutes(api: Router) {
+  engagementRoutes(api);
   publicRoutes(api);
   certificatePublicRoutes(api);
   quizAdminRoutes(api);
