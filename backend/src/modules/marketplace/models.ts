@@ -207,6 +207,8 @@ export class MktOrderItem extends Model<Attrs<MktOrderItem>, Create<MktOrderItem
   declare pricePaise: number;
   declare discountPaise: number;
   declare paidPaise: number;
+  /** The refund that covers this item (claimed before the gateway is called). */
+  declare refundId: CreationOptional<number | null>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -441,6 +443,7 @@ export function initMarketplaceModels(sequelize: Sequelize) {
     pricePaise: paise('pricePaise'),
     discountPaise: paise('discountPaise'),
     paidPaise: paise('paidPaise'),
+    refundId: uint(),
   });
   define(MktWebhookEvent, sequelize, 'mkt_webhook_events', {
     gateway: str(20),

@@ -3,15 +3,15 @@
  *
  * Setup (API): an independent instructor publishes a ₹499 course and two learners buy it with the mock gateway.
  * The platform admin sets the payout hold to 0 days so today's sales are due (restored at the end).
- * Browser: one learner asks for a refund on their order and the admin approves it; the instructor sees their
- * earnings and adds bank payout details; the admin creates the payout run and marks the instructor's payout paid
- * with a UTR; the instructor sees the paid payout and its statement, including the reversed sale.
+ * Browser: one learner asks for a refund on their order, the admin approves it (the Failed tab stays empty) and the
+ * learner is notified; the instructor sees their earnings and adds bank payout details; the admin creates the
+ * payout run and marks the instructor's payout paid with a UTR; the instructor sees the paid payout and its statement, including the reversed sale.
  */
 import { expect, test } from '../support/fixtures';
 import { Api, loginWithPassword, newDevice, type Session } from '../support/api';
 import { API_URL } from '../support/env';
 import { PASSWORD, uniqueId } from '../support/data';
-import { activePage, alertDialog, confirmAlert, expectToast } from '../support/ui';
+import { activePage, alertDialog, confirmAlert, expectToast, selectSegment } from '../support/ui';
 
 let lastMobile = 0;
 /** Test mobiles in the 967… range used by the payout spec. */
@@ -140,8 +140,12 @@ test('refund → payout details → monthly payout run marked paid → statement
       await card.getByRole('button', { name: /Approve/ }).click();
       await confirmAlert(admin, 'Refund');
       await expectToast(admin, 'Refunded');
+      await selectSegment(activePage(admin), 'Failed');
+      await expect(activePage(admin).getByText('No refunds here.')).toBeVisible();
       await learnerPage.reload();
       await expect(activePage(learnerPage).getByText('Refunded').first()).toBeVisible();
+      await learnerPage.goto('/notifications');
+      await expect(activePage(learnerPage).getByText('Refund of ₹499.00 sent')).toBeVisible();
     });
 
     const instructorPage = await openAs(instructor, '/market/studio/instructor/revenue');

@@ -946,18 +946,11 @@ order was placed with, even after it's disabled. An order that a coupon makes fr
    For one the gateway shows as paid, ask the learner to open it under **Purchase history** and press **I've paid,
    check status**. Don't mark an order paid in the database: that wouldn't enrol the learner or credit the seller.
 
-4. Checking out the same basket again within 30 minutes reuses the order. After that, checkout creates a new order,
-   and if the learner pays both, they're enrolled once but the seller is credited twice. List the learner's paid
-   orders:
-
-   ```sql
-   SELECT o.id, o.number, o.paid_at, e.course_id FROM mkt_orders o LEFT JOIN mkt_enrolments e ON e.order_id = o.id
-   WHERE o.user_id = <user id> AND o.status = 'paid';
-   ```
-
-   The order with no `course_id` is the duplicate. Refund it with **Refund** on its sale in **Marketplace sales**;
-   the prompt shows the order number. That reverses the seller's share. The prompt says the learner loses access,
-   but only enrolments made by that order are removed, and the duplicate made none.
+4. Checking out the same basket again within 30 minutes reuses the order. After that, checkout creates a new order.
+   If the learner pays both, the second order to be paid doesn't enrol them or credit the seller for courses they
+   already own, and those courses are refunded at once. A second payment on the same order is refunded too. These
+   refunds show on **Marketplace refunds** as "automatic (paid twice)", and the learner is notified. If the gateway
+   refuses one, it's under **Failed**: retry it there.
 
 5. `Marketplace amount mismatch` means the gateway reported a different amount, and the order stays unpaid. It's
    SEV2: compare the payment with the gateway's dashboard before changing anything.
@@ -965,8 +958,8 @@ order was placed with, even after it's disabled. An order that a coupon makes fr
 #### Course review queue
 
 Sellers submit courses for review, and a course goes on sale only when the Super Admin approves it. The course
-builder tells sellers that review is "usually within two working days", and they can't edit a course, or take it
-back, while it's in review.
+builder tells sellers that review is "usually within two working days". They can't edit a course while it's in
+review, but they can take it back with **Withdraw from review** (audited as `marketplace.course.withdrawn`).
 
 1. Open **Course reviews** and pick a course **In review**. Sellers can submit a course only once all its videos
    have finished processing, and a paid course needs a free preview lecture.
@@ -976,10 +969,11 @@ back, while it's in review.
    - **Request changes** sends it back with a note saying what to change. The course shows as **Changes needed**,
      and the seller sees "Changes requested:" followed by the note.
    - **Unpublish** takes a published course off sale, and **Publish again** puts it back.
-4. The seller isn't notified, but sees the new status, and any note, on the course.
+4. The seller is notified of the decision ("… is live" or "Changes requested on …", with the note) and sees the new
+   status on the course.
 
 The audit events are `marketplace.course.submitted`, `marketplace.course.approved`, `marketplace.course.rejected`,
-`marketplace.course.published` and `marketplace.course.unpublished`.
+`marketplace.course.published`, `marketplace.course.unpublished` and `marketplace.course.withdrawn`.
 
 #### Refund requests
 
@@ -988,21 +982,15 @@ default) and for courses that allow refunds, one request at a time per order. Th
 answered "usually within 2 working days".
 
 1. On **Marketplace payouts**, press **Refunds** to open **Marketplace refunds**, which has no menu entry.
-   Its tabs are **Requested**, **Refunded**, **Rejected** and **All**.
-2. Choose **Approve & refund**, then **Refund**; or **Reject**, with a note that the learner sees. Learners aren't
+   Its tabs are **Requested**, **Refunded**, **Failed**, **Rejected** and **All**.
+2. Choose **Approve & refund**, then **Refund**; or **Reject**, with a note that the learner sees. The learner is
    notified either way.
-3. A refund the gateway refuses, or doesn't answer, still shows "Refunded", but it's saved as **Refund failed**,
-   with the gateway's message as its note, and appears only under **All**. The api logs `Marketplace refund failed`
-   and audits `marketplace.refund.failed`. Once the gateway works again, take a [snapshot](#mitigate), put the
-   request back in the queue and approve it again:
-
-   ```sql
-   UPDATE mkt_refunds SET status = 'requested' WHERE id = <refund id> AND status = 'failed';
-   ```
-
-   The gateway gets the same refund id (`mktrf-<refund id>`) again, so a refund that went through isn't paid twice.
-   Don't use **Refund** on **Marketplace sales** for it: that starts a new refund with a new id, and can pay the
-   learner twice.
+3. A refund the gateway refuses, or doesn't answer, shows "Refund failed: …" and is saved as **Refund failed**, with
+   the gateway's message as its note, under **Failed**. The learner is told it's delayed, the api logs
+   `Marketplace refund failed` and audits `marketplace.refund.failed`. Once the gateway works again, press
+   **Retry refund** (audited as `marketplace.refund.retried`). The gateway gets the same refund id
+   (`mktrf-<refund id>`) again, so a refund that went through isn't paid twice. An order's course can be refunded
+   only once: **Refund** on **Marketplace sales** refuses an order with a failed refund and points to the retry.
 
 4. A refund the gateway reports as pending counts as refunded at once, and the gateway's later refund webhooks are
    ignored. If the money doesn't arrive, check the refund in the gateway's dashboard.
@@ -1029,8 +1017,9 @@ Each month:
 3. Create the run. Only one run can be open at a time ("Payout run #N is still open; finish or cancel it first").
    "No seller is owed the minimum payout for this period" means there's nothing to pay. A seller with no payout
    details is added as held, and sees why on **Payouts** in their studio.
-4. **Hold** the payouts of suspended sellers ([open decisions](#9-open-decisions)) and of any seller you need to
-   check.
+4. Payouts of suspended sellers are added as held ("Seller suspended"), and the preview marks them
+   **Suspended: held**; they can't be released or marked paid until the seller is reinstated. **Hold** the payout
+   of any other seller you need to check.
 5. Download the bank file just before you make the transfers. It lists every payout in the run, whatever its status,
    with the full account number or UPI ID each seller has now, so pay only the rows whose Status is `pending`.
    Treat the file as personal data, and delete it after the run. Downloads are audited as
@@ -1055,8 +1044,8 @@ On **Marketplace settings**:
   at the moment".
 - Each seller can have their own commission; leave it empty for the default.
 - **Suspend** hides a seller's courses from the marketplace, and their studio answers "This seller account is
-  suspended. Contact support." (`SELLER_SUSPENDED`). Their payouts carry on, so hold them in the
-  [payout run](#monthly-payout-run). **Reinstate** undoes it.
+  suspended. Contact support." (`SELLER_SUSPENDED`). Their payouts are held in the
+  [payout run](#monthly-payout-run) until you **Reinstate** them, which undoes it.
 
 #### Review moderation
 
@@ -1201,10 +1190,10 @@ Never ask for passwords or OTPs. If someone sends a password anyway, treat it as
 | A meeting isn't in Google Calendar                                             | Google is failing or refused the event, the calendar needs reconnecting, or none is connected.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | The meeting's details show where it stands, with the last error ([Google Calendar](#google-calendar)). The meeting and its reminders in the app are unaffected.                                                                                                                                                                                                                              |
 | Marketplace checkout fails                                                     | "Online payment is not configured yet; please try later" (`GATEWAY_NOT_CONFIGURED`): no platform gateway is enabled. "The payment gateway is unavailable; please try again" (`GATEWAY_ERROR`): the gateway didn't create the order, and the api logs `Marketplace checkout failed`                                                                                                                                                                                                                                                                                                                                                                                                                        | Check the platform gateway ([checkout and the platform gateway](#checkout-and-the-platform-gateway)). No money was taken, so the learner tries again from the cart once it works                                                                                                                                                                                                             |
 | Paid for a marketplace course, but it isn't in **My learning**                 | The order is still pending. With Razorpay and Paytm, marketplace orders get no webhook, so they're confirmed only when the learner returns from the gateway or checks the order, and nothing reconciles them                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Ask the learner to open the order under **Purchase history** and press **I've paid, check status**. If it stays pending, compare it with the gateway's dashboard ([checkout](#checkout-and-the-platform-gateway)). Never mark it paid in the database                                                                                                                                        |
-| Wants a marketplace refund, or a refund hasn't arrived                         | Learners ask with **Request a refund** on the order, within the refund window, for courses that allow refunds. A refund the gateway refused is saved as **Refund failed**, and one it reports as pending counts as refunded                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Decide it on **Marketplace refunds** ([refund requests](#refund-requests)). For one that hasn't arrived, check its status under **All** and the refund in the gateway's dashboard                                                                                                                                                                                                            |
+| Wants a marketplace refund, or a refund hasn't arrived                         | Learners ask with **Request a refund** on the order, within the refund window, for courses that allow refunds. A refund the gateway refused is saved as **Refund failed**, and one it reports as pending counts as refunded                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Decide it on **Marketplace refunds** ([refund requests](#refund-requests)). Retry a failed one under **Failed**. For one that hasn't arrived, check the refund in the gateway's dashboard                                                                                                                                                                                                    |
 | Seller account suspended (`SELLER_SUSPENDED`), or sign-up to teach is closed   | The Super Admin suspended the seller: the studio answers "This seller account is suspended. Contact support." and the courses are hidden. Or **Anyone can sign up to teach** is off: "Instructor sign-up is closed at the moment"                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Escalate to the Super Admin, who can **Reinstate** the seller or reopen sign-up ([commission and sellers](#commission-and-sellers))                                                                                                                                                                                                                                                          |
 | A seller asks where their payout is                                            | Sales are paid only after the hold, in the monthly run. A seller owed less than the minimum is carried forward, and a payout without payout details, or one the Super Admin held, waits; the seller sees why on **Payouts**                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Check the seller's payout in the latest run ([payout run](#monthly-payout-run)); a paid one has its UTR in the bank file. A seller with no payout details adds them under **Payout details**                                                                                                                                                                                                 |
-| A marketplace course is stuck in review                                        | No one has reviewed it yet. The seller can't edit or withdraw it while it's in review, and isn't notified of the decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Review it ([course review queue](#course-review-queue)) and tell the seller                                                                                                                                                                                                                                                                                                                  |
+| A marketplace course is stuck in review                                        | No one has reviewed it yet. The seller can't edit it while it's in review, but can withdraw it, and is notified of the decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Review it ([course review queue](#course-review-queue))                                                                                                                                                                                                                                                                                                                                      |
 | Is this marketplace certificate genuine? Or: the name on it is wrong           | Anyone can check a certificate ID on its page. The learner's name is copied when the certificate is issued, and the app can't change it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Open `https://app.example.com/market/certificates/<ID>`; an unknown ID shows "Certificate not found". For names, see [certificate verification](#certificate-verification)                                                                                                                                                                                                                   |
 | Seller's upload fails: "Upload data is missing; start again"                   | The upload's part file in `api-tmp` is gone, for example after old parts were cleaned up                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | The seller uploads the file again ([media uploads](#media-uploads-and-transcoding))                                                                                                                                                                                                                                                                                                          |
 | Who changed this?                                                              |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Super admins search **Audit log** (`/admin/audit`) by action, e.g. `institute.`. To narrow it to one institute or user, query `audit_events` as in [5.8](#58-suspected-security-incident-or-cross-tenant-exposure). Only some actions are audited.                                                                                                                                           |
@@ -1325,10 +1314,10 @@ the private incident location or wherever is agreed.
 | 10  | Production deployment, monitoring, support and rollback plans are approved. | [deployment.md](deployment.md): first deployment, [upgrades](deployment.md#upgrades), [rollback](deployment.md#rollback) and the [migration rollback plan](deployment.md#migration-rollback-plan). The CI Compose smoke test (`deploy/smoke-test.sh`). This document.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | The decisions in [section 9](#9-open-decisions). Alerts set up and tested. Support staffed. An upgrade and a rollback rehearsed on staging.                                                                                                                                                                                                                                                     | Operations lead, business owner |
 
 The course marketplace has its own suites: `marketplace.test.ts`, `marketplace-payouts.test.ts`,
-`marketplace-quiz-cert.test.ts` and `marketplace-engagement.test.ts` in the backend, and the E2E specs
-`marketplace-browse-buy-watch.spec.ts`, `marketplace-payouts.spec.ts`, `marketplace-quiz-certificate.spec.ts` and
-`marketplace-reviews-qa-wishlist.spec.ts`. They all use the mock gateway, and none sends a marketplace webhook, so
-before launch make a real payment, webhook and refund through the platform gateway on staging
+`marketplace-quiz-cert.test.ts`, `marketplace-engagement.test.ts` and `marketplace-money-fixes.test.ts` in the
+backend, and the E2E specs `marketplace-browse-buy-watch.spec.ts`, `marketplace-payouts.spec.ts`,
+`marketplace-quiz-certificate.spec.ts` and `marketplace-reviews-qa-wishlist.spec.ts`. They all use the mock gateway;
+`marketplace-money-fixes.test.ts` sends mock webhooks (replays, a second payment, a refunded order), so before launch make a real payment, webhook and refund through the platform gateway on staging
 ([5.13](#513-course-marketplace)).
 
 ### Availability and operations criteria (section 10)
@@ -1414,7 +1403,7 @@ owners are TBD.
 | 28  | Marketplace refund window, sales hold and minimum payout, and how fast refund requests are decided                                                            | Keep the defaults (30 days, 30 days, ₹500), and decide requests within the 2 working days the app promises learners                                                                                                                                                       | TBD   |
 | 29  | Marketplace course review standards and time, and which learner reviews moderators hide                                                                       | Written standards for both, shared with sellers; course reviews within the 2 working days the app promises sellers                                                                                                                                                        | TBD   |
 | 30  | Marketplace commission, and whether anyone can sign up to teach                                                                                               | A business decision; the defaults are 30% and open sign-up                                                                                                                                                                                                                | TBD   |
-| 31  | Payouts to suspended sellers, which the app still includes                                                                                                    | Hold them until the suspension is resolved                                                                                                                                                                                                                                | TBD   |
+| 31  | What happens to the held payouts of a seller who stays suspended                                                                                              | The app holds them; keep them held until the suspension is resolved                                                                                                                                                                                                       | TBD   |
 | 32  | Correcting the name on a marketplace certificate, and revoking certificates; the app can do neither                                                           | Correct names in the database after a second person checks the request ([certificate verification](#certificate-verification)); revocation only if it's needed                                                                                                            | TBD   |
 | 33  | Marketplace orders paid through Razorpay or Paytm get no webhook, and nothing reconciles pending orders or lets an admin check one                            | A reconciliation job, or an admin status check; until then, compare pending orders with the gateway's dashboard daily                                                                                                                                                     | TBD   |
 | 34  | How marketplace learners and independent instructors hear about incidents, and how they reach support                                                         | The notices agreed for institutes ([communicate](#communicate)) and the channels in [section 6](#6-support-for-institutes)                                                                                                                                                | TBD   |

@@ -13,6 +13,7 @@ import { BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
 import { MktCategory, MktCourse, MktLecture, MktMedia, MktOrder, MktSaleLedger, MktSeller } from './models';
 import { readiness, toStudioDto } from './courses.service';
+import { notifyCourseDecision } from './decisions.notify';
 import { listCategories } from './catalog.service';
 import { lectureContent } from './learning.service';
 import { sellerRef, toSellerAdminDto } from './sellers.service';
@@ -75,10 +76,16 @@ async function decide(id: number, action: string, apply: (c: MktCourse) => Promi
   return toStudioDto(c);
 }
 
+async function tellSeller(id: number, approved: boolean, note: string | null) {
+  const c = await MktCourse.findByPk(id);
+  const seller = c && (await MktSeller.findByPk(c.sellerId));
+  if (c && seller) await notifyCourseDecision(seller, c, approved, note);
+}
+
 const reviewed = () => ({ reviewedAt: new Date(), reviewedByUserId: getContext().userId ?? null });
 
-export function approveCourse(id: number, note?: string | null): Promise<MktStudioCourseDto> {
-  return decide(
+export async function approveCourse(id: number, note?: string | null): Promise<MktStudioCourseDto> {
+  const dto = await decide(
     id,
     'approved',
     async (c) => {
@@ -93,11 +100,13 @@ export function approveCourse(id: number, note?: string | null): Promise<MktStud
     },
     note ?? undefined,
   );
+  await tellSeller(id, true, note || null);
+  return dto;
 }
 
-export function rejectCourse(id: number, reason: string): Promise<MktStudioCourseDto> {
+export async function rejectCourse(id: number, reason: string): Promise<MktStudioCourseDto> {
   if (!reason.trim()) throw BadRequest('Tell the instructor what to change');
-  return decide(
+  const dto = await decide(
     id,
     'rejected',
     async (c) => {
@@ -107,6 +116,8 @@ export function rejectCourse(id: number, reason: string): Promise<MktStudioCours
     },
     reason,
   );
+  await tellSeller(id, false, reason.trim());
+  return dto;
 }
 
 /** Re-lists a course that was approved before and then unpublished. */

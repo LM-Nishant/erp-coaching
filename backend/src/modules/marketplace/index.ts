@@ -2,6 +2,7 @@ import { defineModule } from '../../shared/module';
 import { associateMarketplaceModels, initMarketplaceModels } from './models';
 import { marketplaceRoutes } from './marketplace.routes';
 import { associateEngagementModels, initEngagementModels } from './engagement.models';
+import { registerDecisionNotificationEvents } from './decisions.notify';
 import { registerEngagementNotificationEvents } from './engagement.notifications';
 import { associatePayoutModels, initPayoutModels } from './payouts.models';
 import { registerPayoutNotificationEvents } from './payouts.notify';
@@ -12,6 +13,7 @@ import { MARKETPLACE } from './util';
 // Catalogue entries must exist before any request calls notify().
 registerEngagementNotificationEvents();
 registerPayoutNotificationEvents();
+registerDecisionNotificationEvents();
 
 export default defineModule({
   name: MARKETPLACE,

@@ -30,6 +30,10 @@ export const MKT_REFUND_STATUS_LABELS: Record<MktRefundStatus, string> = {
   failed: 'Refund failed',
 };
 
+/** `system`: refund of a payment the platform couldn't use (an order or a course paid twice). */
+export const MKT_REFUND_INITIATORS = ['learner', 'admin', 'system'] as const;
+export type MktRefundInitiator = (typeof MKT_REFUND_INITIATORS)[number];
+
 export const MKT_REVENUE_GROUPS = ['day', 'month'] as const;
 export type MktRevenueGroup = (typeof MKT_REVENUE_GROUPS)[number];
 
@@ -187,6 +191,8 @@ export interface MktPayoutPreviewRow {
   netPaise: number;
   entries: number;
   hasAccount: boolean;
+  /** Suspended sellers are put on hold in the run, and can't be released until reinstated. */
+  suspended: boolean;
   /** Below the minimum (or not positive): carried forward, not included in a run. */
   carriedForward: boolean;
 }
@@ -212,7 +218,7 @@ export interface MktRefundDto {
   amountPaise: number;
   reason: string;
   status: MktRefundStatus;
-  initiatedBy: 'learner' | 'admin';
+  initiatedBy: MktRefundInitiator;
   decisionNote: string | null;
   gatewayRefundId: string | null;
   createdAt: string;

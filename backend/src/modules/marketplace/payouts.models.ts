@@ -7,7 +7,13 @@ import {
   type NonAttribute,
   type Sequelize,
 } from 'sequelize';
-import type { MktPayoutMethod, MktPayoutRunStatus, MktPayoutStatus, MktRefundStatus } from '@erp/shared';
+import type {
+  MktPayoutMethod,
+  MktPayoutRunStatus,
+  MktPayoutStatus,
+  MktRefundInitiator,
+  MktRefundStatus,
+} from '@erp/shared';
 import { registerEncryptedColumns } from '../../infrastructure/database/encrypted-columns';
 import { MktOrder, MktOrderItem, MktSaleLedger, MktSeller } from './models';
 
@@ -82,11 +88,13 @@ export class MktRefund extends Model<Attrs<MktRefund>, Create<MktRefund>> {
   declare amountPaise: number;
   declare reason: string;
   declare status: CreationOptional<MktRefundStatus>;
-  declare initiatedBy: 'learner' | 'admin';
+  declare initiatedBy: MktRefundInitiator;
   declare decisionNote: CreationOptional<string | null>;
   declare decidedByUserId: CreationOptional<number | null>;
   declare decidedAt: CreationOptional<Date | null>;
   declare gatewayRefundId: CreationOptional<string | null>;
+  /** Set for the refund of an extra payment of an order: only that payment is returned. */
+  declare gatewayPaymentId: CreationOptional<string | null>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
   declare order?: NonAttribute<MktOrder>;
@@ -184,6 +192,7 @@ export function initPayoutModels(sequelize: Sequelize) {
       decidedByUserId: uint(),
       decidedAt: date(),
       gatewayRefundId: str(120, true),
+      gatewayPaymentId: str(120, true),
       ...stamps,
     },
     { sequelize, tableName: 'mkt_refunds' },

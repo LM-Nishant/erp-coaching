@@ -126,7 +126,7 @@ export const up: Migration = async () => {
     const sale = await MktSaleLedger.create({ ...row, entryType: 'sale', createdAt: at });
     if (refundAfter) {
       const refundedAt = daysAgo(ago - refundAfter);
-      await MktRefund.create({
+      const refund = await MktRefund.create({
         orderId: order.id,
         orderItemId: item.id,
         userId: buyer.id,
@@ -139,6 +139,7 @@ export const up: Migration = async () => {
         gatewayRefundId: `demo_rfnd_${seq}`,
         createdAt: daysAgo(ago - 1),
       });
+      await item.update({ refundId: refund.id });
       await MktSaleLedger.create({ ...row, entryType: 'refund', createdAt: refundedAt });
     } else {
       await MktEnrolment.create({

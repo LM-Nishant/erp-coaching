@@ -3,6 +3,7 @@
     <ion-segment :value="status" class="filter" @ion-change="setStatus(String($event.detail.value))">
       <ion-segment-button value="requested"><ion-label>Requested</ion-label></ion-segment-button>
       <ion-segment-button value="refunded"><ion-label>Refunded</ion-label></ion-segment-button>
+      <ion-segment-button value="failed"><ion-label>Failed</ion-label></ion-segment-button>
       <ion-segment-button value="rejected"><ion-label>Rejected</ion-label></ion-segment-button>
       <ion-segment-button value="all"><ion-label>All</ion-label></ion-segment-button>
     </ion-segment>
@@ -14,7 +15,7 @@
             <h3>{{ r.orderNumber }} · {{ r.courseTitle ?? 'Whole order' }}</h3>
             <p>
               {{ r.buyer.name }}<template v-if="r.buyer.mobile"> · {{ r.buyer.mobile }}</template> ·
-              {{ r.initiatedBy === 'admin' ? 'by admin' : 'by learner' }} · {{ dateLabel(r.createdAt) }}
+              {{ REFUND_INITIATOR_LABELS[r.initiatedBy] }} · {{ dateLabel(r.createdAt) }}
             </p>
           </div>
           <div class="amount">
@@ -33,6 +34,11 @@
           >
           <ion-button size="small" fill="outline" color="danger" :disabled="busy" @click="reject(r)"
             >Reject</ion-button
+          >
+        </div>
+        <div v-else-if="r.status === 'failed'" class="actions">
+          <ion-button size="small" :disabled="busy" :data-testid="`retry-${r.id}`" @click="retry(r)"
+            >Retry refund</ion-button
           >
         </div>
       </ion-card-content>
@@ -69,7 +75,13 @@ import {
 import AppPage from '@/components/AppPage.vue';
 import { toast, toastError } from '@/core/toast';
 import { rupees } from '../api';
-import { REFUND_STATUS_COLORS, dateLabel, payoutAdminApi } from '../payouts-api';
+import {
+  REFUND_INITIATOR_LABELS,
+  REFUND_STATUS_COLORS,
+  dateLabel,
+  payoutAdminApi,
+  refundOutcome,
+} from '../payouts-api';
 import { confirmAction, promptText } from './prompt';
 
 const status = ref<MktRefundStatus | 'all'>('requested');
@@ -93,11 +105,12 @@ function setStatus(v: string) {
   void go(1);
 }
 
-async function run(fn: () => Promise<unknown>, done: string) {
+async function run(fn: () => Promise<MktRefundDto>, done?: string) {
   busy.value = true;
   try {
-    await fn();
-    await toast(done);
+    const r = await fn();
+    const outcome = done ? { message: done, color: 'success' as const } : refundOutcome(r);
+    await toast(outcome.message, outcome.color);
     await load();
   } catch (e) {
     void toastError(e);
@@ -112,7 +125,16 @@ async function approve(r: MktRefundDto) {
     `Refund ${rupees(r.amountPaise)} to ${r.buyer.name}. Their access to the course is removed and the seller's earnings are reversed.`,
     'Refund',
   );
-  if (ok) await run(() => payoutAdminApi.approveRefund(r.id), 'Refunded');
+  if (ok) await run(() => payoutAdminApi.approveRefund(r.id));
+}
+
+async function retry(r: MktRefundDto) {
+  const ok = await confirmAction(
+    'Retry refund',
+    `Send the refund of ${rupees(r.amountPaise)} to the payment gateway again. It uses the same refund reference, so it is never paid twice.`,
+    'Retry',
+  );
+  if (ok) await run(() => payoutAdminApi.retryRefund(r.id));
 }
 
 async function reject(r: MktRefundDto) {
@@ -129,7 +151,7 @@ onMounted(() => go(1));
 
 <style scoped>
 .filter {
-  max-width: 560px;
+  max-width: 680px;
   margin-bottom: 8px;
 }
 .row {

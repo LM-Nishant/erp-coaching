@@ -77,7 +77,7 @@ import StatCard from '@/components/StatCard.vue';
 import type { MktLedgerEntryDto } from '@erp/shared';
 import { toast, toastError } from '@/core/toast';
 import { adminMarketApi, rupees, studioApi, type LedgerPage, type StudioScope } from '../api';
-import { payoutAdminApi, signedRupees } from '../payouts-api';
+import { payoutAdminApi, refundOutcome, signedRupees } from '../payouts-api';
 import { promptText } from '../admin/prompt';
 
 const route = useRoute();
@@ -104,8 +104,10 @@ async function refund(e: MktLedgerEntryDto) {
   });
   if (!reason) return;
   try {
-    await payoutAdminApi.refundOrder(e.orderId, { courseId: e.courseId, reason });
-    await toast('Refunded');
+    const outcome = refundOutcome(
+      await payoutAdminApi.refundOrder(e.orderId, { courseId: e.courseId, reason }),
+    );
+    await toast(outcome.message, outcome.color);
     await load(data.value?.page ?? 1);
   } catch (err) {
     void toastError(err);

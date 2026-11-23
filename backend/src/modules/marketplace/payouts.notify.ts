@@ -23,27 +23,21 @@ export function registerPayoutNotificationEvents() {
 }
 
 /**
- * Notifies the seller that a payout was sent: an institute storefront's admins, or the independent
- * instructor. notify() is institute-scoped, so an instructor is reached through an institute they
- * belong to; one with none gets it in their personal (platform) inbox. Never throws.
+ * Notifies a seller: an institute storefront's admins, or the independent instructor. notify() is
+ * institute-scoped, so an instructor is reached through an institute they belong to; one with none gets
+ * it in their personal (platform) inbox. Never throws.
  */
-export async function notifyPayoutPaid(
+export async function notifySeller(
   seller: MktSeller,
-  data: { netPaise: number; period: string; reference: string; paidTo: string },
+  event: string,
+  payload: Record<string, unknown>,
 ): Promise<boolean> {
-  const payload = {
-    amount: (data.netPaise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 }),
-    period: data.period,
-    reference: data.reference,
-    paidTo: data.paidTo,
-    seller: seller.displayName,
-  };
   try {
     if (seller.ownerInstituteId) {
       const instituteId = seller.ownerInstituteId;
       await runWithContext({ system: true, instituteId, allowedBranchIds: null }, () =>
         notify({
-          event: PAYOUT_PAID_EVENT,
+          event,
           recipients: [{ role: SYSTEM_ROLES.INSTITUTE_ADMIN }],
           data: payload,
           branchId: null,
@@ -60,16 +54,12 @@ export async function notifyPayoutPaid(
       tenantBypass: true,
     } as Parameters<typeof UserRole.findOne>[0]);
     if (!membership?.instituteId) {
-      const r = await notifyPlatformUsers({
-        event: PAYOUT_PAID_EVENT,
-        userIds: [seller.userId],
-        data: payload,
-      });
+      const r = await notifyPlatformUsers({ event, userIds: [seller.userId], data: payload });
       return r.messageIds.length > 0;
     }
     await runWithContext({ system: true, instituteId: membership.instituteId, allowedBranchIds: null }, () =>
       notify({
-        event: PAYOUT_PAID_EVENT,
+        event,
         recipients: [{ userIds: [seller.userId!], type: 'user' }],
         data: payload,
         branchId: null,
@@ -77,7 +67,21 @@ export async function notifyPayoutPaid(
     );
     return true;
   } catch (err) {
-    logger.warn({ err, sellerId: seller.id }, 'Payout notification failed');
+    logger.warn({ err, sellerId: seller.id, event }, 'Seller notification failed');
     return false;
   }
+}
+
+/** Tells the seller that a payout was sent. */
+export function notifyPayoutPaid(
+  seller: MktSeller,
+  data: { netPaise: number; period: string; reference: string; paidTo: string },
+): Promise<boolean> {
+  return notifySeller(seller, PAYOUT_PAID_EVENT, {
+    amount: (data.netPaise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 }),
+    period: data.period,
+    reference: data.reference,
+    paidTo: data.paidTo,
+    seller: seller.displayName,
+  });
 }
