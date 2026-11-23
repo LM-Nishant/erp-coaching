@@ -22,7 +22,7 @@
           <p>{{ s.batchName }} · {{ s.teacher.name }}</p>
           <p>{{ when(s.scheduledStartAt) }} – {{ time(s.scheduledEndAt) }}</p>
         </ion-label>
-        <ion-badge slot="end" :color="statusColor(s.status)">{{ s.status }}</ion-badge>
+        <StatusChip slot="end" v-bind="chip(s)" />
         <ion-button
           v-if="s.status === 'live'"
           slot="end"
@@ -127,9 +127,8 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue';
+import { onBeforeUnmount, reactive, ref, watch } from 'vue';
 import {
-  IonBadge,
   IonButton,
   IonButtons,
   IonContent,
@@ -154,11 +153,13 @@ import { add, playCircleOutline } from 'ionicons/icons';
 import { useRouter } from 'vue-router';
 import type { BatchDto, ClassSessionDto, LiveRecordingDto, LiveSessionDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { useI18n } from 'vue-i18n';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import { academicsApi } from '@/modules/academics/api';
 import { liveApi } from './api';
-import { duration, size, statusColor, time, when } from './format';
+import { duration, joinState, size, time, when } from './format';
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -166,6 +167,23 @@ const tab = ref<'upcoming' | 'past' | 'recordings'>('upcoming');
 const sessions = ref<LiveSessionDto[]>([]);
 const recordings = ref<LiveRecordingDto[]>([]);
 const loading = ref(true);
+const { t } = useI18n();
+
+// Ticks so "Starts in N min" counts down while the list is open.
+const now = ref(Date.now());
+const tick = setInterval(() => (now.value = Date.now()), 30_000);
+onBeforeUnmount(() => clearInterval(tick));
+
+type Tone = 'success' | 'warning' | 'danger' | 'primary' | 'medium';
+function chip(s: LiveSessionDto): { label: string; tone: Tone } {
+  const j = joinState(s, now.value);
+  if (j.kind === 'live') return { label: t('liveClasses.list.live'), tone: 'danger' };
+  if (j.kind === 'soon')
+    return { label: t('liveClasses.widgets.startsIn', { n: j.minutes }), tone: 'warning' };
+  if (j.kind === 'waiting') return { label: t('liveClasses.widgets.waiting'), tone: 'warning' };
+  if (j.kind === 'later') return { label: t('liveClasses.list.scheduled'), tone: 'primary' };
+  return { label: t(`liveClasses.list.${s.status}`), tone: 'medium' };
+}
 
 async function load() {
   loading.value = true;

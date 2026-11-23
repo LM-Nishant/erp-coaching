@@ -1,5 +1,5 @@
 <template>
-  <p v-if="loaded && !sections.length" class="muted">Nothing to show yet.</p>
+  <p v-if="loaded && !sections.length" class="muted">{{ $t('parentPortal.summary.empty') }}</p>
   <ParentSection v-for="s in sections" :key="s.key" :section="s" />
 </template>
 

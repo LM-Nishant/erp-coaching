@@ -614,6 +614,47 @@ export async function courseContents(
   };
 }
 
+/**
+ * "Continue watching": the learner's most recently viewed, unfinished resources they can still open
+ * (newest first). Feeds the student Today home.
+ */
+export async function continueLearning(limit = 3): Promise<LmsLearnerResourceDto[]> {
+  const ctx = requireTenantContext();
+  const s = await learnerScope(ctx.instituteId, ctx.userId!);
+  const recent = await LmsProgress.findAll({
+    where: {
+      instituteId: s.instituteId,
+      studentUserId: s.studentUserId,
+      completedAt: null,
+      lastViewedAt: { [Op.ne]: null },
+    },
+    order: [
+      ['lastViewedAt', 'DESC'],
+      ['id', 'DESC'],
+    ],
+    limit: 20,
+  });
+  if (!recent.length) return [];
+  const courseIds = new Set(await libraryCourseIds(s));
+  const rows = await resourceRepo.findAll({
+    where: { ...publishedWhere(s.now), id: recent.map((p) => p.resourceId) },
+    include: resourceInclude,
+  });
+  const byId = new Map(
+    rows.filter((r) => courseIds.has(r.courseId) && visibleTo(r, s)).map((r) => [r.id, r]),
+  );
+  const out: LmsLearnerResourceDto[] = [];
+  for (const p of recent) {
+    const r = byId.get(p.resourceId);
+    if (!r) continue;
+    const dto = await toLearnerDto(r, s, p);
+    if (dto.locked) continue;
+    out.push(dto);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 /** Loads a published resource the current learner can see, with its access verdict. */
 async function learnerResource(id: number) {
   const ctx = requireTenantContext();

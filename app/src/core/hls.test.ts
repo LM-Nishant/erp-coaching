@@ -7,16 +7,21 @@ const { FakeHls, players } = vi.hoisted(() => {
   const players: InstanceType<typeof FakeHls>[] = [];
   class FakeHls {
     static isSupported = () => true;
-    static Events = { ERROR: 'hlsError' };
+    static Events = { ERROR: 'hlsError', MANIFEST_PARSED: 'hlsManifestParsed' };
     onError: ErrorHandler | null = null;
+    onManifest: (() => void) | null = null;
+    levels: { height: number }[] = [];
+    nextLevel = -1;
+    currentLevel = -1;
     loadSource = vi.fn();
     attachMedia = vi.fn();
     destroy = vi.fn();
     constructor() {
       players.push(this);
     }
-    on(_event: string, fn: ErrorHandler) {
-      this.onError = fn;
+    on(event: string, fn: ErrorHandler) {
+      if (event === FakeHls.Events.ERROR) this.onError = fn;
+      else this.onManifest = fn as () => void;
     }
   }
   return { FakeHls, players };
@@ -41,8 +46,8 @@ function play(initial: VideoSource | null) {
   const source = ref<VideoSource | null>(initial);
   const onFatal = vi.fn();
   const scope = effectScope();
-  scope.run(() => useVideoSource(ref(el), source, onFatal));
-  return { el, source, onFatal, scope };
+  const controls = scope.run(() => useVideoSource(ref(el), source, onFatal))!;
+  return { el, source, onFatal, scope, ...controls };
 }
 
 describe('HLS playback', () => {
@@ -71,6 +76,23 @@ describe('HLS playback', () => {
     player.onError!('hlsError', { fatal: true });
     expect(onFatal).toHaveBeenCalledTimes(1);
     expect(player.destroy).toHaveBeenCalled();
+  });
+
+  it('lists the stream qualities and switches to the chosen one', async () => {
+    const { qualities, quality } = play({ url: 'https://api.test/hls/t/index.m3u8', hls: true });
+    await vi.waitFor(() => expect(players).toHaveLength(1));
+    const [player] = players;
+    player.levels = [{ height: 720 }, { height: 360 }, { height: 720 }];
+    player.onManifest!();
+    expect(qualities.value).toEqual([360, 720]);
+
+    quality.value = 360;
+    await nextTick();
+    expect(player.nextLevel).toBe(1);
+    quality.value = -1;
+    await nextTick();
+    expect(player.nextLevel).toBe(-1);
+    expect(player.currentLevel).toBe(-1);
   });
 
   it('replaces the player when the URL changes and destroys it when the source or page goes away', async () => {

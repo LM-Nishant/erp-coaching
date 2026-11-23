@@ -432,6 +432,7 @@ describe('fees, payments & accounting', () => {
     expect(me.status).toBe(200);
     expect(me.body.accounts.map((a: { id: number }) => a.id)).toContain(accountId);
     expect(me.body.gateways).toContain('mock');
+    expect(me.body.office).toMatchObject({ name: expect.any(String) });
     const due = me.body.totalDue as number;
 
     const checkout = await request(app)

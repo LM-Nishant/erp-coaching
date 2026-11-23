@@ -1,3 +1,4 @@
+import { defineAsyncComponent } from 'vue';
 import {
   calendarOutline,
   checkmarkDoneOutline,
@@ -110,6 +111,26 @@ export default defineAppModule({
       permission: 'attendance-self.view',
       planModule: 'attendance',
       order: 31,
+    },
+  ],
+  widgets: [
+    {
+      id: 'attendance.summary',
+      slot: 'student-home',
+      title: 'Attendance',
+      component: defineAsyncComponent(() => import('./widgets/AttendanceWidget.vue')),
+      permission: 'attendance-self.view',
+      planModule: 'attendance',
+      order: 60,
+    },
+    {
+      id: 'attendance.summary',
+      slot: 'parent-home',
+      title: 'Attendance',
+      component: defineAsyncComponent(() => import('./widgets/AttendanceWidget.vue')),
+      permission: 'attendance-self.view',
+      planModule: 'attendance',
+      order: 20,
     },
   ],
 });

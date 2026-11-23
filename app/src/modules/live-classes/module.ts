@@ -1,3 +1,4 @@
+import { defineAsyncComponent } from 'vue';
 import { radioOutline } from 'ionicons/icons';
 import { defineAppModule } from '@/core/modules';
 
@@ -31,6 +32,18 @@ export default defineAppModule({
       permission: 'live-classes.view',
       planModule: 'live-classes',
       order: 35,
+    },
+  ],
+  widgets: [
+    {
+      id: 'live-classes.next',
+      slot: 'student-home',
+      title: 'Next class',
+      component: defineAsyncComponent(() => import('./widgets/NextClassWidget.vue')),
+      permission: 'live-classes.view',
+      planModule: 'live-classes',
+      order: 10,
+      size: 'full',
     },
   ],
 });

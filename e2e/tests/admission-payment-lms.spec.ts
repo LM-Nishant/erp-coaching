@@ -15,7 +15,7 @@ import { createBatch, createInstitute, uniqueMobile } from '../support/data';
 import { actionSheet, activePage, chooseOption, expectToast, modal, signInWithOtp } from '../support/ui';
 
 const FEE_PAISE = 1_200_000;
-const FEE = '₹12,000.00';
+const FEE = '₹12,000';
 const LECTURE = { title: 'Lecture 1: Motion in a straight line', url: 'https://example.com/lectures/motion' };
 
 interface FeeAccount {

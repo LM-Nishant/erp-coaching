@@ -381,6 +381,14 @@ export const NOTIFICATION_EVENTS: NotificationEventDef[] = [
     ['student'],
   ),
   ev(
+    'live-classes.reminder',
+    'Live class reminder',
+    'Live classes',
+    ['title', 'minutes', 'joinUrl'],
+    'Live class soon',
+    '"{{title}}" starts in {{minutes}} minutes. Tap to join.',
+  ),
+  ev(
     'homework.assigned',
     'Homework assigned',
     'Homework',

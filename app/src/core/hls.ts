@@ -1,4 +1,4 @@
-import { getCurrentScope, onScopeDispose, watch, type Ref } from 'vue';
+import { getCurrentScope, onScopeDispose, ref, watch, type Ref } from 'vue';
 import type Hls from 'hls.js';
 
 /** A video to play: `hls` for an HLS playlist (`.m3u8`), else a plain file URL. */
@@ -41,6 +41,9 @@ function loadHlsJs(): Promise<typeof Hls> {
  * Plays `source` in `video`: files and natively playable HLS through `src`, other HLS through hls.js
  * (loaded on demand). `onFatal` runs when hls.js gives up (e.g. the signed URL expired), so callers
  * can fetch a fresh URL as they do from the element's `error` event.
+ *
+ * Returns the stream's `qualities` (frame heights, e.g. `[360, 720]`, when hls.js plays a multi-quality stream;
+ * empty otherwise, where the platform picks) and `quality`: the chosen height, `-1` for automatic.
  */
 export function useVideoSource(
   video: Ref<HTMLVideoElement | null | undefined>,
@@ -49,9 +52,18 @@ export function useVideoSource(
 ) {
   let hls: Hls | null = null;
   let seq = 0;
+  const qualities = ref<number[]>([]);
+  const quality = ref(-1);
   const detach = () => {
     hls?.destroy();
     hls = null;
+    qualities.value = [];
+  };
+  const applyQuality = () => {
+    if (!hls) return;
+    const index = quality.value < 0 ? -1 : hls.levels.findIndex((l) => l.height === quality.value);
+    hls.nextLevel = index;
+    if (index < 0) hls.currentLevel = -1;
   };
 
   async function attach(el: HTMLVideoElement | null | undefined, src: VideoSource | null | undefined) {
@@ -81,9 +93,18 @@ export function useVideoSource(
       detach();
       onFatal?.();
     });
+    h.on(HlsJs.Events.MANIFEST_PARSED, () => {
+      if (hls !== h) return;
+      qualities.value = [...new Set(h.levels.map((l) => l.height).filter((x) => x > 0))].sort(
+        (a, b) => a - b,
+      );
+      applyQuality();
+    });
     h.loadSource(src.url);
     h.attachMedia(el);
   }
+
+  watch(quality, applyQuality);
 
   watch([video, source], ([el, src]) => void attach(el, src), { immediate: true, flush: 'post' });
   if (getCurrentScope())
@@ -91,4 +112,5 @@ export function useVideoSource(
       seq++;
       detach();
     });
+  return { qualities, quality };
 }

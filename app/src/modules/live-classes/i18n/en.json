@@ -1,0 +1,21 @@
+{
+  "widgets": {
+    "next": "Next live class",
+    "noClass": "No live classes scheduled",
+    "noClassHint": "When your teacher schedules one, it shows up here with a Join button.",
+    "startsIn": "Starts in {n} min",
+    "waiting": "Waiting for the teacher",
+    "joinNow": "Join class",
+    "openClass": "Open class",
+    "details": "Details"
+  },
+  "list": {
+    "live": "Live now",
+    "scheduled": "Scheduled",
+    "ended": "Ended",
+    "cancelled": "Cancelled"
+  },
+  "detail": {
+    "autoJoinHint": "This page updates itself: Join appears when the teacher starts the class."
+  }
+}

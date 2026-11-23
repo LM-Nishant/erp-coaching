@@ -20,7 +20,8 @@ import {
   Course,
 } from '../src/modules/academics/models';
 import { runWithContext } from '../src/shared/context';
-import { processDueJobs } from '../src/infrastructure/jobs/queue';
+import { enqueueJob, processDueJobs } from '../src/infrastructure/jobs/queue';
+import { Job } from '../src/infrastructure/jobs/job.model';
 import {
   onLiveRecordingReady,
   onLiveSessionEnded,
@@ -218,6 +219,28 @@ describe('live-classes module', () => {
       .send({ title: 'Doubt clearing', durationMinutes: 60 });
     expect(patched.status).toBe(200);
     expect(patched.body.title).toBe('Doubt clearing');
+  });
+
+  it('reminds members 10 minutes before the class and ignores stale reminders', async () => {
+    const jobs = (await Job.findAll({ where: { name: 'live-classes.reminder', status: 'pending' } })).filter(
+      (j) => (j.payload as { liveSessionId: number }).liveSessionId === liveId,
+    );
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].payload).toMatchObject({ startsAt: '2040-02-01T04:30:00.000Z' });
+    expect(+jobs[0].runAt).toBe(Date.parse('2040-02-01T04:20:00.000Z'));
+    // A reminder left over from an earlier start time must not fire.
+    const stale = await enqueueJob(
+      'live-classes.reminder',
+      { liveSessionId: liveId, startsAt: '2040-01-31T04:30:00.000Z' },
+      { instituteId: 1 },
+    );
+    await Promise.all([...jobs, stale].map((j) => j.update({ runAt: new Date(Date.now() - 1000) })));
+    await processDueJobs(50);
+    const inbox = await request(app).get('/api/notifications/inbox').set(bearer(student));
+    const reminders = inbox.body.items.filter(
+      (i: { eventKey: string }) => i.eventKey === 'live-classes.reminder',
+    );
+    expect(reminders).toHaveLength(1);
   });
 
   it('lets students see only classes of their batches and denies roles without access', async () => {

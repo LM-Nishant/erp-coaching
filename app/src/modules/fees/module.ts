@@ -1,3 +1,4 @@
+import { defineAsyncComponent } from 'vue';
 import {
   barChartOutline,
   businessOutline,
@@ -159,6 +160,26 @@ export default defineAppModule({
       permission: 'my-fees.view',
       planModule: 'fees',
       order: 20,
+    },
+  ],
+  widgets: [
+    {
+      id: 'fees.due',
+      slot: 'student-home',
+      title: 'Fees',
+      component: defineAsyncComponent(() => import('./widgets/FeeDueWidget.vue')),
+      permission: 'my-fees.view',
+      planModule: 'fees',
+      order: 50,
+    },
+    {
+      id: 'fees.due',
+      slot: 'parent-home',
+      title: 'Fees',
+      component: defineAsyncComponent(() => import('./widgets/FeeDueWidget.vue')),
+      permission: 'my-fees.view',
+      planModule: 'fees',
+      order: 10,
     },
   ],
 });

@@ -1,0 +1,13 @@
+{
+  "widgets": {
+    "upcoming": "Upcoming tests",
+    "latestResult": "Latest result",
+    "noTests": "No tests coming up",
+    "noResults": "No results yet",
+    "minutes": "{n} min",
+    "startNow": "Start now",
+    "score": "{got} / {max} marks",
+    "rank": "Rank {n}",
+    "percentile": "Better than {n}% of students"
+  }
+}
