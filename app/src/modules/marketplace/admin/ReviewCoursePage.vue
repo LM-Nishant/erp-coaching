@@ -103,6 +103,7 @@
       <ion-content class="ion-padding">
         <template v-if="lecture">
           <StreamPlayer v-if="lecture.stream" :stream="lecture.stream" />
+          <QuizReview v-if="lecture.type === 'quiz'" :course-id="id" :lecture-id="lecture.id" />
           <p v-if="lecture.articleBody" class="prose">{{ lecture.articleBody }}</p>
           <ion-button v-if="lecture.download" @click="openFileLink(lecture.download.url)"
             >Download {{ lecture.download.name }}</ion-button
@@ -147,6 +148,7 @@ import { toast, toastError } from '@/core/toast';
 import StreamPlayer from '../components/StreamPlayer.vue';
 import { STATUS_COLORS } from '../studio/status';
 import { lectureIcon } from '../lecture-icons';
+import QuizReview from '../components/QuizReview.vue';
 import { adminMarketApi, clock, durationLabel, languageLabel, priceLabel } from '../api';
 
 const route = useRoute();

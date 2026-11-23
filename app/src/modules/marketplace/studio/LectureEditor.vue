@@ -27,6 +27,7 @@
           <ion-select-option value="video">Video</ion-select-option>
           <ion-select-option value="article">Article</ion-select-option>
           <ion-select-option value="resource">Downloadable resource</ion-select-option>
+          <ion-select-option value="quiz">Quiz</ion-select-option>
         </ion-select>
       </ion-item>
       <ion-item>
@@ -47,6 +48,9 @@
           data-testid="lecture-article-input"
         />
       </ion-item>
+      <ion-item v-else-if="form.type === 'quiz'" lines="none">
+        <p class="muted">Save the lecture, then add its questions with “Edit questions”.</p>
+      </ion-item>
       <ion-item v-else lines="none">
         <MediaUpload
           :scope="scope"
@@ -62,11 +66,11 @@
           v-model.number="form.minutes"
           type="number"
           min="0"
-          label="Reading time (minutes)"
+          :label="form.type === 'quiz' ? 'Time to complete (minutes)' : 'Reading time (minutes)'"
           label-placement="stacked"
         />
       </ion-item>
-      <ion-item>
+      <ion-item v-if="form.type !== 'quiz'">
         <ion-toggle v-model="form.preview" data-testid="lecture-preview">Free preview</ion-toggle>
       </ion-item>
     </ion-list>
@@ -119,8 +123,8 @@ function save() {
     type: form.type,
     description: form.description.trim() || null,
     articleBody: form.type === 'article' ? form.articleBody : null,
-    mediaId: form.type === 'article' ? null : (media.value?.id ?? null),
-    preview: form.preview,
+    mediaId: form.type === 'article' || form.type === 'quiz' ? null : (media.value?.id ?? null),
+    preview: form.type !== 'quiz' && form.preview,
     durationSeconds: form.type === 'video' ? undefined : Math.max(0, Number(form.minutes) || 0) * 60,
   });
 }

@@ -17,6 +17,7 @@ import { audit } from '../../shared/audit/audit.service';
 import { MktCategory, MktCourse, MktLecture, MktMedia, MktSection, MktSeller } from './models';
 import { imageUrl, toMediaDto } from './media.service';
 import { sellerRef } from './sellers.service';
+import { questionCounts } from './quizzes.service';
 import { cleanList, iso, uniqueSlug } from './util';
 
 export const cardInclude = [
@@ -140,7 +141,7 @@ async function ownSection(sellerId: number, courseId: number, id: number) {
   return s;
 }
 
-async function ownLecture(sellerId: number, courseId: number, id: number) {
+export async function ownLecture(sellerId: number, courseId: number, id: number) {
   await ownCourse(sellerId, courseId);
   const l = await MktLecture.findOne({ where: { id, courseId } });
   if (!l) throw NotFound('Lecture');
@@ -166,7 +167,7 @@ async function checkCategories(categoryId?: number | null, subcategoryId?: numbe
 }
 
 /** Editing a course that was sent back moves it to draft again; edits to published courses stay live. */
-async function touched(c: MktCourse) {
+export async function touched(c: MktCourse) {
   if (c.status === 'rejected') await c.update({ status: 'draft' });
 }
 
@@ -300,7 +301,7 @@ async function lectureFields(sellerId: number, input: Partial<MktLectureInput>, 
   const kinds = type === 'video' ? ['video'] : type === 'resource' ? ['file', 'image', 'video'] : [];
   let media: MktMedia | null = null;
   if (input.mediaId !== undefined && input.mediaId !== null) {
-    if (!kinds.length) throw BadRequest('Article lectures have no media');
+    if (!kinds.length) throw BadRequest(`${type === 'quiz' ? 'Quiz' : 'Article'} lectures have no media`);
     media = await checkMedia(sellerId, input.mediaId, kinds);
   }
   return {
@@ -310,7 +311,8 @@ async function lectureFields(sellerId: number, input: Partial<MktLectureInput>, 
       ...(input.description !== undefined && { description: input.description || null }),
       ...(input.articleBody !== undefined && { articleBody: input.articleBody || null }),
       ...(input.mediaId !== undefined && { mediaId: input.mediaId }),
-      ...(input.preview !== undefined && { preview: input.preview }),
+      // Quizzes are graded per enrolled learner, so they can't be free previews.
+      ...(input.preview !== undefined && { preview: type === 'quiz' ? false : input.preview }),
       ...(input.durationSeconds !== undefined && input.durationSeconds !== null
         ? { durationSeconds: input.durationSeconds }
         : media?.durationSeconds
@@ -417,6 +419,7 @@ export async function readiness(c: MktCourse): Promise<MktReadinessDto> {
   if ((c.outcomes ?? []).length < 2) issues.push('List at least two things learners will learn');
   const outline = await curriculum(c.id);
   const lectures = outline.flatMap((s) => s.lectures);
+  const quizQuestions = await questionCounts(c.id);
   if (!lectures.length) issues.push('Add at least one lecture');
   if (outline.some((s) => !s.lectures.length)) issues.push('Every section needs at least one lecture');
   for (const l of lectures) {
@@ -425,6 +428,7 @@ export async function readiness(c: MktCourse): Promise<MktReadinessDto> {
     if (l.type === 'article' && !l.articleBody?.trim()) issues.push(`Write the article "${l.title}"`);
     if (l.type === 'resource' && (!l.media || l.media.status !== 'ready'))
       issues.push(`Attach the file for "${l.title}"`);
+    if (l.type === 'quiz' && !quizQuestions.get(l.id)) issues.push(`Add questions to the quiz "${l.title}"`);
   }
   if (c.pricePaise > 0 && !lectures.some((l) => l.preview))
     issues.push('Mark at least one lecture as a free preview');

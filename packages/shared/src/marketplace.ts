@@ -5,8 +5,8 @@
  */
 import type { PaymentGatewayKey } from './fees';
 
-/** `quiz` and other kinds are added later; the column is a plain string so new kinds need no migration. */
-export const MKT_LECTURE_TYPES = ['video', 'article', 'resource'] as const;
+/** The column is a plain string so new kinds need no migration. */
+export const MKT_LECTURE_TYPES = ['video', 'article', 'resource', 'quiz'] as const;
 export type MktLectureType = (typeof MKT_LECTURE_TYPES)[number];
 
 export const MKT_COURSE_LEVELS = ['all', 'beginner', 'intermediate', 'advanced'] as const;
@@ -399,6 +399,8 @@ export interface MktEnrolmentDto {
   lastAccessedAt: string | null;
   completedAt: string | null;
   enrolledAt: string;
+  /** Completion certificate, once the course is 100% complete. */
+  certificateCode?: string | null;
 }
 
 export interface MktPlayerLectureDto extends MktLectureOutlineDto {
@@ -411,6 +413,8 @@ export interface MktPlayerDto {
   sections: { id: number; title: string; lectures: MktPlayerLectureDto[] }[];
   progressPercent: number;
   lastLectureId: number | null;
+  /** Completion certificate, once the course is finished. */
+  certificateCode?: string | null;
 }
 
 export interface MktLectureContentDto {
@@ -436,6 +440,8 @@ export interface MktProgressDto {
   completed: boolean;
   positionSeconds: number;
   progressPercent: number;
+  /** Set when this update completed the course and its certificate exists. */
+  certificateCode?: string | null;
 }
 
 // ---------------------------------------------------------------- sellers, coupons, settings, ledger

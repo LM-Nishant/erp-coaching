@@ -11,6 +11,7 @@
     </template>
     <div v-if="player" class="player">
       <main class="stage">
+        <CertificateBanner v-if="player.certificateCode" :code="player.certificateCode" />
         <template v-if="lecture">
           <StreamPlayer
             v-if="lecture.type === 'video'"
@@ -27,6 +28,13 @@
           <article v-else-if="lecture.type === 'article'" class="article" data-testid="lecture-article">
             {{ lecture.articleBody }}
           </article>
+          <QuizPlayer
+            v-else-if="lecture.type === 'quiz'"
+            :key="`quiz-${lecture.id}`"
+            :course-id="courseId"
+            :lecture-id="lecture.id"
+            @result="onQuizResult"
+          />
           <div v-else-if="lecture.download" class="resource">
             <ion-icon :icon="documentAttachOutline" />
             <p>
@@ -46,6 +54,7 @@
                 >Previous</ion-button
               >
               <ion-button
+                v-if="lecture.type !== 'quiz'"
                 size="small"
                 :color="lecture.completed ? 'success' : 'primary'"
                 data-testid="mark-complete"
@@ -122,10 +131,12 @@ import {
   IonSpinner,
 } from '@ionic/vue';
 import { checkmarkCircle, documentAttachOutline } from 'ionicons/icons';
-import type { MktLectureContentDto, MktPlayerDto, MktProgressInput } from '@erp/shared';
+import type { MktLectureContentDto, MktPlayerDto, MktProgressInput, MktQuizResultDto } from '@erp/shared';
 import { toastError } from '@/core/toast';
 import MarketShell from './components/MarketShell.vue';
 import StreamPlayer from './components/StreamPlayer.vue';
+import QuizPlayer from './components/QuizPlayer.vue';
+import CertificateBanner from './components/CertificateBanner.vue';
 import QaPanel from './components/QaPanel.vue';
 import { clock, marketApi } from './api';
 import { lectureIcon } from './lecture-icons';
@@ -182,6 +193,7 @@ async function save(body: MktProgressInput, background = false) {
   try {
     const res = await marketApi.progress(courseId, current.id, body, background);
     p.progressPercent = res.progressPercent;
+    if (res.certificateCode) p.certificateCode = res.certificateCode;
     const item = flat.value.find((l) => l.id === res.lectureId);
     if (item) {
       item.completed = res.completed;
@@ -191,6 +203,16 @@ async function save(body: MktProgressInput, background = false) {
   } catch (e) {
     if (!background) void toastError(e);
   }
+}
+
+function onQuizResult(res: MktQuizResultDto) {
+  const p = player.value;
+  if (!p) return;
+  p.progressPercent = res.progressPercent;
+  if (res.certificateCode) p.certificateCode = res.certificateCode;
+  const item = flat.value.find((l) => l.id === lecture.value?.id);
+  if (item && res.passed) item.completed = true;
+  if (lecture.value && res.passed) lecture.value.completed = true;
 }
 
 const toggleComplete = () => save({ completed: !lecture.value?.completed });

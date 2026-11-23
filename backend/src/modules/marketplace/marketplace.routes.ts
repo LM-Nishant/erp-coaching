@@ -37,6 +37,7 @@ import * as courses from './courses.service';
 import { engagementRoutes } from './engagement.routes';
 import * as learning from './learning.service';
 import * as media from './media.service';
+import { certificatePublicRoutes, quizAdminRoutes, quizLearnerRoutes, quizStudioRoutes } from './quiz.routes';
 import * as sellers from './sellers.service';
 import { MARKETPLACE } from './util';
 
@@ -354,6 +355,7 @@ function learnerRoutes(api: Router) {
     );
     res.json(await learning.saveProgress(p.id, p.lectureId, body));
   });
+  quizLearnerRoutes(r);
 
   api.use('/marketplace', r);
 }
@@ -511,6 +513,7 @@ function studioRoutes(scope: sellers.SellerScope, can: Guard): Router {
     );
     res.json(await admin.ledger({ ...q, sellerId: await seller() }));
   });
+  quizStudioRoutes(r, scope, can, seller);
   return r;
 }
 
@@ -635,6 +638,8 @@ function adminRoutes(api: Router) {
 export function marketplaceRoutes(api: Router) {
   engagementRoutes(api);
   publicRoutes(api);
+  certificatePublicRoutes(api);
+  quizAdminRoutes(api);
   adminRoutes(api);
   const instructor = studioRoutes('instructor', () => []);
   api.use('/marketplace/instructor', authenticate, instructor);

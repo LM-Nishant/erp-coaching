@@ -7,10 +7,11 @@ import {
   type MktProgressInput,
 } from '@erp/shared';
 import { getContext } from '../../shared/context';
-import { NotFound } from '../../shared/errors';
+import { BadRequest, NotFound } from '../../shared/errors';
 import { MktCourse, MktEnrolment, MktLecture, MktLectureProgress, MktMedia } from './models';
 import { downloadUrl, streamFor } from './media.service';
 import { cardInclude, curriculum, toCard } from './courses.service';
+import { certificateCodes, issueCertificate } from './certificates.service';
 import { iso } from './util';
 
 const me = () => getContext().userId!;
@@ -24,6 +25,10 @@ export async function myLearning(): Promise<MktEnrolmentDto[]> {
       ['id', 'DESC'],
     ],
   });
+  const codes = await certificateCodes(
+    me(),
+    rows.map((e) => e.courseId),
+  );
   return rows.map((e) => ({
     course: toCard(e.course!),
     progressPercent: e.progressPercent,
@@ -32,6 +37,7 @@ export async function myLearning(): Promise<MktEnrolmentDto[]> {
     lastAccessedAt: iso(e.lastAccessedAt),
     completedAt: iso(e.completedAt),
     enrolledAt: iso(e.createdAt)!,
+    certificateCode: codes.get(e.courseId) ?? null,
   }));
 }
 
@@ -45,9 +51,10 @@ async function myEnrolment(courseId: number) {
 export async function player(courseId: number): Promise<MktPlayerDto> {
   const e = await myEnrolment(courseId);
   const course = (await MktCourse.findByPk(courseId, { include: cardInclude }))!;
-  const [outline, progress] = await Promise.all([
+  const [outline, progress, codes] = await Promise.all([
     curriculum(courseId),
     MktLectureProgress.findAll({ where: { userId: me(), courseId } }),
+    certificateCodes(me(), [courseId]),
   ]);
   return {
     course: toCard(course),
@@ -69,6 +76,7 @@ export async function player(courseId: number): Promise<MktPlayerDto> {
     })),
     progressPercent: e.progressPercent,
     lastLectureId: e.lastLectureId,
+    certificateCode: codes.get(courseId) ?? null,
   };
 }
 
@@ -117,6 +125,8 @@ export async function saveProgress(
   const e = await myEnrolment(courseId);
   const l = await MktLecture.findOne({ where: { id: lectureId, courseId } });
   if (!l) throw NotFound('Lecture');
+  if (l.type === 'quiz' && input.completed !== undefined)
+    throw BadRequest('A quiz is completed by passing it', { code: 'QUIZ_COMPLETION' });
   const [p] = await MktLectureProgress.findOrCreate({
     where: { userId, lectureId },
     defaults: { userId, courseId, lectureId },
@@ -131,7 +141,27 @@ export async function saveProgress(
   if (input.completed === true || (watchedEnough && !completedAt)) completedAt = completedAt ?? new Date();
   if (input.completed === false) completedAt = null;
   await p.update({ positionSeconds: position, completedAt });
+  const course = await recomputeProgress(e, lectureId);
+  return { lectureId, completed: !!completedAt, positionSeconds: position, ...course };
+}
 
+/**
+ * Recomputes the enrolment's progress (optionally completing `lectureId` first, e.g. a passed quiz).
+ * Reaching 100% sets `completed_at` and issues the completion certificate.
+ */
+export async function recomputeProgress(
+  e: MktEnrolment,
+  lectureId: number,
+  mark: { completed?: true } = {},
+): Promise<{ progressPercent: number; certificateCode: string | null }> {
+  const { userId, courseId } = e;
+  if (mark.completed) {
+    const [p] = await MktLectureProgress.findOrCreate({
+      where: { userId, lectureId },
+      defaults: { userId, courseId, lectureId },
+    });
+    if (!p.completedAt) await p.update({ completedAt: new Date() });
+  }
   const [lectureIds, rows] = await Promise.all([
     MktLecture.findAll({ where: { courseId }, attributes: ['id'] }),
     MktLectureProgress.findAll({ where: { userId, courseId }, attributes: ['lectureId', 'completedAt'] }),
@@ -139,13 +169,16 @@ export async function saveProgress(
   const ids = new Set(lectureIds.map((x) => x.id));
   const total = ids.size;
   const done = rows.filter((r) => r.completedAt && ids.has(r.lectureId)).length;
-  const percent = total ? Math.round((done / total) * 100) : 0;
+  const finished = total > 0 && done >= total;
+  // Rounding must not show 100% (or issue a certificate) before every lecture is done.
+  const percent = finished ? 100 : total ? Math.min(99, Math.round((done / total) * 100)) : 0;
   await e.update({
     progressPercent: percent,
     completedLectures: done,
     lastLectureId: lectureId,
     lastAccessedAt: new Date(),
-    completedAt: percent >= 100 ? (e.completedAt ?? new Date()) : null,
+    completedAt: finished ? (e.completedAt ?? new Date()) : null,
   });
-  return { lectureId, completed: !!completedAt, positionSeconds: position, progressPercent: percent };
+  const certificate = finished ? await issueCertificate(e) : null;
+  return { progressPercent: percent, certificateCode: certificate?.code ?? null };
 }

@@ -21,6 +21,7 @@ sending an enquiry) are driven in the browser.
 | `roles-permissions.spec.ts`               | Custom role → grant → assign → menu                       | Admin creates "Front desk" with View students and adds staff with it. Member sees Students, not Fees; admin adds View fees                                            |
 | `marketplace-browse-buy-watch.spec.ts`    | Marketplace browse → buy (mock gateway) → watch           | Visitor searches, opens a preview lecture, signs up as a learner, buys, pays, starts learning and marks lectures complete (50%, then 100%)                            |
 | `marketplace-reviews-qa-wishlist.spec.ts` | Marketplace wishlist → buy → Q&A → rating                 | Learner sees a review on the landing page, wishlists, moves to cart and pays; asks in the player; instructor answers in the studio; learner rates 5 stars (4.0 → 4.5) |
+| `marketplace-quiz-certificate.spec.ts`    | Marketplace quiz → certificate                            | Instructor builds a quiz; learner fails, retakes, passes (100%), gets a certificate and verifies it publicly                                                          |
 
 Each spec also checks the server-side outcome where it matters, for example:
 
