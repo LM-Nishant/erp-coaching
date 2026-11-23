@@ -57,10 +57,15 @@ matched in the vendor's dashboard:
 - **Platform fallback:** with **Offer to institutes without their own fee gateway**, an institute with no enabled
   gateway of its own takes fees through the platform's account. Once the institute enables its own gateway, new
   payments use it, and payments already taken through the platform stay serviceable.
+- **Course marketplace** sales go to the platform's account too, through the gateway with **Use for SaaS
+  subscription payments**, or else the first one enabled. Sellers get their share in monthly payouts made outside
+  the app ([payout run](../operations.md#monthly-payout-run)).
 
 The platform account's webhook URL is the SaaS one, so Razorpay and Paytm can't send it events about fee payments
 taken through the fallback: those are confirmed when the payer returns and by [reconciliation](#reconciliation-and-idempotency).
-Cashfree payments carry their own notification URL, so they get webhooks either way.
+The same goes for course marketplace orders, except that nothing reconciles them: they are confirmed when the
+learner returns or presses **I've paid, check status**. Cashfree payments carry their own notification URL, so they
+get webhooks either way.
 
 ## Setting up a gateway
 
@@ -140,8 +145,10 @@ and live mode needs the secret again, because test and live keys are different.
 | ----------------------------- | -------------------------------------------------------------------- |
 | Institute (fees)              | `${API_PUBLIC_URL}/api/fees/public/webhooks/<gateway>/<webhook key>` |
 | Platform (SaaS subscriptions) | `${API_PUBLIC_URL}/api/subscriptions/public/webhooks/<gateway>`      |
+| Platform (course marketplace) | `${API_PUBLIC_URL}/api/marketplace/public/webhooks/<gateway>`        |
 
-The settings page shows the full URL with a copy button. The institute URL contains a random key that identifies the
+The settings page shows the full URL with a copy button, except the course marketplace's, which only Cashfree orders
+use, carrying it themselves. The institute URL contains a random key that identifies the
 institute's configuration: treat it like a secret. Webhooks are rate limited per client IP by
 `RATE_LIMIT_WEBHOOK_PER_MIN` ([rate limiting](../deployment.md#rate-limiting-behind-the-proxy)).
 
@@ -204,6 +211,9 @@ ledger entry, a refund or a subscription extension twice.
 - **Offline payments** are refunded at once: the app records the refund, and the money is returned outside it.
 - **SaaS subscriptions** have no gateway refunds: the Super Admin issues a credit note and returns the money outside
   the app, for example from the vendor's dashboard.
+- **Course marketplace** orders are refunded through the gateway when the Super Admin approves a learner's request
+  or refunds a sale. A refund the gateway reports as pending counts as refunded at once
+  ([refund requests](../operations.md#refund-requests)).
 
 ## Testing in sandbox mode
 
