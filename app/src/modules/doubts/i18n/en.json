@@ -62,5 +62,11 @@
     "noneAnswered": "Stuck on something? Ask your teacher.",
     "open": "Open inbox",
     "view": "View"
+  },
+  "widgets": {
+    "inbox": "Doubts to answer",
+    "mine": "My doubts",
+    "inboxHome": "Doubts to answer",
+    "mineHome": "My doubts"
   }
 }

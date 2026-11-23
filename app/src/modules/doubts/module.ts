@@ -59,16 +59,16 @@ export default defineAppModule({
   ],
   widgets: [
     {
-      id: 'doubts.teacher',
+      id: 'doubts.inbox',
       slot: 'teacher-home',
-      title: 'Doubts',
+      title: 'Doubts to answer',
       component: teacherCard,
       permission: 'doubts.edit',
       planModule: PLAN,
       order: 30,
     },
     {
-      id: 'doubts.student',
+      id: 'doubts.mine',
       slot: 'student-home',
       title: 'My doubts',
       component: studentCard,
@@ -78,16 +78,16 @@ export default defineAppModule({
     },
     // The generic dashboard, until every persona has its own home.
     {
-      id: 'doubts.home-teacher',
+      id: 'doubts.inboxHome',
       slot: 'home',
-      title: 'Doubts',
+      title: 'Doubts to answer',
       component: teacherCard,
       permission: 'doubts.edit',
       planModule: PLAN,
       order: 30,
     },
     {
-      id: 'doubts.home-student',
+      id: 'doubts.mineHome',
       slot: 'home',
       title: 'My doubts',
       component: studentCard,

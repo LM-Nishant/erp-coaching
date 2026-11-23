@@ -23,6 +23,7 @@ sending an enquiry) are driven in the browser.
 | `marketplace-reviews-qa-wishlist.spec.ts` | Marketplace wishlist → buy → Q&A → rating                 | Learner sees a review on the landing page, wishlists, moves to cart and pays; asks in the player; instructor answers in the studio; learner rates 5 stars (4.0 → 4.5)             |
 | `marketplace-quiz-certificate.spec.ts`    | Marketplace quiz → certificate                            | Instructor builds a quiz; learner fails, retakes, passes (100%), gets a certificate and verifies it publicly                                                                      |
 | `question-pdf-import.spec.ts`             | Question paper PDF → AI extraction (mock) → review → bank | Admin uploads a two-page paper with a diagram and an answer key; it is read in the background; the unanswered question is flagged; the teacher edits, picks 4 of 5 and saves them |
+| `doubt-answer.spec.ts`                    | Doubt with a photo → teacher answer → solved              | Student asks a doubt with a photo. Teacher answers it from the doubt inbox. Student reads the answer and marks it solved                                                          |
 
 Each spec also checks the server-side outcome where it matters, for example:
 
