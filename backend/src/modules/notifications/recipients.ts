@@ -160,8 +160,26 @@ export async function resolveAudience(audience: CampaignAudience): Promise<Map<n
   if (audience.batchIds?.length) {
     const fn = resolvers.get('batchMembers');
     if (!fn) throw BadRequest('Batch audiences are not available until the batches module is installed');
-    for (const batchId of audience.batchIds)
-      for (const id of await fn(batchId, { instituteId })) if (!out.has(id)) out.set(id, 'student');
+    // Without a choice a batch means its students and teachers, as before `batchRecipients`.
+    const who = new Set(
+      audience.batchRecipients?.length ? audience.batchRecipients : ['students', 'teachers'],
+    );
+    const students: number[] = [];
+    for (const batchId of audience.batchIds) {
+      if (who.has('students') || who.has('parents'))
+        students.push(...(await fn({ batchId, students: true, teachers: false }, { instituteId })));
+      if (who.has('teachers'))
+        for (const id of await fn({ batchId, students: false, teachers: true }, { instituteId }))
+          if (!out.has(id)) out.set(id, 'staff');
+    }
+    if (who.has('students')) for (const id of students) if (!out.has(id)) out.set(id, 'student');
+    if (who.has('parents') && students.length) {
+      const parents = resolvers.get('guardiansOfStudentUsers');
+      if (!parents)
+        throw BadRequest('Parent audiences are not available until the guardians module is installed');
+      for (const id of await parents([...new Set(students)], { instituteId }))
+        if (!out.has(id)) out.set(id, 'guardian');
+    }
   }
 
   audience.userIds?.forEach((id) => out.has(id) || out.set(id, 'user'));

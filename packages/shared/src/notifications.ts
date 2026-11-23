@@ -584,8 +584,13 @@ export interface CampaignAudience {
   roles?: string[];
   /** Batch ids, resolved by the batches module via a recipient resolver. */
   batchIds?: number[];
+  /** Who in the chosen batches gets it; defaults to students and teachers. */
+  batchRecipients?: BatchRecipient[];
   userIds?: number[];
 }
+
+export const BATCH_RECIPIENTS = ['students', 'parents', 'teachers'] as const;
+export type BatchRecipient = (typeof BATCH_RECIPIENTS)[number];
 
 export interface CampaignDto {
   id: number;

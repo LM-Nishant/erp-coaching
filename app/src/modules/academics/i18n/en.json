@@ -1,0 +1,45 @@
+{
+  "batches": {
+    "emptyTitle": "No batches yet",
+    "emptyMessage": "A batch is a group of students who study a course together, with its own teachers and timetable."
+  },
+  "wizard": {
+    "title": "New batch",
+    "back": "Back",
+    "next": "Next",
+    "progress": "Step {step} of {total}",
+    "steps": {
+      "course": "Course",
+      "basics": "Details",
+      "teachers": "Teachers"
+    },
+    "whichCourse": "Which course is this batch for?",
+    "noCoursesTitle": "Add a course first",
+    "noCoursesMessage": "Batches belong to a course, such as “JEE 2 year” or “Class 10 Foundation”.",
+    "addCourse": "Add a course",
+    "name": "Batch name",
+    "namePlaceholder": "For example: Morning batch A",
+    "branch": "Branch",
+    "start": "Starts on",
+    "code": "Batch code",
+    "codeHelp": "Filled in for you. Must be unique.",
+    "capacity": "Seats",
+    "end": "Ends on",
+    "session": "Academic session",
+    "modeLabel": "Mode",
+    "mode": {
+      "offline": "Classroom",
+      "online": "Online",
+      "hybrid": "Hybrid"
+    },
+    "activeNow": "Classes have already started",
+    "whoTeaches": "Who teaches this batch?",
+    "teachersOptional": "You can skip this and add teachers later.",
+    "subjectFor": "Subject for {name}",
+    "anySubject": "Any subject",
+    "noTeachers": "No teachers in this branch yet. You can add them later.",
+    "create": "Create batch",
+    "createWithout": "Create without teachers",
+    "created": "{name} created. Now add students."
+  }
+}

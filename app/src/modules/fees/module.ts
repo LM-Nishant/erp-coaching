@@ -1,3 +1,4 @@
+import { defineAsyncComponent } from 'vue';
 import {
   barChartOutline,
   businessOutline,
@@ -85,6 +86,17 @@ export default defineAppModule({
       name: 'my-fees-buy',
       component: () => import('./BuyCoursePage.vue'),
       meta: { permission: 'my-fees.create' },
+    },
+  ],
+  widgets: [
+    {
+      id: 'fees.today',
+      slot: 'staff-home',
+      title: 'fees.today.title',
+      component: defineAsyncComponent(() => import('./FeesTodayCard.vue')),
+      permission: 'fees.view',
+      planModule: 'fees',
+      order: 10,
     },
   ],
   menu: [

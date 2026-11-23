@@ -1,0 +1,68 @@
+{
+  "collect": {
+    "title": "Collect fee",
+    "back": "Back to search",
+    "searchPlaceholder": "Student name, admission no. or mobile",
+    "due": "{amount} due",
+    "dueOn": "due {date}",
+    "noMatchTitle": "No student with dues found",
+    "noMatchMessage": "Check the spelling, or search by admission number or mobile.",
+    "noDuesTitle": "No pending fees",
+    "noDuesMessage": "Everyone has paid. Search a student to take an advance.",
+    "amount": "Amount in rupees",
+    "suggestion": {
+      "overdue": "Overdue: {label}",
+      "next": "Next instalment: {label}",
+      "balance": "Full balance"
+    },
+    "mode": "Payment mode",
+    "modes": {
+      "cash": "Cash",
+      "upi": "UPI",
+      "cheque": "Cheque",
+      "bank_transfer": "Bank transfer"
+    },
+    "reference": "UTR / reference no.",
+    "chequeNumber": "Cheque no.",
+    "bankName": "Bank",
+    "paidOn": "Paid on",
+    "chequeDate": "Cheque date",
+    "depositedTo": "Deposited to",
+    "defaultBank": "Default account",
+    "notes": "Notes",
+    "advanceNote": "Amounts above the balance are kept as advance. Instalments are settled oldest first.",
+    "submit": "Record {amount}",
+    "doneTitle": "{amount} received",
+    "doneMessage": "Receipt {receipt} issued to {name}.",
+    "pendingTitle": "Payment recorded",
+    "pendingMessage": "It will show in the account once it is approved.",
+    "shareWhatsapp": "Send receipt on WhatsApp",
+    "receiptPdf": "View receipt PDF",
+    "shared": "Receipt sent on WhatsApp",
+    "another": "Collect from another student",
+    "finish": "Done"
+  },
+  "today": {
+    "title": "Fees today",
+    "collected": "Collected today",
+    "overdue": "Overdue · no students | Overdue · 1 student | Overdue · {n} students",
+    "approvals": "No payments to approve | 1 payment to approve | {n} payments to approve",
+    "month": "{amount} collected this month",
+    "failed": "Could not load fees."
+  },
+  "accounts": {
+    "title": "Fee accounts",
+    "assign": "Assign fees",
+    "search": "Student name, admission no. or mobile",
+    "duesOnly": "Only with dues",
+    "count": "No accounts | 1 account | {n} accounts",
+    "netPaid": "Net {net} · paid {paid}",
+    "emptyTitle": "No fee accounts yet",
+    "emptyMessage": "Assign a fee structure to a student or a whole batch with the + button.",
+    "status": {
+      "active": "Fully paid",
+      "closed": "Closed",
+      "cancelled": "Cancelled"
+    }
+  }
+}

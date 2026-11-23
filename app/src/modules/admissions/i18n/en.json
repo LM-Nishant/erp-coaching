@@ -1,0 +1,8 @@
+{
+  "today": {
+    "title": "Enquiries",
+    "new": "New enquiries to call",
+    "followUps": "Follow-ups due",
+    "failed": "Could not load enquiries."
+  }
+}

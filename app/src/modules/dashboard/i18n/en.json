@@ -1,0 +1,54 @@
+{
+  "staff": {
+    "quickActions": "Quick actions",
+    "actions": {
+      "collectFee": "Collect fee",
+      "addStudent": "Add student",
+      "sendNotice": "Send notice",
+      "newEnquiry": "New enquiry",
+      "attendance": "Attendance",
+      "newBatch": "New batch"
+    }
+  },
+  "setup": {
+    "title": "Finish setting up",
+    "progress": "{done} of {total} done",
+    "hide": "Hide for now",
+    "steps": {
+      "profile": {
+        "title": "Add your logo, address and phone",
+        "hint": "Shown on receipts, ID cards and your website."
+      },
+      "course": {
+        "title": "Add a course",
+        "hint": "For example: JEE 2027, NEET Foundation, Class 10."
+      },
+      "batch": {
+        "title": "Create a batch",
+        "hint": "A group of students with a timing and teachers."
+      },
+      "feeStructure": {
+        "title": "Set up fees",
+        "hint": "Fee amount and instalments for a course."
+      },
+      "teacher": {
+        "title": "Add a teacher",
+        "hint": "They can then take attendance and classes."
+      },
+      "student": {
+        "title": "Add your first student",
+        "hint": "Or import many students at once from Excel."
+      },
+      "paymentGateway": {
+        "title": "Accept online payments",
+        "hint": "Connect Razorpay or another gateway so parents can pay by UPI."
+      },
+      "parents": {
+        "title": "Link parents",
+        "hint": "Parents get attendance, results and fee reminders."
+      }
+    },
+    "showDone": "Show {n} done",
+    "hideDone": "Hide done steps"
+  }
+}
