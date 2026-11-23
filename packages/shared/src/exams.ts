@@ -165,6 +165,95 @@ export interface GeneratedQuestionsDto {
   model: string;
 }
 
+// ---------------------------------------------------------------- PDF question-paper import
+
+/** Limits for importing an existing question paper from a PDF. */
+export const QUESTION_PDF_IMPORT_LIMITS = { maxMb: 20, maxPages: 30, maxDrafts: 300 } as const;
+
+export const QUESTION_IMPORT_STATUSES = [
+  'queued',
+  'processing',
+  'ready',
+  'failed',
+  'saved',
+  'discarded',
+] as const;
+export type QuestionImportStatus = (typeof QUESTION_IMPORT_STATUSES)[number];
+
+/** Why a draft needs the teacher's attention before it can be saved. */
+export const QUESTION_IMPORT_FLAGS = [
+  'answer_missing',
+  'answer_conflict',
+  'needs_fix',
+  'has_diagram',
+  'spans_pages',
+  'low_confidence',
+] as const;
+export type QuestionImportFlag = (typeof QUESTION_IMPORT_FLAGS)[number];
+
+export const QUESTION_IMPORT_FLAG_LABELS: Record<QuestionImportFlag, string> = {
+  answer_missing: 'Answer not found: set it',
+  answer_conflict: 'Answer key disagrees with the paper',
+  needs_fix: 'Needs fixing',
+  has_diagram: 'Has a diagram',
+  spans_pages: 'Continues across pages',
+  low_confidence: 'Hard to read: check carefully',
+};
+
+export interface QuestionImportDiagramDto {
+  fileId: number;
+  url: string;
+}
+
+/** One question extracted from the paper. `question` may be incomplete (see `problem`/`flags`). */
+export interface QuestionImportDraftDto {
+  /** Stable id within the import, e.g. `p2-3`. */
+  id: string;
+  /** Question number as printed on the paper. */
+  number: string | null;
+  page: number;
+  question: QuestionInput;
+  flags: QuestionImportFlag[];
+  /** Validation problem that blocks saving as-is (null when the draft is valid). */
+  problem: string | null;
+  /** Model confidence 0–1 when reported. */
+  confidence: number | null;
+  diagrams: QuestionImportDiagramDto[];
+}
+
+export interface QuestionImportDto {
+  id: number;
+  bankId: number;
+  status: QuestionImportStatus;
+  fileName: string;
+  answerKeyFileName: string | null;
+  /** Signed link to the uploaded paper while the import is open. */
+  fileUrl: string | null;
+  pageCount: number;
+  pagesDone: number;
+  drafts: QuestionImportDraftDto[];
+  warnings: string[];
+  error: string | null;
+  model: string | null;
+  /** Pages sent to the image-capable model (scans, diagrams, equations). */
+  visionPages: number;
+  savedCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QuestionImportSaveItem {
+  draftId: string;
+  question: QuestionInput;
+  /** Diagram files of the draft to attach; defaults to all of them. */
+  diagramFileIds?: number[];
+}
+
+export interface QuestionImportSaveResult {
+  created: number;
+  questionIds: number[];
+}
+
 // ---------------------------------------------------------------- exams
 
 export const EXAM_STATUSES = ['draft', 'scheduled', 'cancelled'] as const;

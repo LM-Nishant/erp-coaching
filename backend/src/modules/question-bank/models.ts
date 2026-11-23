@@ -11,11 +11,13 @@ import type {
   AnswerKey,
   BankVisibility,
   QuestionDifficulty,
+  QuestionImportStatus,
   QuestionOption,
   QuestionSource,
   QuestionStatus,
   QuestionType,
 } from '@erp/shared';
+import type { StoredDraft as StoredImportDraft } from './pdf-import.extract';
 import { registerTenantModel } from '../../shared/tenancy/tenant-model';
 import { FileObject } from '../files/file.model';
 import { User } from '../users/user.model';
@@ -162,10 +164,69 @@ export class QuestionAsset extends Model<
   }
 }
 
+/** A question paper PDF being turned into reviewable drafts (see pdf-import.service). */
+export class QuestionImport extends Model<
+  InferAttributes<QuestionImport>,
+  InferCreationAttributes<QuestionImport>
+> {
+  declare id: CreationOptional<number>;
+  declare instituteId: number;
+  declare branchId: number | null;
+  declare bankId: number;
+  declare createdByUserId: number | null;
+  declare status: CreationOptional<QuestionImportStatus>;
+  declare fileId: number | null;
+  declare answerKeyFileId: number | null;
+  declare fileName: string;
+  declare answerKeyFileName: string | null;
+  declare pageCount: CreationOptional<number>;
+  declare pagesDone: CreationOptional<number>;
+  declare drafts: CreationOptional<StoredImportDraft[] | null>;
+  declare warnings: CreationOptional<string[] | null>;
+  declare error: CreationOptional<string | null>;
+  declare model: CreationOptional<string | null>;
+  declare visionPages: CreationOptional<number>;
+  declare totalTokens: CreationOptional<number>;
+  declare savedCount: CreationOptional<number>;
+  declare createdAt: CreationOptional<Date>;
+  declare updatedAt: CreationOptional<Date>;
+
+  static initModel(sequelize: Sequelize) {
+    QuestionImport.init(
+      {
+        id: pk,
+        instituteId: uint(false),
+        branchId: uint(),
+        bankId: uint(false),
+        createdByUserId: uint(),
+        status: { type: DataTypes.STRING(12), allowNull: false, defaultValue: 'queued' },
+        fileId: uint(),
+        answerKeyFileId: uint(),
+        fileName: { type: DataTypes.STRING(255), allowNull: false },
+        answerKeyFileName: { type: DataTypes.STRING(255), allowNull: true },
+        pageCount: { type: DataTypes.SMALLINT.UNSIGNED, allowNull: false, defaultValue: 0 },
+        pagesDone: { type: DataTypes.SMALLINT.UNSIGNED, allowNull: false, defaultValue: 0 },
+        drafts: { type: DataTypes.JSON, allowNull: true },
+        warnings: { type: DataTypes.JSON, allowNull: true },
+        error: { type: DataTypes.STRING(500), allowNull: true },
+        model: { type: DataTypes.STRING(100), allowNull: true },
+        visionPages: { type: DataTypes.SMALLINT.UNSIGNED, allowNull: false, defaultValue: 0 },
+        totalTokens: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
+        savedCount: { type: DataTypes.SMALLINT.UNSIGNED, allowNull: false, defaultValue: 0 },
+        createdAt: DataTypes.DATE,
+        updatedAt: DataTypes.DATE,
+      },
+      { sequelize, tableName: 'question_imports' },
+    );
+    registerTenantModel(QuestionImport);
+  }
+}
+
 export function initQuestionBankModels(sequelize: Sequelize) {
   QuestionBank.initModel(sequelize);
   Question.initModel(sequelize);
   QuestionAsset.initModel(sequelize);
+  QuestionImport.initModel(sequelize);
 }
 
 export function associateQuestionBankModels() {

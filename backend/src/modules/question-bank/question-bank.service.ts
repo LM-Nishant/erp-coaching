@@ -35,13 +35,13 @@ export const bankRepo = new TenantRepository(QuestionBank, {
   entity: 'Question bank',
 });
 export const questionRepo = new TenantRepository(Question, { entity: 'Question' });
-const assetRepo = new TenantRepository(QuestionAsset, { entity: 'Question asset' });
+export const assetRepo = new TenantRepository(QuestionAsset, { entity: 'Question asset' });
 const subjectRepo = new TenantRepository(Subject, { entity: 'Subject' });
 const chapterRepo = new TenantRepository(Chapter, { entity: 'Chapter' });
 const topicRepo = new TenantRepository(Topic, { entity: 'Topic' });
 
-const isManager = () => hasPermission(`${MODULE}.configure`);
-const me = () => requireTenantContext().userId ?? null;
+export const isManager = () => hasPermission(`${MODULE}.configure`);
+export const me = () => requireTenantContext().userId ?? null;
 
 /** Banks the current user may see/reuse: shared banks plus their own private banks (managers see all). */
 function visibleBankWhere(): WhereOptions<QuestionBank> {
@@ -59,7 +59,7 @@ function canEditBank(bank: QuestionBank): boolean {
   return isManager() || (bank.ownerUserId !== null && bank.ownerUserId === me());
 }
 
-async function findEditableBank(id: number): Promise<QuestionBank> {
+export async function findEditableBank(id: number): Promise<QuestionBank> {
   const bank = await findVisibleBank(id);
   if (!canEditBank(bank)) throw Forbidden('Only the bank owner or a question-bank manager can change it');
   bankRepo.assertRowWritable(bank);
@@ -333,7 +333,7 @@ function normaliseKey(type: QuestionType, key: AnswerKey): AnswerKey {
   }
 }
 
-async function buildQuestionValues(input: QuestionInput, bank: QuestionBank) {
+export async function buildQuestionValues(input: QuestionInput, bank: QuestionBank) {
   await assertOptionImages(input);
   const acad = await resolveAcademics({
     subjectId: input.subjectId ?? (input.chapterId || input.topicId ? null : bank.subjectId),
