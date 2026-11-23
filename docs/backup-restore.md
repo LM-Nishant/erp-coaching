@@ -76,7 +76,7 @@ Keep these elsewhere. You need them to restore onto a new server:
   `docker-compose.override.yml` and `deploy/local/`. Keep them in a password manager or secret vault, never next to the
   backups ([secrets](deployment.md#secrets)).
   - Above all, keep `ENCRYPTION_KEY`. The integration credentials stored in the database (payment, notification and AI
-    settings, offline LMS keys) can only be decrypted with the key that encrypted them. After
+    settings, offline LMS keys, Google Calendar tokens) can only be decrypted with the key that encrypted them. After
     [rotating it](deployment.md#rotating-the-encryption-key), keep the old key as long as you keep backups made before
     the rotation.
 - **TLS certificates:** `deploy/certs/` (or `ERP_CERTS_DIR`) and certbot's `/etc/letsencrypt`. They can be issued

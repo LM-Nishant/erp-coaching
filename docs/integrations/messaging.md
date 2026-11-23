@@ -56,8 +56,8 @@ test** or **Check keys**.
   stored password can't be sent to a different server.
 - Logs and stored errors never contain credentials or message bodies. The API and nginx logs redact the key in
   webhook URLs, and the API log redacts the WhatsApp `hub.verify_token` (nginx logs no query strings). A failed
-  message keeps the vendor's error code and reason, for example `Twilio 21211: Invalid 'To' Phone Number`, in
-  **Communication → History**.
+  message keeps the vendor's error code and reason, for example
+  `Twilio did not accept the message: <Twilio's reason> (Twilio error 21211)`, in **Communication → Delivery**.
 - Mobiles stored without a country code (10 digits) get `MESSAGING_DEFAULT_COUNTRY_CODE` (default `91`) before
   they go to a vendor. `MESSAGING_TIMEOUT_MS` (default 15000) bounds each vendor request.
 
@@ -139,7 +139,7 @@ own throttling codes. Attempts follow exponential backoff (the provider's base d
 hours, and never earlier than the vendor's `Retry-After`) up to the provider's maximum attempts (by default 3
 attempts with a 60-second base delay). Errors that would fail again (an invalid number, an unapproved template,
 wrong credentials) fail at once. Admins can re-queue a failed message with **Retry** in **Communication →
-History**.
+Delivery**.
 
 **Webhooks:** once a provider that supports them is saved, its form shows the webhook URL (and, for WhatsApp Cloud,
 a verify token) with copy buttons:
