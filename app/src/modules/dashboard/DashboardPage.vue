@@ -1,7 +1,6 @@
 <template>
-  <!-- Persona homes: students and parents get their own "Today" page at /home. -->
+  <!-- Students get their own "Today" page at /home (parents are sent to /parent-home by the router). -->
   <StudentHome v-if="auth.persona === 'student'" />
-  <ParentHomePage v-else-if="auth.persona === 'parent'" />
   <AppPage v-else title="Dashboard" :on-refresh="refresh">
     <h2 class="hello">Hello, {{ auth.me?.user.name }}</h2>
 
@@ -80,7 +79,6 @@ import StatCard from '@/components/StatCard.vue';
 import { api } from '@/core/api';
 import { widgetsFor } from '@/core/modules';
 import { useAuthStore } from '@/stores/auth';
-import ParentHomePage from '../parent-portal/ParentHomePage.vue';
 import StudentHome from './StudentHome.vue';
 
 interface SubscriptionInfo {
@@ -109,7 +107,7 @@ const widgets = computed(() =>
 );
 
 async function load() {
-  if (auth.persona === 'student' || auth.persona === 'parent') return;
+  if (auth.persona === 'student') return;
   if (auth.isPlatformAdmin) platform.value = await api.get<PlatformStats>('/admin/dashboard');
   else if (auth.can('subscription.view')) sub.value = await api.get<SubscriptionInfo>('/subscription');
 }
