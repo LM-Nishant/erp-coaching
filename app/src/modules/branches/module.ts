@@ -13,6 +13,14 @@ export default defineAppModule({
     },
   ],
   menu: [
-    { title: 'Branches', path: '/branches', icon: gitBranchOutline, permission: 'branches.view', order: 20 },
+    {
+      title: 'Branches',
+      path: '/branches',
+      group: 'settings',
+      titleKey: 'nav.branches.branches',
+      icon: gitBranchOutline,
+      permission: 'branches.view',
+      order: 20,
+    },
   ],
 });

@@ -27,6 +27,8 @@ export default defineAppModule({
     {
       title: 'Guardians',
       path: '/guardians',
+      group: 'people',
+      titleKey: 'nav.guardians.guardians',
       icon: peopleCircleOutline,
       permission: 'guardians.view',
       order: 31,
@@ -34,6 +36,8 @@ export default defineAppModule({
     {
       title: 'My children',
       path: '/my-children',
+      group: 'people',
+      titleKey: 'nav.guardians.myChildren',
       icon: happyOutline,
       permission: 'guardian-portal.view',
       order: 15,

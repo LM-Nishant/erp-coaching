@@ -429,7 +429,7 @@ export default defineAppModule({
   - A module that keeps a user's data on the device implements `wipeUserData(userId)` in its `defineAppModule`. It runs when the device is revoked or the account deactivated.
 - **Dashboard widgets.** Contribute cards to shared dashboards with `widgets` instead of editing the host page (see below).
 - **Words, dates and money.** Show dates, times and money with `core/format.ts` (`formatDate`, `formatDateTime`, `formatRelative`, `formatMoney` for paise…), never bare `toLocaleString()`. New UI text goes through vue-i18n: `t('<namespace>.<key>')` with the English string in `modules/<folder>/i18n/en.json` and, when you have it, Hindi in `hi.json` (see ARCHITECTURE.md, "App shell contract"). Use `StatusChip` for statuses, `EmptyState` for empty lists, `FormSection advanced` for rarely used fields and `QuickActions` on home pages; keep tap targets at least `var(--app-tap-target)` (48 px).
-- **Menu metadata.** Give each `menu` item a `group` (section of the grouped menu), and `personas`/`tab` when it is a bottom tab for a persona (`MenuItem` in `core/modules.ts`).
+- **Menu metadata.** Give each `menu` item a `group` (section of the grouped menu), a `titleKey` (`nav.<module>.<item>`, added to `app/src/i18n/locales/{en,hi}.json`), and `personas`/`tab` (plus `tabTitleKey` for a shorter label) when it is a bottom tab for a persona (`MenuItem` in `core/modules.ts`). `core/navigation.test.ts` checks every item has a group and a translated title, and pins each persona's tabs.
 - **Shared types.** Request and response DTOs used by both sides go in `packages/shared/src/<module>.ts`, exported from its `index.ts`. That one-line export is the only shared edit expected.
 
 ### Dashboard widgets

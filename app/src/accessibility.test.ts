@@ -95,7 +95,8 @@ describe('icon-only controls', () => {
       return ast ? unnamedControls(ast).map((line) => `${relative(SRC, file)}:${line}`) : [];
     });
     expect(offenders, 'add an aria-label to these icon-only controls').toEqual([]);
-  });
+    // Parses every .vue file; slow when the whole suite runs in parallel.
+  }, 30_000);
 
   it('flags an icon-only button without a label', () => {
     const sfc = (body: string) => {

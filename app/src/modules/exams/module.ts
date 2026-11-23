@@ -86,6 +86,9 @@ export default defineAppModule({
     {
       title: 'Exams',
       path: '/exams',
+      group: 'tests',
+      titleKey: 'nav.exams.exams',
+      tab: { teacher: 6 },
       icon: documentTextOutline,
       permission: 'exams.view',
       planModule: 'exams',
@@ -94,6 +97,8 @@ export default defineAppModule({
     {
       title: 'AI grading prompts',
       path: '/exams/prompts',
+      group: 'tests',
+      titleKey: 'nav.exams.prompts',
       icon: codeWorkingOutline,
       permission: 'exams.configure',
       planModule: 'exams',
@@ -102,6 +107,10 @@ export default defineAppModule({
     {
       title: 'My exams',
       path: '/my-exams',
+      group: 'tests',
+      titleKey: 'nav.exams.myExams',
+      tab: { student: 4 },
+      tabTitleKey: 'nav.tabs.tests',
       icon: schoolOutline,
       permission: 'exam-portal.create',
       planModule: 'exams',
@@ -110,6 +119,10 @@ export default defineAppModule({
     {
       title: 'Exam results',
       path: '/exam-results',
+      group: 'tests',
+      titleKey: 'nav.exams.results',
+      tab: { parent: 4, student: 9 },
+      tabTitleKey: 'nav.tabs.progress',
       icon: ribbonOutline,
       permission: 'exam-portal.view',
       planModule: 'exams',
