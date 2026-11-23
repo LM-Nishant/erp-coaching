@@ -8,6 +8,7 @@ import {
 } from '@erp/shared';
 import { sha256 } from '../../infrastructure/crypto';
 import { enqueueJob } from '../../infrastructure/jobs/queue';
+import { outboundSuppressed } from '../../infrastructure/outbound';
 import { logger } from '../../infrastructure/logger';
 import {
   MessagingError,
@@ -235,6 +236,11 @@ async function dispatch(input: DispatchInput): Promise<NotifyResult> {
         rows.push({ ...base, recipientAddress: null, status: 'delivered', sentAt: now, deliveredAt: now });
         continue;
       }
+      const suppressed = outboundSuppressed();
+      if (suppressed) {
+        skip(suppressed);
+        continue;
+      }
       const addresses =
         channel === 'push'
           ? tokens
@@ -268,6 +274,11 @@ async function dispatch(input: DispatchInput): Promise<NotifyResult> {
 export async function deliverMessage(payload: { messageId: number }): Promise<void> {
   const msg = await messageRepo.findOne({ where: { id: payload.messageId } });
   if (!msg || msg.status !== 'queued' || msg.channel === 'in_app') return;
+  const suppressed = outboundSuppressed();
+  if (suppressed) {
+    await msg.update({ status: 'skipped', lastError: suppressed, nextAttemptAt: null });
+    return;
+  }
   const { provider, retryBaseDelaySeconds } = await resolveProvider(msg.channel as ExternalChannel);
   const attemptNo = msg.attempts + 1;
   const started = Date.now();

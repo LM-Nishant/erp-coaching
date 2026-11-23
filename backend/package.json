@@ -15,6 +15,7 @@
     "db:migrate:undo": "tsx src/infrastructure/database/cli.ts migrate:undo",
     "db:migrate:status": "tsx src/infrastructure/database/cli.ts migrate:status",
     "db:seed": "tsx src/infrastructure/database/cli.ts seed",
+    "db:seed:demo": "tsx src/infrastructure/database/demo/run.ts",
     "db:seed:undo": "tsx src/infrastructure/database/cli.ts seed:undo",
     "db:reset": "tsx src/infrastructure/database/cli.ts reset",
     "secrets:reencrypt": "tsx src/infrastructure/database/cli.ts secrets:reencrypt",
