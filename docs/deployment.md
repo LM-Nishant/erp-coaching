@@ -301,7 +301,8 @@ Relative paths are relative to `deploy/`. `ERP_ENV_FILE` names the env file that
 Every encrypted value carries the id of the key that wrote it (`v2:<key id>:…`, derived from the key). `ENCRYPTION_KEY`
 encrypts, and both it and the keys in `ENCRYPTION_PREVIOUS_KEYS` decrypt. Values saved before key ids existed (`v1:`)
 are tried with each key until they are re-encrypted. The stored secrets are the AI keys, payment gateway credentials,
-notification and platform integration settings, Google Calendar refresh tokens, and offline LMS content keys.
+notification and platform integration settings, Google Calendar refresh tokens, offline LMS content keys, and the
+course marketplace sellers' bank account numbers and UPI IDs, including the copies kept on paid payouts.
 
 1. Back up ([backup-restore.md](backup-restore.md)). Keep the old key in your vault as long as you keep backups made
    before the rotation: they can only be restored with it.
@@ -589,6 +590,13 @@ This release only ships development adapters for the external integrations:
 - **Payments:** the mock gateway (`PAYMENT_GATEWAY=mock`) doesn't charge anyone, and production won't use it.
   Institutes and the platform take real payments once they enter their Paytm, Razorpay or Cashfree keys in the app
   ([payment gateways](integrations/payments.md)).
+- **Course marketplace:** learners pay the platform through the gateway with **Use for SaaS subscription
+  payments** under **Integrations → Payment gateways**, or else the first one enabled. With none, checkout answers
+  "Online payment is not configured yet; please try later" (`GATEWAY_NOT_CONFIGURED`). Keep a disabled gateway's
+  keys while its marketplace orders may still need status checks or refunds. Cashfree orders carry the marketplace
+  webhook URL; Razorpay and Paytm orders are confirmed when the learner returns or checks the order
+  ([webhooks](integrations/payments.md#webhooks)). The Super Admin decides refunds and runs the monthly payouts
+  ([course marketplace](operations.md#513-course-marketplace)).
 - **Live classes:** `STREAMING_PROVIDER=mock` is the peer-to-peer WebRTC transport ([live classes](#live-classes)). For
   production, use LiveKit, self-hosted or LiveKit Cloud ([live streaming](integrations/live-streaming.md)).
 - **Biometrics:** ZKTeco and eSSL devices connect directly over ADMS push

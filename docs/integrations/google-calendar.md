@@ -1,8 +1,8 @@
 # Google Calendar
 
 Parent-teacher meetings (the appointments module) become events in Google Calendar. Online meetings get a Google Meet
-link, and accepting, rescheduling and cancelling a meeting in the app updates the event. Google emails the invitations
-and updates to the guests.
+link, and approving, rescheduling and cancelling a meeting in the app updates the event. Google emails the
+invitations and updates to the guests.
 
 Calendars are connected per institute and per teacher through the platform's own Google OAuth client. Institutes need
 no Google Cloud project, and going live only needs that client's ID and secret.
@@ -14,8 +14,8 @@ no Google Cloud project, and going live only needs that client's ID and secret.
 
 ## Whose calendar holds the events
 
-The teacher who accepts a meeting runs it, so a meeting goes to **the teacher's own calendar**. If the teacher hasn't
-connected one, it goes to **the institute's organiser calendar**, for example a shared office account.
+The teacher who approves a meeting runs it, so a meeting goes to **the teacher's own calendar**. If the teacher
+hasn't connected one, it goes to **the institute's organiser calendar**, for example a shared office account.
 
 - An event stays in the calendar that created it. Moving it would send every guest a new invitation.
 - A teacher's connection that **needs reconnecting blocks** syncing; it doesn't fall back to the organiser calendar.
@@ -161,10 +161,10 @@ institute. A Super Admin impersonating a user can't connect calendars.
 | In the app                                                    | In Google Calendar                                                                                             |
 | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | A parent requests a slot                                      | Nothing yet                                                                                                    |
-| The teacher **accepts**                                       | The event is created and Google emails the invitations. Online meetings get a Meet link, stored on the meeting |
+| The teacher presses **Approve**                               | The event is created and Google emails the invitations. Online meetings get a Meet link, stored on the meeting |
 | The teacher **rejects** the request                           | Nothing: it never reached Google                                                                               |
 | The teacher **reschedules** a confirmed meeting               | The same event moves (only the time is patched) and keeps its Meet link; guests get an update                  |
-| The parent reschedules (the meeting goes back to "requested") | The event is cancelled until the teacher accepts again; then a new event is created                            |
+| The parent reschedules (the meeting goes back to "requested") | The event is cancelled until the teacher approves it again; then a new event is created                        |
 | Either side **cancels**                                       | The event is cancelled; guests get a cancellation                                                              |
 | Reminders                                                     | Sent by the app's notifications. The event uses the calendar's default reminders                               |
 | The meeting is held (completed or no-show); notes and history | The event stays as it is. Notes and history stay in the app                                                    |

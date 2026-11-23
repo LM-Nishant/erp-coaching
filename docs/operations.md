@@ -80,7 +80,8 @@ What the repository provides:
   ([error tracking](deployment.md#error-tracking)).
 - Certificate expiry warnings from `erp-certs`, the backup log, and the `jobs` and `audit_events` tables.
 - Redis fallback warnings, and the errors logged by the messaging, live-class, payment and Google Calendar
-  integrations ([5.11](#511-integration-provider-outage), [5.12](#512-redis-unavailable)).
+  integrations and the course marketplace ([5.11](#511-integration-provider-outage),
+  [5.12](#512-redis-unavailable), [5.13](#513-course-marketplace)).
 
 Nothing in the repository sends alerts or pages anyone. Choose an external uptime monitor, somewhere to collect logs
 and a route to the on-call person (all TBD), and wire the signals below to them. deployment.md lists the minimum
@@ -116,9 +117,11 @@ Thresholds are proposals. Severities are defined in [section 3](#3-severity-leve
 | Notification delivery  | api warnings `Notification delivery failed:`; `failed` rows in `notification_messages`                                                                                                                                                                                                     | a jump, or one channel failing for every institute                                            | SEV3                                        | [messaging providers](#messaging-providers)                                                                                                                                  |
 | Live streaming         | api error `Streaming provider could not create the room`, which users see as `STREAMING_UNAVAILABLE`                                                                                                                                                                                       | any, during class hours                                                                       | SEV2                                        | [live classes on LiveKit](#live-classes-on-livekit)                                                                                                                          |
 | Live recordings        | api warnings `Streaming provider could not start the recording` and `The streaming provider could not finish a live class recording`; files left in the `livekit-recordings` volume ([5.4](#54-disk-filling-up))                                                                           | any                                                                                           | SEV3                                        | [live classes on LiveKit](#live-classes-on-livekit)                                                                                                                          |
-| Payment discrepancies  | api errors `Gateway amount mismatch`, `SaaS gateway amount mismatch` or `Gateway reports a refund we marked failed as processed; check the gateway dashboard`                                                                                                                              | any                                                                                           | SEV2                                        | [payment gateways](#payment-gateways)                                                                                                                                        |
+| Payment discrepancies  | api errors `Gateway amount mismatch`, `SaaS gateway amount mismatch`, `Marketplace amount mismatch` or `Gateway reports a refund we marked failed as processed; check the gateway dashboard`                                                                                               | any                                                                                           | SEV2                                        | [payment gateways](#payment-gateways), [marketplace checkout](#checkout-and-the-platform-gateway)                                                                            |
 | Payment gateways       | api warnings `Payment gateway request failed`, `Payment gateway is misconfigured`, `Payment webhook rejected`, `SaaS payment webhook rejected`, `Payment reconciliation failed for institute`, `SaaS payment reconciliation failed` and `Stored payment gateway secrets could not be read` | repeated for one gateway, or for every institute                                              | SEV3; SEV2 if no one can pay online         | [payment gateways](#payment-gateways)                                                                                                                                        |
 | Google Calendar        | api warnings `Job failed:` with `"job":"calendar.sync"`, and `Google Calendar access lost; the connection needs to be reconnected`; `failed` rows in `calendar_events`; super admin → **Google Calendar**                                                                                  | repeated for every institute, or a calendar left needing reconnecting for a day               | SEV3                                        | [Google Calendar](#google-calendar)                                                                                                                                          |
+| Marketplace checkout   | api error `Marketplace checkout failed`, warning `Marketplace status check failed`; 4xx and 503 responses on `/api/marketplace/public/webhooks/` in the nginx access log                                                                                                                   | repeated, or every checkout failing                                                           | SEV3; SEV2 if no one can buy                | [checkout and the platform gateway](#checkout-and-the-platform-gateway)                                                                                                      |
+| Marketplace refunds    | api warning `Marketplace refund failed`; `marketplace.refund.failed` audit events; requests waiting on **Marketplace refunds**                                                                                                                                                             | any failure; a request waiting longer than the agreed time                                    | SEV3                                        | [refund requests](#refund-requests)                                                                                                                                          |
 | Security events        | super admin → Audit log: unexpected `impersonation.started`, `role.permissions_changed`, `platform.*` or `tenant_data.export_downloaded` events                                                                                                                                            | anything unexpected                                                                           | SEV1 if data may be exposed                 | [5.8](#58-suspected-security-incident-or-cross-tenant-exposure)                                                                                                              |
 | Sign-in locks          | `auth.sign_in_locked` events: super admin → **Audit log**, or `audit_events` with `action = 'auth.sign_in_locked'`                                                                                                                                                                         | many in an hour or from one address, or a lock on an admin or super admin                     | SEV3; SEV1 if an account may be compromised | [sign-in locks](deployment.md#sign-in-locks), [5.8](#58-suspected-security-incident-or-cross-tenant-exposure)                                                                |
 | Nightly CI             | the scheduled CI run (tests in reverse and shuffled order)                                                                                                                                                                                                                                 | fails                                                                                         | SEV4                                        | [CI](../CONTRIBUTING.md#ci)                                                                                                                                                  |
@@ -131,14 +134,16 @@ Until alerts cover the matrix, someone (TBD) runs these by hand. Proposal:
 - **Daily:** `docker compose ps`; `curl -sS https://app.example.com/api/ready`; `df -h`; the end of
   `/var/log/erp-backup.log` and the newest backup in `/srv/erp/deploy/backups`; the last day's errors with
   `docker compose logs --since 24h api | grep -E '"level":(50|60)'`; failed and overdue jobs
-  ([5.5](#55-background-jobs-stuck-or-failing)).
+  ([5.5](#55-background-jobs-stuck-or-failing)); marketplace refund requests and courses waiting for review
+  ([5.13](#513-course-marketplace)).
 - **Weekly:** certificate expiry for the platform host and every custom domain ([5.6](#56-certificate-expiry)); silent
   biometric devices ([5.7](#57-biometric-devices-not-pushing)); disk growth and the largest institutes
   ([5.4](#54-disk-filling-up)); `auth.sign_in_locked` events, by account and address; calendars that need
-  reconnecting, with `CALENDAR_PROVIDER=google` ([Google Calendar](#google-calendar)); the nightly CI results.
+  reconnecting, with `CALENDAR_PROVIDER=google` ([Google Calendar](#google-calendar)); reported marketplace reviews
+  ([review moderation](#review-moderation)); the nightly CI results.
 - **Monthly:** the [restore drill](backup-restore.md#restore-drill), recorded in the
   [drill log](backup-restore.md#drill-log); a review of the audit log for super admin actions, and of
-  `impersonation.started` events against support tickets.
+  `impersonation.started` events against support tickets; the marketplace [payout run](#monthly-payout-run).
 - **After each release:** the checks in steps 6 and 7 of [upgrades](deployment.md#upgrades), then watch server errors
   and the error tracker for 30 minutes.
 
@@ -221,6 +226,8 @@ channels ([section 6](#6-support-for-institutes)); they tell their teachers, stu
 - Finish with a resolution notice: what happened, the impact, what was done, and whether users need to do anything,
   such as signing in again.
 - During an outage users stay signed in: the app keeps the session through network errors and server errors.
+- Course marketplace learners and independent instructors may not belong to any institute, so no institute admin
+  passes notices on to them. How to reach them is TBD ([open decisions](#9-open-decisions)).
 
 Templates (Proposal):
 
@@ -360,9 +367,9 @@ Find what uses the space with `df -h`, `docker system df -v` (volumes, images an
 
 | Location                                                                             | Holds                                                                                                                                                       | To free space                                                                                                                                                                                                                                                                                                                                                                                           |
 | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/var/lib/docker/volumes/erp_storage/_data` (volume `storage`)                       | uploaded files, under `institutes/<id>/`                                                                                                                    | Never delete files by hand: the database still points to them. Find the largest institutes with `sudo du -sh /var/lib/docker/volumes/erp_storage/_data/institutes/* \| sort -h \| tail` and look up their names with `SELECT id, name FROM institutes WHERE id IN (<ids>);`. An institute's files are removed when its data is purged ([institute data](../ARCHITECTURE.md#institute-data-tenant-data)) |
+| `/var/lib/docker/volumes/erp_storage/_data` (volume `storage`)                       | uploaded files, under `institutes/<id>/`, and the course marketplace's, under `marketplace/sellers/<id>/`                                                   | Never delete files by hand: the database still points to them. Find the largest institutes with `sudo du -sh /var/lib/docker/volumes/erp_storage/_data/institutes/* \| sort -h \| tail` and look up their names with `SELECT id, name FROM institutes WHERE id IN (<ids>);`. An institute's files are removed when its data is purged ([institute data](../ARCHITECTURE.md#institute-data-tenant-data)) |
 | `/var/lib/docker/volumes/erp_mysql-data/_data` (volume `mysql-data`)                 | the database and its binary logs                                                                                                                            | [5.3](#53-mysql-down-or-out-of-space)                                                                                                                                                                                                                                                                                                                                                                   |
-| `/var/lib/docker/volumes/erp_api-tmp/_data` (volume `api-tmp`)                       | upload staging (`lms-uploads/`, `uploads/`), transcode work directories (`lms-hls-*`), and generated PDFs, exports and recordings while they're being built | Upload sessions expire after 24 hours, so older upload parts are abandoned: `docker compose exec api find /srv/erp/backend/tmp/lms-uploads -name '*.part' -mmin +1440 -delete`. Remove `lms-hls-*` directories only while no `lms.transcode` job is running                                                                                                                                             |
+| `/var/lib/docker/volumes/erp_api-tmp/_data` (volume `api-tmp`)                       | upload staging (`lms-uploads/`, `marketplace-uploads/`, `uploads/`), transcoding (`lms-hls-*`, `mkt-hls-*`), and PDFs, exports and recordings being written | LMS upload sessions expire after 24 hours, so older upload parts are abandoned: `docker compose exec api find /srv/erp/backend/tmp/lms-uploads -name '*.part' -mmin +1440 -delete`. Marketplace parts don't expire ([media uploads](#media-uploads-and-transcoding)). Remove `lms-hls-*` or `mkt-hls-*` directories only while no `lms.transcode` or `marketplace.transcode` job is running             |
 | `/var/lib/docker/volumes/erp_livekit-recordings/_data` (volume `livekit-recordings`) | live-class recordings from the self-hosted LiveKit profile, until they're imported into `storage`                                                           | Each file is deleted once it's imported, so files that stay weren't imported. Fix the cause ([live streaming troubleshooting](integrations/live-streaming.md#troubleshooting)) rather than deleting them, which loses the recordings                                                                                                                                                                    |
 | `/var/lib/docker/volumes/erp_redis-data/_data` (volume `redis-data`)                 | Redis's append-only file: rate-limit and OTP counters, sign-in locks and live-class state. [Not backed up](backup-restore.md#what-is-not-backed-up)         | Nothing to clean up: the keys expire by themselves ([scaling](deployment.md#scaling)). If Redis can't write, see [5.12](#512-redis-unavailable)                                                                                                                                                                                                                                                         |
 | `/srv/erp/deploy/backups` (`BACKUP_HOST_DIR`)                                        | backups                                                                                                                                                     | [Retention](backup-restore.md#retention-and-disk-space) (`BACKUP_KEEP_COUNT`, `BACKUP_KEEP_DAYS`) leaves other files and folders alone, so delete incident snapshots yourself once they're no longer needed                                                                                                                                                                                             |
@@ -372,7 +379,8 @@ Find what uses the space with `df -h`, `docker system df -v` (volumes, images an
 When the disk is nearly full, free space in this order:
 
 1. `docker builder prune` and `docker image prune`.
-2. Abandoned upload parts in `api-tmp`, as above.
+2. Abandoned upload parts in `api-tmp`, as above, and old marketplace upload parts
+   ([media uploads](#media-uploads-and-transcoding)).
 3. Restore-test leftovers and, if nothing uses them, binary logs ([5.3](#53-mysql-down-or-out-of-space)).
 4. Old incident snapshots. Then, only if the [offsite copies](backup-restore.md#offsite-copies) are current, the oldest
    local backups (`erp_coaching-<time>Z` directories), oldest first.
@@ -389,7 +397,8 @@ runs a failing job up to `max_attempts` times (5, unless the job sets its own, s
 waiting twice as long after each failure, from 2 seconds up to 15 minutes, then marks it `failed`. It requeues
 jobs left `running` by a stopped worker. Users notice delays first in notifications (`notifications.deliver`),
 exam auto-submission (`exams.auto-submit`), absence alerts (`attendance.absent-alerts`), lecture processing
-(`lms.transcode`) and Google Calendar events (`calendar.sync`).
+(`lms.transcode`, and `marketplace.transcode` for the course marketplace) and Google Calendar events
+(`calendar.sync`).
 
 1. Check that the worker runs. `docker compose logs api | grep 'Job worker started'` should show a line after the
    last start, and `JOBS_WORKER_ENABLED` must not be `false` in `.env`. Look for `Job worker error`,
@@ -436,6 +445,7 @@ exam auto-submission (`exams.auto-submit`), absence alerts (`attendance.absent-a
 
 - **Lectures stuck at "processing":** stale `lms.transcode` jobs, `LMS transcode failed:` in the api log, or an image
   built with `INSTALL_FFMPEG=false` ([troubleshooting](deployment.md#troubleshooting)).
+- **Marketplace videos stuck at "Processing":** see [media uploads and transcoding](#media-uploads-and-transcoding).
 - **A failed institute purge:** the audit log shows `institute.purge_failed`. Fix the cause shown in the error, then
   press Retry on the super admin "Data deletion" page (`/admin/data/deletion-requests`).
 - **Device sign-outs:** signing a device out from a devices list runs the job `authentication.device-revoked`, which
@@ -594,7 +604,7 @@ reporter to send the details privately, not in a public issue, and handle the re
 | Everyone must sign in again: `JWT_ACCESS_SECRET` leaked, or you can't tell which sessions are affected  | Revoke all refresh tokens: `UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP() WHERE revoked_at IS NULL;`. Then rotate `JWT_ACCESS_SECRET` ([rotating secrets](deployment.md#rotating-secrets)). Within a minute of the revoke, live-class sockets close (`SIGNED_OUT`) and take their LiveKit media with them, and join tokens and offline download links stop working. Access tokens already issued last up to 15 minutes, unless the rotation ends them first. Users see "Your session has expired" and sign in again with their password; their devices stay registered, so they need no OTP.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Password guessing: many `auth.sign_in_locked` events, or many 429s on `/api/auth/` from a few addresses | Each lock's audit event has the address and user agent. Guessing can't lock owners out of the devices they've signed in on before, only out of new ones, and the per-IP `auth` limit (`RATE_LIMIT_AUTH_MAX`, 30 per 15 minutes) still applies ([sign-in locks](deployment.md#sign-in-locks)). Proposal: block the addresses at the firewall. Clear a lock with **Unlock sign-in** only after confirming that the failures were the owner's; if the password may be known, treat it as a compromised account (first row).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | A secret leaked: `deploy/.env`, `deploy/secrets/`, a log or a screenshot                                | Rotate it ([rotating secrets](deployment.md#rotating-secrets)): `DB_PASSWORD`, the MySQL root password, `JWT_ACCESS_SECRET`, `FILE_URL_SECRET`, `OTP_HASH_SECRET` (codes already sent stop working, and the per-number OTP counters and the sign-in locks of identifiers without an account start again). For `ENCRYPTION_KEY`, move the old key to `ENCRYPTION_PREVIOUS_KEYS`, set a new one and run `secrets:reencrypt` ([rotating the encryption key](deployment.md#rotating-the-encryption-key)): it re-encrypts every stored secret, including the platform's and the institutes' notification providers and the Google Calendar refresh tokens. Replace the credentials at each vendor anyway (below), because the old key decrypts the copies in every backup. Provider keys in `.env`, such as `AI_API_KEY`, the `LIVEKIT_*` keys and `GOOGLE_OAUTH_CLIENT_SECRET`: get new ones (for Google, a second secret on the same OAuth client, so calendars stay connected: [configuration](integrations/google-calendar.md#configuration)), put them in `.env`, run `docker compose up -d --wait`, then revoke the old ones at the provider. A self-hosted LiveKit server takes its key pair from `.env`, so the same command switches it over. Keys entered in the app (payment gateways, notification providers): issue new ones at the vendor, enter them again, then revoke the old ones. Google calendars: disconnect them, which revokes their grants, and connect them again ([security](integrations/google-calendar.md#security)). |
-| A database copy or backup leaked                                                                        | It holds every institute's personal data and the password hashes: treat it as a personal-data breach ([communicate](#communicate)). The integration credentials in it are encrypted with `ENCRYPTION_KEY`, which backups don't contain ([what is not backed up](backup-restore.md#what-is-not-backed-up)); if the key leaked too, replace them as in the previous row. Users can't change their passwords in the app yet ([open decisions](#9-open-decisions)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| A database copy or backup leaked                                                                        | It holds every institute's personal data and the password hashes, and the course marketplace's learners, orders and sellers' payout details: treat it as a personal-data breach ([communicate](#communicate)). The integration credentials and the sellers' bank account numbers and UPI IDs in it are encrypted with `ENCRYPTION_KEY`, which backups don't contain ([what is not backed up](backup-restore.md#what-is-not-backed-up)); the sellers' names, banks and IFSC codes are not. If the key leaked too, replace the credentials as in the previous row, and tell the sellers that their account details are exposed. Users can't change their passwords in the app yet ([open decisions](#9-open-decisions)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | The server itself is compromised                                                                        | Assume that every secret on it leaked. Cut its network access except your own, keep its disk for analysis, and rebuild on a new server from a backup taken before the compromise ([restoring onto a new server](backup-restore.md#restoring-onto-a-new-server)), with new secrets and new [TLS certificates](deployment.md#tls-certificates). Put the keys the backup was taken with in `ENCRYPTION_PREVIOUS_KEYS`, set a new `ENCRYPTION_KEY`, and [re-encrypt](deployment.md#rotating-the-encryption-key) after the restore; then replace the integration credentials at each vendor, as for a leaked secret. This is why offsite copies must be ones the server can't delete ([offsite copies](backup-restore.md#offsite-copies)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Cross-tenant exposure through a bug                                                                     | Stop it with the narrowest action that works: roll back if a release introduced it ([5.9](#59-bad-release)); if one institute's accounts exploit it, suspend that institute under **Institutes** (`/admin/institutes`), which blocks its members (`INSTITUTE_NOT_ACTIVE`); as a last resort, stop the api (`docker compose stop api`; nginx answers 503) until the fix is deployed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
@@ -806,9 +816,14 @@ paid.
 `Gateway reports a refund we marked failed as processed; check the gateway dashboard` are SEV2: compare the payment
 with the gateway's dashboard before changing anything.
 
+Course marketplace orders also go to the platform's account, but they have their own webhook URL and no
+reconciliation, and `Marketplace amount mismatch` is SEV2 as well
+([checkout and the platform gateway](#checkout-and-the-platform-gateway)). The "course purchases" in the table
+above are institutes' own courses, not the marketplace's.
+
 #### Google Calendar
 
-With `CALENDAR_PROVIDER=google`, a meeting a teacher accepts (**Approve**) goes to the teacher's Google Calendar,
+With `CALENDAR_PROVIDER=google`, a meeting that a teacher approves (**Approve**) goes to their Google Calendar,
 or to the institute's organiser calendar if the teacher hasn't connected one
 ([whose calendar](integrations/google-calendar.md#whose-calendar-holds-the-events)). With `mock`, the default,
 nothing is sent. The meeting is saved first, and calendar failures never block or undo it
@@ -877,12 +892,240 @@ Everything goes back to Redis by itself once it's reachable. The api logs `Redis
    `docker volume rm erp_redis-data` and `docker compose up -d --wait`. That loses only the counters, the sign-in
    locks and the state of running classes.
 
+### 5.13 Course marketplace
+
+The course marketplace sells courses from independent instructors (**Teach on the marketplace**) and institutes
+(**Marketplace storefront**) to learners, who sign up at `/market/signup` and may not belong to any institute. The
+platform takes the payments and pays the sellers their share. The Super Admin runs it from these pages:
+
+| Super admin page     | Path                          | Used for                                                                                                                                          |
+| -------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Course reviews       | `/admin/marketplace/reviews`  | Courses waiting for review; each opens at `/admin/marketplace/courses/<id>`                                                                       |
+| Rating moderation    | `/admin/marketplace/ratings`  | Learners' reviews of courses: reported, hidden and all                                                                                            |
+| Marketplace sales    | `/admin/marketplace/sales`    | The sales ledger, with refunds as negative rows and a **Refund** button on each sale                                                              |
+| Marketplace settings | `/admin/marketplace/settings` | Commission, sign-up to teach, each seller's commission, and suspending sellers                                                                    |
+| Marketplace payouts  | `/admin/marketplace/payouts`  | Payout settings and runs (`/admin/marketplace/payouts/<id>`); its **Refunds** button opens **Marketplace refunds** (`/admin/marketplace/refunds`) |
+| Audit log            | `/admin/audit`                | The `marketplace.*` events                                                                                                                        |
+
+Its data is in the `mkt_` tables, and sellers' files are in storage under `marketplace/sellers/<id>/`. Institute
+data exports and purges leave both out ([open decisions](#9-open-decisions)).
+
+#### Checkout and the platform gateway
+
+Learners pay through the platform's gateway: the one with **Use for SaaS subscription payments** under
+**Integrations → Payment gateways**, or else the first one enabled. Status checks and refunds use the gateway the
+order was placed with, even after it's disabled. An order that a coupon makes free completes without a gateway.
+
+| What learners see                                        | Code                           | Cause                                                                                                                                                                                            |
+| -------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| "Online payment is not configured yet; please try later" | `GATEWAY_NOT_CONFIGURED` (503) | No platform gateway is enabled                                                                                                                                                                   |
+| "The payment gateway is unavailable; please try again"   | `GATEWAY_ERROR` (502)          | The gateway didn't create the order: the api logs `Marketplace checkout failed` and marks the order failed. Its page says "No money was taken for this order. You can try again from your cart." |
+
+1. Check the gateway's status page and the platform gateway's settings ([payment gateways](#payment-gateways)).
+2. An order is confirmed by the gateway's webhook to
+   `https://app.example.com/api/marketplace/public/webhooks/<gateway>`, when the learner returns from the gateway,
+   or when the learner presses **I've paid, check status** on the order (`Marketplace status check failed` if the
+   gateway doesn't answer). Only Cashfree orders carry the marketplace webhook URL. In Razorpay and Paytm the
+   platform account's webhook URL is the SaaS one
+   ([payments](integrations/payments.md#whose-account-takes-the-money)), so their marketplace orders are confirmed
+   only by the learner. The api doesn't log the webhooks it refuses (4xx or 503): find those in the nginx access
+   log. The ones it accepts are recorded:
+
+   ```sql
+   SELECT gateway, event_key, order_id, outcome, created_at FROM mkt_webhook_events ORDER BY id DESC LIMIT 20;
+   ```
+
+3. Nothing reconciles marketplace orders, and admins can't check one from the app. List the orders waiting for
+   payment and compare them with the gateway's dashboard:
+
+   ```sql
+   SELECT id, number, user_id, gateway, gateway_order_id, total_paise, created_at FROM mkt_orders
+   WHERE status = 'pending' ORDER BY created_at;
+   ```
+
+   For one the gateway shows as paid, ask the learner to open it under **Purchase history** and press **I've paid,
+   check status**. Don't mark an order paid in the database: that wouldn't enrol the learner or credit the seller.
+
+4. Checking out the same basket again within 30 minutes reuses the order. After that, checkout creates a new order,
+   and if the learner pays both, they're enrolled once but the seller is credited twice. List the learner's paid
+   orders:
+
+   ```sql
+   SELECT o.id, o.number, o.paid_at, e.course_id FROM mkt_orders o LEFT JOIN mkt_enrolments e ON e.order_id = o.id
+   WHERE o.user_id = <user id> AND o.status = 'paid';
+   ```
+
+   The order with no `course_id` is the duplicate. Refund it with **Refund** on its sale in **Marketplace sales**;
+   the prompt shows the order number. That reverses the seller's share. The prompt says the learner loses access,
+   but only enrolments made by that order are removed, and the duplicate made none.
+
+5. `Marketplace amount mismatch` means the gateway reported a different amount, and the order stays unpaid. It's
+   SEV2: compare the payment with the gateway's dashboard before changing anything.
+
+#### Course review queue
+
+Sellers submit courses for review, and a course goes on sale only when the Super Admin approves it. The course
+builder tells sellers that review is "usually within two working days", and they can't edit a course, or take it
+back, while it's in review.
+
+1. Open **Course reviews** and pick a course **In review**. Sellers can submit a course only once all its videos
+   have finished processing, and a paid course needs a free preview lecture.
+2. The review page shows the lectures, with a download link for each file.
+3. Decide:
+   - **Approve & publish**, with an optional note, puts the course on sale.
+   - **Request changes** sends it back with a note saying what to change. The course shows as **Changes needed**,
+     and the seller sees "Changes requested:" followed by the note.
+   - **Unpublish** takes a published course off sale, and **Publish again** puts it back.
+4. The seller isn't notified, but sees the new status, and any note, on the course.
+
+The audit events are `marketplace.course.submitted`, `marketplace.course.approved`, `marketplace.course.rejected`,
+`marketplace.course.published` and `marketplace.course.unpublished`.
+
+#### Refund requests
+
+Learners can ask for a refund with **Request a refund** on their order, within the refund window (30 days by
+default) and for courses that allow refunds, one request at a time per order. The page tells them that requests are
+answered "usually within 2 working days".
+
+1. On **Marketplace payouts**, press **Refunds** to open **Marketplace refunds**, which has no menu entry.
+   Its tabs are **Requested**, **Refunded**, **Rejected** and **All**.
+2. Choose **Approve & refund**, then **Refund**; or **Reject**, with a note that the learner sees. Learners aren't
+   notified either way.
+3. A refund the gateway refuses, or doesn't answer, still shows "Refunded", but it's saved as **Refund failed**,
+   with the gateway's message as its note, and appears only under **All**. The api logs `Marketplace refund failed`
+   and audits `marketplace.refund.failed`. Once the gateway works again, take a [snapshot](#mitigate), put the
+   request back in the queue and approve it again:
+
+   ```sql
+   UPDATE mkt_refunds SET status = 'requested' WHERE id = <refund id> AND status = 'failed';
+   ```
+
+   The gateway gets the same refund id (`mktrf-<refund id>`) again, so a refund that went through isn't paid twice.
+   Don't use **Refund** on **Marketplace sales** for it: that starts a new refund with a new id, and can pay the
+   learner twice.
+
+4. A refund the gateway reports as pending counts as refunded at once, and the gateway's later refund webhooks are
+   ignored. If the money doesn't arrive, check the refund in the gateway's dashboard.
+5. A refund removes the course that the order bought and reverses the seller's share. If the sale was already paid
+   out, the reversal comes off the seller's next payout.
+
+#### Monthly payout run
+
+Sellers are paid by bank transfer or UPI, outside the app. The app works out what each seller is owed, gives you a
+bank file and records each transfer. Set these on **Marketplace payouts** (changes are audited as
+`marketplace.payout_settings.updated`):
+
+- **Minimum payout (₹)**, ₹500 by default: a seller owed less is carried forward to a later run.
+- **Hold sales for (days)**, 30 by default: a sale is paid out only after this many days.
+- **Refund window (days)**, 30 by default: how long learners can ask for a refund. The page warns when the hold is
+  shorter than the window; a refund after the payout then comes off the seller's next payout.
+
+Each month:
+
+1. Decide the waiting [refund requests](#refund-requests) first.
+2. Choose the date to **Pay sales up to**. The run takes sales up to the end of that day (IST), and the default is
+   the end of last month; a future date is refused. The preview shows which sales are included (those past the
+   hold, and all refunds) and marks sellers **Carried forward** or **No payout details**.
+3. Create the run. Only one run can be open at a time ("Payout run #N is still open; finish or cancel it first").
+   "No seller is owed the minimum payout for this period" means there's nothing to pay. A seller with no payout
+   details is added as held, and sees why on **Payouts** in their studio.
+4. **Hold** the payouts of suspended sellers ([open decisions](#9-open-decisions)) and of any seller you need to
+   check.
+5. Download the bank file just before you make the transfers. It lists every payout in the run, whatever its status,
+   with the full account number or UPI ID each seller has now, so pay only the rows whose Status is `pending`.
+   Treat the file as personal data, and delete it after the run. Downloads are audited as
+   `marketplace.payout_run.exported`.
+6. After each transfer, press **Mark paid** on that payout straight away and enter the UTR or UPI reference: 4 to 80
+   letters, digits and `-`, `/`, `_` or `.`. The app stores the account details the seller has at that moment,
+   notifies the seller ("Payout of ₹… sent") and audits `marketplace.payout.paid`.
+7. **Release** a held payout once the seller has payout details, or **Remove from run** to carry its sales forward.
+8. **Finalize** the run: payouts still unpaid or held are removed, and their sales go to the next run. A run also
+   finalizes itself once nothing in it is pending or held. **Cancel run** works only while nothing in it is paid.
+
+**Show full** on a payout reveals the seller's full account number or UPI ID, and is audited as
+`marketplace.payout_account.revealed`.
+
+#### Commission and sellers
+
+On **Marketplace settings**:
+
+- **Platform commission on each sale (%)** is 30 by default. Each sale keeps the commission it was made at, so a
+  change applies to later sales only.
+- **Anyone can sign up to teach** is on by default. When it's off, new instructors see "Instructor sign-up is closed
+  at the moment".
+- Each seller can have their own commission; leave it empty for the default.
+- **Suspend** hides a seller's courses from the marketplace, and their studio answers "This seller account is
+  suspended. Contact support." (`SELLER_SUSPENDED`). Their payouts carry on, so hold them in the
+  [payout run](#monthly-payout-run). **Reinstate** undoes it.
+
+#### Review moderation
+
+Signed-in users can report a review that isn't their own, once each, with a reason. **Rating moderation** lists the
+reported reviews under **Reported**, most reported first, with the reasons; the **Hidden** and **All** tabs list the
+hidden reviews and all of them.
+
+- **Hide review** takes the review off the course page; the learner keeps their enrolment. Give a reason. The seller
+  sees the review as "Hidden by moderators".
+- **Restore** puts a hidden review back and clears its reports.
+
+Either way the course's rating is recalculated. Both are audited, as `marketplace.review.hidden` and
+`marketplace.review.restored`.
+
+#### Certificate verification
+
+Marketplace certificates have IDs like `MKT-` followed by 10 capital letters and digits. Anyone can check one at
+`https://app.example.com/market/certificates/<ID>`, which shows "Certificate of completion" with the learner, the
+course, the issue date and the ID, or "Certificate not found". In the database:
+
+```sql
+SELECT code, learner_name, course_title, seller_name, issued_at FROM mkt_certificates WHERE code = '<ID>';
+```
+
+The learner's name is copied onto the certificate when it's issued, and the app can't correct or revoke a
+certificate ([open decisions](#9-open-decisions)). Proposal: after a second person has checked the request, take a
+[snapshot](#mitigate) and correct the name; the page and the PDF both use it.
+
+```sql
+UPDATE mkt_certificates SET learner_name = '<name>' WHERE code = '<ID>';
+```
+
+#### Media uploads and transcoding
+
+Sellers' videos upload in parts to `/srv/erp/backend/tmp/marketplace-uploads/` in the `api-tmp` volume, and are
+stored under `marketplace/sellers/<id>/`. The `marketplace.transcode` job (5 attempts) converts them to HLS in
+`mkt-hls-*` directories in `api-tmp`, and the studio shows "Processing" until it's done. Without ffmpeg, videos play
+as MP4. If conversion fails, the api warns `Marketplace transcode failed`, and the video plays as MP4 with the error
+"HLS conversion failed".
+
+Videos still processing, and their jobs ([5.5](#55-background-jobs-stuck-or-failing)):
+
+```sql
+SELECT id, seller_id, original_name, updated_at FROM mkt_media WHERE kind = 'video' AND status = 'processing';
+SELECT id, status, attempts, run_at, last_error FROM jobs
+WHERE name = 'marketplace.transcode' AND status <> 'completed';
+```
+
+Unlike LMS uploads, marketplace upload parts never expire. Each part is named after its `mkt_media` id and rewritten
+with every chunk, so its time shows when the upload last moved:
+
+```bash
+docker compose exec api ls -la /srv/erp/backend/tmp/marketplace-uploads
+```
+
+Proposal: delete parts untouched for 7 days. A seller who then resumes one of those uploads sees "Upload data is
+missing; start again" and uploads the file again.
+
+```bash
+docker compose exec api find /srv/erp/backend/tmp/marketplace-uploads -name '*.part' -mtime +7 -delete
+```
+
 ## 6. Support for institutes
 
 Institutes are the platform's customers. Their admins contact platform support; teachers, students and parents ask
-their institute first, which answers what it can and passes the rest on. The spec leaves support hours open (section
-13), so the channels, contacts and times below are TBD until agreed. The hours should cover the times when institutes
-hold classes and exams, which may include evenings and weekends.
+their institute first, which answers what it can and passes the rest on. Course marketplace learners and independent
+instructors may have no institute to ask, so they contact platform support directly. The spec leaves support hours
+open (section 13), so the channels, contacts and times below are TBD until agreed. The hours should cover the times
+when institutes hold classes and exams, which may include evenings and weekends.
 
 ### Channels
 
@@ -956,6 +1199,14 @@ Never ask for passwords or OTPs. If someone sends a password anyway, treat it as
 | A live class won't start, or parts of it fail                                  | "The live streaming server is not reachable" (`STREAMING_UNAVAILABLE`), or "This part of the class is briefly unavailable" (`LIVE_STATE_UNAVAILABLE`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | [Live classes on LiveKit](#live-classes-on-livekit), [5.12](#512-redis-unavailable).                                                                                                                                                                                                                                                                                                         |
 | Online payment fails                                                           | The gateway isn't set up correctly (`GATEWAY_MISCONFIGURED`, `GATEWAY_NOT_CONFIGURED`), or it didn't answer or refused the request (`GATEWAY_ERROR`). The messages payers see are in [payment gateways](#payment-gateways).                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Tell the payer not to pay again while a payment is pending: reconciliation settles it. Check the gateway ([payment gateways](#payment-gateways)). Staff can still record offline payments.                                                                                                                                                                                                   |
 | A meeting isn't in Google Calendar                                             | Google is failing or refused the event, the calendar needs reconnecting, or none is connected.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | The meeting's details show where it stands, with the last error ([Google Calendar](#google-calendar)). The meeting and its reminders in the app are unaffected.                                                                                                                                                                                                                              |
+| Marketplace checkout fails                                                     | "Online payment is not configured yet; please try later" (`GATEWAY_NOT_CONFIGURED`): no platform gateway is enabled. "The payment gateway is unavailable; please try again" (`GATEWAY_ERROR`): the gateway didn't create the order, and the api logs `Marketplace checkout failed`                                                                                                                                                                                                                                                                                                                                                                                                                        | Check the platform gateway ([checkout and the platform gateway](#checkout-and-the-platform-gateway)). No money was taken, so the learner tries again from the cart once it works                                                                                                                                                                                                             |
+| Paid for a marketplace course, but it isn't in **My learning**                 | The order is still pending. With Razorpay and Paytm, marketplace orders get no webhook, so they're confirmed only when the learner returns from the gateway or checks the order, and nothing reconciles them                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Ask the learner to open the order under **Purchase history** and press **I've paid, check status**. If it stays pending, compare it with the gateway's dashboard ([checkout](#checkout-and-the-platform-gateway)). Never mark it paid in the database                                                                                                                                        |
+| Wants a marketplace refund, or a refund hasn't arrived                         | Learners ask with **Request a refund** on the order, within the refund window, for courses that allow refunds. A refund the gateway refused is saved as **Refund failed**, and one it reports as pending counts as refunded                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Decide it on **Marketplace refunds** ([refund requests](#refund-requests)). For one that hasn't arrived, check its status under **All** and the refund in the gateway's dashboard                                                                                                                                                                                                            |
+| Seller account suspended (`SELLER_SUSPENDED`), or sign-up to teach is closed   | The Super Admin suspended the seller: the studio answers "This seller account is suspended. Contact support." and the courses are hidden. Or **Anyone can sign up to teach** is off: "Instructor sign-up is closed at the moment"                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Escalate to the Super Admin, who can **Reinstate** the seller or reopen sign-up ([commission and sellers](#commission-and-sellers))                                                                                                                                                                                                                                                          |
+| A seller asks where their payout is                                            | Sales are paid only after the hold, in the monthly run. A seller owed less than the minimum is carried forward, and a payout without payout details, or one the Super Admin held, waits; the seller sees why on **Payouts**                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Check the seller's payout in the latest run ([payout run](#monthly-payout-run)); a paid one has its UTR in the bank file. A seller with no payout details adds them under **Payout details**                                                                                                                                                                                                 |
+| A marketplace course is stuck in review                                        | No one has reviewed it yet. The seller can't edit or withdraw it while it's in review, and isn't notified of the decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Review it ([course review queue](#course-review-queue)) and tell the seller                                                                                                                                                                                                                                                                                                                  |
+| Is this marketplace certificate genuine? Or: the name on it is wrong           | Anyone can check a certificate ID on its page. The learner's name is copied when the certificate is issued, and the app can't change it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Open `https://app.example.com/market/certificates/<ID>`; an unknown ID shows "Certificate not found". For names, see [certificate verification](#certificate-verification)                                                                                                                                                                                                                   |
+| Seller's upload fails: "Upload data is missing; start again"                   | The upload's part file in `api-tmp` is gone, for example after old parts were cleaned up                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | The seller uploads the file again ([media uploads](#media-uploads-and-transcoding))                                                                                                                                                                                                                                                                                                          |
 | Who changed this?                                                              |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Super admins search **Audit log** (`/admin/audit`) by action, e.g. `institute.`. To narrow it to one institute or user, query `audit_events` as in [5.8](#58-suspected-security-incident-or-cross-tenant-exposure). Only some actions are audited.                                                                                                                                           |
 | Data deleted or changed by mistake                                             |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Copy the rows back from a backup ([5.10](#510-data-loss-or-a-lost-server)).                                                                                                                                                                                                                                                                                                                  |
 | Export all data, or close the account                                          |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | The institute admin uses **Data export & deletion** (`/data`). A deletion needs a super admin's approval under **Data deletion** (`/admin/data/deletion-requests`), then waits for a grace period (30 days by default) in which it can be cancelled.                                                                                                                                         |
@@ -1073,6 +1324,13 @@ the private incident location or wherever is agreed.
 | 9   | Institute onboarding and subscription-limit enforcement are validated.      | `platform.test.ts`: an institute created with its main branch, subscription and admin; suspension. Plan limits in `billing.test.ts`, `tenancy.test.ts` and `integration.test.ts`, and access states in `billing.test.ts`. The E2E spec `saas-billing-data-lifecycle`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | The plans and their limits agreed. A pilot institute onboarded end to end on staging, with its custom domain if it has one ([institute custom domains](deployment.md#institute-custom-domains)).                                                                                                                                                                                                | Product owner                   |
 | 10  | Production deployment, monitoring, support and rollback plans are approved. | [deployment.md](deployment.md): first deployment, [upgrades](deployment.md#upgrades), [rollback](deployment.md#rollback) and the [migration rollback plan](deployment.md#migration-rollback-plan). The CI Compose smoke test (`deploy/smoke-test.sh`). This document.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | The decisions in [section 9](#9-open-decisions). Alerts set up and tested. Support staffed. An upgrade and a rollback rehearsed on staging.                                                                                                                                                                                                                                                     | Operations lead, business owner |
 
+The course marketplace has its own suites: `marketplace.test.ts`, `marketplace-payouts.test.ts`,
+`marketplace-quiz-cert.test.ts` and `marketplace-engagement.test.ts` in the backend, and the E2E specs
+`marketplace-browse-buy-watch.spec.ts`, `marketplace-payouts.spec.ts`, `marketplace-quiz-certificate.spec.ts` and
+`marketplace-reviews-qa-wishlist.spec.ts`. They all use the mock gateway, and none sends a marketplace webhook, so
+before launch make a real payment, webhook and refund through the platform gateway on staging
+([5.13](#513-course-marketplace)).
+
 ### Availability and operations criteria (section 10)
 
 | Criterion                | Covered by                                                                                                                   | Still needed                                                                                                       |
@@ -1114,6 +1372,9 @@ the private incident location or wherever is agreed.
 - [ ] The mobile apps are signed, built against the production URL
       ([mobile apps and CORS](deployment.md#mobile-apps-and-cors)), and tested on the device matrix.
 - [ ] Legal counsel has confirmed the notification duties for incidents ([communicate](#communicate)).
+- [ ] The course marketplace's platform gateway is set up and tested on staging; the commission, refund window,
+      hold and minimum payout are agreed; and someone is named to decide refunds and run the payouts
+      ([5.13](#513-course-marketplace)).
 
 ## 9. Open decisions
 
@@ -1149,3 +1410,12 @@ owners are TBD.
 | 24  | The process proposals in this document: incident roles, routine checks, notice templates, a second person's review of manual data changes                     | As written in sections [2](#2-monitoring-and-alerting), [4](#4-incident-process) and [6](#6-support-for-institutes)                                                                                                                                                       | TBD   |
 | 25  | Sign-in lockout settings, when support may clear a lock, and how to answer password guessing                                                                  | Keep the defaults (5 failures, then a 60-second lock doubling up to 15 minutes; [sign-in locks](deployment.md#sign-in-locks)); clear a lock only after checking the `auth.sign_in_locked` events and confirming who the user is; block guessing addresses at the firewall | TBD   |
 | 26  | Google Calendar at launch: whether it's on, who owns the Google Cloud project and its OAuth client, and Google's verification of the consent screen           | Keep `CALENDAR_PROVIDER=mock` until Google has verified the consent screen and the [real-account checks](integrations/google-calendar.md#what-only-a-real-google-account-can-verify) pass                                                                                 | TBD   |
+| 27  | Marketplace payouts: the schedule, who runs and who checks them, and how the bank file is kept                                                                | Monthly, run by the finance owner and checked by a second person; the bank file kept off email and chat, and deleted after the run                                                                                                                                        | TBD   |
+| 28  | Marketplace refund window, sales hold and minimum payout, and how fast refund requests are decided                                                            | Keep the defaults (30 days, 30 days, ₹500), and decide requests within the 2 working days the app promises learners                                                                                                                                                       | TBD   |
+| 29  | Marketplace course review standards and time, and which learner reviews moderators hide                                                                       | Written standards for both, shared with sellers; course reviews within the 2 working days the app promises sellers                                                                                                                                                        | TBD   |
+| 30  | Marketplace commission, and whether anyone can sign up to teach                                                                                               | A business decision; the defaults are 30% and open sign-up                                                                                                                                                                                                                | TBD   |
+| 31  | Payouts to suspended sellers, which the app still includes                                                                                                    | Hold them until the suspension is resolved                                                                                                                                                                                                                                | TBD   |
+| 32  | Correcting the name on a marketplace certificate, and revoking certificates; the app can do neither                                                           | Correct names in the database after a second person checks the request ([certificate verification](#certificate-verification)); revocation only if it's needed                                                                                                            | TBD   |
+| 33  | Marketplace orders paid through Razorpay or Paytm get no webhook, and nothing reconciles pending orders or lets an admin check one                            | A reconciliation job, or an admin status check; until then, compare pending orders with the gateway's dashboard daily                                                                                                                                                     | TBD   |
+| 34  | How marketplace learners and independent instructors hear about incidents, and how they reach support                                                         | The notices agreed for institutes ([communicate](#communicate)) and the channels in [section 6](#6-support-for-institutes)                                                                                                                                                | TBD   |
+| 35  | A purged institute's storefront: its marketplace courses, files and sales stay, and its data export leaves them out                                           | Suspend the storefront and settle its payouts before the purge, and tell the institute what stays                                                                                                                                                                         | TBD   |
