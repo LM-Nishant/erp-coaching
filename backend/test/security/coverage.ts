@@ -251,6 +251,48 @@ export const SELF_SERVICE_ROUTES: Record<string, string> = {
   'PUT /api/lms/uploads/:uploadId/chunk': 'own upload sessions',
   'POST /api/lms/uploads/:uploadId/complete': 'own upload sessions',
   'DELETE /api/lms/uploads/:uploadId': 'own upload sessions',
+  // Course marketplace: learners and independent instructors have no institute permissions.
+  'GET /api/marketplace/account': 'own marketplace account',
+  'PUT /api/marketplace/instructor-profile': 'become an independent instructor (own profile)',
+  'GET /api/marketplace/courses/:id/access': 'own enrolment and cart state for a public course',
+  'POST /api/marketplace/courses/:id/enrol': 'enrol self in a free public course',
+  'GET /api/marketplace/cart': 'own cart',
+  'POST /api/marketplace/cart/items': 'own cart',
+  'DELETE /api/marketplace/cart/items/:id': 'own cart',
+  'POST /api/marketplace/checkout': 'own cart checkout',
+  'GET /api/marketplace/orders': 'own orders',
+  'GET /api/marketplace/orders/:id': 'own orders',
+  'POST /api/marketplace/orders/:id/sync': 'own orders',
+  'POST /api/marketplace/orders/:id/mock-complete': 'own orders (mock gateway, 404 in production)',
+  'GET /api/marketplace/learning': 'own enrolled courses',
+  'GET /api/marketplace/learning/:id': 'own enrolled courses',
+  'GET /api/marketplace/learning/:id/lectures/:lectureId': 'own enrolled courses',
+  'PUT /api/marketplace/learning/:id/lectures/:lectureId/progress': 'own lecture progress',
+  'GET /api/marketplace/instructor/profile': 'own instructor storefront',
+  'POST /api/marketplace/instructor/media': 'own instructor storefront',
+  'GET /api/marketplace/instructor/media/:id': 'own instructor storefront',
+  'PUT /api/marketplace/instructor/media/:id/content': 'own instructor storefront',
+  'GET /api/marketplace/instructor/courses': 'own instructor storefront',
+  'POST /api/marketplace/instructor/courses': 'own instructor storefront',
+  'GET /api/marketplace/instructor/courses/:id': 'own instructor storefront',
+  'PATCH /api/marketplace/instructor/courses/:id': 'own instructor storefront',
+  'DELETE /api/marketplace/instructor/courses/:id': 'own instructor storefront',
+  'GET /api/marketplace/instructor/courses/:id/readiness': 'own instructor storefront',
+  'POST /api/marketplace/instructor/courses/:id/submit': 'own instructor storefront',
+  'POST /api/marketplace/instructor/courses/:id/unpublish': 'own instructor storefront',
+  'PUT /api/marketplace/instructor/courses/:id/curriculum-order': 'own instructor storefront',
+  'POST /api/marketplace/instructor/courses/:id/sections': 'own instructor storefront',
+  'PATCH /api/marketplace/instructor/courses/:id/sections/:sectionId': 'own instructor storefront',
+  'DELETE /api/marketplace/instructor/courses/:id/sections/:sectionId': 'own instructor storefront',
+  'POST /api/marketplace/instructor/courses/:id/sections/:sectionId/lectures': 'own instructor storefront',
+  'PATCH /api/marketplace/instructor/courses/:id/lectures/:lectureId': 'own instructor storefront',
+  'DELETE /api/marketplace/instructor/courses/:id/lectures/:lectureId': 'own instructor storefront',
+  'GET /api/marketplace/instructor/courses/:id/lectures/:lectureId/content': 'own instructor storefront',
+  'GET /api/marketplace/instructor/coupons': 'own instructor storefront',
+  'POST /api/marketplace/instructor/coupons': 'own instructor storefront',
+  'PATCH /api/marketplace/instructor/coupons/:id': 'own instructor storefront',
+  'DELETE /api/marketplace/instructor/coupons/:id': 'own instructor storefront',
+  'GET /api/marketplace/instructor/sales': 'own instructor storefront',
 };
 
 /** Public routes outside `/public/` (everything else public must live under `/api/public/...`). */
@@ -348,6 +390,16 @@ export const UNIFORM_RESPONSE: Record<string, string> = {
  * findings must be fixed, never listed here. Also listed in docs/security.md.
  */
 export const KNOWN_FINDINGS: Record<string, string> = {};
+
+/**
+ * Route prefixes whose records are not owned by an institute, so the record crawls (which pick a
+ * row of the victim institute) do not apply, with the reason and where isolation is tested instead.
+ */
+export const NOT_INSTITUTE_RECORDS: Record<string, string> = {
+  '/api/marketplace/':
+    'public course marketplace: carts, orders, enrolments and courses belong to a learner or a seller ' +
+    'across institutes; cross-seller and cross-learner isolation is tested in test/marketplace.test.ts',
+};
 
 /**
  * Routes the crawls cannot probe yet, with the reason. A stale entry (the route is gone, or now

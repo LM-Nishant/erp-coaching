@@ -71,6 +71,12 @@
             <span v-else>{{ mode === 'password' ? 'Sign in' : 'Send OTP' }}</span>
           </ion-button>
         </form>
+        <p class="market-links">
+          <router-link to="/market">Browse courses</router-link> ·
+          <router-link :to="{ name: 'market-signup', query: route.query }"
+            >Create a learner account</router-link
+          >
+        </p>
       </div>
     </ion-content>
   </ion-page>
@@ -148,6 +154,10 @@ async function go(next: NextStep) {
 </script>
 
 <style scoped>
+.market-links {
+  text-align: center;
+  font-size: 14px;
+}
 .auth-wrap {
   max-width: 420px;
   margin: 8vh auto 0;

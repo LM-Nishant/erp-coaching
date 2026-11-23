@@ -3,6 +3,7 @@ import { config } from '../../infrastructure/config';
 import { logger } from '../../infrastructure/logger';
 import { setSaasGatewayResolver } from '../subscriptions/api';
 import { setPlatformFeesGatewayProvider } from '../fees/api';
+import { setMarketplaceGatewayResolver } from '../marketplace/api';
 import {
   defaultMessagingProvider,
   instituteGatewayCredentials,
@@ -20,6 +21,8 @@ const REFRESH_MS = 60_000;
  */
 export async function registerPlatformIntegrations(): Promise<void> {
   setSaasGatewayResolver(resolveSaasGateway);
+  // Marketplace sales are collected by the platform, with the same gateway as subscriptions.
+  setMarketplaceGatewayResolver(resolveSaasGateway);
   setDefaultMessagingResolver(defaultMessagingProvider);
   setPlatformWebhookResolver(platformMessagingWebhook);
   setPlatformFeesGatewayProvider({

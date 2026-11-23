@@ -10,7 +10,7 @@ import { hmac, safeEqual } from '../../infrastructure/crypto';
  * sends the payer back into the app they came from: the web app, the Android app's
  * `https://localhost` origin, or `capacitor://localhost` on iOS. Links expire after a week.
  */
-export type CheckoutReturnScope = 'fees' | 'saas';
+export type CheckoutReturnScope = 'fees' | 'saas' | 'marketplace';
 
 export interface CheckoutReturnTarget {
   instituteId: number | null;
@@ -83,6 +83,12 @@ export function verifyCheckoutReturn(
   return { instituteId: instituteId as number | null, paymentId: paymentId as number, platform, path };
 }
 
+const CHECKOUT_RETURN_BASES: Record<CheckoutReturnScope, string> = {
+  fees: '/api/fees',
+  saas: '/api/subscriptions',
+  marketplace: '/api/marketplace',
+};
+
 /** Absolute API URL the gateway sends the payer to once checkout ends. */
 export function checkoutReturnUrl(
   scope: CheckoutReturnScope,
@@ -95,7 +101,7 @@ export function checkoutReturnUrl(
     platform: returnTo?.platform ?? 'web',
     path: checkoutReturnPath(returnTo?.path, defaultPath),
   });
-  const base = scope === 'fees' ? '/api/fees' : '/api/subscriptions';
+  const base = CHECKOUT_RETURN_BASES[scope];
   return `${config.API_PUBLIC_URL}${base}/public/checkout-return/${token}`;
 }
 
