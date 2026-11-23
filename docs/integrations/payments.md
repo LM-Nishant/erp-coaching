@@ -156,8 +156,9 @@ Every event's signature is verified before anything is read from it. The answers
 
 ## Checkout on the web and in the apps
 
-Payers pay from **My fees** and the course purchase page, and institutes pay their subscription from **Billing**. Each
-opens the gateway's standard checkout and, when it ends, asks the API to check the payment with the gateway.
+Payers pay from **My fees** and the course purchase page, and institutes pay their subscription from
+**Subscription & billing**. Each opens the gateway's standard checkout and, when it ends, asks the API to check the
+payment with the gateway.
 
 | Platform | How the checkout runs                                                                                                                                                                   |
 | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
