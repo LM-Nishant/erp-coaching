@@ -15,6 +15,8 @@ export default defineAppModule({
     {
       title: 'AI usage',
       path: '/ai-usage',
+      group: 'settings',
+      titleKey: 'nav.ai.usage',
       icon: sparklesOutline,
       permission: 'ai.view',
       planModule: 'ai',

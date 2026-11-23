@@ -58,6 +58,8 @@ export default defineAppModule({
     {
       title: 'Staff',
       path: '/hr/employees',
+      group: 'hr',
+      titleKey: 'nav.hr.staff',
       icon: idCardOutline,
       permission: 'hr.view',
       planModule: 'hr',
@@ -66,6 +68,8 @@ export default defineAppModule({
     {
       title: 'Staff attendance',
       path: '/hr/attendance',
+      group: 'hr',
+      titleKey: 'nav.hr.attendance',
       icon: timeOutline,
       permission: 'hr.view',
       planModule: 'hr',
@@ -74,6 +78,8 @@ export default defineAppModule({
     {
       title: 'Leave requests',
       path: '/hr/leaves',
+      group: 'hr',
+      titleKey: 'nav.hr.leaves',
       icon: calendarOutline,
       permission: 'hr.view',
       planModule: 'hr',
@@ -82,6 +88,8 @@ export default defineAppModule({
     {
       title: 'Assets & exits',
       path: '/hr/assets',
+      group: 'hr',
+      titleKey: 'nav.hr.assets',
       icon: laptopOutline,
       permission: 'hr.view',
       planModule: 'hr',
@@ -90,6 +98,8 @@ export default defineAppModule({
     {
       title: 'HR settings',
       path: '/hr/settings',
+      group: 'hr',
+      titleKey: 'nav.hr.settings',
       icon: settingsOutline,
       permission: 'hr.configure',
       planModule: 'hr',
@@ -98,6 +108,8 @@ export default defineAppModule({
     {
       title: 'My leave & attendance',
       path: '/me/hr',
+      group: 'hr',
+      titleKey: 'nav.hr.me',
       icon: personCircleOutline,
       permission: 'hr-self-service.view',
       planModule: 'hr',

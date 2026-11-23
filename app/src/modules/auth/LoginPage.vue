@@ -2,10 +2,24 @@
   <ion-page>
     <ion-content class="ion-padding">
       <div class="auth-wrap">
+        <div class="languages" role="group" :aria-label="t('auth.login.chooseLanguage')">
+          <button
+            v-for="l in LOCALES"
+            :key="l"
+            type="button"
+            class="lang"
+            :class="{ active: locale === l }"
+            :aria-pressed="locale === l"
+            :lang="l"
+            @click="setLocale(l)"
+          >
+            {{ LOCALE_NAMES[l] }}
+          </button>
+        </div>
         <div class="logo">
           <img src="/favicon.svg" alt="" />
           <h1>ERP Coaching</h1>
-          <p class="muted">Sign in to your institute</p>
+          <p class="muted">{{ t('auth.login.subtitle') }}</p>
         </div>
 
         <ion-text v-if="notice" color="warning"
@@ -19,12 +33,16 @@
           @click="router.replace({ name: 'unlock', query: route.query })"
         >
           <ion-icon slot="start" :icon="fingerPrintOutline" />
-          Unlock with biometrics
+          {{ t('auth.login.unlock') }}
         </ion-button>
 
         <ion-segment v-model="mode">
-          <ion-segment-button value="password"><ion-label>Password</ion-label></ion-segment-button>
-          <ion-segment-button value="otp"><ion-label>Mobile OTP</ion-label></ion-segment-button>
+          <ion-segment-button value="otp"
+            ><ion-label>{{ t('auth.login.modeOtp') }}</ion-label></ion-segment-button
+          >
+          <ion-segment-button value="password"
+            ><ion-label>{{ t('auth.login.modePassword') }}</ion-label></ion-segment-button
+          >
         </ion-segment>
 
         <form @submit.prevent="submit">
@@ -33,7 +51,7 @@
               <ion-item>
                 <ion-input
                   v-model="identifier"
-                  label="Mobile or email"
+                  :label="t('auth.login.identifier')"
                   label-placement="stacked"
                   autocomplete="username"
                   required
@@ -42,7 +60,7 @@
               <ion-item>
                 <ion-input
                   v-model="password"
-                  label="Password"
+                  :label="t('auth.login.password')"
                   label-placement="stacked"
                   type="password"
                   autocomplete="current-password"
@@ -55,10 +73,12 @@
             <ion-item v-else>
               <ion-input
                 v-model="mobile"
-                label="Mobile number"
+                :label="t('auth.login.mobile')"
                 label-placement="stacked"
+                :helper-text="t('auth.login.mobileHelp')"
                 type="tel"
                 inputmode="tel"
+                autocomplete="tel"
                 required
               />
             </ion-item>
@@ -68,14 +88,14 @@
           >
           <ion-button expand="block" type="submit" :disabled="busy" class="ion-margin-top">
             <ion-spinner v-if="busy" name="dots" />
-            <span v-else>{{ mode === 'password' ? 'Sign in' : 'Send OTP' }}</span>
+            <span v-else>{{ mode === 'password' ? t('auth.login.signIn') : t('auth.login.sendOtp') }}</span>
           </ion-button>
         </form>
         <p class="market-links">
-          <router-link to="/market">Browse courses</router-link> ·
-          <router-link :to="{ name: 'market-signup', query: route.query }"
-            >Create a learner account</router-link
-          >
+          <router-link to="/market">{{ t('auth.login.browse') }}</router-link> ·
+          <router-link :to="{ name: 'market-signup', query: route.query }">{{
+            t('auth.login.createLearner')
+          }}</router-link>
         </p>
       </div>
     </ion-content>
@@ -85,6 +105,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import {
   IonButton,
   IonContent,
@@ -102,13 +123,16 @@ import {
 } from '@ionic/vue';
 import { fingerPrintOutline } from 'ionicons/icons';
 import { errorMessage } from '@/core/api';
+import { LOCALE_NAMES, LOCALES, setLocale } from '@/i18n';
 import { useAuthStore, type NextStep } from '@/stores/auth';
 
 const auth = useAuthStore();
 const router = useRouter();
 const route = useRoute();
+const { t, locale } = useI18n();
 
-const mode = ref<'password' | 'otp'>('password');
+// Most students and parents know their mobile number, not a password: OTP first.
+const mode = ref<'password' | 'otp'>('otp');
 const identifier = ref('');
 const password = ref('');
 const mobile = ref('');
@@ -116,13 +140,10 @@ const busy = ref(false);
 const error = ref('');
 
 /** Why the last session ended (inactivity, device signed out by an admin…). */
-const ENDED: Record<string, string> = {
-  idle: 'You were signed out after a period of inactivity.',
-  revoked: 'This device was signed out of your account. Sign in again to continue.',
-  inactive: 'Your account is inactive. Contact your institute.',
-  expired: 'Your session has expired. Please sign in again.',
-};
-const notice = computed(() => (auth.endReason ? ENDED[auth.endReason] : ''));
+const ENDED = ['idle', 'revoked', 'inactive', 'expired'];
+const notice = computed(() =>
+  auth.endReason && ENDED.includes(auth.endReason) ? t(`auth.login.ended.${auth.endReason}`) : '',
+);
 
 async function submit() {
   busy.value = true;
@@ -142,8 +163,7 @@ async function submit() {
 
 async function go(next: NextStep) {
   if (next === 'device-limit') {
-    error.value =
-      'You are already signed in on the maximum number of devices. Sign out of one in "My devices" on another device, or ask your institute admin to remove an old device.';
+    error.value = t('auth.login.deviceLimit');
     return;
   }
   if (next === 'otp') return router.push({ name: 'otp', query: route.query });
@@ -160,7 +180,28 @@ async function go(next: NextStep) {
 }
 .auth-wrap {
   max-width: 420px;
-  margin: 8vh auto 0;
+  margin: 4vh auto 0;
+}
+.languages {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.lang {
+  min-height: var(--app-tap-target);
+  padding: 0 16px;
+  border: 1px solid var(--ion-color-medium);
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.lang.active {
+  border-color: var(--ion-color-primary);
+  background: var(--ion-color-primary);
+  color: var(--ion-color-primary-contrast);
 }
 .logo {
   text-align: center;

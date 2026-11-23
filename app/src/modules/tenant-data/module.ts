@@ -30,6 +30,8 @@ export default defineAppModule({
     {
       title: 'Data export & deletion',
       path: '/data',
+      group: 'settings',
+      titleKey: 'nav.tenantData.data',
       icon: archiveOutline,
       permission: 'tenant-data.view',
       order: 95,
@@ -37,6 +39,8 @@ export default defineAppModule({
     {
       title: 'Data deletion',
       path: '/admin/data/deletion-requests',
+      group: 'platform',
+      titleKey: 'nav.tenantData.deletion',
       icon: trashBinOutline,
       superAdmin: true,
       order: 35,

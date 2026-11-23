@@ -27,6 +27,7 @@ async function requestOtpLogin(page: Page, user: Person): Promise<number> {
 }
 
 async function submitPassword(page: Page, user: Person): Promise<void> {
+  await selectSegment(page, 'Password');
   await page.getByLabel('Mobile or email').fill(user.mobile);
   await page.getByLabel('Password', { exact: true }).fill(user.password);
   await page.getByRole('button', { name: 'Sign in' }).click();
