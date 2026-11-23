@@ -491,7 +491,6 @@ class InstituteSeeder {
           'fees.create',
           'notifications.view',
           'appointments.view',
-          'appointments.create',
           'grievances.view',
           'grievances.create',
         ]),
