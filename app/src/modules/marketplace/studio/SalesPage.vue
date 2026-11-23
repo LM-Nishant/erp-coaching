@@ -27,17 +27,29 @@
             <th>Paid</th>
             <th>Commission</th>
             <th>Net</th>
+            <th v-if="platform" />
           </tr>
         </thead>
         <tbody>
-          <tr v-for="e in data.items" :key="e.id">
+          <tr v-for="e in data.items" :key="e.id" :class="{ refund: e.entryType === 'refund' }">
             <td>{{ new Date(e.createdAt).toLocaleDateString() }}</td>
-            <td>{{ e.orderNumber }}</td>
+            <td>{{ e.orderNumber }}<template v-if="e.entryType === 'refund'"> · refund</template></td>
             <td>{{ e.courseTitle }}</td>
             <td v-if="platform">{{ e.seller.displayName }}</td>
-            <td>{{ rupees(e.grossPaise) }}</td>
-            <td>{{ rupees(e.commissionPaise) }} ({{ e.commissionPercent }}%)</td>
-            <td>{{ rupees(e.netPaise) }}</td>
+            <td>{{ signed(e, e.grossPaise) }}</td>
+            <td>{{ signed(e, e.commissionPaise) }} ({{ e.commissionPercent }}%)</td>
+            <td>{{ signed(e, e.netPaise) }}</td>
+            <td v-if="platform">
+              <ion-button
+                v-if="e.entryType !== 'refund'"
+                fill="clear"
+                size="small"
+                color="danger"
+                :data-testid="`refund-sale-${e.id}`"
+                @click="refund(e)"
+                >Refund</ion-button
+              >
+            </td>
           </tr>
         </tbody>
       </table>
@@ -62,8 +74,11 @@ import { useRoute } from 'vue-router';
 import { IonButton } from '@ionic/vue';
 import AppPage from '@/components/AppPage.vue';
 import StatCard from '@/components/StatCard.vue';
-import { toastError } from '@/core/toast';
+import type { MktLedgerEntryDto } from '@erp/shared';
+import { toast, toastError } from '@/core/toast';
 import { adminMarketApi, rupees, studioApi, type LedgerPage, type StudioScope } from '../api';
+import { payoutAdminApi, signedRupees } from '../payouts-api';
+import { promptText } from '../admin/prompt';
 
 const route = useRoute();
 const platform = !!route.meta.superAdmin;
@@ -77,6 +92,26 @@ async function load(page = 1) {
     void toastError(e);
   }
 }
+/** Refund rows reverse a sale: shown as negative amounts. */
+const signed = (e: MktLedgerEntryDto, paise: number) =>
+  signedRupees(e.entryType === 'refund' ? -paise : paise);
+
+async function refund(e: MktLedgerEntryDto) {
+  const reason = await promptText(`Refund ${rupees(e.grossPaise)} for ${e.courseTitle}`, {
+    message: `Order ${e.orderNumber}. The learner is refunded, loses access to the course and the seller's share is reversed.`,
+    placeholder: 'Reason',
+    confirm: 'Refund',
+  });
+  if (!reason) return;
+  try {
+    await payoutAdminApi.refundOrder(e.orderId, { courseId: e.courseId, reason });
+    await toast('Refunded');
+    await load(data.value?.page ?? 1);
+  } catch (err) {
+    void toastError(err);
+  }
+}
+
 onMounted(() => load(1));
 </script>
 
@@ -109,5 +144,8 @@ td {
   align-items: center;
   justify-content: center;
   gap: 8px;
+}
+tr.refund td {
+  color: var(--ion-color-danger);
 }
 </style>

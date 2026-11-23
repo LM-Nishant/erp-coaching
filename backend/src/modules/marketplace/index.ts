@@ -3,12 +3,15 @@ import { associateMarketplaceModels, initMarketplaceModels } from './models';
 import { marketplaceRoutes } from './marketplace.routes';
 import { associateEngagementModels, initEngagementModels } from './engagement.models';
 import { registerEngagementNotificationEvents } from './engagement.notifications';
+import { associatePayoutModels, initPayoutModels } from './payouts.models';
+import { registerPayoutNotificationEvents } from './payouts.notify';
 import { MKT_TRANSCODE_JOB, runMarketplaceTranscode } from './media.service';
 import { initQuizModels } from './quiz-models';
 import { MARKETPLACE } from './util';
 
 // Catalogue entries must exist before any request calls notify().
 registerEngagementNotificationEvents();
+registerPayoutNotificationEvents();
 
 export default defineModule({
   name: MARKETPLACE,
@@ -16,10 +19,12 @@ export default defineModule({
     initMarketplaceModels(sequelize);
     initEngagementModels(sequelize);
     initQuizModels(sequelize);
+    initPayoutModels(sequelize);
   },
   associate: () => {
     associateMarketplaceModels();
     associateEngagementModels();
+    associatePayoutModels();
   },
   routes: marketplaceRoutes,
   permissions: [

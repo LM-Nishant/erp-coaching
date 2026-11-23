@@ -39,6 +39,12 @@
           <ion-button router-link="/market/learning">Start learning</ion-button>
         </ion-card-content>
       </ion-card>
+      <ion-card v-else-if="order.status === 'refunded'">
+        <ion-card-content>
+          <h2>Refunded</h2>
+          <p>This order was refunded to your original payment method.</p>
+        </ion-card-content>
+      </ion-card>
       <ion-card v-else>
         <ion-card-content>
           <h2>Payment {{ order.status }}</h2>
@@ -92,6 +98,7 @@
         </div>
         <ion-button fill="clear" size="small" @click="print">Print receipt</ion-button>
       </section>
+      <RefundPanel v-if="order.status === 'paid' || order.status === 'refunded'" :order="order" />
     </template>
     <div v-else class="center"><ion-spinner /></div>
   </MarketShell>
@@ -110,6 +117,7 @@ import {
 } from '@/core/payment-checkout';
 import { toast, toastError } from '@/core/toast';
 import MarketShell from './components/MarketShell.vue';
+import RefundPanel from './components/RefundPanel.vue';
 import { marketApi, rupees } from './api';
 import { pendingCheckouts } from './checkout-state';
 import { useMarketAccount } from './store';
