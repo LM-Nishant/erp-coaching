@@ -16,7 +16,12 @@
         {{ t('doubts.ask.removePhoto') }}
       </ion-button>
     </div>
-    <ion-button v-else :fill="compact ? 'clear' : 'outline'" :size="compact ? 'default' : undefined" @click="open">
+    <ion-button
+      v-else
+      :fill="compact ? 'clear' : 'outline'"
+      :size="compact ? 'default' : undefined"
+      @click="open"
+    >
       <ion-icon :slot="compact ? 'icon-only' : 'start'" :icon="cameraOutline" aria-hidden="true" />
       <template v-if="!compact">{{ t('doubts.ask.addPhoto') }}</template>
       <span v-else class="sr-only">{{ t('doubts.ask.addPhoto') }}</span>

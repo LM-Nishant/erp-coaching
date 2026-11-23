@@ -24,7 +24,8 @@
       <div class="thread" aria-live="polite">
         <div class="bubble mine-side" :class="{ right: doubt.isMine }">
           <div class="who">
-            {{ doubt.isMine ? t('doubts.detail.you') : doubt.student?.name }} · {{ formatDateTime(doubt.createdAt) }}
+            {{ doubt.isMine ? t('doubts.detail.you') : doubt.student?.name }} ·
+            {{ formatDateTime(doubt.createdAt) }}
           </div>
           <p class="text">{{ doubt.question }}</p>
           <a v-if="doubt.photoUrl" :href="doubt.photoUrl" target="_blank" rel="noopener">
@@ -51,7 +52,9 @@
 
       <p class="muted assigned">
         {{
-          doubt.teacher ? t('doubts.detail.teacher', { name: doubt.teacher.name }) : t('doubts.detail.noTeacher')
+          doubt.teacher
+            ? t('doubts.detail.teacher', { name: doubt.teacher.name })
+            : t('doubts.detail.noTeacher')
         }}
       </p>
 
@@ -63,7 +66,9 @@
         <form class="composer" @submit.prevent="send">
           <ion-textarea
             v-model="body"
-            :placeholder="doubt.canAnswer ? t('doubts.detail.replyPlaceholder') : t('doubts.detail.followUpPlaceholder')"
+            :placeholder="
+              doubt.canAnswer ? t('doubts.detail.replyPlaceholder') : t('doubts.detail.followUpPlaceholder')
+            "
             :auto-grow="true"
             :rows="2"
             :maxlength="DOUBT_QUESTION_MAX"
@@ -72,7 +77,11 @@
           />
           <div class="composer-actions">
             <PhotoPicker ref="picker" v-model="photo" compact />
-            <ion-button type="submit" :disabled="sending || (!body.trim() && !photo)" data-testid="send-reply">
+            <ion-button
+              type="submit"
+              :disabled="sending || (!body.trim() && !photo)"
+              data-testid="send-reply"
+            >
               <ion-icon slot="start" :icon="sendOutline" aria-hidden="true" />
               {{ t('doubts.detail.send') }}
             </ion-button>
@@ -101,12 +110,7 @@ import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { IonButton, IonIcon, IonTextarea, onIonViewWillEnter } from '@ionic/vue';
-import {
-  checkmarkCircle,
-  checkmarkCircleOutline,
-  playCircleOutline,
-  sendOutline,
-} from 'ionicons/icons';
+import { checkmarkCircle, checkmarkCircleOutline, playCircleOutline, sendOutline } from 'ionicons/icons';
 import { DOUBT_QUESTION_MAX, type DoubtDetailDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import StatusChip from '@/components/StatusChip.vue';
@@ -135,7 +139,9 @@ const contextLine = computed(() => {
 const lectureLink = computed(() => {
   const l = doubt.value?.lecture;
   if (!l) return '';
-  return l.positionSeconds != null ? `/lms/resources/${l.id}?t=${l.positionSeconds}` : `/lms/resources/${l.id}`;
+  return l.positionSeconds != null
+    ? `/lms/resources/${l.id}?t=${l.positionSeconds}`
+    : `/lms/resources/${l.id}`;
 });
 
 async function load() {

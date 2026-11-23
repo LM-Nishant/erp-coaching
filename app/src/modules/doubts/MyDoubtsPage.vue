@@ -1,9 +1,15 @@
 <template>
   <AppPage :title="t('doubts.mine.title')" :on-refresh="reload">
     <ion-segment v-model="status">
-      <ion-segment-button value="open"><ion-label>{{ t('doubts.mine.waiting') }}</ion-label></ion-segment-button>
-      <ion-segment-button value="answered"><ion-label>{{ t('doubts.mine.answered') }}</ion-label></ion-segment-button>
-      <ion-segment-button value="resolved"><ion-label>{{ t('doubts.mine.solved') }}</ion-label></ion-segment-button>
+      <ion-segment-button value="open"
+        ><ion-label>{{ t('doubts.mine.waiting') }}</ion-label></ion-segment-button
+      >
+      <ion-segment-button value="answered"
+        ><ion-label>{{ t('doubts.mine.answered') }}</ion-label></ion-segment-button
+      >
+      <ion-segment-button value="resolved"
+        ><ion-label>{{ t('doubts.mine.solved') }}</ion-label></ion-segment-button
+      >
     </ion-segment>
     <ion-list v-if="items.length">
       <DoubtItem v-for="d in items" :key="d.id" :doubt="d" />

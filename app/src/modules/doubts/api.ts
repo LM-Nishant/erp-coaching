@@ -21,7 +21,8 @@ export interface AskDoubtForm {
 
 function toForm(fields: Record<string, string | number | null | undefined>, photo?: Blob | null) {
   const form = new FormData();
-  for (const [k, v] of Object.entries(fields)) if (v !== null && v !== undefined && v !== '') form.append(k, String(v));
+  for (const [k, v] of Object.entries(fields))
+    if (v !== null && v !== undefined && v !== '') form.append(k, String(v));
   if (photo) form.append('file', photo, (photo as File).name || 'photo.jpg');
   return form;
 }
@@ -32,7 +33,8 @@ export const doubtsApi = {
   counts: () => api.get<DoubtCountsDto>('/doubts/counts'),
   options: () => api.get<DoubtOptionsDto>('/doubts/options'),
   get: (id: number) => api.get<DoubtDetailDto>(`/doubts/${id}`),
-  ask: ({ photo, ...fields }: AskDoubtForm) => api.post<DoubtDetailDto>('/doubts', toForm({ ...fields }, photo)),
+  ask: ({ photo, ...fields }: AskDoubtForm) =>
+    api.post<DoubtDetailDto>('/doubts', toForm({ ...fields }, photo)),
   reply: (id: number, body: string, photo?: Blob | null) =>
     api.post<DoubtDetailDto>(`/doubts/${id}/replies`, toForm({ body }, photo)),
   resolve: (id: number) => api.post<DoubtDetailDto>(`/doubts/${id}/resolve`),

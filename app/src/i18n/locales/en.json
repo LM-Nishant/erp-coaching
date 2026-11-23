@@ -291,6 +291,10 @@
       "assign": "Assign",
       "messages": "Messages",
       "explore": "Explore"
+    },
+    "doubts": {
+      "mine": "My doubts",
+      "inbox": "Doubt inbox"
     }
   },
   "shell": {

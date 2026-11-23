@@ -1,4 +1,5 @@
 import { defineAsyncComponent } from 'vue';
+import { chatbubblesOutline, helpCircleOutline } from 'ionicons/icons';
 import { defineAppModule } from '@/core/modules';
 
 // Doubts are part of the learning experience, so they follow the institute's LMS plan module.
@@ -32,6 +33,28 @@ export default defineAppModule({
       name: 'doubt-detail',
       component: () => import('./DoubtDetailPage.vue'),
       meta: { permission: 'doubts.view' },
+    },
+  ],
+  menu: [
+    {
+      title: 'My doubts',
+      path: '/doubts',
+      group: 'learning',
+      titleKey: 'nav.doubts.mine',
+      icon: helpCircleOutline,
+      permission: 'doubts.create',
+      planModule: PLAN,
+      order: 45,
+    },
+    {
+      title: 'Doubt inbox',
+      path: '/doubts/inbox',
+      group: 'learning',
+      titleKey: 'nav.doubts.inbox',
+      icon: chatbubblesOutline,
+      permission: 'doubts.edit',
+      planModule: PLAN,
+      order: 45,
     },
   ],
   widgets: [

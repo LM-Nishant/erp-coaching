@@ -1,8 +1,4 @@
 {
-  "menu": {
-    "myDoubts": "My doubts",
-    "inbox": "Doubt inbox"
-  },
   "status": {
     "open": "Waiting",
     "answered": "Answered",

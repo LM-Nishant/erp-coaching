@@ -6,7 +6,9 @@
         <div>
           <div class="muted small">{{ t('doubts.ask.about') }}</div>
           <strong>{{ aboutTitle }}</strong>
-          <span v-if="position != null" class="muted"> · {{ t('doubts.ask.at', { time: clock(position) }) }}</span>
+          <span v-if="position != null" class="muted">
+            · {{ t('doubts.ask.at', { time: clock(position) }) }}</span
+          >
         </div>
       </div>
 
@@ -18,7 +20,9 @@
             label-placement="stacked"
             interface="action-sheet"
           >
-            <ion-select-option v-for="b in options.batches" :key="b.id" :value="b.id">{{ b.name }}</ion-select-option>
+            <ion-select-option v-for="b in options.batches" :key="b.id" :value="b.id">{{
+              b.name
+            }}</ion-select-option>
           </ion-select>
         </ion-item>
         <div v-if="subjects.length" class="subjects" role="radiogroup" :aria-label="t('doubts.ask.subject')">

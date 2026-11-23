@@ -33,6 +33,7 @@ const ALLOWED: Record<string, Record<string, string>> = {
   'modules/lms/ResourceEditorPage.vue': { 'object-url': "reads a picked video's duration before the upload" },
   'modules/marketplace/api.ts': { 'object-url': "reads a picked video's duration before the upload" },
   'modules/exams/ScanPagesCropModal.vue': { 'object-url': 'previews a photo while it is cropped' },
+  'modules/doubts/PhotoPicker.vue': { 'object-url': 'previews the photo attached to a doubt before sending' },
 };
 
 // @vue/compiler-core NodeTypes.

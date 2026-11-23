@@ -84,7 +84,7 @@
                 :label="t('common.language')"
                 interface="popover"
                 :value="locale"
-                @ion-change="setLocale($event.detail.value)"
+                @ion-change="changeLocale($event.detail.value)"
               >
                 <ion-select-option v-for="l in LOCALES" :key="l" :value="l">{{
                   LOCALE_NAMES[l]
@@ -183,7 +183,8 @@ import { logOutOutline, peopleOutline } from 'ionicons/icons';
 import type { MenuItem } from '@/core/modules';
 import { activeItem, searchMenu, useMenu } from '@/core/navigation';
 import { toastError } from '@/core/toast';
-import { LOCALE_NAMES, LOCALES, setLocale, type Locale } from '@/i18n';
+import { LOCALE_NAMES, LOCALES, type Locale } from '@/i18n';
+import { chooseLocale } from '@/core/locale-sync';
 import { useAuthStore } from '@/stores/auth';
 import { applyTextSize, storedTextSize, TEXT_SIZES, type TextSize } from '@/theme/text-size';
 import BiometricOffer from '@/components/BiometricOffer.vue';
@@ -192,6 +193,15 @@ import OfflineBanner from '@/components/OfflineBanner.vue';
 import TabBar from '@/components/TabBar.vue';
 
 const auth = useAuthStore();
+
+/** Switches the language and saves it on the account, so the user's other devices open in it too. */
+async function changeLocale(l: Locale) {
+  try {
+    await chooseLocale(l, auth.me);
+  } catch (e) {
+    await toastError(e);
+  }
+}
 const route = useRoute();
 const router = useRouter();
 const { t, locale: i18nLocale } = useI18n();

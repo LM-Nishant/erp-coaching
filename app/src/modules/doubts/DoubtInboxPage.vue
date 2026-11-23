@@ -1,9 +1,15 @@
 <template>
   <AppPage :title="t('doubts.inbox.title')" :on-refresh="reload">
     <ion-segment v-model="status">
-      <ion-segment-button value="open"><ion-label>{{ t('doubts.inbox.toAnswer') }}</ion-label></ion-segment-button>
-      <ion-segment-button value="answered"><ion-label>{{ t('doubts.inbox.answered') }}</ion-label></ion-segment-button>
-      <ion-segment-button value="resolved"><ion-label>{{ t('doubts.inbox.solved') }}</ion-label></ion-segment-button>
+      <ion-segment-button value="open"
+        ><ion-label>{{ t('doubts.inbox.toAnswer') }}</ion-label></ion-segment-button
+      >
+      <ion-segment-button value="answered"
+        ><ion-label>{{ t('doubts.inbox.answered') }}</ion-label></ion-segment-button
+      >
+      <ion-segment-button value="resolved"
+        ><ion-label>{{ t('doubts.inbox.solved') }}</ion-label></ion-segment-button
+      >
     </ion-segment>
     <ion-item v-if="canSeeAll" lines="none">
       <ion-toggle v-model="all" justify="space-between">{{ t('doubts.inbox.allBranches') }}</ion-toggle>
