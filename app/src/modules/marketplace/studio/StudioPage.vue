@@ -22,6 +22,13 @@
         <ion-button fill="outline" size="small" :router-link="`/market/studio/${scope}/sales`"
           >Sales</ion-button
         >
+        <ion-button
+          fill="outline"
+          size="small"
+          :router-link="`/market/studio/${scope}/engagement`"
+          data-testid="studio-engagement"
+          >Q&amp;A and reviews</ion-button
+        >
         <ion-button v-if="canCreate" size="small" data-testid="new-course" @click="create"
           >New course</ion-button
         >

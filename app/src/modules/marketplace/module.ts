@@ -2,6 +2,8 @@ import {
   cartOutline,
   checkmarkDoneCircleOutline,
   easelOutline,
+  flagOutline,
+  heartOutline,
   pricetagsOutline,
   receiptOutline,
   schoolOutline,
@@ -36,6 +38,12 @@ function studioRoutes(scope: 'instructor' | 'institute'): RouteRecordRaw[] {
       name: `market-coupons-${scope}`,
       component: () => import('./studio/CouponsPage.vue'),
       meta: meta('configure'),
+    },
+    {
+      path: `${base}/engagement`,
+      name: `market-engagement-${scope}`,
+      component: () => import('./studio/EngagementPage.vue'),
+      meta: meta('view'),
     },
     {
       path: `${base}/sales`,
@@ -79,6 +87,7 @@ export default defineAppModule({
   routes: [
     { path: '/market/teach', name: 'market-teach', component: () => import('./TeachPage.vue') },
     { path: '/market/cart', name: 'market-cart', component: () => import('./CartPage.vue') },
+    { path: '/market/wishlist', name: 'market-wishlist', component: () => import('./WishlistPage.vue') },
     { path: '/market/orders', name: 'market-orders', component: () => import('./OrdersPage.vue') },
     { path: '/market/orders/:id(\\d+)', name: 'market-order', component: () => import('./OrderPage.vue') },
     { path: '/market/learning', name: 'market-learning', component: () => import('./MyLearningPage.vue') },
@@ -95,6 +104,12 @@ export default defineAppModule({
       path: '/admin/marketplace/courses/:id(\\d+)',
       name: 'market-admin-course',
       component: () => import('./admin/ReviewCoursePage.vue'),
+      meta: { superAdmin: true },
+    },
+    {
+      path: '/admin/marketplace/ratings',
+      name: 'market-admin-ratings',
+      component: () => import('./admin/RatingsModerationPage.vue'),
       meta: { superAdmin: true },
     },
     {
@@ -120,6 +135,7 @@ export default defineAppModule({
     { title: 'Course marketplace', path: '/market', icon: storefrontOutline, order: 150 },
     { title: 'My learning', path: '/market/learning', icon: schoolOutline, order: 151 },
     { title: 'Cart', path: '/market/cart', icon: cartOutline, order: 152 },
+    { title: 'Wishlist', path: '/market/wishlist', icon: heartOutline, order: 152.5 },
     { title: 'Purchase history', path: '/market/orders', icon: receiptOutline, order: 153 },
     { title: 'Teach on the marketplace', path: '/market/studio/instructor', icon: easelOutline, order: 154 },
     {
@@ -135,6 +151,13 @@ export default defineAppModule({
       icon: checkmarkDoneCircleOutline,
       superAdmin: true,
       order: 60,
+    },
+    {
+      title: 'Rating moderation',
+      path: '/admin/marketplace/ratings',
+      icon: flagOutline,
+      superAdmin: true,
+      order: 60.5,
     },
     {
       title: 'Marketplace sales',
