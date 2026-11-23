@@ -1,15 +1,24 @@
 import fs from 'node:fs';
+import path from 'node:path';
+import multer from 'multer';
 import { Router } from 'express';
 import { z } from 'zod';
-import { QUESTION_DIFFICULTIES, QUESTION_STATUSES, QUESTION_TYPES } from '@erp/shared';
+import {
+  QUESTION_DIFFICULTIES,
+  QUESTION_PDF_IMPORT_LIMITS,
+  QUESTION_STATUSES,
+  QUESTION_TYPES,
+} from '@erp/shared';
 import { parse } from '../../shared/utilities/validation';
 import { idParam, paginationSchema } from '../../shared/utilities/pagination';
 import { authenticate } from '../../shared/middleware/authenticate';
 import { requireModule, requirePermission } from '../../shared/middleware/authorize';
 import { BadRequest } from '../../shared/errors';
+import { withContext } from '../../shared/middleware/context';
 import { uploadMiddleware } from '../files/files.routes';
 import { bankSchema, generateSchema, questionPatchSchema, questionSchema } from './schemas';
 import * as svc from './question-bank.service';
+import * as pdfImport from './pdf-import.service';
 
 const M = svc.MODULE;
 const can = (action: Parameters<typeof requirePermission>[1]) => requirePermission(M, action);
@@ -25,6 +34,37 @@ const questionQuery = paginationSchema.extend({
   topicId: optId,
   tag: z.string().trim().max(40).optional(),
   q: z.string().trim().max(100).optional(),
+});
+
+const PDF_TMP_DIR = path.resolve(__dirname, '../../../tmp/uploads');
+
+/** Question paper upload: `file` (the paper) and optional `answerKey`, PDFs only. */
+const pdfUpload = withContext(
+  multer({
+    storage: multer.diskStorage({
+      destination: (_req, _file, cb) => {
+        fs.mkdirSync(PDF_TMP_DIR, { recursive: true });
+        cb(null, PDF_TMP_DIR);
+      },
+    }),
+    limits: { fileSize: QUESTION_PDF_IMPORT_LIMITS.maxMb * 1048576, files: 2 },
+  }).fields([
+    { name: 'file', maxCount: 1 },
+    { name: 'answerKey', maxCount: 1 },
+  ]),
+);
+
+const saveImportSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        draftId: z.string().trim().min(1).max(20),
+        question: questionSchema,
+        diagramFileIds: z.array(z.number().int().positive()).max(4).optional(),
+      }),
+    )
+    .min(1)
+    .max(QUESTION_PDF_IMPORT_LIMITS.maxDrafts),
 });
 
 const assetParams = idParam.extend({ assetId: z.coerce.number().int().positive() });
@@ -124,6 +164,33 @@ export function questionBankRoutes(api: Router) {
   r.delete('/questions/:id/assets/:assetId', can('edit'), async (req, res) => {
     const { id, assetId } = parse(assetParams, req.params);
     res.json(await svc.removeAsset(id, assetId));
+  });
+
+  // Question paper PDF import (background extraction → review → save selected)
+  r.post('/banks/:id/pdf-imports', can('create'), pdfUpload, async (req, res) => {
+    const { id } = parse(idParam, req.params);
+    const files = (req.files ?? {}) as Record<string, Express.Multer.File[] | undefined>;
+    const paper = files.file?.[0];
+    const answerKey = files.answerKey?.[0];
+    if (!paper) {
+      if (answerKey) await fs.promises.rm(answerKey.path, { force: true });
+      throw BadRequest('Attach the question paper PDF in the `file` field', 'FILE_REQUIRED');
+    }
+    res.status(202).json(await pdfImport.startPdfImport(id, { paper, answerKey }));
+  });
+  r.get('/banks/:id/pdf-imports', can('create'), async (req, res) => {
+    res.json(await pdfImport.listPdfImports(parse(idParam, req.params).id));
+  });
+  r.get('/pdf-imports/:id', can('create'), async (req, res) => {
+    res.json(await pdfImport.getPdfImport(parse(idParam, req.params).id));
+  });
+  r.post('/pdf-imports/:id/save', can('create'), async (req, res) => {
+    const { id } = parse(idParam, req.params);
+    res.status(201).json(await pdfImport.savePdfImport(id, parse(saveImportSchema, req.body).items));
+  });
+  r.delete('/pdf-imports/:id', can('create'), async (req, res) => {
+    await pdfImport.discardPdfImport(parse(idParam, req.params).id);
+    res.status(204).end();
   });
 
   api.use('/question-bank', r);
