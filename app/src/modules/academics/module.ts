@@ -67,6 +67,10 @@ export default defineAppModule({
     {
       title: 'My timetable',
       path: '/my-timetable',
+      group: 'classes',
+      titleKey: 'nav.academics.myTimetable',
+      tab: { teacher: 2, student: 5 },
+      tabTitleKey: 'nav.tabs.classes',
       icon: calendarOutline,
       permission: 'academics.view',
       roles: ['teacher', 'student'],
@@ -76,6 +80,8 @@ export default defineAppModule({
     {
       title: 'Academic sessions',
       path: '/academics/sessions',
+      group: 'classes',
+      titleKey: 'nav.academics.sessions',
       icon: timeOutline,
       permission: 'academics.create',
       planModule: 'academics',
@@ -84,6 +90,9 @@ export default defineAppModule({
     {
       title: 'Courses',
       path: '/academics/courses',
+      group: 'learning',
+      titleKey: 'nav.academics.courses',
+      personas: ['staff', 'teacher'],
       icon: schoolOutline,
       permission: 'academics.view',
       planModule: 'academics',
@@ -92,6 +101,8 @@ export default defineAppModule({
     {
       title: 'Syllabus',
       path: '/academics/syllabus',
+      group: 'learning',
+      titleKey: 'nav.academics.syllabus',
       icon: libraryOutline,
       permission: 'academics.view',
       planModule: 'academics',
@@ -100,6 +111,9 @@ export default defineAppModule({
     {
       title: 'Batches',
       path: '/academics/batches',
+      group: 'classes',
+      titleKey: 'nav.academics.batches',
+      personas: ['staff', 'teacher'],
       icon: peopleOutline,
       permission: 'academics.view',
       planModule: 'academics',
@@ -108,6 +122,8 @@ export default defineAppModule({
     {
       title: 'Classrooms',
       path: '/academics/classrooms',
+      group: 'classes',
+      titleKey: 'nav.academics.classrooms',
       icon: businessOutline,
       permission: 'academics.create',
       planModule: 'academics',
@@ -116,6 +132,8 @@ export default defineAppModule({
     {
       title: 'Timetable',
       path: '/academics/timetable',
+      group: 'classes',
+      titleKey: 'nav.academics.timetable',
       icon: calendarOutline,
       permission: 'academics.create',
       planModule: 'academics',

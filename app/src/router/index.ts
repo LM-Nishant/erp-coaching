@@ -80,6 +80,15 @@ router.beforeEach(async (to: RouteLocationNormalized) => {
     const home = offlineHome();
     if (home && home !== to.path) return home;
   }
+  // Parents land on their children's home (their "Home" tab), not the staff dashboard.
+  if (
+    to.path === '/home' &&
+    auth.persona === 'parent' &&
+    !auth.offline &&
+    auth.can('parent-portal.view') &&
+    auth.moduleEnabled('parent-portal')
+  )
+    return { path: '/parent-home', replace: true };
   if (to.meta.superAdmin && !auth.isPlatformAdmin) return '/home';
   if (to.meta.permission && !auth.can(to.meta.permission)) return { name: 'forbidden' };
   for (const guard of navigationGuards) {

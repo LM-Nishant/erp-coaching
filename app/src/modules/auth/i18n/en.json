@@ -1,0 +1,24 @@
+{
+  "login": {
+    "subtitle": "Sign in to your institute",
+    "unlock": "Unlock with biometrics",
+    "modeOtp": "Mobile OTP",
+    "modePassword": "Password",
+    "mobile": "Mobile number",
+    "mobileHelp": "We’ll send a one-time code to this number",
+    "identifier": "Mobile or email",
+    "password": "Password",
+    "sendOtp": "Send OTP",
+    "signIn": "Sign in",
+    "browse": "Browse courses",
+    "createLearner": "Create a learner account",
+    "chooseLanguage": "Language",
+    "deviceLimit": "You are already signed in on the maximum number of devices. Sign out of one in \"My devices\" on another device, or ask your institute admin to remove an old device.",
+    "ended": {
+      "idle": "You were signed out after a period of inactivity.",
+      "revoked": "This device was signed out of your account. Sign in again to continue.",
+      "inactive": "Your account is inactive. Contact your institute.",
+      "expired": "Your session has expired. Please sign in again."
+    }
+  }
+}

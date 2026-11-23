@@ -34,6 +34,8 @@ export interface MenuItem {
    * `MAX_TABS - 1` lowest items plus "More". E.g. `{ student: 2 }` = second tab for students.
    */
   tab?: Partial<Record<Persona, number>>;
+  /** i18n key of the short bottom-tab label (e.g. `nav.tabs.study` for "My courses"); default `titleKey`. */
+  tabTitleKey?: string;
 }
 
 export interface AppModule {
