@@ -1,0 +1,27 @@
+{
+  "home": {
+    "title": "Home",
+    "greeting": "Namaste, {name}",
+    "chooseChild": "Choose a child",
+    "noChildren": "No children linked yet",
+    "noChildrenHint": "Ask the institute office to link your child to this mobile number."
+  },
+  "widgets": {
+    "schedule": "This week's classes",
+    "summary": "More details",
+    "notifications": "Notices",
+    "grievances": "Complaints & requests"
+  },
+  "schedule": {
+    "loading": "Loading…",
+    "none": "No classes in the next 7 days.",
+    "more": "Show the whole week",
+    "less": "Show less",
+    "status": { "completed": "Done", "cancelled": "Cancelled", "scheduled": "Scheduled" }
+  },
+  "notifications": {
+    "caughtUp": "You're all caught up.",
+    "all": "All notices"
+  },
+  "summary": { "empty": "Nothing to show yet." }
+}

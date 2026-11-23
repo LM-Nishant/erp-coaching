@@ -380,6 +380,12 @@ describe('lms module', () => {
     });
     expect(p1.status).toBe(200);
     expect(p1.body).toMatchObject({ positionSeconds: 300, watchedSeconds: 120, completed: false });
+    const cont = await api('get', '/lms/continue', student);
+    expect(cont.status).toBe(200);
+    expect(cont.body.find((r: { id: number }) => r.id === ids.video)).toMatchObject({
+      locked: false,
+      progress: { positionSeconds: 300 },
+    });
     const play = await api('post', `/lms/resources/${ids.video}/play`, student);
     expect(play.body.resumeAtSeconds).toBe(300);
 
@@ -390,6 +396,8 @@ describe('lms module', () => {
       });
     const done = await api('get', `/lms/resources/${ids.video}`, student);
     expect(done.body.progress).toMatchObject({ completed: true, percent: 100 });
+    const after = await api('get', '/lms/continue', student);
+    expect(after.body.map((r: { id: number }) => r.id)).not.toContain(ids.video);
 
     const link = await api('put', `/lms/resources/${ids.longer}/progress`, student).send({
       positionSeconds: 0,

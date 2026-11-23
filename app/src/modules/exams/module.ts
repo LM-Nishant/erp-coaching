@@ -1,3 +1,4 @@
+import { defineAsyncComponent } from 'vue';
 import { codeWorkingOutline, documentTextOutline, ribbonOutline, schoolOutline } from 'ionicons/icons';
 import { defineAppModule } from '@/core/modules';
 
@@ -126,6 +127,35 @@ export default defineAppModule({
       permission: 'exam-portal.view',
       planModule: 'exams',
       order: 42,
+    },
+  ],
+  widgets: [
+    {
+      id: 'exams.upcoming',
+      slot: 'student-home',
+      title: 'Upcoming tests',
+      component: defineAsyncComponent(() => import('./widgets/UpcomingTestsWidget.vue')),
+      permission: 'exam-portal.create',
+      planModule: 'exams',
+      order: 40,
+    },
+    {
+      id: 'exams.latestResult',
+      slot: 'student-home',
+      title: 'Latest result',
+      component: defineAsyncComponent(() => import('./widgets/LatestResultWidget.vue')),
+      permission: 'exam-portal.view',
+      planModule: 'exams',
+      order: 70,
+    },
+    {
+      id: 'exams.latestResult',
+      slot: 'parent-home',
+      title: 'Latest result',
+      component: defineAsyncComponent(() => import('./widgets/LatestResultWidget.vue')),
+      permission: 'exam-portal.view',
+      planModule: 'exams',
+      order: 40,
     },
   ],
 });

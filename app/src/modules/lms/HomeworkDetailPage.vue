@@ -3,10 +3,19 @@
     <template v-if="a">
       <p class="muted">
         {{ a.batchName }}<span v-if="a.subjectName"> · {{ a.subjectName }}</span> · due
-        {{ fmtDateTime(a.dueAt) }}
+        {{ formatDateTime(a.dueAt) }}
         <span v-if="a.maxMarks"> · {{ a.maxMarks }} marks</span>
         <span v-if="a.allowLate"> · late submissions accepted</span>
       </p>
+      <div v-if="!isStaff" class="due-row">
+        <StatusChip
+          :label="t(`lms.homework.state.${homeworkState(a)}`)"
+          :tone="HOMEWORK_TONE[homeworkState(a)]"
+        />
+        <span v-if="!a.mySubmission && a.status !== 'closed'" class="muted">{{
+          t('lms.homework.dueRelative', { when: formatRelative(a.dueAt) })
+        }}</span>
+      </div>
       <p v-if="a.instructions" class="pre">{{ a.instructions }}</p>
       <FileLinks :files="a.files" />
 
@@ -41,7 +50,7 @@
             <ion-card-header>
               <ion-card-title>{{ s.student.name }}</ion-card-title>
               <ion-card-subtitle>
-                {{ fmtDateTime(s.submittedAt) }} <span v-if="s.isLate">· late</span> · {{ s.status }}
+                {{ formatDateTime(s.submittedAt) }} <span v-if="s.isLate">· late</span> · {{ s.status }}
               </ion-card-subtitle>
             </ion-card-header>
             <ion-card-content>
@@ -83,7 +92,8 @@
           <ion-card-header>
             <ion-card-subtitle>
               {{ a.student ? `${a.student.name}'s submission` : 'Your submission' }} ·
-              {{ fmtDateTime(mine.submittedAt) }} <span v-if="mine.isLate">· late</span> · {{ mine.status }}
+              {{ formatDateTime(mine.submittedAt) }} <span v-if="mine.isLate">· late</span> ·
+              {{ mine.status }}
             </ion-card-subtitle>
           </ion-card-header>
           <ion-card-content>
@@ -97,12 +107,14 @@
             </template>
           </ion-card-content>
         </ion-card>
-        <p v-else-if="isParent" class="muted">Not submitted yet.</p>
+        <p v-else-if="isParent" class="muted">{{ t('lms.homework.notSubmitted') }}</p>
 
         <form v-if="canSubmit" @submit.prevent="submit">
           <ion-list>
             <ion-list-header
-              ><ion-label>{{ mine ? 'Update submission' : 'Submit your work' }}</ion-label></ion-list-header
+              ><ion-label>{{
+                mine ? t('lms.homework.update') : t('lms.homework.submitWork')
+              }}</ion-label></ion-list-header
             >
             <ion-item>
               <ion-textarea
@@ -115,7 +127,7 @@
             </ion-item>
             <ion-item>
               <ion-label>
-                <p>Files (photos of your work, PDFs…)</p>
+                <p>{{ t('lms.homework.filesHint') }}</p>
                 <p v-for="f in answer.files" :key="f.id">{{ f.originalName }}</p>
                 <input
                   type="file"
@@ -124,6 +136,16 @@
                   :disabled="uploading"
                   @change="pick"
                 />
+                <label class="camera">
+                  <ion-icon :icon="cameraOutline" aria-hidden="true" />{{ t('lms.homework.takePhoto') }}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    :disabled="uploading"
+                    @change="pick"
+                  />
+                </label>
               </ion-label>
             </ion-item>
           </ion-list>
@@ -131,10 +153,10 @@
             expand="block"
             type="submit"
             :disabled="uploading || (!answer.text && !answer.files.length)"
-            >Submit</ion-button
+            >{{ t('lms.homework.submit') }}</ion-button
           >
         </form>
-        <p v-else-if="isLearner && !mine && past" class="muted">The due date has passed.</p>
+        <p v-else-if="isLearner && !mine && past" class="muted">{{ t('lms.homework.pastDue') }}</p>
       </template>
     </template>
   </AppPage>
@@ -151,6 +173,7 @@ import {
   IonCardHeader,
   IonCardSubtitle,
   IonCardTitle,
+  IonIcon,
   IonInput,
   IonItem,
   IonLabel,
@@ -160,16 +183,22 @@ import {
   alertController,
   onIonViewWillEnter,
 } from '@ionic/vue';
+import { cameraOutline } from 'ionicons/icons';
+import { useI18n } from 'vue-i18n';
 import type { LmsAssignmentDto, LmsFileRef, LmsSubmissionDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { formatDateTime, formatRelative } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
-import { fmtDateTime, lmsApi } from './api';
+import { lmsApi } from './api';
+import { HOMEWORK_TONE, homeworkState } from './homework';
 import FileLinks from './FileLinks.vue';
 import { useLmsRole } from './roles';
 
 const route = useRoute();
 const router = useRouter();
 const { isStaff, isLearner, isParent } = useLmsRole();
+const { t } = useI18n();
 const id = computed(() => Number(route.params.id));
 
 const a = ref<LmsAssignmentDto | null>(null);
@@ -279,6 +308,29 @@ onIonViewWillEnter(load);
 <style scoped>
 .pre {
   white-space: pre-wrap;
+}
+.due-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+.camera {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--app-tap-target, 48px);
+  margin-top: 8px;
+  padding: 0 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  color: var(--ion-color-primary-contrast);
+  background: var(--ion-color-primary);
+  cursor: pointer;
+}
+.camera input {
+  display: none;
 }
 .actions {
   display: flex;
