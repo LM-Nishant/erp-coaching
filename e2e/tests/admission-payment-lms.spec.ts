@@ -136,7 +136,7 @@ test('admission → mock gateway fee payment → paid LMS lecture unlocks', asyn
 
   await test.step('student pays online through the mock gateway checkout', async () => {
     await student.goto('/my-fees');
-    await expect(content.getByText(`${FEE} due`)).toBeVisible();
+    await expect(content.getByRole('heading', { name: `${FEE} due` })).toBeVisible();
 
     await content.getByRole('button', { name: 'Pay online' }).click();
     const checkout = modal(student);
