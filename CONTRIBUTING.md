@@ -428,17 +428,22 @@ export default defineAppModule({
   - Keep tokens and secrets in `core/secure-storage.ts`, never `Preferences` or `localStorage`.
   - A module that keeps a user's data on the device implements `wipeUserData(userId)` in its `defineAppModule`. It runs when the device is revoked or the account deactivated.
 - **Dashboard widgets.** Contribute cards to shared dashboards with `widgets` instead of editing the host page (see below).
+- **Words, dates and money.** Show dates, times and money with `core/format.ts` (`formatDate`, `formatDateTime`, `formatRelative`, `formatMoney` for paise…), never bare `toLocaleString()`. New UI text goes through vue-i18n: `t('<namespace>.<key>')` with the English string in `modules/<folder>/i18n/en.json` and, when you have it, Hindi in `hi.json` (see ARCHITECTURE.md, "App shell contract"). Use `StatusChip` for statuses, `EmptyState` for empty lists, `FormSection advanced` for rarely used fields and `QuickActions` on home pages; keep tap targets at least `var(--app-tap-target)` (48 px).
+- **Menu metadata.** Give each `menu` item a `group` (section of the grouped menu), and `personas`/`tab` when it is a bottom tab for a persona (`MenuItem` in `core/modules.ts`).
 - **Shared types.** Request and response DTOs used by both sides go in `packages/shared/src/<module>.ts`, exported from its `index.ts`. That one-line export is the only shared edit expected.
 
 ### Dashboard widgets
 
-Shared dashboards render cards from every module's `widgets` (`DashboardWidget` in `app/src/core/modules.ts`). There are three slots:
+Shared dashboards render cards from every module's `widgets` (`DashboardWidget` in `app/src/core/modules.ts`). There are six slots:
 
 | Slot            | Host                                               | Props                   | Notes                                                                                     |
 | --------------- | -------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
 | `parent-home`   | `/parent-home` (parent-portal)                     | `child: ParentChildDto` | The parent picks a linked child. Contract below.                                          |
 | `home`          | `/home` dashboard, institute users                 | none                    | Remounted on pull-to-refresh and branch switch. Built-in: reports `Analytics` (order 10). |
 | `platform-home` | `/home` dashboard, super admin (not impersonating) | none                    | Built-in: reports platform summary (order 10).                                            |
+| `student-home`  | Student "Today" home (host added by the UX rework) | none                    | Next class, continue watching, due work, fee due. Not rendered until its host lands.      |
+| `teacher-home`  | Teacher "Today" home (host added by the UX rework) | none                    | Now/next class, quick actions, things to check. Not rendered until its host lands.        |
+| `staff-home`    | Staff "Today" home (host added by the UX rework)   | none                    | Admins, accountant, front desk. Not rendered until its host lands.                        |
 
 For `home` and `platform-home`, load your own data and follow the error rules below. The active branch is sent automatically as `X-Branch-Id`.
 

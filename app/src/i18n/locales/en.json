@@ -1,0 +1,45 @@
+{
+  "common": {
+    "actions": {
+      "save": "Save",
+      "cancel": "Cancel",
+      "retry": "Try again",
+      "close": "Close",
+      "more": "More",
+      "showMore": "Show more options",
+      "showLess": "Show fewer options"
+    },
+    "status": {
+      "pending": "Pending",
+      "dueSoon": "Due soon",
+      "overdue": "Overdue",
+      "paid": "Paid",
+      "present": "Present",
+      "absent": "Absent",
+      "late": "Late",
+      "upcoming": "Upcoming",
+      "live": "Live now",
+      "done": "Done"
+    },
+    "empty": {
+      "title": "Nothing here yet"
+    },
+    "language": "Language",
+    "menuGroups": {
+      "home": "Home",
+      "learning": "Learning",
+      "classes": "Classes",
+      "tests": "Tests",
+      "people": "People",
+      "fees": "Fees & money",
+      "messages": "Messages",
+      "hr": "Staff & HR",
+      "reports": "Reports",
+      "website": "Website",
+      "marketplace": "Marketplace",
+      "settings": "Settings",
+      "platform": "Platform",
+      "other": "Other"
+    }
+  }
+}

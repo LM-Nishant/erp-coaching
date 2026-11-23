@@ -12,6 +12,7 @@ import {
 import { getDeviceDescriptor } from '@/core/device';
 import { loadProfile, loadSession, patchSession, saveProfile, saveSession } from '@/core/token-storage';
 import { applyBranding } from '@/core/branding';
+import { personaOf, type Persona } from '@/core/persona';
 import {
   BiometricError,
   biometricAvailability,
@@ -87,6 +88,15 @@ export const useAuthStore = defineStore('auth', {
   getters: {
     isAuthenticated: (s) => !!s.me,
     isPlatformAdmin: (s) => !!s.me?.user.isSuperAdmin && !s.me.impersonatedBy,
+    /** Shell persona (home, tabs, menu); null when signed out. See core/persona.ts. */
+    persona: (s): Persona | null =>
+      s.me
+        ? personaOf({
+            isPlatformAdmin: !!s.me.user.isSuperAdmin && !s.me.impersonatedBy,
+            hasInstitute: !!s.me.institute,
+            roles: s.me.roles,
+          })
+        : null,
     /** Member of institutes but none chosen yet. Marketplace learners and instructors belong to none and skip this. */
     needsInstitute: (s) =>
       !!s.me && !s.me.institute && !s.me.user.isSuperAdmin && s.me.memberships.length > 0,

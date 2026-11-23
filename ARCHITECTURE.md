@@ -277,13 +277,15 @@ app/src/
                            # v-can directive, toast, session (lock / sign-out), idle monitor, biometric, secure screens
   stores/auth.ts           # session, memberships, permissions: can('module.action'), moduleEnabled()
   router/index.ts          # collects routes from modules; guards: auth, institute selection, meta.permission, meta.superAdmin
-  components/              # AppPage, StatCard, ImpersonationBanner, ...
+  components/              # AppPage, StatCard, StatusChip, EmptyState, FormSection, QuickActions, ImpersonationBanner, ...
+  i18n/                    # vue-i18n setup (index.ts) and shared strings (locales/{en,hi}.json → common.*)
   modules/<name>/module.ts # defineAppModule({ id, routes, menu, toolbarItems }), auto-discovered with import.meta.glob
+  modules/<name>/i18n/     # the module's strings: en.json (complete), hi.json (may be partial)
 ```
 
 - **API client** (`core/api.ts`): adds the Bearer token and `X-Branch-Id`. On a 401 it refreshes once (single-flight) and retries. If the refresh fails, the session ends. `SESSION_IDLE`, `SESSION_REVOKED` and `ACCOUNT_INACTIVE` end it without a refresh. `core/session.ts` then locks the app when biometric unlock is set up, unless the device was revoked or the account deactivated, and otherwise signs out. A revoked device or deactivated account also runs every module's `wipeUserData`. Pass `{ background: true }` for automatic polls.
 - **Branding**: after institute selection, `applyBranding()` sets the Ionic `--ion-color-primary/secondary` variants and the document title from the institute's settings. The logo is shown in the menu header.
-- **Menu**: built from every module's `menu` items, filtered by `permission`, `superAdmin` and `planModule` (whether the institute's plan includes the module).
+- **Menu**: built from every module's `menu` items, filtered by `permission`, `superAdmin`, `planModule` (whether the institute's plan includes the module), `roles` and `personas`.
 - **Subscription state**:
   - The subscriptions module adds a toolbar chip for the trial, grace, restricted and suspended states.
   - Through its `navigationGuards` entry, a suspended institute can only open routes with `meta.allowWhenSuspended`.
@@ -293,6 +295,55 @@ app/src/
 - **Native apps**: the same build runs in Capacitor (`app/android`, `app/ios`). Device provides the device id.
   - Tokens, the cached profile, offline content keys and the biometric credential live in secure storage (`core/secure-storage.ts`: iOS Keychain, Android Keystore-backed AES-GCM), never plain preferences. The web build uses localStorage.
   - iOS uses Swift Package Manager (`ios/App/CapApp-SPM`, written by `cap sync`): every plugin must ship a `Package.swift`. Android `minSdkVersion` is 26 (required by the QR scanner).
+
+### App shell contract (personas, tabs, strings)
+
+The shell is moving from one long menu to a home page and bottom tabs per kind of user (design: the UX rework, 2026-11). These are the extension points modules use; the shell reads them, modules never edit the shell.
+
+**Personas** (`core/persona.ts`, `auth.persona`): one per session, from the roles in the selected institute.
+
+| Persona    | Who                                                                     | Home slot       |
+| ---------- | ----------------------------------------------------------------------- | --------------- |
+| `student`  | `student` role                                                          | `student-home`  |
+| `parent`   | `parent` role                                                           | `parent-home`   |
+| `teacher`  | `teacher` role                                                          | `teacher-home`  |
+| `staff`    | institute admin, branch admin, accountant, any custom role (front desk) | `staff-home`    |
+| `learner`  | no institute: marketplace learners and independent instructors          | –               |
+| `platform` | super admin, not impersonating                                          | `platform-home` |
+
+With several roles the most capable wins: staff, teacher, student, parent.
+
+**`MenuItem` fields** (`core/modules.ts`), on top of `permission`, `roles`, `planModule` and `order`:
+
+- `group`: section of the grouped menu, one of `MENU_GROUPS` (`home`, `learning`, `classes`, `tests`, `people`, `fees`, `messages`, `hr`, `reports`, `website`, `marketplace`, `settings`, `platform`, `other`). Labels are `common.menuGroups.<group>`.
+- `personas`: shown only to these personas. Omit for everyone the other checks allow.
+- `tab`: bottom-tab position per persona, e.g. `{ student: 2 }`. `tabsFor(items, persona)` takes the `MAX_TABS - 1` (4) lowest; "More" is always last. `groupMenu(items)` builds the grouped list.
+- `titleKey`: i18n key for the title; `title` stays the English fallback.
+
+**Widget slots**: `home` (generic dashboard), `parent-home`, `platform-home`, and the persona homes `student-home`, `teacher-home`, `staff-home` (no props; load your own data). See CONTRIBUTING.md, "Dashboard widgets".
+
+**Formatting** (`core/format.ts`, in the user's language, `en-IN`/`hi-IN`): `formatDate` (`27 Nov 2026`), `formatDayShort` (`Fri, 27 Nov`), `formatTime` (`9:00 pm`), `formatDateTime`, `formatRelative` (`in 25 minutes`), `formatDuration` (`1 h 5 min`), `formatMoney` (paise → `₹41,250`), `formatMoneyCompact` (`₹6.6L`), `formatNumber`, `formatPercent`. Pass `{ timeZone }` to show an instant in the institute's timezone; `YYYY-MM-DD` strings are never shifted.
+
+**Strings** (`i18n/index.ts`, vue-i18n in Composition mode, `const { t } = useI18n()`):
+
+- Shared words: `i18n/locales/{en,hi}.json` under `common.*` (`common.actions.save`, `common.status.overdue`).
+- A module's words: `modules/<folder>/i18n/{en,hi}.json`, namespaced by the camel-cased folder name (`parent-portal` → `parentPortal.*`). Group keys by page: `fees.myFees.payNow`, `fees.menu.myFees`.
+- English is complete; Hindi may lag and falls back to English. A test fails when `hi.json` has a key `en.json` lacks.
+- `setLocale('hi')` switches the app and remembers the choice on the device (`localStorage`, key `erp.locale`). Saving it on the account (`users.locale`) comes with the language picker.
+
+**Shared components**: `StatusChip` (tone + plain label), `EmptyState` (what will appear here + next-step slot), `FormSection` (`advanced` collapses rarely used fields), `QuickActions` (grid of big buttons for homes). Tap targets: `var(--app-tap-target)` (48 px).
+
+**Who edits what during the UX rework.** To keep parallel work conflict-free:
+
+| Stream                            | Owns                                                                                                                                                                         |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WS1 shell and navigation          | `App.vue`, `router/index.ts`, `components/AppPage.vue`, new tab bar and More menu, `theme/*`, `modules/auth/*`, `modules/account/*`, the `menu:` arrays of every `module.ts` |
+| WS2 student and parent            | student and parent pages and `student-home`/`parent-home` widgets (lms, live-classes, exams, fees, attendance "My …" pages, parent-portal, marketplace player)               |
+| WS3 teacher                       | teacher pages and `teacher-home` widgets (attendance taking, exam editor, homework, content and live-class host)                                                             |
+| WS4 admin, front desk, accountant | `staff-home` widgets, fee accounts and collection, communication compose, students, batches, admissions, subscriptions; backend setup status                                 |
+| WS5 doubts, Hindi, formatting     | the new doubts module (backend, app, shared), `users.locale`, Hindi and `core/format.ts` adoption in modules no other stream owns                                            |
+
+Streams other than WS1 edit only `routes:` and `widgets:` in a `module.ts`. `core/modules.ts`, `core/persona.ts`, `core/format.ts`, `i18n/index.ts`, `main.ts` and `app/package.json` change only by agreement; add strings to your module's own JSON, not to `common`, unless every stream needs them.
 
 ## Mobile and device security (spec 4.18) and platform limits (spec 9)
 
