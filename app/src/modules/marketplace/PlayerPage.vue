@@ -59,11 +59,26 @@
           </div>
         </template>
         <div v-else class="center"><ion-spinner /></div>
+        <section id="qa" class="engage">
+          <h2>Questions &amp; answers</h2>
+          <QaPanel
+            :course-id="courseId"
+            :lecture-id="lecture?.id ?? null"
+            :lecture-title="lecture?.title"
+            :question-id="questionId"
+          />
+        </section>
       </main>
 
       <aside class="curriculum">
         <div class="progress" data-testid="course-progress">
           <strong>{{ player.progressPercent }}%</strong> complete
+          <router-link
+            :to="`/market/course/${player.course.slug}#reviews`"
+            class="rate"
+            data-testid="rate-course"
+            >Rate this course</router-link
+          >
         </div>
         <ion-list v-for="s in player.sections" :key="s.id" lines="none">
           <ion-list-header>{{ s.title }}</ion-list-header>
@@ -111,6 +126,7 @@ import type { MktLectureContentDto, MktPlayerDto, MktProgressInput } from '@erp/
 import { toastError } from '@/core/toast';
 import MarketShell from './components/MarketShell.vue';
 import StreamPlayer from './components/StreamPlayer.vue';
+import QaPanel from './components/QaPanel.vue';
 import { clock, marketApi } from './api';
 import { lectureIcon } from './lecture-icons';
 
@@ -120,6 +136,9 @@ const SAVE_EVERY_SECONDS = 15;
 const route = useRoute();
 const router = useRouter();
 const courseId = Number(route.params.id);
+/** A notification link opens one question in the Q&A. */
+const questionId = Number(route.query.questionId) || null;
+const openQa = route.query.tab === 'qa' || !!questionId;
 const player = ref<MktPlayerDto | null>(null);
 const lecture = ref<MktLectureContentDto | null>(null);
 let lastSaved = 0;
@@ -187,6 +206,7 @@ onMounted(async () => {
   const first = flat.value.find((l) => !l.completed) ?? flat.value[0];
   const start = flat.value.some((l) => l.id === asked) ? asked : (player.value.lastLectureId ?? first?.id);
   if (start) await open(start);
+  if (openQa) document.getElementById('qa')?.scrollIntoView();
 });
 
 onBeforeUnmount(() => {
@@ -254,6 +274,19 @@ function download(url: string) {
 }
 .progress {
   padding: 12px 16px 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.rate {
+  font-size: 13px;
+}
+.engage {
+  margin-top: 24px;
+  border-top: 1px solid var(--ion-color-light-shade);
+}
+.engage h2 {
+  font-size: 18px;
 }
 ion-item.current {
   --background: rgba(var(--ion-color-primary-rgb), 0.12);

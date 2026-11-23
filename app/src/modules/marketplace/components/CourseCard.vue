@@ -7,13 +7,16 @@
     <div class="thumb">
       <img v-if="course.thumbnailUrl" :src="course.thumbnailUrl" :alt="''" loading="lazy" />
       <div v-else class="thumb-fallback">{{ course.title.charAt(0) }}</div>
+      <WishlistButton v-if="wishlist" :course-id="course.id" />
     </div>
     <div class="body">
       <h3>{{ course.title }}</h3>
       <p class="seller">{{ course.seller.displayName }}</p>
       <p class="meta">
-        <span v-if="course.ratingCount" class="rating"
-          >★ {{ course.ratingAvg.toFixed(1) }} ({{ course.ratingCount }})</span
+        <span v-if="course.ratingCount" class="rating" data-testid="card-rating"
+          >{{ course.ratingAvg.toFixed(1) }} <RatingStars :rating="course.ratingAvg" /> ({{
+            course.ratingCount
+          }})</span
         >
         <span>{{ MKT_COURSE_LEVEL_LABELS[course.level] }}</span>
         <span v-if="course.durationSeconds">· {{ durationLabel(course.durationSeconds) }}</span>
@@ -26,8 +29,10 @@
 <script setup lang="ts">
 import { MKT_COURSE_LEVEL_LABELS, type MktCourseCardDto } from '@erp/shared';
 import { durationLabel, priceLabel } from '../api';
+import RatingStars from './RatingStars.vue';
+import WishlistButton from './WishlistButton.vue';
 
-defineProps<{ course: MktCourseCardDto }>();
+withDefaults(defineProps<{ course: MktCourseCardDto; wishlist?: boolean }>(), { wishlist: true });
 </script>
 
 <style scoped>
@@ -43,6 +48,7 @@ defineProps<{ course: MktCourseCardDto }>();
   height: 100%;
 }
 .thumb {
+  position: relative;
   aspect-ratio: 16 / 9;
   background: var(--ion-color-light);
 }
