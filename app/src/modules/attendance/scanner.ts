@@ -20,7 +20,7 @@ export async function scanQr(): Promise<string | null> {
     });
     return ScanResult || null;
   } catch (e) {
-    throw new Error(scanErrorMessage((e as { code?: unknown }).code) ?? (e as Error).message);
+    throw new Error(scanErrorMessage((e as { code?: unknown }).code) ?? (e as Error).message, { cause: e });
   }
 }
 

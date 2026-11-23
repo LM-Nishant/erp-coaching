@@ -139,7 +139,7 @@ export function calculatePayslip(input: CalcInput): CalcResult {
   for (const c of components.filter((x) => x.kind === 'deduction' && applies(x))) {
     if (c.eligibilityMaxGross != null && gross > c.eligibilityMaxGross) continue;
     const base = baseOf(c, gross);
-    let employee = 0;
+    let employee: number;
     let employer = 0;
     if (c.calcType === 'percent') {
       const pct = c.code === 'TDS' && s.tdsPercent != null ? s.tdsPercent : (c.employeeRate ?? 0);

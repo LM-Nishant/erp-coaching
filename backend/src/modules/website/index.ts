@@ -16,6 +16,15 @@ export default defineModule({
     {
       module: 'website',
       label: 'Website & online admissions',
+      area: 'Institute',
+      describe: {
+        view: ['View website', 'See website pages and online forms'],
+        create: ['Add pages', 'Create website pages and sections'],
+        edit: ['Edit website', 'Change pages, menus and media'],
+        delete: ['Delete pages', 'Remove website pages'],
+        publish: ['Publish website', 'Make website changes live'],
+        configure: ['Website setup', 'Domain, theme and SEO settings'],
+      },
       actions: ['view', 'create', 'edit', 'delete', 'publish', 'configure'],
       grants: {
         'branch-admin': ['view', 'create', 'edit'],

@@ -23,6 +23,11 @@ export default defineModule({
     {
       module: 'parent-portal',
       label: 'Parent portal',
+      area: 'Communication',
+      describe: {
+        view: ["Children's progress", "Parents follow their children's progress and monthly reports"],
+        configure: ['Monthly parent reports', 'Run and send the monthly progress reports to parents'],
+      },
       actions: ['view', 'configure'],
       grants: {
         'branch-admin': ['configure'],

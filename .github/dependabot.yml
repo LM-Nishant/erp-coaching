@@ -16,6 +16,11 @@ updates:
       development-minor:
         dependency-type: development
         update-types: [minor, patch]
+    ignore:
+      # Types must match the Node major we run (22: engines, CI NODE_VERSION, deploy/*.Dockerfile).
+      # Move this bound together with the runtime when upgrading Node.
+      - dependency-name: '@types/node'
+        versions: ['>=23']
 
   - package-ecosystem: github-actions
     directory: /
@@ -32,6 +37,11 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    ignore:
+      # A MySQL server major is a planned data upgrade (backup, LTS to LTS: 8.4 -> 9.7), not a routine bump.
+      # Keep deploy/docker-compose.yml, deploy/backup/Dockerfile and the CI service images on one version.
+      - dependency-name: mysql
+        update-types: ['version-update:semver-major']
 
   # mysql, redis and nginx images in the compose stack.
   - package-ecosystem: docker-compose
@@ -39,3 +49,6 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    ignore:
+      - dependency-name: mysql
+        update-types: ['version-update:semver-major']

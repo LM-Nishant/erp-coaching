@@ -75,6 +75,8 @@ permissions: [{
 - Actions are limited to `view | create | edit | delete | approve | export | publish | configure`.
 - Self-service data, such as a student viewing their own results, still needs a permission check plus an ownership check in the service. Ownership comes from `getContext().userId`.
 - Mark a permission that only means "my own data" with `selfService: true` (or the self-service actions only, e.g. `selfService: ['view']`) and grant it to the persona roles. Institute admin then doesn't get it, so its menu hides those pages. In the app, a persona page guarded by a staff permission (e.g. _My timetable_ on `academics.view`) also sets `roles` on its menu item.
+- Every declaration also needs an `area` (a `PERMISSION_AREAS` heading in `@erp/shared`) and a `describe` entry per action: `view: ['View students', 'See student profiles and records']`. The _Roles & permissions_ page shows these instead of raw keys.
+- Mark actions only the institute admin may hold with `adminOnly: true` (or e.g. `adminOnly: ['configure']`). Custom roles can't hold admin-only or self-service permissions (400 `PERMISSION_NOT_GRANTABLE`), and boot fails if a system role is granted an admin-only one.
 
 ### 4b. Mounting routes and public routes
 

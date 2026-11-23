@@ -6,13 +6,15 @@ import { parse } from '../../shared/utilities/validation';
 import { idParam, paginated, paginationSchema, toLimitOffset } from '../../shared/utilities/pagination';
 import { authenticate } from '../../shared/middleware/authenticate';
 import { requirePermission } from '../../shared/middleware/authorize';
-import { requireTenantContext, type TenantContext } from '../../shared/context';
+import { hasPermission, requireTenantContext, type TenantContext } from '../../shared/context';
 import { BadRequest, Forbidden, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { hashPassword } from '../../infrastructure/password';
 import { Branch } from '../branches/branch.model';
-import { Role, UserBranch, UserRole } from '../permissions/models';
+import { Permission, Role, UserBranch, UserRole } from '../permissions/models';
+import { adminOnlyKeys } from '../permissions/catalog.service';
+import { discoverModules } from '../../infrastructure/module-loader';
 import {
   assertMemberInBranchScope,
   memberManageWhere,
@@ -37,9 +39,20 @@ const assignmentSchema = z.object({
 async function validateAssignment(input: z.infer<typeof assignmentSchema>) {
   const { instituteId, allowedBranchIds } = requireTenantContext();
   const roleIds = [...new Set(input.roles.map((r) => r.roleId))];
-  const roles = await Role.findAll({ where: { id: roleIds, instituteId: { [Op.or]: [null, instituteId] } } });
+  const roles = await Role.findAll({
+    where: { id: roleIds, instituteId: { [Op.or]: [null, instituteId] } },
+    include: [{ model: Permission, as: 'permissions', through: { attributes: [] } }],
+  });
   if (roles.length !== roleIds.length) throw BadRequest('Unknown role');
   if (roles.some((r) => r.slug === 'super-admin')) throw Forbidden('Super admin cannot be assigned here');
+  // Admin-only permissions (managing roles, institute settings…) pass only to those who hold them, so
+  // e.g. a branch admin cannot make someone an Institute Admin.
+  const adminOnly = adminOnlyKeys(await discoverModules());
+  const above = roles.find((r) =>
+    (r.permissions ?? []).some((p) => adminOnly.has(p.key) && !hasPermission(p.key)),
+  );
+  if (above)
+    throw Forbidden(`Only an Institute Admin can assign the ${above.name} role`, 'ROLE_ABOVE_YOUR_ACCESS');
   const branchIds = [
     ...new Set([
       ...input.branchIds,
@@ -158,8 +171,23 @@ export function userRoutes(api: Router) {
   r.use(authenticate);
 
   r.get('/', requirePermission('users', 'view'), async (req, res) => {
-    const q = parse(paginationSchema.extend({ role: z.string().optional() }), req.query);
+    const q = parse(
+      paginationSchema.extend({ role: z.string().optional(), kind: z.enum(['staff']).optional() }),
+      req.query,
+    );
     const { instituteId } = requireTenantContext();
+    // Staff: members holding at least one role other than Student and Parent.
+    const staff = q.kind
+      ? {
+          id: {
+            [Op.in]: literal(
+              `(SELECT ur.user_id FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.institute_id = ${Number(
+                instituteId,
+              )} AND r.slug NOT IN ('student', 'parent'))`,
+            ),
+          },
+        }
+      : undefined;
     const search = q.search
       ? {
           [Op.or]: [
@@ -169,8 +197,8 @@ export function userRoutes(api: Router) {
           ],
         }
       : undefined;
-    const visible = memberVisibilityWhere();
-    const userWhere = search && visible ? { [Op.and]: [search, visible] } : (search ?? visible);
+    const filters = [search, memberVisibilityWhere(), staff].filter((w): w is WhereOptions => !!w);
+    const userWhere = filters.length ? { [Op.and]: filters } : undefined;
     const { rows, count } = await User.findAndCountAll({
       where: userWhere,
       include: [

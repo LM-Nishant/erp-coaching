@@ -23,6 +23,12 @@ export default defineModule({
     {
       module: 'subscription',
       label: 'Subscription & billing',
+      area: 'Institute',
+      adminOnly: true,
+      describe: {
+        view: ['View subscription', "See the institute's plan, invoices and usage"],
+        edit: ['Manage subscription', 'Change plan, add-ons and pay invoices'],
+      },
       actions: ['view', 'edit'],
     },
   ],

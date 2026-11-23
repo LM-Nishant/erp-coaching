@@ -13,6 +13,15 @@ export default defineModule({
     {
       module: 'appointments',
       label: 'Parent-teacher appointments',
+      area: 'Academics',
+      describe: {
+        view: ['View own meetings', 'See the parent-teacher meetings they take part in'],
+        create: ['Request meetings', 'Parents request a meeting slot with a teacher'],
+        edit: ['Set availability', 'Publish their own free slots for parent meetings'],
+        approve: ['Handle meeting requests', 'Accept, decline or reschedule requests for their meetings'],
+        export: ['Meeting reports', "Download reports of the branch's parent meetings"],
+        configure: ['Manage all meetings', "Manage every teacher's slots and meetings"],
+      },
       // view: own meetings · create: request (parents) · edit: own availability · approve: act on own
       // meetings (teachers) · export: branch reports · configure: manage every teacher's slots/meetings.
       actions: ['view', 'create', 'edit', 'approve', 'export', 'configure'],

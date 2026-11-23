@@ -57,7 +57,7 @@ export class LocalDiskStorage implements StorageAdapter {
   async deletePrefix(prefix: string): Promise<number> {
     if (!prefix.endsWith('/')) throw new Error(`Storage prefix must end with "/": ${prefix}`);
     const dir = this.resolve(prefix.slice(0, -1));
-    let count = 0;
+    let count: number;
     try {
       const entries = await fsp.readdir(dir, { recursive: true, withFileTypes: true });
       count = entries.filter((e) => e.isFile()).length;

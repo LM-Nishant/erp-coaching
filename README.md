@@ -99,7 +99,7 @@ It drives the real API in-process, so balances, enrolments and ledgers follow th
 
 No messages leave the machine: SMS, WhatsApp, email and push notifications are recorded as skipped (in-app ones are kept), and the background jobs it triggers run inside the seed process. It also forces console/mock providers and refuses to run if real messaging providers are configured (`--allow-real-providers`). It also refuses when `NODE_ENV=production` unless you pass `--allow-production`.
 
-The new users have no password, so log in with **OTP** (see below). Apex numbers are shown; Zenith uses `9622…` (teachers `9622100001`–`3`, Front Desk `9622100004`, Auditor `9622100005`, Sharma siblings `9622300018`, parent `9622300019`).
+The new users have no password, so sign in with **Mobile OTP** (see below). Apex numbers are shown; Zenith uses `9622…` (teachers `9622100001`–`3`, Front Desk `9622100004`, Auditor `9622100005`, Sharma siblings `9622300018`, parent `9622300019`).
 
 | Who (Apex)                                       | Mobile                            |
 | ------------------------------------------------ | --------------------------------- |
@@ -110,7 +110,9 @@ The new users have no password, so log in with **OTP** (see below). Apex numbers
 | Swati Kulkarni, their mother                     | `9621300038`                      |
 | Rohan / Riya Patil, and their mother Meera Patil | `9621200037` / `8` / `9621300039` |
 
-**OTP in dev.** Two cases ask for an OTP: OTP login, and the first login from a _new_ device when the user already has one. SMS uses a console adapter, so the code is printed in the API log as `[DEV] OTP for <mobile>: 123456`. Each user can have at most 2 active devices; revoke one under **My devices**.
+**No OTP in dev.** With `NODE_ENV=development` (the default), `AUTH_DEV_SKIP_OTP` is on and sign-in never asks for a code: a password signs in on a new device straight away, and **Mobile OTP** › **Send OTP** signs in at once (no SMS, no code to enter). A number shared by several accounts still opens "Who's signing in?", and **Switch profile** goes straight to it. Devices are still registered and the limit of 2 active devices still applies; revoke one under **My devices**. The API logs a `WARN` at startup while the bypass is on.
+
+To test the real OTP flows locally, set `AUTH_DEV_SKIP_OTP=false` in `backend/.env` and restart the API. OTPs are then asked for on OTP login and on the first login from a _new_ device when the user already has one; SMS uses a console adapter, so the code is printed in the API log as `[DEV] OTP for <mobile>: 123456`. The bypass is off in tests and E2E, and the API refuses to start with it on in production.
 
 ## Tests, lint, build
 

@@ -1,6 +1,15 @@
 import { Op } from 'sequelize';
-import { PERMISSION_ACTIONS, SYSTEM_ROLES, type SystemRoleSlug } from '@erp/shared';
-import type { ModuleDefinition } from '../../shared/module';
+import {
+  PERMISSION_ACTIONS,
+  PERMISSION_AREAS,
+  SYSTEM_ROLES,
+  type PermissionAccess,
+  type PermissionAction,
+  type PermissionCatalogEntry,
+  type PermissionKey,
+  type SystemRoleSlug,
+} from '@erp/shared';
+import type { ModuleDefinition, PermissionDeclaration } from '../../shared/module';
 import { getSequelize } from '../../infrastructure/database/sequelize';
 import { Permission, Role, RolePermission } from './models';
 
@@ -16,6 +25,60 @@ export const SYSTEM_ROLE_DEFS: Record<SystemRoleSlug, { name: string; descriptio
   [SYSTEM_ROLES.STUDENT]: { name: 'Student', description: 'Learner' },
   [SYSTEM_ROLES.PARENT]: { name: 'Parent', description: 'Guardian of linked students' },
 };
+
+const flagged = (flag: true | readonly PermissionAction[] | undefined, action: PermissionAction) =>
+  flag === true || (flag ?? []).includes(action);
+
+function accessOf(d: PermissionDeclaration, action: PermissionAction): PermissionAccess {
+  if (flagged(d.adminOnly, action)) return 'admin-only';
+  if (flagged(d.selfService, action)) return 'self-service';
+  return 'any';
+}
+
+/**
+ * The role editor's catalog: every declared permission with its text and who may hold it, by area
+ * (`PERMISSION_AREAS` order), then module declaration order, then `PERMISSION_ACTIONS` order.
+ */
+export function permissionCatalog(modules: ModuleDefinition[]): PermissionCatalogEntry[] {
+  const decls = modules.flatMap((m) => m.permissions ?? []);
+  return PERMISSION_AREAS.flatMap((area) =>
+    decls
+      .filter((d) => d.area === area)
+      .flatMap((d) =>
+        PERMISSION_ACTIONS.filter((a) => d.actions.includes(a)).map((action) => {
+          const [label, description] = d.describe[action] ?? [`${d.label}: ${action}`, ''];
+          return {
+            key: `${d.module}.${action}` as PermissionKey,
+            module: d.module,
+            action,
+            area,
+            moduleLabel: d.label,
+            label,
+            description,
+            access: accessOf(d, action),
+          };
+        }),
+      ),
+  );
+}
+
+/** Keys custom roles cannot hold: admin-only and self-service permissions. */
+export function nonGrantableKeys(modules: ModuleDefinition[]): Set<string> {
+  return new Set(
+    permissionCatalog(modules)
+      .filter((p) => p.access !== 'any')
+      .map((p) => p.key),
+  );
+}
+
+/** Keys only the Institute Admin system role holds. */
+export function adminOnlyKeys(modules: ModuleDefinition[]): Set<string> {
+  return new Set(
+    permissionCatalog(modules)
+      .filter((p) => p.access === 'admin-only')
+      .map((p) => p.key),
+  );
+}
 
 /**
  * Upserts the permission catalog declared by modules and the system role templates with their
@@ -37,6 +100,14 @@ export async function syncPermissionCatalog(modules: ModuleDefinition[]): Promis
     for (const action of rows.map((r) => r.action)) {
       if (!(PERMISSION_ACTIONS as readonly string[]).includes(action))
         throw new Error(`Unknown permission action ${action}`);
+    }
+    for (const d of decls) {
+      for (const [slug, grant] of Object.entries(d.grants ?? {})) {
+        const actions = grant === 'all' ? d.actions : (grant ?? []);
+        const leaked = actions.filter((a) => flagged(d.adminOnly, a));
+        if (leaked.length)
+          throw new Error(`${d.module}.${leaked[0]} is admin-only; ${slug} cannot be granted it`);
+      }
     }
     if (rows.length) {
       await Permission.bulkCreate(rows, { updateOnDuplicate: ['label', 'module', 'action'], transaction });

@@ -1,7 +1,7 @@
 import type { Server } from 'node:http';
 import type { Router } from 'express';
 import type { Sequelize } from 'sequelize';
-import type { PermissionAction, SystemRoleSlug } from '@erp/shared';
+import type { PermissionAction, PermissionArea, SystemRoleSlug } from '@erp/shared';
 import type { JobHandler } from '../infrastructure/jobs/queue';
 
 export interface PermissionDeclaration {
@@ -14,9 +14,23 @@ export interface PermissionDeclaration {
   /**
    * Self-service actions (`true` = all): the user acts on their own records or their linked
    * children's, e.g. a student's fees. Institute Admin's every-permission default skips them so
-   * staff menus hold no persona pages; grant them explicitly (`grants` or a custom role) instead.
+   * staff menus hold no persona pages; grant them to the persona system roles through `grants`.
+   * Custom roles cannot hold them (the role editor shows them locked).
    */
   selfService?: true | readonly PermissionAction[];
+  /**
+   * Actions only the Institute Admin system role holds (`true` = all), e.g. managing roles or
+   * deleting the institute's data. Custom roles cannot hold them, and only someone holding them may
+   * assign a role that does. Never list them in `grants`.
+   */
+  adminOnly?: true | readonly PermissionAction[];
+  /** Role editor section. */
+  area: PermissionArea;
+  /**
+   * Role editor text for every action: a short name and one plain-language line, e.g.
+   * `approve: ['Approve fee changes', 'Approve refunds, discounts and offline receipts']`.
+   */
+  describe: { readonly [A in PermissionAction]?: readonly [label: string, description: string] };
 }
 
 /**

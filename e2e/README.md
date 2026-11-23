@@ -18,6 +18,7 @@ sending an enquiry) are driven in the browser.
 | `live-class.spec.ts`              | Live class → notification → join → recording in the LMS   | Teacher schedules and goes live. Student sees the notification and joins: chat, Q&A, poll, mic allowed. Recording listed, opened in the LMS  |
 | `academic-promotion-fees.spec.ts` | Academic promotion → new-session fees                     | Admin promotes a batch into the next session with "Apply new-session fees" on and a due date. Sees 2 promoted and billed, 1 already enrolled |
 | `sibling-profiles.spec.ts`        | Sibling on a shared mobile → batch, attendance, sign-in   | Admin admits a sibling on the parent's mobile into its batch. Teacher marks P/A. OTP sign-in asks "Who's signing in?"; switch profile        |
+| `roles-permissions.spec.ts`       | Custom role → grant → assign → menu                       | Admin creates "Front desk" with View students and adds staff with it. Member sees Students, not Fees; admin adds View fees                   |
 
 Each spec also checks the server-side outcome where it matters, for example:
 
