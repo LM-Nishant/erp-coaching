@@ -43,7 +43,7 @@
                 :class="{ selected: route.path.startsWith(item.path) }"
               >
                 <ion-icon slot="start" :icon="item.icon" />
-                <ion-label>{{ item.title }}</ion-label>
+                <ion-label>{{ item.titleKey ? t(item.titleKey) : item.title }}</ion-label>
               </ion-item>
             </ion-menu-toggle>
           </ion-list>
@@ -98,6 +98,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import {
   alertController,
   menuController,
@@ -130,6 +131,7 @@ import OfflineBanner from '@/components/OfflineBanner.vue';
 const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 
 const institute = computed(() => auth.me?.institute ?? null);
 const showMenu = computed(
@@ -157,7 +159,7 @@ const menu = computed(() =>
       if (item.superAdmin) return auth.isPlatformAdmin;
       if (auth.isPlatformAdmin) return !item.permission;
       if (item.permission && !auth.can(item.permission)) return false;
-      if (!fitsPersona(item, auth.me?.roles)) return false;
+      if (!fitsPersona(item, auth.me?.roles, auth.persona ?? undefined)) return false;
       return !item.planModule || auth.moduleEnabled(item.planModule);
     })
     .sort((a, b) => (a.order ?? 100) - (b.order ?? 100)),

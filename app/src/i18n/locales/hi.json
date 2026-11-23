@@ -1,0 +1,45 @@
+{
+  "common": {
+    "actions": {
+      "save": "सेव करें",
+      "cancel": "रद्द करें",
+      "retry": "फिर से कोशिश करें",
+      "close": "बंद करें",
+      "more": "और",
+      "showMore": "और विकल्प दिखाएँ",
+      "showLess": "कम विकल्प दिखाएँ"
+    },
+    "status": {
+      "pending": "बाकी",
+      "dueSoon": "जल्द देय",
+      "overdue": "देर हो गई",
+      "paid": "भुगतान हो गया",
+      "present": "उपस्थित",
+      "absent": "अनुपस्थित",
+      "late": "देर से",
+      "upcoming": "आने वाला",
+      "live": "अभी लाइव",
+      "done": "पूरा"
+    },
+    "empty": {
+      "title": "अभी यहाँ कुछ नहीं है"
+    },
+    "language": "भाषा",
+    "menuGroups": {
+      "home": "होम",
+      "learning": "पढ़ाई",
+      "classes": "क्लास",
+      "tests": "टेस्ट",
+      "people": "लोग",
+      "fees": "फीस और पैसे",
+      "messages": "संदेश",
+      "hr": "स्टाफ और HR",
+      "reports": "रिपोर्ट",
+      "website": "वेबसाइट",
+      "marketplace": "मार्केटप्लेस",
+      "settings": "सेटिंग्स",
+      "platform": "प्लेटफ़ॉर्म",
+      "other": "अन्य"
+    }
+  }
+}
