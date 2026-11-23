@@ -1100,7 +1100,15 @@ class InstituteSeeder {
             accountId: account.id,
             amount,
             mode,
-            paidOn: istDate(-70 + k * 30 + (receiptNo % 5)),
+            // Spread over the last 60 days (second instalments in the last 15) so current-period
+            // dashboards show collections too.
+            paidOn: istDate(
+              k > 0
+                ? -1 - ((receiptNo * 3) % 15)
+                : amounts.length > 1
+                  ? -31 - ((receiptNo * 7) % 30)
+                  : -1 - ((receiptNo * 7) % 60),
+            ),
             ...(mode === 'cheque'
               ? { chequeNumber: String(400100 + receiptNo), bankName: 'State Bank of India' }
               : {}),
