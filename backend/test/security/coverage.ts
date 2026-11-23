@@ -46,6 +46,7 @@ export const SEGMENT_TABLES: Record<string, string> = {
   'notifications/inbox': 'notification_messages',
   'payroll/settlements': 'final_settlements',
   'public/sites/*/checkout': 'courses',
+  'question-bank/pdf-imports': 'question_imports',
   'tenant-data/exports': 'data_exports',
   'website/referrals': 'website_referral_codes',
 };

@@ -13,6 +13,8 @@ import {
  * - grading prompts: keyword overlap of the student's answer (typed text + simulated OCR) with the
  *   model answer and rubric;
  * - question generation: well-formed sample questions of the requested type;
+ * - question paper extraction: parses the page text layer (numbered questions, (A)-(D) options,
+ *   "Ans:" lines, answer-key sections, [FIGURE Fn] markers); pages without text yield nothing;
  * - connection tests and any other chat: a short fixed reply.
  *
  * Simulated OCR reads text embedded in PNG `tEXt`/`iTXt`/`zTXt` chunks (keywords below) or JPEG
@@ -58,6 +60,8 @@ export function mockChatCompletion(conn: ProviderConnection, req: ChatRequest): 
     content = JSON.stringify(gradeAnswer(userText, images));
   } else if (/"questions"/.test(system) && /Number of questions:/i.test(userText)) {
     content = JSON.stringify({ questions: generateQuestions(userText) });
+  } else if (/QUESTION PAPER EXTRACTION/.test(system)) {
+    content = JSON.stringify(extractPaperPage(userText));
   } else if (/\{"ok": ?true\}/.test(system)) {
     content = JSON.stringify({ ok: true });
   } else if (/single word OK/i.test(system)) {
@@ -306,4 +310,125 @@ function generateQuestions(prompt: string) {
         };
     }
   });
+}
+
+// ---------------------------------------------------------------- question paper extraction
+
+interface MockExtracted {
+  number: string | null;
+  type: string;
+  text: string;
+  options: { key: string; text: string }[];
+  answer: string | null;
+  figures: string[];
+  continued: boolean;
+  confidence: number;
+}
+
+const Q_START = /^(?:Q\.?\s*)?(\d{1,3})[.)]\s+(.*)$/i;
+const ANS_LINE = /^ans(?:wer)?\s*[:.-]\s*(.+)$/i;
+const KEY_HEADING = /^(answer\s*key|answers|key)\b[:\s]*$/i;
+const KEY_ENTRY = /(\d{1,3})\s*[-:.)]\s*([A-H](?:\s*,\s*[A-H])*(?![A-Za-z])|-?\d+(?:\.\d+)?|true|false)/gi;
+
+/** Deterministic transcription of a question paper page from its text layer. */
+function extractPaperPage(userText: string) {
+  const m = /<<<\n([\s\S]*?)\n>>>/.exec(userText);
+  const raw = m && m[1] !== '(no text layer)' ? m[1] : '';
+  const pageNo = Number(/page (\d+) of/i.exec(userText)?.[1] ?? 1);
+  const keyDoc = /ANSWER KEY document/.test(userText);
+  const questions: MockExtracted[] = [];
+  const answerKey: { number: string; answer: string }[] = [];
+  let current: MockExtracted | null = null;
+  let inKey = keyDoc;
+  const lead: string[] = [];
+
+  const addOptions = (q: MockExtracted, line: string) => {
+    const parts = line.split(/\(([A-H])\)\s*/);
+    for (let i = 1; i < parts.length; i += 2) q.options.push({ key: parts[i], text: parts[i + 1].trim() });
+    return parts[0].trim();
+  };
+  for (const line of raw
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)) {
+    if (KEY_HEADING.test(line)) {
+      inKey = true;
+      continue;
+    }
+    if (inKey) {
+      for (const e of line.matchAll(KEY_ENTRY))
+        answerKey.push({ number: e[1], answer: e[2].replace(/\s+/g, '') });
+      continue;
+    }
+    const fig = /^\[FIGURE (F\d+)\]$/.exec(line);
+    if (fig) {
+      current?.figures.push(fig[1]);
+      continue;
+    }
+    const start = Q_START.exec(line);
+    if (start) {
+      current = {
+        number: start[1],
+        type: '',
+        text: '',
+        options: [],
+        answer: null,
+        figures: [],
+        continued: false,
+        confidence: 0.95,
+      };
+      questions.push(current);
+      current.text = addOptions(current, start[2]);
+      continue;
+    }
+    const ans = ANS_LINE.exec(line);
+    if (ans && current) {
+      current.answer = ans[1].trim();
+      continue;
+    }
+    if (!current) {
+      lead.push(line);
+      continue;
+    }
+    const rest = addOptions(current, line);
+    if (rest) current.text = `${current.text}\n${rest}`.trim();
+  }
+  if (lead.length && pageNo > 1 && !keyDoc) {
+    const c: MockExtracted = {
+      number: null,
+      type: '',
+      text: '',
+      options: [],
+      answer: null,
+      figures: [],
+      continued: true,
+      confidence: 0.9,
+    };
+    for (const l of lead) {
+      const rest = (() => {
+        const parts = l.split(/\(([A-H])\)\s*/);
+        for (let i = 1; i < parts.length; i += 2)
+          c.options.push({ key: parts[i], text: parts[i + 1].trim() });
+        return parts[0].trim();
+      })();
+      if (rest) c.text = `${c.text}\n${rest}`.trim();
+    }
+    questions.unshift(c);
+  }
+  for (const q of questions) {
+    if (q.continued) continue;
+    if (q.options.length >= 2)
+      q.type =
+        /,/.test(q.answer ?? '') || /which of (these|the following) are|select all|one or more/i.test(q.text)
+          ? 'multiple'
+          : 'single';
+    else if (/true or false|true\/false/i.test(q.text)) q.type = 'true_false';
+    else if (
+      /^-?\d+(\.\d+)?$/.test(q.answer ?? '') ||
+      /\b(find|calculate|compute|how many|value of)\b/i.test(q.text)
+    )
+      q.type = 'numerical';
+    else q.type = 'descriptive';
+  }
+  return { questions, answerKey };
 }

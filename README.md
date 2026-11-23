@@ -186,6 +186,7 @@ Native project notes:
   - An OpenAI-compatible provider configuration screen with presets: OpenAI, Azure, Gemini, Groq, OpenRouter and Ollama, plus a deterministic mock provider for development and tests (never available in production).
   - The key is encrypted at rest (AES-256-GCM) and never returned to the browser.
   - Test connection, plus an `aiChat()` service with per-institute usage metering (tokens, images and estimated cost) and quota (`ai_usage`).
+  - **Question paper import from PDF** (Question bank › a bank › _Import PDF paper_): upload an existing paper (up to 20 MB and 30 pages, plus an optional answer-key PDF of up to 10 pages). A background job reads it page by page with pdf.js; scanned or photographed pages, diagrams and equation-heavy pages are sent to the AI model as images (the model must accept images). Questions, options and printed answers are copied as drafts. Answer keys are matched by question number and never guessed; missing, conflicting or hard-to-read answers are flagged. Diagrams are cropped and attached to the question. The teacher reviews and edits the drafts, sets the subject, difficulty and marks, and saves only the ones they pick. Unsaved uploads stay under _Earlier uploads_ until they are saved or discarded.
 - **Integrations**: adapter interfaces with console or mock implementations for SMS, WhatsApp, email, push, payments, live streaming and biometric devices.
 - **App shell**
   - Login, OTP and institute selection.

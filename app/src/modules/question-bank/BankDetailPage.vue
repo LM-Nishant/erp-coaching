@@ -31,6 +31,14 @@
           <ion-button size="small" color="tertiary" :router-link="`/question-bank/banks/${bankId}/generate`">
             <ion-icon slot="start" :icon="sparklesOutline" />Generate with AI
           </ion-button>
+          <ion-button
+            size="small"
+            color="secondary"
+            data-testid="import-pdf"
+            :router-link="`/question-bank/banks/${bankId}/import-pdf`"
+          >
+            <ion-icon slot="start" :icon="documentTextOutline" />Import PDF paper
+          </ion-button>
         </div>
       </ion-card-content>
     </ion-card>
@@ -173,7 +181,7 @@ import {
   type ActionSheetButton,
   type InfiniteScrollCustomEvent,
 } from '@ionic/vue';
-import { add, ellipsisVertical, sparklesOutline } from 'ionicons/icons';
+import { add, documentTextOutline, ellipsisVertical, sparklesOutline } from 'ionicons/icons';
 import {
   QUESTION_DIFFICULTIES,
   QUESTION_STATUSES,
