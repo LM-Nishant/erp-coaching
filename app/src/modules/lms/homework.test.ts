@@ -1,0 +1,16 @@
+import { describe, expect, it } from 'vitest';
+import { dueAt, dueChoiceOf } from './homework';
+
+describe('homework due dates', () => {
+  const now = new Date(2026, 10, 30, 11, 0);
+
+  it('sets quick due dates at 9 pm', () => {
+    expect(dueAt('tomorrow', now)).toBe('2026-12-01T21:00');
+    expect(dueAt('nextWeek', now)).toBe('2026-12-07T21:00');
+  });
+
+  it('recognises a quick choice, else none', () => {
+    expect(dueChoiceOf('2026-12-02T21:00', now)).toBe('twoDays');
+    expect(dueChoiceOf('2026-12-02T18:00', now)).toBeNull();
+  });
+});

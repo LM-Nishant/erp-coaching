@@ -1,48 +1,125 @@
 <template>
-  <AppPage :title="id ? 'Edit resource' : 'New resource'" back-href="/lms/content">
-    <form @submit.prevent="save">
-      <ion-list>
+  <AppPage
+    :title="id ? t('lms.contentForm.editTitle') : t('lms.contentForm.newTitle')"
+    back-href="/lms/content"
+  >
+    <form @submit.prevent="submit">
+      <p class="field-label">{{ t('lms.contentForm.type') }}</p>
+      <div class="chips" role="radiogroup" :aria-label="t('lms.contentForm.type')">
+        <button
+          v-for="ty in LMS_RESOURCE_TYPES"
+          :key="ty"
+          type="button"
+          role="radio"
+          :aria-checked="form.type === ty"
+          :class="['chip', { on: form.type === ty }]"
+          @click="setType(ty)"
+        >
+          {{ t(`lms.contentForm.types.${ty}`) }}
+        </button>
+      </div>
+
+      <ion-list lines="full">
+        <ion-item v-if="form.type === 'link'">
+          <ion-input
+            v-model="form.externalUrl"
+            :label="t('lms.contentForm.url')"
+            label-placement="stacked"
+            type="url"
+            required
+          />
+        </ion-item>
+      </ion-list>
+      <div v-if="form.type !== 'link'" class="upload">
+        <label :class="['drop', { done: currentFile && !uploading }]">
+          <ion-icon
+            :icon="currentFile && !uploading ? checkmarkCircle : cloudUploadOutline"
+            aria-hidden="true"
+          />
+          <span v-if="uploading">{{
+            t('lms.contentForm.uploading', { pct: Math.round(uploadPct * 100) })
+          }}</span>
+          <span v-else-if="currentFile">
+            <strong>{{ currentFile.originalName }}</strong> · {{ formatBytes(currentFile.sizeBytes) }}
+            <small>{{ t('lms.contentForm.replace') }}</small>
+          </span>
+          <span v-else>
+            <strong>{{
+              t(form.type === 'video' ? 'lms.contentForm.pickVideo' : 'lms.contentForm.pickFile')
+            }}</strong>
+            <small v-if="form.type === 'video'">{{ t('lms.contentForm.videoHint') }}</small>
+          </span>
+          <input type="file" :accept="accept" :disabled="uploading" @change="pickFile" />
+        </label>
+        <template v-if="uploading">
+          <ion-progress-bar :value="uploadPct" />
+          <ion-button fill="clear" color="danger" @click="cancelUpload">{{
+            t('lms.contentForm.cancel')
+          }}</ion-button>
+        </template>
+      </div>
+
+      <ion-list lines="full">
         <ion-item>
-          <ion-input v-model="form.title" label="Title" label-placement="stacked" :maxlength="200" required />
+          <ion-input
+            v-model="form.title"
+            :label="t('lms.contentForm.title')"
+            label-placement="stacked"
+            :placeholder="t('lms.contentForm.titlePlaceholder')"
+            :maxlength="200"
+            required
+          />
         </ion-item>
         <ion-item>
-          <ion-select v-model="form.type" label="Type" label-placement="stacked" interface="popover">
-            <ion-select-option v-for="t in LMS_RESOURCE_TYPES" :key="t" :value="t">{{
-              RESOURCE_TYPE_LABEL[t]
-            }}</ion-select-option>
-          </ion-select>
-        </ion-item>
-        <ion-item>
-          <ion-select v-model="form.courseId" label="Course" label-placement="stacked" required>
+          <ion-select
+            v-model="form.courseId"
+            :label="t('lms.contentForm.course')"
+            label-placement="stacked"
+            interface="popover"
+            required
+          >
             <ion-select-option v-for="c in courses" :key="c.id" :value="c.id">{{ c.name }}</ion-select-option>
           </ion-select>
         </ion-item>
-        <ion-item>
-          <ion-select v-model="form.subjectId" label="Subject" label-placement="stacked">
+        <ion-item v-if="subjects.length">
+          <ion-select
+            v-model="form.subjectId"
+            :label="t('lms.contentForm.subject')"
+            label-placement="stacked"
+          >
             <ion-select-option :value="null">—</ion-select-option>
             <ion-select-option v-for="s in subjects" :key="s.id" :value="s.id">{{
               s.name
             }}</ion-select-option>
           </ion-select>
         </ion-item>
-        <ion-item v-if="form.subjectId">
-          <ion-select v-model="form.chapterId" label="Chapter" label-placement="stacked">
+        <ion-item v-if="form.subjectId && chapters.length">
+          <ion-select
+            v-model="form.chapterId"
+            :label="t('lms.contentForm.chapter')"
+            label-placement="stacked"
+          >
             <ion-select-option :value="null">—</ion-select-option>
             <ion-select-option v-for="c in chapters" :key="c.id" :value="c.id">{{
               c.name
             }}</ion-select-option>
           </ion-select>
         </ion-item>
-        <ion-item v-if="form.chapterId">
-          <ion-select v-model="form.topicId" label="Topic" label-placement="stacked">
+        <ion-item v-if="form.chapterId && topics.length">
+          <ion-select v-model="form.topicId" :label="t('lms.contentForm.topic')" label-placement="stacked">
             <ion-select-option :value="null">—</ion-select-option>
-            <ion-select-option v-for="t in topics" :key="t.id" :value="t.id">{{ t.name }}</ion-select-option>
+            <ion-select-option v-for="tp in topics" :key="tp.id" :value="tp.id">{{
+              tp.name
+            }}</ion-select-option>
           </ion-select>
         </ion-item>
+      </ion-list>
+
+      <FormSection v-model:open="moreOpen" advanced>
         <ion-item>
           <ion-select
             v-model="form.batchIds"
-            label="Restrict to batches (empty = whole course)"
+            :label="t('lms.contentForm.batches')"
             label-placement="stacked"
             :multiple="true"
           >
@@ -52,53 +129,28 @@
         <ion-item>
           <ion-textarea
             v-model="form.description"
-            label="Description"
+            :label="t('lms.contentForm.description')"
             label-placement="stacked"
             :auto-grow="true"
             :maxlength="5000"
           />
         </ion-item>
-
-        <ion-item v-if="form.type === 'link'">
-          <ion-input v-model="form.externalUrl" label="URL" label-placement="stacked" type="url" required />
-        </ion-item>
-        <ion-item v-else>
-          <ion-label>
-            <p>File {{ form.type === 'video' ? '(MP4/WebM, resumable upload)' : '' }}</p>
-            <p v-if="currentFile">
-              <strong>{{ currentFile.originalName }}</strong> ({{ formatBytes(currentFile.sizeBytes) }})
-            </p>
-            <input type="file" :accept="accept" :disabled="uploading" @change="pickFile" />
-            <template v-if="uploading">
-              <ion-progress-bar :value="uploadPct" />
-              <p>
-                {{ Math.round(uploadPct * 100) }}%
-                <ion-button size="small" fill="clear" color="danger" @click="cancelUpload">Cancel</ion-button>
-              </p>
-            </template>
-          </ion-label>
-        </ion-item>
-        <ion-item v-if="form.type === 'video'">
-          <ion-input
-            v-model.number="form.durationSeconds"
-            type="number"
-            label="Duration (seconds, filled from the file)"
-            label-placement="stacked"
-            :min="0"
-          />
-        </ion-item>
-
         <ion-item>
-          <ion-select v-model="form.access" label="Access" label-placement="stacked" interface="popover">
-            <ion-select-option value="free">Free (every learner of the course)</ion-select-option>
-            <ion-select-option value="paid">Paid (needs course entitlement)</ion-select-option>
+          <ion-select
+            v-model="form.access"
+            :label="t('lms.contentForm.access')"
+            label-placement="stacked"
+            interface="popover"
+          >
+            <ion-select-option value="free">{{ t('lms.contentForm.accessFree') }}</ion-select-option>
+            <ion-select-option value="paid">{{ t('lms.contentForm.accessPaid') }}</ion-select-option>
           </ion-select>
         </ion-item>
         <ion-item>
           <ion-input
             v-model.number="form.accessDays"
             type="number"
-            label="Access validity in days (blank = lifetime)"
+            :label="t('lms.contentForm.accessDays')"
             label-placement="stacked"
             :min="1"
           />
@@ -107,7 +159,7 @@
           <ion-input
             v-model="form.availableFrom"
             type="datetime-local"
-            label="Available from"
+            :label="t('lms.contentForm.availableFrom')"
             label-placement="stacked"
           />
         </ion-item>
@@ -115,24 +167,31 @@
           <ion-input
             v-model="form.availableUntil"
             type="datetime-local"
-            label="Available until"
+            :label="t('lms.contentForm.availableUntil')"
             label-placement="stacked"
           />
         </ion-item>
+        <ion-item v-if="form.type === 'video'">
+          <ion-input
+            v-model.number="form.durationSeconds"
+            type="number"
+            :label="t('lms.contentForm.durationSeconds')"
+            label-placement="stacked"
+            :min="0"
+          />
+        </ion-item>
         <ion-item v-if="form.type !== 'video' && form.type !== 'link'">
-          <ion-toggle v-model="form.downloadable">Learners may download</ion-toggle>
+          <ion-toggle v-model="form.downloadable">{{ t('lms.contentForm.downloadable') }}</ion-toggle>
         </ion-item>
         <template v-if="form.type === 'video'">
           <ion-item>
-            <ion-toggle v-model="form.offlineAllowed"
-              >Allow encrypted offline viewing in the mobile app</ion-toggle
-            >
+            <ion-toggle v-model="form.offlineAllowed">{{ t('lms.contentForm.offline') }}</ion-toggle>
           </ion-item>
           <ion-item v-if="form.offlineAllowed">
             <ion-input
               v-model.number="form.offlineExpiryHours"
               type="number"
-              label="Offline copy expires after (hours)"
+              :label="t('lms.contentForm.offlineHours')"
               label-placement="stacked"
               :min="1"
             />
@@ -142,12 +201,29 @@
           <ion-input
             v-model.number="form.sortOrder"
             type="number"
-            label="Sort order"
+            :label="t('lms.contentForm.sortOrder')"
             label-placement="stacked"
           />
         </ion-item>
-      </ion-list>
-      <ion-button expand="block" type="submit" :disabled="saving || uploading">Save</ion-button>
+      </FormSection>
+
+      <div class="actions">
+        <ion-button
+          v-if="!id && canPublish"
+          fill="outline"
+          size="large"
+          :disabled="saving || uploading"
+          @click="save(false)"
+          >{{ t('lms.contentForm.saveDraft') }}</ion-button
+        >
+        <ion-button type="submit" size="large" :disabled="saving || uploading">{{
+          id
+            ? t('lms.contentForm.save')
+            : canPublish
+              ? t('lms.contentForm.publish')
+              : t('lms.contentForm.saveDraft')
+        }}</ion-button>
+      </div>
     </form>
 
     <template v-if="resource">
@@ -214,9 +290,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import {
   IonBadge,
   IonButton,
+  IonIcon,
   IonInput,
   IonItem,
   IonLabel,
@@ -240,12 +318,17 @@ import {
   type LmsResourceInput,
   type SubjectDto,
 } from '@erp/shared';
+import { checkmarkCircle, cloudUploadOutline } from 'ionicons/icons';
 import AppPage from '@/components/AppPage.vue';
+import FormSection from '@/components/FormSection.vue';
+import { useAuthStore } from '@/stores/auth';
 import { toast, toastError } from '@/core/toast';
 import { academicsApi, type ChapterWithTopics } from '@/modules/academics/api';
-import { RESOURCE_TYPE_LABEL, fmtDateTime, formatBytes, formatDuration, lmsApi } from './api';
+import { fmtDateTime, formatBytes, formatDuration, lmsApi } from './api';
 import { chunkedUpload, type UploadHandle } from './chunked-upload';
 
+const { t } = useI18n();
+const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
 const id = computed(() => (route.params.id ? Number(route.params.id) : undefined));
@@ -281,6 +364,13 @@ const blank = () => ({
   sortOrder: 0,
 });
 const form = reactive(blank());
+const moreOpen = ref(false);
+const canPublish = computed(() => auth.can('lms.publish'));
+const typeFromQuery = () =>
+  (LMS_RESOURCE_TYPES as readonly string[]).includes(String(route.query.type))
+    ? (route.query.type as LmsResourceInput['type'])
+    : 'video';
+const setType = (ty: LmsResourceInput['type']) => (form.type = ty);
 const resource = ref<LmsResourceDto | null>(null);
 const currentFile = ref<LmsFileRef | null>(null);
 const analytics = ref<LmsResourceAnalyticsRow[]>([]);
@@ -334,8 +424,10 @@ watch(
 async function load() {
   courses.value = (await academicsApi.courses().catch(() => ({ items: [] as CourseDto[] }))).items;
   if (!id.value) {
-    Object.assign(form, blank());
+    Object.assign(form, blank(), { type: typeFromQuery() });
+    currentFile.value = null;
     resource.value = null;
+    if (courses.value.length === 1) form.courseId = courses.value[0].id;
     return;
   }
   try {
@@ -364,6 +456,7 @@ async function load() {
     });
     await new Promise((res) => setTimeout(res, 0));
     hydrating = false;
+    moreOpen.value = r.batchIds.length > 0 || !!r.description || !!r.availableFrom || !!r.availableUntil;
     analytics.value = await lmsApi.analytics(id.value).catch(() => []);
   } catch (e) {
     hydrating = false;
@@ -394,7 +487,6 @@ async function pickFile(ev: Event) {
     currentFile.value = ref;
     form.fileId = ref.id;
     if (!form.title) form.title = file.name.replace(/\.[^.]+$/, '');
-    await toast('Upload complete');
   } catch (e) {
     if ((e as Error).name !== 'AbortError') await toastError(e);
   } finally {
@@ -408,8 +500,12 @@ function cancelUpload() {
   handle?.abort();
 }
 
-async function save() {
-  if (!form.courseId) return toast('Choose a course', 'warning');
+const submit = () => save(!id.value && canPublish.value);
+
+/** Saves; a new resource is published straight away when `publish` (needs `lms.publish`). */
+async function save(publish: boolean) {
+  if (!form.courseId) return toast(t('lms.contentForm.needCourse'), 'warning');
+  if (form.type !== 'link' && !form.fileId) return toast(t('lms.contentForm.needFile'), 'warning');
   saving.value = true;
   try {
     const body: Partial<LmsResourceInput> = {
@@ -424,7 +520,8 @@ async function save() {
       availableUntil: fromLocal(form.availableUntil),
     };
     const saved = await lmsApi.saveResource(body, id.value);
-    await toast('Saved');
+    if (publish) await lmsApi.setStatus(saved.id, 'publish');
+    await toast(publish ? t('lms.contentForm.published') : t('lms.contentForm.saved'));
     if (!id.value) await router.replace(`/lms/content/${saved.id}`);
     else await load();
   } catch (e) {
@@ -465,3 +562,81 @@ async function remove() {
 onIonViewWillEnter(load);
 onBeforeUnmount(() => handle?.abort());
 </script>
+
+<style scoped>
+.field-label {
+  margin: 8px 16px;
+  color: var(--ion-color-medium-shade);
+  font-size: 14px;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 16px 8px;
+}
+.chip {
+  min-height: var(--app-tap-target);
+  padding: 0 16px;
+  border: 1px solid var(--ion-color-medium-tint);
+  border-radius: 24px;
+  background: none;
+  color: var(--ion-text-color);
+  font: inherit;
+  cursor: pointer;
+}
+.chip.on {
+  border-color: var(--ion-color-primary);
+  background: rgba(var(--ion-color-primary-rgb), 0.12);
+  color: var(--ion-color-primary-shade);
+  font-weight: 600;
+}
+.upload {
+  padding: 8px 16px;
+}
+.drop {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 120px;
+  padding: 16px;
+  border: 2px dashed var(--ion-color-medium-tint);
+  border-radius: 14px;
+  color: var(--ion-color-primary-shade);
+  text-align: center;
+  cursor: pointer;
+}
+.drop.done {
+  border-style: solid;
+  border-color: var(--ion-color-success);
+  color: var(--ion-text-color);
+}
+.drop ion-icon {
+  font-size: 36px;
+}
+.drop.done ion-icon {
+  color: var(--ion-color-success);
+}
+.drop small {
+  display: block;
+  color: var(--ion-color-medium-shade);
+}
+.drop input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.actions {
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px;
+}
+.actions ion-button {
+  flex: 1;
+  text-transform: none;
+}
+</style>
