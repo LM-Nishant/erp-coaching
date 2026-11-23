@@ -39,6 +39,9 @@ export default defineAppModule({
     {
       title: 'Enquiries',
       path: '/admissions/enquiries',
+      group: 'people',
+      titleKey: 'nav.admissions.enquiries',
+      tab: { staff: 5 },
       icon: chatbubblesOutline,
       permission: 'admissions.view',
       order: 25,
@@ -46,6 +49,8 @@ export default defineAppModule({
     {
       title: 'Applications',
       path: '/admissions/applications',
+      group: 'people',
+      titleKey: 'nav.admissions.applications',
       icon: clipboardOutline,
       permission: 'admissions.view',
       order: 26,
@@ -53,6 +58,8 @@ export default defineAppModule({
     {
       title: 'Admission forms',
       path: '/admissions/forms',
+      group: 'people',
+      titleKey: 'nav.admissions.forms',
       icon: documentTextOutline,
       permission: 'admissions.configure',
       order: 27,

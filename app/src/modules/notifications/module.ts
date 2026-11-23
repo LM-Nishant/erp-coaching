@@ -33,6 +33,10 @@ export default defineAppModule({
     {
       title: 'Communication',
       path: '/communication',
+      group: 'messages',
+      titleKey: 'nav.notifications.communication',
+      tab: { staff: 4 },
+      tabTitleKey: 'nav.tabs.messages',
       icon: megaphoneOutline,
       permission: 'notifications.view',
       order: 70,
@@ -40,6 +44,8 @@ export default defineAppModule({
     {
       title: 'Notifications',
       path: '/notifications',
+      group: 'messages',
+      titleKey: 'nav.notifications.notifications',
       icon: notificationsOutline,
       permission: 'notification-inbox.view',
       order: 90,
@@ -47,6 +53,8 @@ export default defineAppModule({
     {
       title: 'Notifications',
       path: '/notifications',
+      group: 'messages',
+      titleKey: 'nav.notifications.notifications',
       icon: notificationsOutline,
       visible: () => useAuthStore().personalInbox,
       order: 90,

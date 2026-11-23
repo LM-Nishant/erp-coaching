@@ -15,6 +15,8 @@ export default defineAppModule({
     {
       title: 'Institute profile',
       path: '/institute',
+      group: 'settings',
+      titleKey: 'nav.institute.profile',
       icon: businessOutline,
       permission: 'institute.configure',
       order: 90,
