@@ -1,4 +1,4 @@
-import { registerNotificationEvents } from '../notifications/api';
+import { notifyAmount, registerNotificationEvents } from '../notifications/api';
 import { notifyMarketplaceUsers } from './engagement.notifications';
 import type { MktCourse, MktSeller } from './models';
 import { notifySeller } from './payouts.notify';
@@ -64,8 +64,6 @@ export function registerDecisionNotificationEvents() {
   ]);
 }
 
-const rupees = (paise: number) => (paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 });
-
 /** Tells the learner how their refund was decided. Never throws. */
 export function notifyRefundDecision(
   event: typeof REFUND_REFUNDED_EVENT | typeof REFUND_REJECTED_EVENT | typeof REFUND_FAILED_EVENT,
@@ -81,7 +79,7 @@ export function notifyRefundDecision(
     event,
     userIds: [input.userId],
     data: {
-      amount: rupees(input.amountPaise),
+      amount: notifyAmount(input.amountPaise),
       order: input.orderNumber,
       course: input.course ?? 'your order',
       note: input.note ?? '',

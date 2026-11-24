@@ -44,7 +44,7 @@ import {
 } from './invoices.service';
 import { applyInvoicePaid } from './lifecycle.service';
 import { invalidateAccess } from './subscription.service';
-import { notifyInstituteAdmins } from './notifications';
+import { notifyAmount, notifyInstituteAdmins } from './notifications';
 import { formatRupees, withLockRetry } from './util';
 
 // ------------------------------------------------------------------ gateway resolution
@@ -309,7 +309,7 @@ async function afterGatewayPayment(paymentId: number, outcome: 'paid' | 'failed'
   const p = await loadPayment(paymentId, null);
   if (!p.instituteId) return;
   invalidateAccess(p.instituteId);
-  const data = { invoiceNo: p.invoice?.number ?? '', amount: formatRupees(p.amountPaise) };
+  const data = { invoiceNo: p.invoice?.number ?? '', amount: notifyAmount(p.amountPaise) };
   await runWithContext({ system: true, instituteId: p.instituteId, allowedBranchIds: null }, () =>
     audit({
       action: outcome === 'paid' ? 'subscription.payment_received' : 'subscription.payment_failed',
@@ -646,7 +646,7 @@ export async function recordManualPayment(
     invalidateAccess(invoice.instituteId);
     await notifyInstituteAdmins(invoice.instituteId, 'subscriptions.payment-received', {
       invoiceNo: invoice.number,
-      amount: formatRupees(payment.amountPaise),
+      amount: notifyAmount(payment.amountPaise),
     });
   }
   return { payment: toPaymentDto(payment, invoice), invoice: toInvoiceDto(invoice) };

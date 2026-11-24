@@ -18,9 +18,9 @@ import {
   invalidateAccess,
 } from './subscription.service';
 import { computeOverage, snapshotUsage } from './usage.service';
-import { notifyInstituteAdmins } from './notifications';
+import { notifyAmount, notifyInstituteAdmins } from './notifications';
 import { reconcileSaasPayments } from './payments.service';
-import { DAY_MS, formatDay, formatRupees, isoDay, nextMonth, startOfMonth } from './util';
+import { DAY_MS, formatDay, isoDay, nextMonth, startOfMonth } from './util';
 
 export const BILLING_SWEEP_JOB = 'subscriptions.billing-sweep';
 export const SAAS_PAYMENT_RECONCILE_JOB = 'subscriptions.payment-reconcile';
@@ -40,7 +40,7 @@ async function notifyInvoice(inv: SubscriptionInvoice) {
   if (!inv.instituteId) return;
   await notifyInstituteAdmins(inv.instituteId, 'subscriptions.invoice-issued', {
     invoiceNo: inv.number,
-    amount: formatRupees(inv.totalPaise),
+    amount: notifyAmount(inv.totalPaise),
     dueDate: inv.dueDate,
   });
 }

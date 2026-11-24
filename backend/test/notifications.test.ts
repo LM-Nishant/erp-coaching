@@ -154,7 +154,7 @@ describe('notifications module', () => {
     expect(inbox.status).toBe(200);
     const item = inbox.body.items.find((i: { eventKey: string }) => i.eventKey === 'fees.receipt');
     expect(item.title).toBe('Payment received');
-    expect(item.body).toContain('₹1500');
+    expect(item.body).toBe('Received ₹1500 for Riya on 1 Jan 2026. Receipt R-1.');
 
     const read = await request(app).post(`/api/notifications/inbox/${item.id}/read`).set(bearer(student));
     expect(read.body.readAt).not.toBeNull();

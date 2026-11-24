@@ -18,6 +18,7 @@ import {
 } from '../../infrastructure/messaging';
 import { getContext, requireTenantContext } from '../../shared/context';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
+import { getInstituteTimezone } from '../../shared/timezone';
 import { FileObject } from '../files/file.model';
 import { signedUrlFor } from '../files/files.service';
 import { Institute } from '../institutes/institute.model';
@@ -172,11 +173,12 @@ async function dispatch(input: DispatchInput): Promise<NotifyResult> {
   const userIds = [...input.recipients.keys()];
   if (!userIds.length) return { messageIds: [], queued: 0, skipped: 0 };
 
-  const [users, prefs, tokens, institute] = await Promise.all([
+  const [users, prefs, tokens, institute, timeZone] = await Promise.all([
     User.findAll({ where: { id: userIds } }),
     prefRepo.findAll({ where: { userId: userIds, eventKey: [input.eventKey, '*'] } }),
     input.channels.includes('push') ? tokenRepo.findAll({ where: { userId: userIds } }) : Promise.resolve([]),
     Institute.findByPk(ctx.instituteId),
+    getInstituteTimezone(ctx.instituteId),
   ]);
   const providers = new Map<NotificationChannel, ResolvedProvider>();
   for (const c of input.channels) {
@@ -206,12 +208,12 @@ async function dispatch(input: DispatchInput): Promise<NotifyResult> {
         channel,
         userId: user.id,
         recipientType: input.recipients.get(user.id) ?? null,
-        subject: tpl.subject ? renderTemplate(tpl.subject, vars).slice(0, 255) : null,
-        body: renderTemplate(tpl.body, vars),
+        subject: tpl.subject ? renderTemplate(tpl.subject, vars, timeZone).slice(0, 255) : null,
+        body: renderTemplate(tpl.body, vars, timeZone),
         data: Object.keys(input.data).length ? input.data : null,
         provider: null,
         providerTemplateId: tpl.providerTemplateId,
-        templateParams: tpl.providerTemplateId ? templateParams(tpl.body, vars) : null,
+        templateParams: tpl.providerTemplateId ? templateParams(tpl.body, vars, timeZone) : null,
         providerMessageId: null,
         maxAttempts: providers.get(channel)?.retryMaxAttempts ?? DEFAULT_RETRY.maxAttempts,
         nextAttemptAt: null,

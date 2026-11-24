@@ -1,18 +1,23 @@
+import { formatVariable } from './format';
+
 const PLACEHOLDER = /\{\{\s*([\w.-]+)\s*\}\}/g;
 
-function lookup(path: string, vars: Record<string, unknown>): string {
+function lookup(path: string, vars: Record<string, unknown>, timeZone?: string): string {
   let value: unknown = vars;
   for (const part of path.split('.')) {
     if (value === null || typeof value !== 'object') return '';
     value = (value as Record<string, unknown>)[part];
   }
   if (value === null || value === undefined) return '';
-  return value instanceof Date ? value.toISOString() : String(value);
+  return formatVariable(value, timeZone);
 }
 
-/** `{{ path.to.value }}` substitution; unknown variables render as empty strings. */
-export function renderTemplate(template: string, vars: Record<string, unknown>): string {
-  return template.replace(PLACEHOLDER, (_m, path: string) => lookup(path, vars));
+/**
+ * `{{ path.to.value }}` substitution; unknown variables render as empty strings. Dates and times read in
+ * Indian style (see `formatVariable`), instants in `timeZone` (the institute's).
+ */
+export function renderTemplate(template: string, vars: Record<string, unknown>, timeZone?: string): string {
+  return template.replace(PLACEHOLDER, (_m, path: string) => lookup(path, vars, timeZone));
 }
 
 /**
@@ -22,9 +27,10 @@ export function renderTemplate(template: string, vars: Record<string, unknown>):
 export function templateParams(
   template: string,
   vars: Record<string, unknown>,
+  timeZone?: string,
 ): { name: string; value: string }[] {
   const names = [...new Set([...template.matchAll(PLACEHOLDER)].map((m) => m[1]))];
-  return names.map((name) => ({ name, value: lookup(name, vars) }));
+  return names.map((name) => ({ name, value: lookup(name, vars, timeZone) }));
 }
 
 /** Sample values for previews: `[variable]`. */
