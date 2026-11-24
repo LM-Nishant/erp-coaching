@@ -1,0 +1,72 @@
+{
+  "status": {
+    "open": "Waiting",
+    "answered": "Answered",
+    "resolved": "Solved"
+  },
+  "ask": {
+    "button": "Ask doubt",
+    "title": "Ask a doubt",
+    "about": "About",
+    "at": "at {time}",
+    "question": "Your doubt",
+    "placeholder": "Type your question. Add a photo of the sum or page if it helps.",
+    "batch": "Batch",
+    "subject": "Subject",
+    "anySubject": "Any subject",
+    "addPhoto": "Add photo",
+    "changePhoto": "Change photo",
+    "removePhoto": "Remove photo",
+    "send": "Send doubt",
+    "sent": "Doubt sent. Your teacher will reply here.",
+    "tooShort": "Write at least a few words, or add a photo and describe it."
+  },
+  "mine": {
+    "title": "My doubts",
+    "emptyTitle": "No doubts yet",
+    "emptyMessage": "Stuck on a question? Ask your teacher. Add a photo of the sum if it helps.",
+    "waiting": "Waiting",
+    "answered": "Answered",
+    "solved": "Solved"
+  },
+  "inbox": {
+    "title": "Doubt inbox",
+    "toAnswer": "To answer",
+    "answered": "Answered",
+    "solved": "Solved",
+    "allBranches": "Show every doubt in my branches",
+    "emptyTitle": "No doubts waiting",
+    "emptyMessage": "When students ask a doubt in your batches, it shows up here."
+  },
+  "detail": {
+    "title": "Doubt",
+    "askedBy": "Asked by {name}",
+    "teacher": "Teacher: {name}",
+    "noTeacher": "Not assigned to a teacher yet",
+    "teacherLabel": "Teacher",
+    "you": "You",
+    "replyPlaceholder": "Write a reply",
+    "followUpPlaceholder": "Still confused? Ask a follow-up",
+    "send": "Send",
+    "markSolved": "Mark as solved",
+    "solvedNote": "This doubt is solved. Ask a new doubt if you are stuck again.",
+    "openLecture": "Open lecture",
+    "photo": "Photo"
+  },
+  "widget": {
+    "teacherTitle": "Doubts",
+    "studentTitle": "My doubts",
+    "waiting": "{n} doubt waiting for you | {n} doubts waiting for you",
+    "noneWaiting": "No doubts waiting",
+    "answered": "{n} new answer | {n} new answers",
+    "noneAnswered": "Stuck on something? Ask your teacher.",
+    "open": "Open inbox",
+    "view": "View"
+  },
+  "widgets": {
+    "inbox": "Doubts to answer",
+    "mine": "My doubts",
+    "inboxHome": "Doubts to answer",
+    "mineHome": "My doubts"
+  }
+}

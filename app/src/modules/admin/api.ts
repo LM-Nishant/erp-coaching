@@ -9,6 +9,15 @@ import type {
   PlanDto,
 } from '@erp/shared';
 import { api } from '@/core/api';
+import { i18n } from '@/i18n';
+
+/** Translated institute, subscription or user status (`past_due` → `Past due`); unknown codes are humanized. */
+export function statusLabel(status: string): string {
+  const key = `admin.status.${status}`;
+  if (i18n.global.te(key, 'en')) return i18n.global.t(key);
+  const s = status.replace(/_/g, ' ');
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 export type { PlanDto };
 export type PlanInput = Omit<PlanDto, 'id' | 'activeSubscriptions'>;

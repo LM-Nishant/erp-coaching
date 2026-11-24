@@ -1,7 +1,10 @@
 <template>
-  <AppPage title="Website announcements" :on-refresh="load">
+  <AppPage :title="t('website.announcements.title')" :on-refresh="load">
     <template #actions>
-      <ion-button v-if="auth.can('website.create')" aria-label="New announcement" @click="openEditor()"
+      <ion-button
+        v-if="auth.can('website.create')"
+        :aria-label="t('website.announcements.new')"
+        @click="openEditor()"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
@@ -13,54 +16,91 @@
           <p v-if="a.body">{{ a.body }}</p>
           <p>{{ showWindow(a) }}</p>
         </ion-label>
-        <ion-badge slot="end" :color="a.isPublished ? 'success' : 'medium'">{{
-          a.isPublished ? 'Published' : 'Hidden'
-        }}</ion-badge>
+        <StatusChip
+          slot="end"
+          :label="a.isPublished ? t('website.status.published') : t('website.status.hidden')"
+          :tone="a.isPublished ? 'success' : 'medium'"
+        />
       </ion-item>
-      <ion-item v-if="!items.length" lines="none"><ion-label>No announcements yet.</ion-label></ion-item>
+      <ion-item v-if="!items.length" lines="none"
+        ><ion-label>{{ t('website.announcements.empty') }}</ion-label></ion-item
+      >
     </ion-list>
 
     <ion-modal :is-open="!!form" @did-dismiss="form = null">
       <ion-header>
         <ion-toolbar>
-          <ion-title>{{ editingId ? 'Edit announcement' : 'New announcement' }}</ion-title>
-          <ion-buttons slot="end"><ion-button @click="form = null">Close</ion-button></ion-buttons>
+          <ion-title>{{
+            editingId ? t('website.announcements.edit') : t('website.announcements.new')
+          }}</ion-title>
+          <ion-buttons slot="end"
+            ><ion-button @click="form = null">{{ t('common.actions.close') }}</ion-button></ion-buttons
+          >
         </ion-toolbar>
       </ion-header>
       <ion-content class="ion-padding">
         <form v-if="form" @submit.prevent="save">
           <ion-list>
             <ion-item
-              ><ion-input v-model="form.title" label="Title" label-placement="stacked" required
+              ><ion-input
+                v-model="form.title"
+                :label="t('website.pages.fieldTitle')"
+                label-placement="stacked"
+                required
             /></ion-item>
             <ion-item>
-              <ion-textarea v-model="form.body" label="Details" label-placement="stacked" :auto-grow="true" />
+              <ion-textarea
+                v-model="form.body"
+                :label="t('website.announcements.details')"
+                label-placement="stacked"
+                :auto-grow="true"
+              />
             </ion-item>
             <ion-item>
               <ion-input
                 v-model="form.linkUrl"
-                label="Link (optional)"
+                :label="t('website.editor.linkOptional')"
                 label-placement="stacked"
-                placeholder="e.g. /p/admissions or a full web address"
+                :placeholder="t('website.announcements.linkPlaceholder')"
               />
             </ion-item>
             <ion-item>
-              <ion-input v-model="form.startsAt" type="date" label="Show from" label-placement="stacked" />
+              <ion-input
+                v-model="form.startsAt"
+                type="date"
+                :label="t('website.announcements.showFrom')"
+                label-placement="stacked"
+              />
             </ion-item>
             <ion-item>
-              <ion-input v-model="form.endsAt" type="date" label="Show until" label-placement="stacked" />
+              <ion-input
+                v-model="form.endsAt"
+                type="date"
+                :label="t('website.announcements.showUntil')"
+                label-placement="stacked"
+              />
             </ion-item>
-            <ion-item><ion-toggle v-model="form.isPinned">Pinned</ion-toggle></ion-item>
-            <ion-item><ion-toggle v-model="form.isPublished">Published on website</ion-toggle></ion-item>
+            <ion-item
+              ><ion-toggle v-model="form.isPinned">{{
+                t('website.announcements.pinned')
+              }}</ion-toggle></ion-item
+            >
+            <ion-item
+              ><ion-toggle v-model="form.isPublished">{{
+                t('website.announcements.publishedOnWebsite')
+              }}</ion-toggle></ion-item
+            >
           </ion-list>
-          <ion-button expand="block" type="submit" :disabled="saving">Save</ion-button>
+          <ion-button expand="block" type="submit" :disabled="saving">{{
+            t('common.actions.save')
+          }}</ion-button>
           <ion-button
             v-if="editingId && auth.can('website.delete')"
             expand="block"
             fill="clear"
             color="danger"
             @click="remove"
-            >Delete</ion-button
+            >{{ t('common.actions.delete') }}</ion-button
           >
         </form>
       </ion-content>
@@ -70,8 +110,8 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
-  IonBadge,
   IonButton,
   IonButtons,
   IonContent,
@@ -90,6 +130,8 @@ import {
 import { add, pinOutline } from 'ionicons/icons';
 import type { WebsiteAnnouncementDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { formatDate } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import { websiteApi } from './api';
@@ -104,6 +146,7 @@ interface Form {
   isPublished: boolean;
 }
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const items = ref<WebsiteAnnouncementDto[]>([]);
 const form = ref<Form | null>(null);
@@ -112,7 +155,9 @@ const saving = ref(false);
 
 const day = (d: string | null) => (d ? d.slice(0, 10) : '');
 const showWindow = (a: WebsiteAnnouncementDto) =>
-  a.startsAt || a.endsAt ? `${day(a.startsAt) || '…'} → ${day(a.endsAt) || '…'}` : 'Always shown';
+  a.startsAt || a.endsAt
+    ? `${a.startsAt ? formatDate(day(a.startsAt)) : '…'} → ${a.endsAt ? formatDate(day(a.endsAt)) : '…'}`
+    : t('website.announcements.always');
 
 async function load() {
   try {
@@ -151,7 +196,7 @@ async function save() {
       isPublished: f.isPublished,
     });
     form.value = null;
-    await toast('Announcement saved');
+    await toast(t('website.announcements.saved'));
     await load();
   } catch (e) {
     await toastError(e);

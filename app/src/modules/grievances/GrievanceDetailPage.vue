@@ -1,61 +1,81 @@
 <template>
-  <AppPage :title="t ? t.ticketNumber : 'Complaint'" :back-href="backHref" :on-refresh="load">
-    <template v-if="t">
+  <AppPage
+    :title="ticket ? ticket.ticketNumber : t('grievances.detail.title')"
+    :back-href="backHref"
+    :on-refresh="load"
+  >
+    <template v-if="ticket">
       <ion-card>
         <ion-card-header>
-          <ion-card-subtitle>
-            <ion-badge :color="STATUS_COLORS[t.status]">{{ statusLabel(t.status) }}</ion-badge>
-            <ion-badge :color="PRIORITY_COLORS[t.priority]">{{ t.priority }}</ion-badge>
-            <ion-badge v-if="t.slaBreached || isOverdue(t)" color="danger">SLA breached</ion-badge>
-            <ion-badge v-if="t.escalationLevel" color="danger"
-              >Escalation level {{ t.escalationLevel }}</ion-badge
-            >
+          <ion-card-subtitle class="chips">
+            <StatusChip :label="t(statusKey(ticket.status))" :tone="STATUS_TONES[ticket.status]" />
+            <StatusChip :label="t(priorityKey(ticket.priority))" :tone="PRIORITY_TONES[ticket.priority]" />
+            <StatusChip
+              v-if="ticket.slaBreached || isOverdue(ticket)"
+              :label="t('grievances.slaBreached')"
+              tone="danger"
+            />
+            <StatusChip
+              v-if="ticket.escalationLevel"
+              :label="t('grievances.detail.escalationLevel', { n: ticket.escalationLevel })"
+              tone="danger"
+            />
           </ion-card-subtitle>
-          <ion-card-title>{{ t.subject }}</ion-card-title>
+          <ion-card-title>{{ ticket.subject }}</ion-card-title>
         </ion-card-header>
         <ion-card-content>
-          <p class="pre">{{ t.description }}</p>
+          <p class="pre">{{ ticket.description }}</p>
           <ion-list lines="none">
-            <ion-item
-              ><ion-label>Category</ion-label><ion-note slot="end">{{ t.categoryName }}</ion-note></ion-item
-            >
             <ion-item>
-              <ion-label>Raised by</ion-label>
+              <ion-label>{{ t('grievances.fields.category') }}</ion-label>
+              <ion-note slot="end">{{ ticket.categoryName }}</ion-note>
+            </ion-item>
+            <ion-item>
+              <ion-label>{{ t('grievances.detail.raisedBy') }}</ion-label>
               <ion-note slot="end">
-                {{ t.requester?.name }} ({{ t.requesterType }})<template v-if="t.onBehalfOf">
-                  for {{ t.onBehalfOf.name }}</template
+                {{
+                  t('grievances.detail.raisedByValue', {
+                    name: ticket.requester?.name ?? '',
+                    type: t(`grievances.requesterType.${ticket.requesterType}`),
+                  })
+                }}<template v-if="ticket.onBehalfOf">
+                  {{ t('grievances.detail.forName', { name: ticket.onBehalfOf.name }) }}</template
                 >
               </ion-note>
             </ion-item>
             <ion-item>
-              <ion-label>Assigned to</ion-label
-              ><ion-note slot="end">{{ t.assignee?.name ?? 'Unassigned' }}</ion-note>
+              <ion-label>{{ t('grievances.detail.assignedTo') }}</ion-label>
+              <ion-note slot="end">{{ ticket.assignee?.name ?? t('grievances.unassigned') }}</ion-note>
             </ion-item>
-            <ion-item
-              ><ion-label>Raised on</ion-label
-              ><ion-note slot="end">{{ formatDate(t.createdAt) }}</ion-note></ion-item
-            >
-            <ion-item v-if="t.status !== 'closed'">
-              <ion-label>Due by</ion-label><ion-note slot="end">{{ formatDate(t.dueAt) }}</ion-note>
+            <ion-item>
+              <ion-label>{{ t('grievances.detail.raisedOn') }}</ion-label>
+              <ion-note slot="end">{{ formatDateTime(ticket.createdAt) }}</ion-note>
             </ion-item>
-            <ion-item v-if="t.resolvedAt">
-              <ion-label>Resolved on</ion-label><ion-note slot="end">{{ formatDate(t.resolvedAt) }}</ion-note>
+            <ion-item v-if="ticket.status !== 'closed'">
+              <ion-label>{{ t('grievances.detail.dueBy') }}</ion-label>
+              <ion-note slot="end">{{ formatDateTime(ticket.dueAt) }}</ion-note>
             </ion-item>
-            <ion-item v-if="t.satisfactionRating">
-              <ion-label>Rating</ion-label
-              ><ion-note slot="end">{{ '★'.repeat(t.satisfactionRating) }}</ion-note>
+            <ion-item v-if="ticket.resolvedAt">
+              <ion-label>{{ t('grievances.detail.resolvedOn') }}</ion-label>
+              <ion-note slot="end">{{ formatDateTime(ticket.resolvedAt) }}</ion-note>
+            </ion-item>
+            <ion-item v-if="ticket.satisfactionRating">
+              <ion-label>{{ t('grievances.detail.rating') }}</ion-label>
+              <ion-note slot="end">{{ '★'.repeat(ticket.satisfactionRating) }}</ion-note>
             </ion-item>
           </ion-list>
-          <div v-if="t.resolutionNotes" class="resolution">
-            <strong>Resolution</strong>
-            <p class="pre">{{ t.resolutionNotes }}</p>
+          <div v-if="ticket.resolutionNotes" class="resolution">
+            <strong>{{ t('grievances.detail.resolution') }}</strong>
+            <p class="pre">{{ ticket.resolutionNotes }}</p>
           </div>
         </ion-card-content>
       </ion-card>
 
       <!-- Requester actions -->
-      <ion-card v-if="isRequester && t.status === 'resolved'">
-        <ion-card-header><ion-card-title>Is your issue resolved?</ion-card-title></ion-card-header>
+      <ion-card v-if="isRequester && ticket.status === 'resolved'">
+        <ion-card-header>
+          <ion-card-title>{{ t('grievances.detail.resolvedQuestion') }}</ion-card-title>
+        </ion-card-header>
         <ion-card-content>
           <div class="stars">
             <ion-button
@@ -64,40 +84,48 @@
               fill="clear"
               size="small"
               :color="n <= rating ? 'warning' : 'medium'"
-              :aria-label="`Rate ${n} out of 5`"
+              :aria-label="t('grievances.detail.rateAria', { n })"
               @click="rating = n"
               ><ion-icon slot="icon-only" :icon="n <= rating ? star : starOutline"
             /></ion-button>
           </div>
-          <ion-textarea v-model="feedback" placeholder="Feedback (optional)" :auto-grow="true" />
-          <ion-button expand="block" :disabled="busy" @click="confirm">Yes, close the complaint</ion-button>
+          <ion-textarea
+            v-model="feedback"
+            :placeholder="t('grievances.detail.feedbackPlaceholder')"
+            :auto-grow="true"
+          />
+          <ion-button expand="block" :disabled="busy" @click="confirm">{{
+            t('grievances.detail.confirmClose')
+          }}</ion-button>
           <ion-button expand="block" fill="outline" color="danger" :disabled="busy" @click="reopen">
-            No, reopen it
+            {{ t('grievances.detail.reopenNo') }}
           </ion-button>
         </ion-card-content>
       </ion-card>
       <ion-button
-        v-else-if="t.status === 'closed' && (isRequester || t.canManage)"
+        v-else-if="ticket.status === 'closed' && (isRequester || ticket.canManage)"
         expand="block"
         fill="outline"
         :disabled="busy"
         @click="reopen"
-        >Reopen complaint</ion-button
+        >{{ t('grievances.detail.reopenComplaint') }}</ion-button
       >
 
       <!-- Staff actions -->
-      <ion-card v-if="t.canManage">
-        <ion-card-header><ion-card-title>Manage</ion-card-title></ion-card-header>
+      <ion-card v-if="ticket.canManage">
+        <ion-card-header>
+          <ion-card-title>{{ t('grievances.detail.manage') }}</ion-card-title>
+        </ion-card-header>
         <ion-card-content>
           <ion-list>
             <ion-item>
               <ion-select
-                :value="t.assignee?.id ?? null"
-                label="Assignee"
+                :value="ticket.assignee?.id ?? null"
+                :label="t('grievances.fields.assignee')"
                 interface="popover"
                 @ion-change="assign($event.detail.value)"
               >
-                <ion-select-option :value="null">Unassigned</ion-select-option>
+                <ion-select-option :value="null">{{ t('grievances.unassigned') }}</ion-select-option>
                 <ion-select-option v-for="a in assignees" :key="a.id" :value="a.id">{{
                   a.name
                 }}</ion-select-option>
@@ -105,13 +133,13 @@
             </ion-item>
             <ion-item>
               <ion-select
-                :value="t.priority"
-                label="Priority"
+                :value="ticket.priority"
+                :label="t('grievances.fields.priority')"
                 interface="popover"
                 @ion-change="setPriority($event.detail.value)"
               >
                 <ion-select-option v-for="p in GRIEVANCE_PRIORITIES" :key="p" :value="p">{{
-                  p
+                  t(priorityKey(p))
                 }}</ion-select-option>
               </ion-select>
             </ion-item>
@@ -120,36 +148,43 @@
             v-for="s in nextStatuses"
             :key="s"
             size="small"
-            :color="STATUS_COLORS[s]"
+            :color="STATUS_TONES[s]"
             :disabled="busy"
             @click="changeStatus(s)"
-            >{{ s === 'open' ? 'Reopen' : `Mark ${statusLabel(s)}` }}</ion-button
+            >{{ t(STATUS_ACTION_KEYS[s]) }}</ion-button
           >
         </ion-card-content>
       </ion-card>
 
       <!-- Attachments -->
-      <ion-list v-if="t.attachments.length">
-        <ion-list-header><ion-label>Attachments</ion-label></ion-list-header>
-        <ion-item v-for="a in t.attachments" :key="a.id" button @click="openAttachment(a.id)">
+      <ion-list v-if="ticket.attachments.length">
+        <ion-list-header>
+          <ion-label>{{ t('grievances.detail.attachments') }}</ion-label>
+        </ion-list-header>
+        <ion-item v-for="a in ticket.attachments" :key="a.id" button @click="openAttachment(a.id)">
           <ion-icon slot="start" :icon="attachOutline" />
           <ion-label>
             {{ a.originalName }}
-            <p>{{ Math.ceil(a.sizeBytes / 1024) }} KB · {{ formatDate(a.createdAt) }}</p>
+            <p>
+              {{ t('grievances.fileSize', { size: formatNumber(fileSizeKb(a.sizeBytes)) }) }} ·
+              {{ formatDateTime(a.createdAt) }}
+            </p>
           </ion-label>
-          <ion-badge v-if="a.isInternal" slot="end" color="warning">internal</ion-badge>
+          <StatusChip v-if="a.isInternal" slot="end" :label="t('grievances.internal')" tone="warning" />
         </ion-item>
       </ion-list>
 
       <!-- Timeline -->
       <ion-list>
-        <ion-list-header><ion-label>Activity</ion-label></ion-list-header>
-        <ion-item v-for="a in t.activities" :key="a.id" :class="{ internal: a.isInternal }">
+        <ion-list-header>
+          <ion-label>{{ t('grievances.detail.activity') }}</ion-label>
+        </ion-list-header>
+        <ion-item v-for="a in ticket.activities" :key="a.id" :class="{ internal: a.isInternal }">
           <ion-label class="ion-text-wrap">
             <h3>
-              {{ a.author?.name ?? 'System' }}
-              <ion-badge v-if="a.isInternal" color="warning">internal note</ion-badge>
-              <span class="muted"> · {{ activityTitle(a) }} · {{ formatDate(a.createdAt) }}</span>
+              {{ a.author?.name ?? t('grievances.detail.system') }}
+              <StatusChip v-if="a.isInternal" :label="t('grievances.detail.internalNote')" tone="warning" />
+              <span class="muted"> · {{ activityTitle(a) }} · {{ formatDateTime(a.createdAt) }}</span>
             </h3>
             <p v-if="a.body" class="pre">{{ a.body }}</p>
           </ion-label>
@@ -157,21 +192,23 @@
       </ion-list>
 
       <!-- Reply -->
-      <ion-card v-if="t.status !== 'closed'">
+      <ion-card v-if="ticket.status !== 'closed'">
         <ion-card-content>
           <ion-textarea
             v-model="reply"
-            :placeholder="internal ? 'Internal note (staff only)' : 'Write a reply'"
+            :placeholder="
+              internal ? t('grievances.detail.internalPlaceholder') : t('grievances.detail.replyPlaceholder')
+            "
             :auto-grow="true"
             :rows="3"
           />
-          <ion-checkbox v-if="t.canManage" v-model="internal"
-            >Internal note (hidden from requester)</ion-checkbox
-          >
+          <ion-checkbox v-if="ticket.canManage" v-model="internal">{{
+            t('grievances.detail.internalToggle')
+          }}</ion-checkbox>
           <input type="file" multiple @change="pickFiles" />
-          <ion-button expand="block" :disabled="busy || (!reply.trim() && !files.length)" @click="send"
-            >Send</ion-button
-          >
+          <ion-button expand="block" :disabled="busy || (!reply.trim() && !files.length)" @click="send">{{
+            t('common.actions.send')
+          }}</ion-button>
         </ion-card-content>
       </ion-card>
     </template>
@@ -181,8 +218,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import {
-  IonBadge,
   IonButton,
   IonCard,
   IonCardContent,
@@ -212,15 +249,27 @@ import {
   type GrievanceUserRef,
 } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
 import { openFileLink } from '@/core/downloads';
+import { formatDateTime, formatNumber } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
-import { PRIORITY_COLORS, STATUS_COLORS, formatDate, grievancesApi, isOverdue, statusLabel } from './api';
+import {
+  PRIORITY_TONES,
+  STATUS_ACTION_KEYS,
+  STATUS_TONES,
+  fileSizeKb,
+  grievancesApi,
+  isOverdue,
+  priorityKey,
+  statusKey,
+} from './api';
 
+const { t } = useI18n();
 const route = useRoute();
 const auth = useAuthStore();
 const id = computed(() => Number(route.params.id));
-const t = ref<GrievanceTicketDetailDto | null>(null);
+const ticket = ref<GrievanceTicketDetailDto | null>(null);
 const assignees = ref<GrievanceUserRef[]>([]);
 const reply = ref('');
 const internal = ref(false);
@@ -229,32 +278,34 @@ const rating = ref(0);
 const feedback = ref('');
 const busy = ref(false);
 
-const isRequester = computed(() => !!t.value && t.value.requester?.id === auth.me?.user.id);
-const backHref = computed(() => (t.value?.canManage ? '/grievances' : '/grievances/my'));
+const isRequester = computed(() => !!ticket.value && ticket.value.requester?.id === auth.me?.user.id);
+const backHref = computed(() => (ticket.value?.canManage ? '/grievances' : '/grievances/my'));
 const nextStatuses = computed<readonly GrievanceStatus[]>(() =>
-  t.value ? GRIEVANCE_TRANSITIONS[t.value.status] : [],
+  ticket.value ? GRIEVANCE_TRANSITIONS[ticket.value.status] : [],
 );
 
 function activityTitle(a: GrievanceActivityDto) {
   const m = (a.metadata ?? {}) as Record<string, unknown>;
   switch (a.type) {
     case 'status_change':
-      return `${statusLabel(String(m.from ?? ''))} → ${statusLabel(String(m.to ?? ''))}`;
+      return `${t(statusKey(String(m.from ?? '')))} → ${t(statusKey(String(m.to ?? '')))}`;
     case 'assignment':
-      return 'assignment';
+      return t('grievances.activity.assignment');
     case 'escalation':
-      return 'escalated';
+      return t('grievances.activity.escalation');
     case 'internal_note':
-      return 'note';
+      return t('grievances.activity.internalNote');
+    case 'reply':
+      return t('grievances.activity.reply');
     default:
-      return a.type.replace('_', ' ');
+      return t('grievances.activity.system');
   }
 }
 
 async function load() {
   try {
-    t.value = await grievancesApi.get(id.value);
-    if (t.value.canManage && !assignees.value.length) assignees.value = await grievancesApi.assignees();
+    ticket.value = await grievancesApi.get(id.value);
+    if (ticket.value.canManage && !assignees.value.length) assignees.value = await grievancesApi.assignees();
   } catch (e) {
     await toastError(e);
   }
@@ -286,16 +337,16 @@ async function send() {
       await grievancesApi.attach(id.value, f, { internal: internal.value, commentId });
     reply.value = '';
     files.value = [];
-  }, 'Sent');
+  }, t('grievances.detail.sent'));
 }
 
 const assign = (userId: number | null) => {
-  if (userId === (t.value?.assignee?.id ?? null)) return;
-  return run(() => grievancesApi.assign(id.value, userId), 'Assignment updated');
+  if (userId === (ticket.value?.assignee?.id ?? null)) return;
+  return run(() => grievancesApi.assign(id.value, userId), t('grievances.detail.assignmentUpdated'));
 };
 const setPriority = (priority: GrievancePriority) => {
-  if (priority === t.value?.priority) return;
-  return run(() => grievancesApi.update(id.value, { priority }), 'Priority updated');
+  if (priority === ticket.value?.priority) return;
+  return run(() => grievancesApi.update(id.value, { priority }), t('grievances.detail.priorityUpdated'));
 };
 
 async function prompt(header: string, placeholder: string, required: boolean): Promise<string | null> {
@@ -303,8 +354,8 @@ async function prompt(header: string, placeholder: string, required: boolean): P
     header,
     inputs: [{ name: 'text', type: 'textarea', placeholder }],
     buttons: [
-      { text: 'Cancel', role: 'cancel' },
-      { text: 'OK', role: 'confirm' },
+      { text: t('common.actions.cancel'), role: 'cancel' },
+      { text: t('grievances.detail.ok'), role: 'confirm' },
     ],
   });
   await alert.present();
@@ -312,7 +363,7 @@ async function prompt(header: string, placeholder: string, required: boolean): P
   if (role !== 'confirm') return null;
   const text = data?.values.text?.trim() ?? '';
   if (required && !text) {
-    await toast('This field is required', 'warning');
+    await toast(t('grievances.detail.fieldRequired'), 'warning');
     return null;
   }
   return text;
@@ -320,22 +371,33 @@ async function prompt(header: string, placeholder: string, required: boolean): P
 
 async function changeStatus(status: GrievanceStatus) {
   if (status === 'resolved') {
-    const notes = await prompt('Resolution notes', 'What was done to resolve this?', true);
+    const notes = await prompt(
+      t('grievances.detail.resolutionNotes'),
+      t('grievances.detail.resolutionPlaceholder'),
+      true,
+    );
     if (notes === null) return;
     return run(
       () => grievancesApi.setStatus(id.value, { status, resolutionNotes: notes }),
-      'Marked resolved',
+      t('grievances.detail.markedResolved'),
     );
   }
-  const note = await prompt(`Mark ${statusLabel(status)}`, 'Note (optional)', false);
+  const note = await prompt(t(STATUS_ACTION_KEYS[status]), t('grievances.detail.notePlaceholder'), false);
   if (note === null) return;
-  return run(() => grievancesApi.setStatus(id.value, { status, note: note || undefined }), 'Status updated');
+  return run(
+    () => grievancesApi.setStatus(id.value, { status, note: note || undefined }),
+    t('grievances.detail.statusUpdated'),
+  );
 }
 
 async function reopen() {
-  const reason = await prompt('Reopen complaint', 'Why is the issue not resolved?', true);
+  const reason = await prompt(
+    t('grievances.detail.reopenComplaint'),
+    t('grievances.detail.reopenReason'),
+    true,
+  );
   if (reason === null) return;
-  await run(() => grievancesApi.reopen(id.value, reason), 'Complaint reopened');
+  await run(() => grievancesApi.reopen(id.value, reason), t('grievances.detail.reopened'));
 }
 
 const confirm = () =>
@@ -345,7 +407,7 @@ const confirm = () =>
         rating: rating.value || undefined,
         feedback: feedback.value.trim() || undefined,
       }),
-    'Thank you for your feedback',
+    t('grievances.detail.thanks'),
   );
 
 async function openAttachment(attachmentId: number) {
@@ -361,9 +423,10 @@ watch(id, (v) => v && load(), { immediate: true });
 </script>
 
 <style scoped>
-ion-badge {
-  margin-right: 4px;
-  text-transform: capitalize;
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 .pre {
   white-space: pre-wrap;

@@ -1,7 +1,7 @@
 <template>
   <section class="report-table">
     <h3 v-if="showTitle">{{ table.title }}</h3>
-    <p v-if="!table.rows.length" class="muted">No data for these filters.</p>
+    <p v-if="!table.rows.length" class="muted">{{ t('reports.table.empty') }}</p>
     <div v-else class="scroll">
       <table>
         <thead>
@@ -21,15 +21,23 @@
       </table>
     </div>
     <p v-if="table.rows.length < table.totalRows" class="muted note">
-      Showing {{ table.rows.length.toLocaleString('en-IN') }} of
-      {{ table.totalRows.toLocaleString('en-IN') }} rows. Export the report for the full list.
+      {{
+        t('reports.table.truncated', {
+          shown: formatNumber(table.rows.length),
+          total: formatNumber(table.totalRows),
+        })
+      }}
     </p>
   </section>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import type { ReportTableDto } from '@erp/shared';
+import { formatNumber } from '@/core/format';
 import { formatValue, isNumericType } from '../format';
+
+const { t } = useI18n();
 
 withDefaults(defineProps<{ table: ReportTableDto; timezone: string; showTitle?: boolean }>(), {
   showTitle: true,

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import type { ReportFilterOptionsDto, ReportTableDto, SaasDashboardDto } from '@erp/shared';
 import type { LocationQuery } from 'vue-router';
+import { i18n } from '@/i18n';
 import ReportTable from './components/ReportTable.vue';
 import {
   customRangeError,
@@ -126,14 +127,14 @@ describe('report formatting', () => {
     expect(formatValue(12345678, 'money', TZ)).toBe('₹1,23,456.78');
     expect(formatValue(85.55, 'percent', TZ)).toBe('85.6%');
     expect(formatValue(2.5, 'hours', TZ)).toBe('2.5 h');
-    expect(formatValue('2026-01-05', 'date', TZ)).toBe('05 Jan 2026');
-    expect(formatValue('2026-01-12T08:35:00.000Z', 'datetime', TZ)).toBe('12 Jan 2026, 14:05');
+    expect(formatValue('2026-01-05', 'date', TZ)).toBe('5 Jan 2026');
+    expect(formatValue('2026-01-12T08:35:00.000Z', 'datetime', TZ)).toBe('12 Jan 2026, 2:05 pm');
     expect(formatValue(null, 'money', TZ)).toBe('—');
     expect(formatValue('Paid', 'text', TZ)).toBe('Paid');
   });
 
   it('shows datetimes in the given timezone and sizes in binary units', () => {
-    expect(displayDateTime('2026-03-31T19:00:00Z', TZ)).toBe('01 Apr 2026, 00:30');
+    expect(displayDateTime('2026-03-31T19:00:00Z', TZ)).toBe('1 Apr 2026, 12:30 am');
     expect(formatBytes(0)).toBe('0 B');
     expect(formatBytes(1536)).toBe('1.5 KB');
     expect(formatBytes(25 * 1024 ** 3)).toBe('25 GB');
@@ -156,15 +157,18 @@ describe('ReportTable', () => {
   };
 
   it('formats cells, right-aligns numbers and flags truncated tables', () => {
-    const w = mount(ReportTable, { props: { table, timezone: TZ } });
+    const w = mount(ReportTable, { props: { table, timezone: TZ }, global: { plugins: [i18n] } });
     const cells = w.findAll('tbody td').map((td) => td.text());
-    expect(cells).toEqual(['Asha', '₹1,500.00', 'Ravi', '—']);
+    expect(cells).toEqual(['Asha', '₹1,500', 'Ravi', '—']);
     expect(w.findAll('th')[1].classes()).toContain('num');
     expect(w.text()).toContain('Showing 2 of 5 rows');
   });
 
   it('shows an empty state', () => {
-    const w = mount(ReportTable, { props: { table: { ...table, rows: [], totalRows: 0 }, timezone: TZ } });
+    const w = mount(ReportTable, {
+      props: { table: { ...table, rows: [], totalRows: 0 }, timezone: TZ },
+      global: { plugins: [i18n] },
+    });
     expect(w.find('table').exists()).toBe(false);
     expect(w.text()).toContain('No data for these filters.');
   });

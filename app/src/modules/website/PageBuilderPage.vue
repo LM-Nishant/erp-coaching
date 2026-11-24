@@ -1,72 +1,91 @@
 <template>
-  <AppPage :title="page ? page.title : 'Page'" back-href="/website" :on-refresh="load">
+  <AppPage :title="page ? page.title : t('website.builder.page')" back-href="/website" :on-refresh="load">
     <template #actions>
-      <ion-button :disabled="!page" aria-label="Preview draft" @click="showPreview"
+      <ion-button :disabled="!page" :aria-label="t('website.builder.previewDraft')" @click="showPreview"
         ><ion-icon slot="icon-only" :icon="eyeOutline"
       /></ion-button>
-      <ion-button :disabled="!page" aria-label="Published versions" @click="openVersions"
+      <ion-button :disabled="!page" :aria-label="t('website.builder.versions')" @click="openVersions"
         ><ion-icon slot="icon-only" :icon="timeOutline"
       /></ion-button>
     </template>
 
     <template v-if="page">
       <ion-item lines="none">
-        <ion-badge
+        <StatusChip
           slot="start"
-          :color="dirty ? 'tertiary' : page.status === 'published' ? 'success' : 'warning'"
-        >
-          {{
+          :label="
             dirty
-              ? 'Unsaved'
+              ? t('website.status.unsaved')
               : page.status === 'published'
-                ? 'Published'
+                ? t('website.status.published')
                 : page.status === 'changed'
-                  ? 'Draft changes'
-                  : 'Draft'
-          }}
-        </ion-badge>
+                  ? t('website.status.draftChanges')
+                  : t('website.status.draft')
+          "
+          :tone="dirty ? 'primary' : page.status === 'published' ? 'success' : 'warning'"
+        />
         <ion-label class="ion-text-wrap">
           <p v-if="page.publishedVersion">
-            Live version v{{ page.publishedVersion }} · {{ fmt(page.publishedAt) }}
+            {{
+              t('website.builder.liveVersion', {
+                version: page.publishedVersion,
+                date: fmt(page.publishedAt),
+              })
+            }}
           </p>
-          <p v-else>Not published yet</p>
+          <p v-else>{{ t('website.builder.notPublished') }}</p>
         </ion-label>
       </ion-item>
       <div class="actions">
-        <ion-button v-if="canEdit" :disabled="saving || !dirty" @click="save()">Save draft</ion-button>
-        <ion-button v-if="canPublish" color="success" :disabled="saving" @click="publish">Publish</ion-button>
+        <ion-button v-if="canEdit" :disabled="saving || !dirty" @click="save()">{{
+          t('website.builder.saveDraft')
+        }}</ion-button>
+        <ion-button v-if="canPublish" color="success" :disabled="saving" @click="publish">{{
+          t('website.builder.publish')
+        }}</ion-button>
         <ion-button
           v-if="canPublish && page.publishedVersion"
           fill="outline"
           color="medium"
           :disabled="saving"
           @click="unpublish"
-          >Unpublish</ion-button
+          >{{ t('website.builder.unpublish') }}</ion-button
         >
-        <ion-button v-if="canDelete && !page.isHome" fill="clear" color="danger" @click="remove"
-          >Delete</ion-button
-        >
+        <ion-button v-if="canDelete && !page.isHome" fill="clear" color="danger" @click="remove">{{
+          t('common.actions.delete')
+        }}</ion-button>
       </div>
 
       <ion-accordion-group>
         <ion-accordion value="settings">
-          <ion-item slot="header"><ion-label>Page settings & SEO</ion-label></ion-item>
+          <ion-item slot="header"
+            ><ion-label>{{ t('website.builder.settings') }}</ion-label></ion-item
+          >
           <ion-list slot="content">
-            <ion-item><ion-input v-model="page.title" label="Title" label-placement="stacked" /></ion-item>
+            <ion-item
+              ><ion-input
+                v-model="page.title"
+                :label="t('website.pages.fieldTitle')"
+                label-placement="stacked"
+            /></ion-item>
             <ion-item>
               <ion-input
                 v-model="page.slug"
-                label="URL slug"
+                :label="t('website.pages.slug')"
                 label-placement="stacked"
                 :disabled="page.isHome"
               />
             </ion-item>
-            <ion-item><ion-toggle v-model="page.showInNav">Show in site menu</ion-toggle></ion-item>
-            <ion-item><ion-toggle v-model="page.isHome">Home page</ion-toggle></ion-item>
+            <ion-item
+              ><ion-toggle v-model="page.showInNav">{{ t('website.pages.showInNav') }}</ion-toggle></ion-item
+            >
+            <ion-item
+              ><ion-toggle v-model="page.isHome">{{ t('website.builder.homePage') }}</ion-toggle></ion-item
+            >
             <ion-item>
               <ion-input
                 v-model="page.seo.title"
-                label="SEO title"
+                :label="t('website.builder.seoTitle')"
                 label-placement="stacked"
                 :maxlength="70"
               />
@@ -74,22 +93,22 @@
             <ion-item>
               <ion-textarea
                 v-model="page.seo.description"
-                label="Meta description"
+                :label="t('website.builder.metaDescription')"
                 label-placement="stacked"
                 :maxlength="300"
                 :auto-grow="true"
               />
             </ion-item>
-            <ImageField v-model="page.seo.ogImageFileId" label="Social share (OG) image" />
+            <ImageField v-model="page.seo.ogImageFileId" :label="t('website.builder.ogImage')" />
           </ion-list>
         </ion-accordion>
       </ion-accordion-group>
 
       <ion-list>
         <ion-list-header>
-          <ion-label>Blocks</ion-label>
+          <ion-label>{{ t('website.builder.blocks') }}</ion-label>
           <ion-button v-if="canEdit" @click="addBlock"
-            ><ion-icon slot="start" :icon="add" />Add block</ion-button
+            ><ion-icon slot="start" :icon="add" />{{ t('website.builder.addBlock') }}</ion-button
           >
         </ion-list-header>
         <ion-reorder-group :disabled="!canEdit" @ion-item-reorder="reorder($event)">
@@ -97,26 +116,34 @@
             <ion-item button :detail="false" :class="{ hidden: b.hidden }" @click="toggle(b.id)">
               <ion-icon slot="start" :icon="open === b.id ? chevronDown : chevronForward" />
               <ion-label>
-                <h2>{{ WEBSITE_BLOCK_LABELS[b.type] }}<span v-if="b.hidden"> (hidden)</span></h2>
+                <h2>
+                  {{ t(`website.blocks.${b.type}`)
+                  }}<span v-if="b.hidden"> {{ t('website.builder.hiddenSuffix') }}</span>
+                </h2>
                 <p>{{ blockSummary(b) }}</p>
               </ion-label>
               <template v-if="canEdit">
                 <ion-button
                   slot="end"
                   fill="clear"
-                  :aria-label="b.hidden ? 'Show block' : 'Hide block'"
+                  :aria-label="b.hidden ? t('website.builder.showBlock') : t('website.builder.hideBlock')"
                   @click.stop="b.hidden = !b.hidden"
                 >
                   <ion-icon slot="icon-only" :icon="b.hidden ? eyeOffOutline : eyeOutline" />
                 </ion-button>
-                <ion-button slot="end" fill="clear" aria-label="Duplicate block" @click.stop="duplicate(i)">
+                <ion-button
+                  slot="end"
+                  fill="clear"
+                  :aria-label="t('website.builder.duplicateBlock')"
+                  @click.stop="duplicate(i)"
+                >
                   <ion-icon slot="icon-only" :icon="copyOutline" />
                 </ion-button>
                 <ion-button
                   slot="end"
                   fill="clear"
                   color="danger"
-                  aria-label="Delete block"
+                  :aria-label="t('website.builder.deleteBlock')"
                   @click.stop="page.blocks.splice(i, 1)"
                 >
                   <ion-icon slot="icon-only" :icon="trashOutline" />
@@ -130,7 +157,9 @@
           </div>
         </ion-reorder-group>
         <ion-item v-if="!page.blocks.length" lines="none">
-          <ion-label class="ion-text-center"><p>No blocks yet — add one to start building.</p></ion-label>
+          <ion-label class="ion-text-center"
+            ><p>{{ t('website.builder.noBlocks') }}</p></ion-label
+          >
         </ion-item>
       </ion-list>
     </template>
@@ -138,16 +167,18 @@
     <ion-modal :is-open="previewHtml !== null" class="preview-modal" @did-dismiss="previewHtml = null">
       <ion-header>
         <ion-toolbar>
-          <ion-title>Preview (draft)</ion-title>
+          <ion-title>{{ t('website.builder.previewTitle') }}</ion-title>
           <ion-segment slot="end" :value="device" @ion-change="device = String($event.detail.value)">
-            <ion-segment-button value="desktop" aria-label="Desktop"
+            <ion-segment-button value="desktop" :aria-label="t('website.builder.desktop')"
               ><ion-icon :icon="desktopOutline"
             /></ion-segment-button>
-            <ion-segment-button value="mobile" aria-label="Mobile"
+            <ion-segment-button value="mobile" :aria-label="t('website.builder.mobile')"
               ><ion-icon :icon="phonePortraitOutline"
             /></ion-segment-button>
           </ion-segment>
-          <ion-buttons slot="end"><ion-button @click="previewHtml = null">Close</ion-button></ion-buttons>
+          <ion-buttons slot="end"
+            ><ion-button @click="previewHtml = null">{{ t('common.actions.close') }}</ion-button></ion-buttons
+          >
         </ion-toolbar>
       </ion-header>
       <ion-content>
@@ -155,7 +186,7 @@
           v-if="previewHtml !== null"
           :srcdoc="previewHtml"
           sandbox=""
-          title="Page preview"
+          :title="t('website.builder.pagePreview')"
           :class="['preview', device]"
         />
       </ion-content>
@@ -164,8 +195,10 @@
     <ion-modal :is-open="versions !== null" @did-dismiss="versions = null">
       <ion-header>
         <ion-toolbar>
-          <ion-title>Published versions</ion-title>
-          <ion-buttons slot="end"><ion-button @click="versions = null">Close</ion-button></ion-buttons>
+          <ion-title>{{ t('website.builder.versions') }}</ion-title>
+          <ion-buttons slot="end"
+            ><ion-button @click="versions = null">{{ t('common.actions.close') }}</ion-button></ion-buttons
+          >
         </ion-toolbar>
       </ion-header>
       <ion-content>
@@ -173,16 +206,17 @@
           <ion-item v-for="v in versions" :key="v.id">
             <ion-label>
               <h2>
-                v{{ v.version }} — {{ v.title }} <ion-badge v-if="v.isLive" color="success">live</ion-badge>
+                v{{ v.version }} — {{ v.title }}
+                <StatusChip v-if="v.isLive" :label="t('website.status.live')" tone="success" />
               </h2>
               <p>{{ fmt(v.publishedAt) }}{{ v.publishedByName ? ` · ${v.publishedByName}` : '' }}</p>
             </ion-label>
             <ion-button v-if="canEdit" slot="end" fill="outline" size="small" @click="restore(v)">
-              Restore to draft
+              {{ t('website.builder.restore') }}
             </ion-button>
           </ion-item>
           <ion-item v-if="versions && !versions.length" lines="none"
-            ><ion-label>Never published.</ion-label></ion-item
+            ><ion-label>{{ t('website.builder.neverPublished') }}</ion-label></ion-item
           >
         </ion-list>
       </ion-content>
@@ -192,11 +226,11 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
 import {
   IonAccordion,
   IonAccordionGroup,
-  IonBadge,
   IonButton,
   IonButtons,
   IonContent,
@@ -233,7 +267,6 @@ import {
   trashOutline,
 } from 'ionicons/icons';
 import {
-  WEBSITE_BLOCK_LABELS,
   WEBSITE_BLOCK_TYPES,
   type WebsiteBlock,
   type WebsitePageDto,
@@ -241,7 +274,9 @@ import {
   type WebsitePageVersionDto,
 } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
 import { api } from '@/core/api';
+import { formatDateTime } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import { websiteApi, type NamedRef } from './api';
@@ -251,6 +286,7 @@ import { blockSummary, cleanBlock, newBlock } from './blockDefaults';
 
 type EditablePage = WebsitePageDto & { seo: NonNullable<WebsitePageDto['seo']> };
 
+const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
@@ -271,7 +307,7 @@ const canPublish = computed(() => auth.can('website.publish'));
 const canDelete = computed(() => auth.can('website.delete'));
 const pageRefs = computed(() => allPages.value.map((p) => ({ slug: p.slug, title: p.title })));
 
-const fmt = (d: string | null) => (d ? new Date(d).toLocaleString() : '');
+const fmt = (d: string | null) => (d ? formatDateTime(d) : '');
 
 function setPage(p: WebsitePageDto) {
   page.value = { ...p, seo: { title: '', description: '', ogImageFileId: null, ...(p.seo ?? {}) } };
@@ -319,7 +355,7 @@ async function save(quiet = false) {
   saving.value = true;
   try {
     setPage(await websiteApi.updatePage(id.value, body()));
-    if (!quiet) await toast('Draft saved');
+    if (!quiet) await toast(t('website.builder.draftSaved'));
     return true;
   } catch (e) {
     await toastError(e);
@@ -343,7 +379,7 @@ async function publish() {
   saving.value = true;
   try {
     setPage(await websiteApi.publish(id.value));
-    await toast(`Published v${page.value!.publishedVersion}`);
+    await toast(t('website.builder.published', { version: page.value!.publishedVersion }));
   } catch (e) {
     await toastError(e);
   } finally {
@@ -355,7 +391,7 @@ async function unpublish() {
   saving.value = true;
   try {
     setPage(await websiteApi.unpublish(id.value));
-    await toast('Page taken offline', 'medium');
+    await toast(t('website.builder.offline'), 'medium');
   } catch (e) {
     await toastError(e);
   } finally {
@@ -365,12 +401,12 @@ async function unpublish() {
 
 async function remove() {
   const a = await alertController.create({
-    header: `Delete “${page.value?.title}”?`,
-    message: 'The page and its published versions will be removed from the website.',
+    header: t('website.builder.deleteTitle', { title: page.value?.title ?? '' }),
+    message: t('website.builder.deleteMessage'),
     buttons: [
-      { text: 'Cancel', role: 'cancel' },
+      { text: t('common.actions.cancel'), role: 'cancel' },
       {
-        text: 'Delete',
+        text: t('common.actions.delete'),
         role: 'destructive',
         handler: () =>
           websiteApi
@@ -398,7 +434,7 @@ async function restore(v: WebsitePageVersionDto) {
   try {
     setPage(await websiteApi.restore(id.value, v.id));
     versions.value = null;
-    await toast(`v${v.version} restored as draft — publish to make it live`);
+    await toast(t('website.builder.restored', { version: v.version }));
   } catch (e) {
     await toastError(e);
   }
@@ -406,17 +442,17 @@ async function restore(v: WebsitePageVersionDto) {
 
 async function addBlock() {
   const sheet = await actionSheetController.create({
-    header: 'Add block',
+    header: t('website.builder.addBlock'),
     buttons: [
-      ...WEBSITE_BLOCK_TYPES.map((t) => ({
-        text: WEBSITE_BLOCK_LABELS[t],
+      ...WEBSITE_BLOCK_TYPES.map((type) => ({
+        text: t(`website.blocks.${type}`),
         handler: () => {
-          const b = newBlock(t);
+          const b = newBlock(type);
           page.value!.blocks.push(b);
           open.value = b.id;
         },
       })),
-      { text: 'Cancel', role: 'cancel' },
+      { text: t('common.actions.cancel'), role: 'cancel' },
     ],
   });
   await sheet.present();
@@ -439,10 +475,10 @@ function reorder(ev: CustomEvent<ItemReorderEventDetail>) {
 onBeforeRouteLeave(async () => {
   if (!dirty.value || !canEdit.value) return true;
   const a = await alertController.create({
-    header: 'Discard unsaved changes?',
+    header: t('website.builder.discardTitle'),
     buttons: [
-      { text: 'Stay', role: 'cancel' },
-      { text: 'Discard', role: 'destructive' },
+      { text: t('website.builder.stay'), role: 'cancel' },
+      { text: t('website.builder.discard'), role: 'destructive' },
     ],
   });
   await a.present();

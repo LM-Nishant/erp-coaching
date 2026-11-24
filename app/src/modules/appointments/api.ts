@@ -10,8 +10,11 @@ import type {
   AvailableSlotDto,
   Paginated,
   RequestAppointmentInput,
+  SlotMode,
 } from '@erp/shared';
 import { api } from '@/core/api';
+import { formatDate, formatDateTime, formatTime } from '@/core/format';
+import { intlLocale } from '@/i18n';
 
 export interface AppointmentFilters {
   page?: number;
@@ -69,18 +72,48 @@ export const appointmentsApi = {
   exportCsv: (f: ReportFilters) => api.get<string>(`${base}/reports/export.csv`, { ...f }),
 };
 
-export const STATUS_COLORS: Record<AppointmentStatus, string> = {
+export type Tone = 'success' | 'warning' | 'danger' | 'primary' | 'medium';
+
+export const STATUS_TONES: Record<AppointmentStatus, Tone> = {
   requested: 'warning',
   confirmed: 'success',
   rejected: 'danger',
   cancelled: 'medium',
   completed: 'primary',
-  no_show: 'dark',
+  no_show: 'danger',
 };
 
-export const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+/** i18n key of each status's label. */
+export const STATUS_LABEL_KEYS: Record<AppointmentStatus, string> = {
+  requested: 'appointments.status.requested',
+  confirmed: 'common.status.confirmed',
+  rejected: 'common.status.rejected',
+  cancelled: 'common.status.cancelled',
+  completed: 'common.status.completed',
+  no_show: 'appointments.status.noShow',
+};
 
-export const humanize = (s: string) => s.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+/** i18n key of a history entry, e.g. `no_show` → `appointments.action.noShow`. */
+export const actionKey = (action: string) =>
+  `appointments.action.${action.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())}`;
+
+export const modeKey = (mode: SlotMode) => `appointments.mode.${mode}`;
+
+/** Day name in the current language, 0 = Sunday. */
+export const weekdayName = (day: number) =>
+  new Intl.DateTimeFormat(intlLocale(), { weekday: 'long', timeZone: 'UTC' }).format(
+    Date.UTC(2023, 0, 1 + day),
+  );
+
+/** `HH:mm` on a `YYYY-MM-DD` day → `4:00 pm`. */
+export const slotTime = (time: string, date = todayIso()) => formatTime(`${date}T${time}`);
+export const slotTimeRange = (date: string, start: string, end: string) =>
+  `${slotTime(start, date)}–${slotTime(end, date)}`;
+/** `25 Nov 2026 · 4:00 pm–4:15 pm` */
+export const meetingWhen = (m: { date: string; startTime: string; endTime: string }) =>
+  `${formatDate(m.date)} · ${slotTimeRange(m.date, m.startTime, m.endTime)}`;
+/** `25 Nov 2026, 4:00 pm` */
+export const slotStart = (date: string, time: string) => formatDateTime(`${date}T${time}`);
 
 export const todayIso = () => {
   const d = new Date();

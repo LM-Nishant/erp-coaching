@@ -75,22 +75,46 @@ export const grievancesApi = {
   exportCsv: (f: ReportFilters) => api.get<string>(`${base}/reports/export.csv`, { ...f }),
 };
 
-export const STATUS_COLORS: Record<GrievanceStatus, string> = {
+export type Tone = 'success' | 'warning' | 'danger' | 'primary' | 'medium';
+
+export const STATUS_TONES: Record<GrievanceStatus, Tone> = {
   open: 'primary',
-  in_progress: 'tertiary',
+  in_progress: 'warning',
   escalated: 'danger',
   resolved: 'success',
   closed: 'medium',
 };
 
-export const PRIORITY_COLORS: Record<GrievancePriority, string> = {
+/** Ionic colours; still used by the parent-portal widget. */
+export const STATUS_COLORS: Record<GrievanceStatus, string> = { ...STATUS_TONES, in_progress: 'tertiary' };
+
+export const PRIORITY_TONES: Record<GrievancePriority, Tone> = {
   low: 'medium',
   medium: 'primary',
   high: 'warning',
   urgent: 'danger',
 };
 
-export const statusLabel = (s: string) => s.replace('_', ' ');
-export const formatDate = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
+/** i18n key of each status's label. */
+export const STATUS_LABEL_KEYS: Record<GrievanceStatus, string> = {
+  open: 'common.status.open',
+  in_progress: 'common.status.inProgress',
+  escalated: 'grievances.status.escalated',
+  resolved: 'common.status.resolved',
+  closed: 'common.status.closed',
+};
+
+/** i18n key of the button that moves a ticket to each status. */
+export const STATUS_ACTION_KEYS: Record<GrievanceStatus, string> = {
+  open: 'grievances.statusAction.open',
+  in_progress: 'grievances.statusAction.inProgress',
+  escalated: 'grievances.statusAction.escalated',
+  resolved: 'grievances.statusAction.resolved',
+  closed: 'grievances.statusAction.closed',
+};
+
+export const statusKey = (s: string) => STATUS_LABEL_KEYS[s as GrievanceStatus] ?? s;
+export const priorityKey = (p: string) => `grievances.priority.${p}`;
+export const fileSizeKb = (bytes: number) => Math.ceil(bytes / 1024);
 export const isOverdue = (t: GrievanceTicketDto) =>
   !!t.dueAt && ['open', 'in_progress'].includes(t.status) && new Date(t.dueAt) < new Date();

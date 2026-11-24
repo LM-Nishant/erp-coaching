@@ -11,7 +11,7 @@
             :class="{ active: locale === l }"
             :aria-pressed="locale === l"
             :lang="l"
-            @click="setLocale(l)"
+            @click="pickSignedOutLocale(l)"
           >
             {{ LOCALE_NAMES[l] }}
           </button>
@@ -123,7 +123,8 @@ import {
 } from '@ionic/vue';
 import { fingerPrintOutline } from 'ionicons/icons';
 import { errorMessage } from '@/core/api';
-import { LOCALE_NAMES, LOCALES, setLocale } from '@/i18n';
+import { LOCALE_NAMES, LOCALES } from '@/i18n';
+import { pickSignedOutLocale } from '@/core/locale-sync';
 import { useAuthStore, type NextStep } from '@/stores/auth';
 
 const auth = useAuthStore();

@@ -1,13 +1,25 @@
 <template>
   <ion-item>
-    <ion-input v-model="from" type="date" label="From" label-placement="stacked" @ion-change="load" />
-    <ion-input v-model="to" type="date" label="To" label-placement="stacked" @ion-change="load" />
+    <ion-input
+      v-model="from"
+      type="date"
+      :label="t('common.labels.from')"
+      label-placement="stacked"
+      @ion-change="load"
+    />
+    <ion-input
+      v-model="to"
+      type="date"
+      :label="t('common.labels.to')"
+      label-placement="stacked"
+      @ion-change="load"
+    />
   </ion-item>
   <div class="ion-padding-horizontal">
-    <p v-if="loading" class="muted">Loading free times…</p>
-    <p v-else-if="!groups.length" class="muted">No free times in this range. Try later dates.</p>
+    <p v-if="loading" class="muted">{{ t('appointments.slotPicker.loading') }}</p>
+    <p v-else-if="!groups.length" class="muted">{{ t('appointments.slotPicker.empty') }}</p>
     <div v-for="g in groups" :key="g.date" class="day">
-      <h3>{{ formatDate(g.date) }}</h3>
+      <h3>{{ formatDayShort(g.date) }}</h3>
       <ion-chip
         v-for="s in g.slots"
         :key="`${s.date}-${s.startTime}`"
@@ -15,7 +27,7 @@
         :outline="!isPicked(s)"
         @click="emit('update:modelValue', s)"
       >
-        {{ s.startTime }}
+        {{ slotTime(s.startTime, s.date) }}
         <ion-icon
           v-if="s.modes.length === 1"
           :icon="s.modes[0] === 'online' ? videocamOutline : peopleOutline"
@@ -29,9 +41,11 @@
 import { computed, ref, watch } from 'vue';
 import { IonChip, IonIcon, IonInput, IonItem } from '@ionic/vue';
 import { peopleOutline, videocamOutline } from 'ionicons/icons';
+import { useI18n } from 'vue-i18n';
 import type { AvailableSlotDto } from '@erp/shared';
+import { formatDayShort } from '@/core/format';
 import { toastError } from '@/core/toast';
-import { addDaysIso, appointmentsApi, todayIso } from '../api';
+import { addDaysIso, appointmentsApi, slotTime, todayIso } from '../api';
 
 const props = defineProps<{
   teacherUserId: number;
@@ -40,6 +54,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ 'update:modelValue': [AvailableSlotDto | null] }>();
 
+const { t } = useI18n();
 const from = ref(todayIso());
 const to = ref(addDaysIso(todayIso(), 13));
 const slots = ref<AvailableSlotDto[]>([]);
@@ -53,12 +68,6 @@ const groups = computed(() => {
 
 const isPicked = (s: AvailableSlotDto) =>
   props.modelValue?.date === s.date && props.modelValue.startTime === s.startTime;
-const formatDate = (d: string) =>
-  new Date(`${d}T00:00:00`).toLocaleDateString(undefined, {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-  });
 
 async function load() {
   if (!from.value || !to.value) return;

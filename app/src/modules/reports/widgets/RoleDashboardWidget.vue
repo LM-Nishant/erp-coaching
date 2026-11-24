@@ -1,6 +1,6 @@
 <template>
   <div class="role-dashboard">
-    <div class="presets" role="radiogroup" aria-label="Period">
+    <div class="presets" role="radiogroup" :aria-label="t('reports.filters.period')">
       <ion-chip
         v-for="p in PRESETS"
         :key="p.value"
@@ -19,7 +19,7 @@
       <p class="context">
         <strong>{{ dash.title }}</strong> · {{ dash.scope.label }} · {{ dash.period.label }}
       </p>
-      <p v-if="!dash.groups.length" class="muted">Nothing to show for this period yet.</p>
+      <p v-if="!dash.groups.length" class="muted">{{ t('reports.widget.empty') }}</p>
       <section v-for="g in dash.groups" :key="g.key">
         <h3>{{ g.title }}</h3>
         <MetricGrid :metrics="g.metrics" :timezone="dash.period.timezone" />
@@ -34,14 +34,17 @@
           :router-link="`/reports/${key}?preset=${preset}`"
           >{{ titles[key] ?? humanize(key) }}</ion-button
         >
-        <ion-button size="small" fill="clear" router-link="/reports">All reports</ion-button>
+        <ion-button size="small" fill="clear" router-link="/reports">{{
+          t('reports.widget.allReports')
+        }}</ion-button>
       </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { IonButton, IonChip, IonProgressBar } from '@ionic/vue';
 import type { ReportDatePreset, ReportKey, RoleDashboardDto } from '@erp/shared';
 import { errorMessage } from '@/core/api';
@@ -50,12 +53,14 @@ import MetricGrid from '../components/MetricGrid.vue';
 import ReportTable from '../components/ReportTable.vue';
 import { humanize } from '../format';
 
-const PRESETS: { value: ReportDatePreset; label: string }[] = [
-  { value: 'today', label: 'Today' },
-  { value: 'this_week', label: 'This week' },
-  { value: 'this_month', label: 'This month' },
-  { value: 'this_fy', label: 'This FY' },
-];
+const { t } = useI18n();
+
+const PRESETS = computed<{ value: ReportDatePreset; label: string }[]>(() => [
+  { value: 'today', label: t('reports.presets.today') },
+  { value: 'this_week', label: t('reports.presets.this_week') },
+  { value: 'this_month', label: t('reports.presets.this_month') },
+  { value: 'this_fy', label: t('reports.presets.thisFyShort') },
+]);
 
 const preset = ref<ReportDatePreset>('this_month');
 const dash = ref<RoleDashboardDto | null>(null);

@@ -83,15 +83,21 @@ export function formatRelative(value: DateInput | null | undefined, now: DateInp
   return rtf.format(0, 'second');
 }
 
-/** `1 h 5 min`, `42 min`, `45 s` from seconds. */
+const DURATION_UNITS: Record<string, [string, string, string]> = {
+  en: ['h', 'min', 's'],
+  hi: ['घं', 'मि', 'से'],
+};
+
+/** `1 h 5 min`, `42 min`, `45 s` from seconds (Hindi: `1 घं 5 मि`). */
 export function formatDuration(totalSeconds: number | null | undefined): string {
   if (totalSeconds === null || totalSeconds === undefined || !Number.isFinite(totalSeconds)) return EMPTY;
   const s = Math.max(0, Math.round(totalSeconds));
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
-  if (h) return m ? `${h} h ${m} min` : `${h} h`;
-  if (m) return `${m} min`;
-  return `${s} s`;
+  const [hu, mu, su] = DURATION_UNITS[intlLocale().slice(0, 2)] ?? DURATION_UNITS.en;
+  if (h) return m ? `${h} ${hu} ${m} ${mu}` : `${h} ${hu}`;
+  if (m) return `${m} ${mu}`;
+  return `${s} ${su}`;
 }
 
 /** `₹41,250` from paise; paise are shown only when not whole rupees (`₹41,250.50`). */

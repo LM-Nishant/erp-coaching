@@ -55,6 +55,12 @@
       </div>
       <p v-if="offlineItem" class="muted">Offline copy · expires {{ fmtDateTime(offlineItem.expiresAt) }}</p>
     </template>
+    <DoubtButton
+      v-if="isLearner && !offlineMode && resource"
+      :lecture-id="id"
+      :title="title"
+      :position="() => (isVideo ? videoEl?.currentTime : null)"
+    />
   </AppPage>
 </template>
 
@@ -68,6 +74,7 @@ import AppPage from '@/components/AppPage.vue';
 import PlaybackControls from '@/components/PlaybackControls.vue';
 import SecureView from '@/components/SecureView.vue';
 import { openFileLink } from '@/core/downloads';
+import { DoubtButton } from '@/modules/doubts';
 import { hlsPlayable, useVideoSource, type VideoSource } from '@/core/hls';
 import { useSessionHold } from '@/core/idle';
 import { toast, toastError } from '@/core/toast';

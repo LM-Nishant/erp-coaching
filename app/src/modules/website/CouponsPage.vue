@@ -1,53 +1,81 @@
 <template>
-  <AppPage title="Coupons" :on-refresh="load">
+  <AppPage :title="t('website.coupons.title')" :on-refresh="load">
     <template #actions>
-      <ion-button v-if="auth.can('website.create')" aria-label="New coupon" @click="openEditor()"
+      <ion-button
+        v-if="auth.can('website.create')"
+        :aria-label="t('website.coupons.new')"
+        @click="openEditor()"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
-    <ion-searchbar v-model="search" :debounce="300" placeholder="Search code" @ion-input="load" />
+    <ion-searchbar
+      v-model="search"
+      :debounce="300"
+      :placeholder="t('website.coupons.searchCode')"
+      @ion-input="load"
+    />
     <ion-list>
       <ion-item v-for="c in items" :key="c.id" button :detail="false" @click="openEditor(c)">
         <ion-label class="ion-text-wrap">
           <h2>
             <strong>{{ c.code }}</strong> —
-            {{ c.discountType === 'percent' ? `${c.discountValue}% off` : `${inr(c.discountValue)} off` }}
-            <span v-if="c.maxDiscount" class="muted">(max {{ inr(c.maxDiscount) }})</span>
+            {{
+              c.discountType === 'percent'
+                ? t('website.coupons.percentOff', { n: formatNumber(c.discountValue) })
+                : t('website.coupons.amountOff', { amount: inr(c.discountValue) })
+            }}
+            <span v-if="c.maxDiscount" class="muted">{{
+              t('website.coupons.max', { amount: inr(c.maxDiscount) })
+            }}</span>
           </h2>
           <p v-if="c.description">{{ c.description }}</p>
           <p>
-            Used {{ c.usedCount }}{{ c.usageLimit ? ` / ${c.usageLimit}` : '' }} ·
-            {{ c.validFrom ? day(c.validFrom) : 'now' }} →
-            {{ c.validUntil ? day(c.validUntil) : 'no expiry' }}
-            <span v-if="c.minAmount"> · min {{ inr(c.minAmount) }}</span>
-            <span v-if="c.courseIds?.length"> · {{ c.courseIds.length }} course(s)</span>
+            {{ t('website.coupons.used', { n: formatNumber(c.usedCount) })
+            }}{{ c.usageLimit ? ` / ${formatNumber(c.usageLimit)}` : '' }} ·
+            {{ c.validFrom ? formatDate(day(c.validFrom)) : t('website.coupons.now') }} →
+            {{ c.validUntil ? formatDate(day(c.validUntil)) : t('website.coupons.noExpiry') }}
+            <span v-if="c.minAmount"> · {{ t('website.coupons.min', { amount: inr(c.minAmount) }) }}</span>
+            <span v-if="c.courseIds?.length">
+              · {{ t('website.coupons.courseCount', { n: c.courseIds.length }, c.courseIds.length) }}</span
+            >
           </p>
         </ion-label>
-        <ion-badge slot="end" :color="c.isActive ? 'success' : 'medium'">{{
-          c.isActive ? 'Active' : 'Inactive'
-        }}</ion-badge>
+        <StatusChip
+          slot="end"
+          :label="c.isActive ? t('common.status.active') : t('common.status.inactive')"
+          :tone="c.isActive ? 'success' : 'medium'"
+        />
       </ion-item>
-      <ion-item v-if="!items.length" lines="none"><ion-label>No coupons yet.</ion-label></ion-item>
+      <ion-item v-if="!items.length" lines="none"
+        ><ion-label>{{ t('website.coupons.empty') }}</ion-label></ion-item
+      >
     </ion-list>
 
     <ion-card>
-      <ion-card-header><ion-card-subtitle>Test a coupon</ion-card-subtitle></ion-card-header>
+      <ion-card-header
+        ><ion-card-subtitle>{{ t('website.coupons.test') }}</ion-card-subtitle></ion-card-header
+      >
       <ion-card-content>
         <ion-item>
-          <ion-input v-model="test.code" label="Code" label-placement="stacked" />
+          <ion-input v-model="test.code" :label="t('website.coupons.code')" label-placement="stacked" />
           <ion-input
             v-model.number="test.amount"
             type="number"
-            label="Order amount (₹)"
+            :label="t('website.coupons.orderAmount')"
             label-placement="stacked"
           />
-          <ion-button slot="end" @click="runTest">Check</ion-button>
+          <ion-button slot="end" @click="runTest">{{ t('website.coupons.check') }}</ion-button>
         </ion-item>
         <p v-if="testResult" :class="testResult.valid ? 'ok' : 'bad'">
           {{ testResult.message }}
           <template v-if="testResult.valid">
-            — discount {{ inr(testResult.discountPaise / 100) }}, pay
-            {{ inr(testResult.finalAmountPaise / 100) }}
+            —
+            {{
+              t('website.coupons.testResult', {
+                discount: formatMoney(testResult.discountPaise),
+                pay: formatMoney(testResult.finalAmountPaise),
+              })
+            }}
           </template>
         </p>
       </ion-card-content>
@@ -56,8 +84,10 @@
     <ion-modal :is-open="!!form" @did-dismiss="form = null">
       <ion-header>
         <ion-toolbar>
-          <ion-title>{{ editingId ? 'Edit coupon' : 'New coupon' }}</ion-title>
-          <ion-buttons slot="end"><ion-button @click="form = null">Close</ion-button></ion-buttons>
+          <ion-title>{{ editingId ? t('website.coupons.edit') : t('website.coupons.new') }}</ion-title>
+          <ion-buttons slot="end"
+            ><ion-button @click="form = null">{{ t('common.actions.close') }}</ion-button></ion-buttons
+          >
         </ion-toolbar>
       </ion-header>
       <ion-content class="ion-padding">
@@ -66,31 +96,38 @@
             <ion-item>
               <ion-input
                 v-model="form.code"
-                label="Code"
+                :label="t('website.coupons.code')"
                 label-placement="stacked"
                 required
-                helper-text="Letters, digits, - and _; stored in upper case"
+                :helper-text="t('website.coupons.codeHelp')"
               />
             </ion-item>
             <ion-item
-              ><ion-input v-model="form.description" label="Description" label-placement="stacked"
+              ><ion-input
+                v-model="form.description"
+                :label="t('website.coupons.description')"
+                label-placement="stacked"
             /></ion-item>
             <ion-item>
               <ion-select
                 v-model="form.discountType"
-                label="Discount type"
+                :label="t('website.coupons.discountType')"
                 label-placement="stacked"
                 interface="popover"
               >
-                <ion-select-option value="percent">Percentage</ion-select-option>
-                <ion-select-option value="fixed">Fixed amount (₹)</ion-select-option>
+                <ion-select-option value="percent">{{ t('website.coupons.percentage') }}</ion-select-option>
+                <ion-select-option value="fixed">{{ t('website.coupons.fixed') }}</ion-select-option>
               </ion-select>
             </ion-item>
             <ion-item>
               <ion-input
                 v-model="form.discountValue"
                 type="number"
-                :label="form.discountType === 'percent' ? 'Discount (%)' : 'Discount (₹)'"
+                :label="
+                  form.discountType === 'percent'
+                    ? t('website.coupons.discountPercent')
+                    : t('website.coupons.discountAmount')
+                "
                 label-placement="stacked"
                 required
               />
@@ -99,7 +136,7 @@
               <ion-input
                 v-model="form.maxDiscount"
                 type="number"
-                label="Max discount (₹)"
+                :label="t('website.coupons.maxDiscount')"
                 label-placement="stacked"
               />
             </ion-item>
@@ -107,18 +144,23 @@
               <ion-input
                 v-model="form.minAmount"
                 type="number"
-                label="Minimum order (₹)"
+                :label="t('website.coupons.minOrder')"
                 label-placement="stacked"
               />
             </ion-item>
             <ion-item>
-              <ion-input v-model="form.validFrom" type="date" label="Valid from" label-placement="stacked" />
+              <ion-input
+                v-model="form.validFrom"
+                type="date"
+                :label="t('website.coupons.validFrom')"
+                label-placement="stacked"
+              />
             </ion-item>
             <ion-item>
               <ion-input
                 v-model="form.validUntil"
                 type="date"
-                label="Valid until"
+                :label="t('website.coupons.validUntil')"
                 label-placement="stacked"
               />
             </ion-item>
@@ -126,7 +168,7 @@
               <ion-input
                 v-model="form.usageLimit"
                 type="number"
-                label="Total uses (blank = unlimited)"
+                :label="t('website.coupons.totalUses')"
                 label-placement="stacked"
               />
             </ion-item>
@@ -134,38 +176,46 @@
               <ion-input
                 v-model="form.perCustomerLimit"
                 type="number"
-                label="Uses per customer (blank = unlimited)"
+                :label="t('website.coupons.perCustomer')"
                 label-placement="stacked"
               />
             </ion-item>
             <ion-item>
               <ion-select
                 v-model="form.courseIds"
-                label="Eligible courses"
+                :label="t('website.coupons.eligibleCourses')"
                 label-placement="stacked"
                 :multiple="true"
-                placeholder="All courses"
+                :placeholder="t('website.coupons.allCourses')"
               >
                 <ion-select-option v-for="c in courses" :key="c.id" :value="c.id">{{
                   c.name
                 }}</ion-select-option>
               </ion-select>
             </ion-item>
-            <ion-item><ion-toggle v-model="form.isActive">Active</ion-toggle></ion-item>
+            <ion-item
+              ><ion-toggle v-model="form.isActive">{{ t('common.status.active') }}</ion-toggle></ion-item
+            >
           </ion-list>
-          <ion-button expand="block" type="submit" :disabled="saving">Save</ion-button>
+          <ion-button expand="block" type="submit" :disabled="saving">{{
+            t('common.actions.save')
+          }}</ion-button>
           <template v-if="editingId">
             <ion-list>
-              <ion-list-header><ion-label>Redemptions</ion-label></ion-list-header>
+              <ion-list-header
+                ><ion-label>{{ t('website.coupons.redemptions') }}</ion-label></ion-list-header
+              >
               <ion-item v-for="r in redemptions" :key="r.id">
                 <ion-label>
                   <h3>{{ r.orderRef }}</h3>
-                  <p>{{ new Date(r.createdAt).toLocaleString() }} · {{ r.customerKey ?? 'guest' }}</p>
+                  <p>{{ formatDateTime(r.createdAt) }} · {{ r.customerKey ?? t('website.coupons.guest') }}</p>
                 </ion-label>
-                <ion-note slot="end">−{{ inr(r.discountPaise / 100) }} · {{ r.status }}</ion-note>
+                <ion-note slot="end"
+                  >−{{ formatMoney(r.discountPaise) }} · {{ statusText(r.status) }}</ion-note
+                >
               </ion-item>
               <ion-item v-if="!redemptions.length" lines="none"
-                ><ion-label>Not used yet.</ion-label></ion-item
+                ><ion-label>{{ t('website.coupons.notUsed') }}</ion-label></ion-item
               >
             </ion-list>
             <ion-button
@@ -174,7 +224,7 @@
               fill="clear"
               color="danger"
               @click="remove"
-              >Delete coupon</ion-button
+              >{{ t('website.coupons.delete') }}</ion-button
             >
           </template>
         </form>
@@ -185,8 +235,8 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
-  IonBadge,
   IonButton,
   IonButtons,
   IonCard,
@@ -213,7 +263,9 @@ import {
 import { add } from 'ionicons/icons';
 import type { CouponDiscountType, CouponDto, CouponValidationResult } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
 import { api } from '@/core/api';
+import { formatDate, formatDateTime, formatMoney, formatNumber } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import { websiteApi, type CouponRedemptionDto, type NamedRef } from './api';
@@ -234,6 +286,7 @@ interface Form {
   isActive: boolean;
 }
 
+const { t, te } = useI18n();
 const auth = useAuthStore();
 const items = ref<CouponDto[]>([]);
 const courses = ref<NamedRef[]>([]);
@@ -245,7 +298,9 @@ const saving = ref(false);
 const test = reactive({ code: '', amount: 10000 as number | string });
 const testResult = ref<CouponValidationResult | null>(null);
 
-const inr = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+/** Coupon amounts are stored in rupees. */
+const inr = (rupees: number) => formatMoney(Math.round(rupees * 100));
+const statusText = (s: string) => (te(`common.status.${s}`, 'en') ? t(`common.status.${s}`) : s);
 const day = (d: string) => d.slice(0, 10);
 const num = (v: Num) => (v === null || v === '' ? null : Number(v));
 
@@ -297,7 +352,7 @@ async function save() {
       isActive: f.isActive,
     });
     form.value = null;
-    await toast('Coupon saved');
+    await toast(t('website.coupons.saved'));
     await load();
   } catch (e) {
     await toastError(e);

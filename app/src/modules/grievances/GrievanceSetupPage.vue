@@ -1,54 +1,73 @@
 <template>
-  <AppPage title="Grievance setup" :on-refresh="load">
+  <AppPage :title="t('grievances.setup.title')" :on-refresh="load">
     <ion-list v-if="settings">
-      <ion-list-header><ion-label>Settings</ion-label></ion-list-header>
+      <ion-list-header
+        ><ion-label>{{ t('grievances.setup.settings') }}</ion-label></ion-list-header
+      >
       <ion-item>
         <ion-input
           v-model="settings.ticketPrefix"
-          label="Ticket number prefix"
+          :label="t('grievances.setup.ticketPrefix')"
           label-placement="stacked"
-          helper-text="2–10 letters/digits, e.g. GRV → GRV-2026-00001"
+          :helper-text="t('grievances.setup.ticketPrefixHelp')"
         />
       </ion-item>
       <ion-item>
         <ion-input
           v-model.number="settings.defaultSlaHours"
           type="number"
-          label="Default SLA (hours)"
+          :label="t('grievances.setup.defaultSla')"
           label-placement="stacked"
         />
       </ion-item>
       <ion-item>
         <ion-select
           v-model="settings.escalationUserId"
-          label="Escalate overdue complaints to"
+          :label="t('grievances.setup.escalateTo')"
           label-placement="stacked"
           interface="popover"
         >
-          <ion-select-option :value="null">Keep current assignee</ion-select-option>
+          <ion-select-option :value="null">{{ t('grievances.setup.keepAssignee') }}</ion-select-option>
           <ion-select-option v-for="a in assignees" :key="a.id" :value="a.id">{{ a.name }}</ion-select-option>
         </ion-select>
       </ion-item>
-      <ion-button expand="block" :disabled="saving" @click="saveSettings">Save settings</ion-button>
+      <ion-button expand="block" :disabled="saving" @click="saveSettings">{{
+        t('grievances.setup.saveSettings')
+      }}</ion-button>
     </ion-list>
 
     <ion-list>
       <ion-list-header>
-        <ion-label>Categories</ion-label>
-        <ion-button aria-label="New category" @click="openEditor()"
+        <ion-label>{{ t('grievances.setup.categories') }}</ion-label>
+        <ion-button :aria-label="t('grievances.setup.newCategory')" @click="openEditor()"
           ><ion-icon slot="icon-only" :icon="add"
         /></ion-button>
       </ion-list-header>
       <ion-item v-for="c in categories" :key="c.id">
         <ion-label>
-          <h2>{{ c.name }} <ion-badge v-if="!c.isActive" color="medium">inactive</ion-badge></h2>
-          <p>SLA {{ c.slaHours }} h · {{ c.defaultAssigneeName ?? 'No default assignee' }}</p>
+          <h2>
+            {{ c.name }}
+            <StatusChip v-if="!c.isActive" :label="t('common.status.inactive')" />
+          </h2>
+          <p>
+            {{ t('grievances.setup.slaLine', { n: formatNumber(c.slaHours) }) }} ·
+            {{ c.defaultAssigneeName ?? t('grievances.setup.noDefaultAssignee') }}
+          </p>
           <p v-if="c.description">{{ c.description }}</p>
         </ion-label>
-        <ion-button slot="end" fill="clear" :aria-label="`Edit ${c.name}`" @click="openEditor(c)"
+        <ion-button
+          slot="end"
+          fill="clear"
+          :aria-label="t('grievances.setup.editAria', { name: c.name })"
+          @click="openEditor(c)"
           ><ion-icon slot="icon-only" :icon="createOutline"
         /></ion-button>
-        <ion-button slot="end" fill="clear" color="danger" :aria-label="`Delete ${c.name}`" @click="remove(c)"
+        <ion-button
+          slot="end"
+          fill="clear"
+          color="danger"
+          :aria-label="t('grievances.setup.deleteAria', { name: c.name })"
+          @click="remove(c)"
           ><ion-icon slot="icon-only" :icon="trashOutline"
         /></ion-button>
       </ion-item>
@@ -57,20 +76,28 @@
     <ion-modal :is-open="!!form" @did-dismiss="form = null">
       <ion-header>
         <ion-toolbar>
-          <ion-title>{{ editingId ? 'Edit category' : 'New category' }}</ion-title>
-          <ion-buttons slot="end"><ion-button @click="form = null">Close</ion-button></ion-buttons>
+          <ion-title>{{
+            editingId ? t('grievances.setup.editCategory') : t('grievances.setup.newCategory')
+          }}</ion-title>
+          <ion-buttons slot="end"
+            ><ion-button @click="form = null">{{ t('common.actions.close') }}</ion-button></ion-buttons
+          >
         </ion-toolbar>
       </ion-header>
       <ion-content class="ion-padding">
         <form v-if="form" @submit.prevent="save">
           <ion-list>
             <ion-item
-              ><ion-input v-model="form.name" label="Name" label-placement="stacked" required
+              ><ion-input
+                v-model="form.name"
+                :label="t('common.labels.name')"
+                label-placement="stacked"
+                required
             /></ion-item>
             <ion-item>
               <ion-textarea
                 v-model="form.description"
-                label="Description"
+                :label="t('grievances.setup.description')"
                 label-placement="stacked"
                 :auto-grow="true"
               />
@@ -79,7 +106,7 @@
               <ion-input
                 v-model.number="form.slaHours"
                 type="number"
-                label="SLA (hours)"
+                :label="t('grievances.setup.slaHours')"
                 label-placement="stacked"
                 min="1"
               />
@@ -87,19 +114,23 @@
             <ion-item>
               <ion-select
                 v-model="form.defaultAssigneeUserId"
-                label="Default assignee"
+                :label="t('grievances.setup.defaultAssignee')"
                 label-placement="stacked"
                 interface="popover"
               >
-                <ion-select-option :value="null">None</ion-select-option>
+                <ion-select-option :value="null">{{ t('common.labels.none') }}</ion-select-option>
                 <ion-select-option v-for="a in assignees" :key="a.id" :value="a.id">{{
                   a.name
                 }}</ion-select-option>
               </ion-select>
             </ion-item>
-            <ion-item><ion-toggle v-model="form.isActive">Active</ion-toggle></ion-item>
+            <ion-item
+              ><ion-toggle v-model="form.isActive">{{ t('common.status.active') }}</ion-toggle></ion-item
+            >
           </ion-list>
-          <ion-button expand="block" type="submit" :disabled="saving">Save</ion-button>
+          <ion-button expand="block" type="submit" :disabled="saving">{{
+            t('common.actions.save')
+          }}</ion-button>
         </form>
       </ion-content>
     </ion-modal>
@@ -109,7 +140,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import {
-  IonBadge,
   IonButton,
   IonButtons,
   IonContent,
@@ -130,6 +160,7 @@ import {
   alertController,
 } from '@ionic/vue';
 import { add, createOutline, trashOutline } from 'ionicons/icons';
+import { useI18n } from 'vue-i18n';
 import type {
   GrievanceCategoryDto,
   GrievanceCategoryInput,
@@ -137,9 +168,12 @@ import type {
   GrievanceUserRef,
 } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { formatNumber } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
 import { grievancesApi } from './api';
 
+const { t } = useI18n();
 const settings = ref<GrievanceSettingsDto | null>(null);
 const categories = ref<GrievanceCategoryDto[]>([]);
 const assignees = ref<GrievanceUserRef[]>([]);
@@ -170,7 +204,7 @@ async function saveSettings() {
       ...settings.value,
       defaultSlaHours: Number(settings.value.defaultSlaHours),
     });
-    await toast('Settings saved');
+    await toast(t('grievances.setup.settingsSaved'));
   } catch (e) {
     await toastError(e);
   } finally {
@@ -201,7 +235,7 @@ async function save() {
     if (editingId.value) await grievancesApi.updateCategory(editingId.value, body);
     else await grievancesApi.createCategory(body);
     form.value = null;
-    await toast('Category saved');
+    await toast(t('grievances.setup.categorySaved'));
     await load();
   } catch (e) {
     await toastError(e);
@@ -212,12 +246,12 @@ async function save() {
 
 async function remove(c: GrievanceCategoryDto) {
   const alert = await alertController.create({
-    header: `Delete ${c.name}?`,
-    message: 'Categories already used by complaints cannot be deleted; deactivate them instead.',
+    header: t('grievances.setup.deleteTitle', { name: c.name }),
+    message: t('grievances.setup.deleteMessage'),
     buttons: [
-      { text: 'Cancel', role: 'cancel' },
+      { text: t('common.actions.cancel'), role: 'cancel' },
       {
-        text: 'Delete',
+        text: t('common.actions.delete'),
         role: 'destructive',
         handler: () => grievancesApi.removeCategory(c.id).then(load).catch(toastError),
       },

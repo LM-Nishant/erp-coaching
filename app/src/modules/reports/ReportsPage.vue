@@ -1,15 +1,15 @@
 <template>
-  <AppPage title="Reports" :on-refresh="load">
+  <AppPage :title="t('reports.title')" :on-refresh="load">
     <template #actions>
       <ion-button v-can="'reports.export'" router-link="/reports/exports">
-        <ion-icon slot="start" :icon="cloudDownloadOutline" />Exports
+        <ion-icon slot="start" :icon="cloudDownloadOutline" />{{ t('reports.exportsButton') }}
       </ion-button>
     </template>
 
-    <p v-if="loaded && !catalog.length" class="muted">No reports are available for your role or plan.</p>
+    <p v-if="loaded && !catalog.length" class="muted">{{ t('reports.noReports') }}</p>
     <ion-list v-for="g in groups" :key="g.category">
       <ion-list-header>
-        <ion-label>{{ g.label }}</ion-label>
+        <ion-label>{{ t(`reports.categories.${g.category}`) }}</ion-label>
       </ion-list-header>
       <ion-item v-for="r in g.items" :key="r.key" :router-link="`/reports/${r.key}`" detail>
         <ion-icon slot="start" :icon="g.icon" color="medium" />
@@ -24,6 +24,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { IonButton, IonIcon, IonItem, IonLabel, IonList, IonListHeader } from '@ionic/vue';
 import {
   briefcaseOutline,
@@ -37,11 +38,13 @@ import AppPage from '@/components/AppPage.vue';
 import { toastError } from '@/core/toast';
 import { reportsApi } from './api';
 
-const CATEGORIES: { category: ReportCategory; label: string; icon: string }[] = [
-  { category: 'finance', label: 'Finance', icon: walletOutline },
-  { category: 'academic', label: 'Academic', icon: schoolOutline },
-  { category: 'staff', label: 'Staff', icon: briefcaseOutline },
-  { category: 'operations', label: 'Operations', icon: constructOutline },
+const { t } = useI18n();
+
+const CATEGORIES: { category: ReportCategory; icon: string }[] = [
+  { category: 'finance', icon: walletOutline },
+  { category: 'academic', icon: schoolOutline },
+  { category: 'staff', icon: briefcaseOutline },
+  { category: 'operations', icon: constructOutline },
 ];
 
 const catalog = ref<ReportCatalogItemDto[]>([]);

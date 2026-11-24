@@ -1,44 +1,20 @@
 import type { ReportCellValue, ReportColumnType, ReportMetricDto } from '@erp/shared';
+import { formatDate, formatDateTime, formatMoney, formatNumber, formatPercent } from '@/core/format';
+import { i18n } from '@/i18n';
 
 /**
- * Display formatting for report values (mirrors the backend renderers): money is paise shown in
+ * Display formatting for report values, in the user's language (see core/format): money is paise shown in
  * rupees, percentages are already scaled (85.5 = 85.5%), datetimes are shown in the institute timezone.
  */
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const numberFmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
-const moneyFmt = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const percentFmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 1 });
-const YMD = /^(\d{4})-(\d{2})-(\d{2})$/;
-const pad = (n: number) => String(n).padStart(2, '0');
-
 /** `2026-01-12` → `12 Jan 2026` (a calendar date: no timezone shift). */
-export function displayDate(ymd: string): string {
-  const m = YMD.exec(ymd);
-  return m ? `${m[3]} ${MONTHS[Number(m[2]) - 1]} ${m[1]}` : ymd;
-}
+export const displayDate = (ymd: string) => formatDate(ymd);
 
-/** Instant → `12 Jan 2026, 14:05` in the timezone. */
-export function displayDateTime(instant: string, timezone: string): string {
-  const date = new Date(instant);
-  if (Number.isNaN(date.getTime())) return instant;
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-GB', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-    })
-      .formatToParts(date)
-      .map((p) => [p.type, p.value]),
-  );
-  return `${parts.day} ${MONTHS[Number(parts.month) - 1]} ${parts.year}, ${pad(Number(parts.hour))}:${parts.minute}`;
-}
+/** Instant → `12 Jan 2026, 2:05 pm` in the timezone. */
+export const displayDateTime = (instant: string, timezone: string) =>
+  formatDateTime(instant, { timeZone: timezone });
 
-export const money = (paise: number) => `₹${moneyFmt.format(paise / 100)}`;
+export const money = (paise: number) => formatMoney(paise);
 
 /** Human-readable cell or metric value; `—` when empty. */
 export function formatValue(
@@ -52,11 +28,11 @@ export function formatValue(
     case 'money':
       return money(Number(value));
     case 'percent':
-      return `${percentFmt.format(Number(value))}%`;
+      return formatPercent(Number(value), 1);
     case 'hours':
-      return `${numberFmt.format(Number(value))} h`;
+      return i18n.global.t('reports.units.hours', { n: formatNumber(Number(value)) });
     case 'number':
-      return numberFmt.format(Number(value));
+      return formatNumber(Number(value));
     case 'date':
       return displayDate(String(value));
     case 'datetime':
@@ -94,8 +70,14 @@ export function formatBytes(bytes: number): string {
   return `${n >= 10 || i === 0 ? Math.round(n) : Math.round(n * 10) / 10} ${units[i]}`;
 }
 
-/** `this_month` → `This month`; for raw status/feature keys. */
+/** `this_month` → `This month`; for raw feature keys with no translation. */
 export const humanize = (key: string) => {
   const s = key.replace(/[_.-]+/g, ' ').trim();
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
+
+/** Translated label for a raw key under `prefix` (e.g. `reports.platform.status`), else the humanized key. */
+export function keyLabel(prefix: string, key: string): string {
+  const path = `${prefix}.${key}`;
+  return i18n.global.te(path) || i18n.global.te(path, 'en') ? i18n.global.t(path) : humanize(key);
+}

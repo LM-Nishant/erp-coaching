@@ -1,15 +1,27 @@
 <template>
   <ion-list>
     <ion-item v-if="block.type !== 'image'">
-      <ion-input v-model="s.heading" label="Heading" label-placement="stacked" :maxlength="150" />
+      <ion-input
+        v-model="s.heading"
+        :label="t('website.editor.heading')"
+        label-placement="stacked"
+        :maxlength="150"
+      />
     </ion-item>
 
     <template v-if="block.type === 'hero'">
       <ion-item>
-        <ion-input v-model="s.subheading" label="Sub-heading" label-placement="stacked" :maxlength="300" />
+        <ion-input
+          v-model="s.subheading"
+          :label="t('website.editor.subheading')"
+          label-placement="stacked"
+          :maxlength="300"
+        />
       </ion-item>
-      <ImageField v-model="s.imageFileId" label="Background image" />
-      <ion-item><ion-input v-model="s.ctaLabel" label="Button label" label-placement="stacked" /></ion-item>
+      <ImageField v-model="s.imageFileId" :label="t('website.editor.backgroundImage')" />
+      <ion-item
+        ><ion-input v-model="s.ctaLabel" :label="t('website.editor.buttonLabel')" label-placement="stacked"
+      /></ion-item>
       <LinkField v-model="s.ctaHref" :pages="pages" :courses="courses" />
     </template>
 
@@ -17,38 +29,53 @@
       <ion-item>
         <ion-textarea
           v-model="s.body"
-          label="Text"
+          :label="t('website.editor.text')"
           label-placement="stacked"
           :auto-grow="true"
           :rows="6"
-          helper-text="Markdown: ## heading, **bold**, *italic*, - list, [link](https://…)"
+          :helper-text="t('website.editor.markdownHelp')"
         />
       </ion-item>
     </template>
 
     <template v-else-if="block.type === 'image'">
-      <ImageField v-model="s.fileId" label="Image" :clearable="false" />
-      <ion-item><ion-input v-model="s.alt" label="Alt text" label-placement="stacked" /></ion-item>
-      <ion-item><ion-input v-model="s.caption" label="Caption" label-placement="stacked" /></ion-item>
-      <LinkField v-model="s.href" :pages="pages" :courses="courses" label="Link (optional)" />
+      <ImageField v-model="s.fileId" :label="t('website.editor.image')" :clearable="false" />
+      <ion-item
+        ><ion-input v-model="s.alt" :label="t('website.editor.altText')" label-placement="stacked"
+      /></ion-item>
+      <ion-item
+        ><ion-input v-model="s.caption" :label="t('website.editor.caption')" label-placement="stacked"
+      /></ion-item>
+      <LinkField
+        v-model="s.href"
+        :pages="pages"
+        :courses="courses"
+        :label="t('website.editor.linkOptional')"
+      />
     </template>
 
     <template v-else-if="block.type === 'gallery'">
       <div v-for="(img, i) in s.images" :key="i" class="sub">
-        <ImageField v-model="img.fileId" :label="`Image ${i + 1}`" :clearable="false" />
+        <ImageField
+          v-model="img.fileId"
+          :label="t('website.editor.imageN', { n: i + 1 })"
+          :clearable="false"
+        />
         <ion-item>
-          <ion-input v-model="img.caption" label="Caption" label-placement="stacked" />
+          <ion-input v-model="img.caption" :label="t('website.editor.caption')" label-placement="stacked" />
           <ion-button
             slot="end"
             fill="clear"
             color="danger"
-            aria-label="Remove image"
+            :aria-label="t('website.editor.removeImage')"
             @click="s.images!.splice(i, 1)"
             ><ion-icon slot="icon-only" :icon="trashOutline"
           /></ion-button>
         </ion-item>
       </div>
-      <ion-button fill="clear" size="small" @click="addGalleryImage">+ Add image</ion-button>
+      <ion-button fill="clear" size="small" @click="addGalleryImage">{{
+        t('website.editor.addImage')
+      }}</ion-button>
       <input ref="galleryInput" type="file" accept="image/*" multiple hidden @change="uploadGallery" />
     </template>
 
@@ -56,31 +83,47 @@
       <ion-item>
         <ion-select
           v-model="s.courseIds"
-          label="Courses"
+          :label="t('website.editor.courses')"
           label-placement="stacked"
           :multiple="true"
-          placeholder="All active courses"
+          :placeholder="t('website.editor.allActiveCourses')"
         >
           <ion-select-option v-for="c in courses" :key="c.id" :value="c.id">{{ c.name }}</ion-select-option>
         </ion-select>
       </ion-item>
-      <ion-item><ion-toggle v-model="s.showDescription">Show descriptions</ion-toggle></ion-item>
       <ion-item
-        ><ion-toggle v-model="s.showBuyButton">Show “Buy online” button (checkout)</ion-toggle></ion-item
+        ><ion-toggle v-model="s.showDescription">{{
+          t('website.editor.showDescriptions')
+        }}</ion-toggle></ion-item
       >
+      <ion-item>
+        <ion-toggle v-model="s.showBuyButton">{{ t('website.editor.showBuyButton') }}</ion-toggle>
+      </ion-item>
     </template>
 
     <template v-else-if="block.type === 'batches'">
-      <RefSelect v-model="s.courseId" label="Course" empty-label="Any course" :options="courses" />
-      <RefSelect v-model="s.branchId" label="Branch" empty-label="Default branch" :options="branches" />
-      <ion-item><ion-toggle v-model="s.upcomingOnly">Only upcoming / running batches</ion-toggle></ion-item>
+      <RefSelect
+        v-model="s.courseId"
+        :label="t('website.editor.course')"
+        :empty-label="t('website.editor.anyCourse')"
+        :options="courses"
+      />
+      <RefSelect
+        v-model="s.branchId"
+        :label="t('website.editor.branch')"
+        :empty-label="t('website.editor.defaultBranch')"
+        :options="branches"
+      />
+      <ion-item
+        ><ion-toggle v-model="s.upcomingOnly">{{ t('website.editor.upcomingOnly') }}</ion-toggle></ion-item
+      >
       <ion-item>
         <ion-input
           v-model.number="s.limit"
           type="number"
           min="1"
           max="50"
-          label="Max batches"
+          :label="t('website.editor.maxBatches')"
           label-placement="stacked"
         />
       </ion-item>
@@ -89,51 +132,61 @@
     <template v-else-if="block.type === 'faculty'">
       <div v-for="(m, i) in s.members" :key="i" class="sub">
         <ion-item>
-          <ion-input v-model="m.name" label="Name" label-placement="stacked" />
+          <ion-input v-model="m.name" :label="t('common.labels.name')" label-placement="stacked" />
           <ion-button
             slot="end"
             fill="clear"
             color="danger"
-            aria-label="Remove member"
+            :aria-label="t('website.editor.removeMember')"
             @click="s.members!.splice(i, 1)"
             ><ion-icon slot="icon-only" :icon="trashOutline"
           /></ion-button>
         </ion-item>
-        <ion-item><ion-input v-model="m.subject" label="Subject" label-placement="stacked" /></ion-item>
         <ion-item
-          ><ion-textarea v-model="m.bio" label="Bio" label-placement="stacked" :auto-grow="true"
+          ><ion-input v-model="m.subject" :label="t('website.editor.subject')" label-placement="stacked"
         /></ion-item>
-        <ImageField v-model="m.photoFileId" label="Photo" />
+        <ion-item
+          ><ion-textarea
+            v-model="m.bio"
+            :label="t('website.editor.bio')"
+            label-placement="stacked"
+            :auto-grow="true"
+        /></ion-item>
+        <ImageField v-model="m.photoFileId" :label="t('website.editor.photo')" />
       </div>
-      <ion-button fill="clear" size="small" @click="s.members!.push({ name: '', subject: '', bio: '' })"
-        >+ Add faculty member</ion-button
-      >
+      <ion-button fill="clear" size="small" @click="s.members!.push({ name: '', subject: '', bio: '' })">{{
+        t('website.editor.addFaculty')
+      }}</ion-button>
     </template>
 
     <template v-else-if="block.type === 'testimonials'">
-      <div v-for="(t, i) in s.items" :key="i" class="sub">
+      <div v-for="(item, i) in s.items" :key="i" class="sub">
         <ion-item>
-          <ion-input v-model="t.name" label="Name" label-placement="stacked" />
+          <ion-input v-model="item.name" :label="t('common.labels.name')" label-placement="stacked" />
           <ion-button
             slot="end"
             fill="clear"
             color="danger"
-            aria-label="Remove item"
+            :aria-label="t('website.editor.removeItem')"
             @click="s.items!.splice(i, 1)"
             ><ion-icon slot="icon-only" :icon="trashOutline"
           /></ion-button>
         </ion-item>
         <ion-item
-          ><ion-input v-model="t.role" label="Role (e.g. JEE 2025, AIR 120)" label-placement="stacked"
+          ><ion-input v-model="item.role" :label="t('website.editor.role')" label-placement="stacked"
         /></ion-item>
         <ion-item
-          ><ion-textarea v-model="t.quote" label="Quote" label-placement="stacked" :auto-grow="true"
+          ><ion-textarea
+            v-model="item.quote"
+            :label="t('website.editor.quote')"
+            label-placement="stacked"
+            :auto-grow="true"
         /></ion-item>
-        <ImageField v-model="t.photoFileId" label="Photo" />
+        <ImageField v-model="item.photoFileId" :label="t('website.editor.photo')" />
       </div>
-      <ion-button fill="clear" size="small" @click="s.items!.push({ name: '', role: '', quote: '' })"
-        >+ Add testimonial</ion-button
-      >
+      <ion-button fill="clear" size="small" @click="s.items!.push({ name: '', role: '', quote: '' })">{{
+        t('website.editor.addTestimonial')
+      }}</ion-button>
     </template>
 
     <template v-else-if="block.type === 'announcements'">
@@ -143,88 +196,125 @@
           type="number"
           min="1"
           max="20"
-          label="Max items"
+          :label="t('website.editor.maxItems')"
           label-placement="stacked"
         />
       </ion-item>
-      <ion-item lines="none"><ion-note>Manage items under Website announcements.</ion-note></ion-item>
+      <ion-item lines="none"
+        ><ion-note>{{ t('website.editor.announcementsNote') }}</ion-note></ion-item
+      >
     </template>
 
     <template v-else-if="block.type === 'enquiry_form' || block.type === 'demo_form'">
       <ion-item
-        ><ion-textarea v-model="s.intro" label="Intro" label-placement="stacked" :auto-grow="true"
+        ><ion-textarea
+          v-model="s.intro"
+          :label="t('website.editor.intro')"
+          label-placement="stacked"
+          :auto-grow="true"
       /></ion-item>
       <RefSelect
         v-if="block.type === 'demo_form'"
         v-model="s.courseId"
-        label="Course"
-        empty-label="Any course"
+        :label="t('website.editor.course')"
+        :empty-label="t('website.editor.anyCourse')"
         :options="courses"
       />
-      <RefSelect v-model="s.branchId" label="Branch" empty-label="Default branch" :options="branches" />
+      <RefSelect
+        v-model="s.branchId"
+        :label="t('website.editor.branch')"
+        :empty-label="t('website.editor.defaultBranch')"
+        :options="branches"
+      />
       <template v-if="block.type === 'demo_form'">
-        <ion-list-header><ion-label>Demo class slots</ion-label></ion-list-header>
+        <ion-list-header
+          ><ion-label>{{ t('website.editor.demoSlots') }}</ion-label></ion-list-header
+        >
         <ion-item v-for="(slot, i) in s.slots" :key="i">
           <ion-input
             v-model="slot.label"
-            label="Slot"
+            :label="t('website.editor.slot')"
             label-placement="stacked"
-            placeholder="Sat 10 AM – Physics"
+            :placeholder="t('website.editor.slotPlaceholder')"
           />
           <ion-input
             v-model="slot.startsAt"
             type="datetime-local"
-            label="Starts at"
+            :label="t('website.editor.startsAt')"
             label-placement="stacked"
           />
           <ion-button
             slot="end"
             fill="clear"
             color="danger"
-            aria-label="Remove slot"
+            :aria-label="t('website.editor.removeSlot')"
             @click="s.slots!.splice(i, 1)"
             ><ion-icon slot="icon-only" :icon="trashOutline"
           /></ion-button>
         </ion-item>
-        <ion-button fill="clear" size="small" @click="s.slots!.push({ label: '', startsAt: null })"
-          >+ Add slot</ion-button
-        >
+        <ion-button fill="clear" size="small" @click="s.slots!.push({ label: '', startsAt: null })">{{
+          t('website.editor.addSlot')
+        }}</ion-button>
       </template>
       <ion-item
-        ><ion-input v-model="s.submitLabel" label="Submit button label" label-placement="stacked"
+        ><ion-input
+          v-model="s.submitLabel"
+          :label="t('website.editor.submitLabel')"
+          label-placement="stacked"
       /></ion-item>
       <ion-item>
-        <ion-input v-model="s.successMessage" label="Success message" label-placement="stacked" />
+        <ion-input
+          v-model="s.successMessage"
+          :label="t('website.editor.successMessage')"
+          label-placement="stacked"
+        />
       </ion-item>
       <ion-item lines="none">
-        <ion-note>Submissions arrive in Admissions → Enquiries with source “website”.</ion-note>
+        <ion-note>{{ t('website.editor.submissionsNote') }}</ion-note>
       </ion-item>
     </template>
 
     <template v-else-if="block.type === 'contact'">
       <ion-item
-        ><ion-textarea v-model="s.address" label="Address" label-placement="stacked" :auto-grow="true"
+        ><ion-textarea
+          v-model="s.address"
+          :label="t('website.editor.address')"
+          label-placement="stacked"
+          :auto-grow="true"
       /></ion-item>
-      <ion-item><ion-input v-model="s.phone" label="Phone" label-placement="stacked" /></ion-item>
       <ion-item
-        ><ion-input v-model="s.email" type="email" label="Email" label-placement="stacked"
+        ><ion-input v-model="s.phone" :label="t('website.editor.phone')" label-placement="stacked"
+      /></ion-item>
+      <ion-item
+        ><ion-input
+          v-model="s.email"
+          type="email"
+          :label="t('website.editor.email')"
+          label-placement="stacked"
       /></ion-item>
       <ion-item>
         <ion-input
           v-model="s.mapQuery"
-          label="Map location"
+          :label="t('website.editor.mapLocation')"
           label-placement="stacked"
-          helper-text="Address or place name shown on an embedded map"
+          :helper-text="t('website.editor.mapHelp')"
         />
       </ion-item>
     </template>
 
     <template v-else-if="block.type === 'cta'">
       <ion-item
-        ><ion-textarea v-model="s.text" label="Text" label-placement="stacked" :auto-grow="true"
+        ><ion-textarea
+          v-model="s.text"
+          :label="t('website.editor.text')"
+          label-placement="stacked"
+          :auto-grow="true"
       /></ion-item>
       <ion-item
-        ><ion-input v-model="s.buttonLabel" label="Button label" label-placement="stacked"
+        ><ion-input
+          v-model="s.buttonLabel"
+          :label="t('website.editor.buttonLabel')"
+          label-placement="stacked"
       /></ion-item>
       <LinkField v-model="s.buttonHref" :pages="pages" :courses="courses" />
     </template>
@@ -233,6 +323,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   IonButton,
   IonIcon,
@@ -271,6 +362,7 @@ import ImageField from './ImageField.vue';
 import RefSelect from './RefSelect.vue';
 import LinkField from './LinkField.vue';
 
+const { t } = useI18n();
 const props = defineProps<{
   block: WebsiteBlock;
   pages: { slug: string; title: string }[];

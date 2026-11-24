@@ -1,20 +1,27 @@
 <template>
-  <AppPage title="Staff attendance" :on-refresh="load">
+  <AppPage :title="t('hr.attendance.title')" :on-refresh="load">
     <ion-segment v-model="view" @ion-change="load">
-      <ion-segment-button value="day">Daily register</ion-segment-button>
-      <ion-segment-button value="month">Monthly summary</ion-segment-button>
+      <ion-segment-button value="day">{{ t('hr.attendance.daily') }}</ion-segment-button>
+      <ion-segment-button value="month">{{ t('hr.attendance.monthly') }}</ion-segment-button>
     </ion-segment>
 
     <template v-if="view === 'day'">
       <ion-item>
-        <ion-input v-model="date" type="date" label="Date" label-placement="stacked" @ion-change="load" />
+        <ion-input
+          v-model="date"
+          type="date"
+          :label="t('common.labels.date')"
+          label-placement="stacked"
+          @ion-change="load"
+        />
       </ion-item>
       <ion-list>
         <ion-item v-for="e in employees" :key="e.id">
           <ion-label>
             <h3>{{ e.name }}</h3>
             <p>
-              {{ e.employeeCode }}<span v-if="marks[e.id]?.source"> · {{ marks[e.id].source }}</span>
+              {{ e.employeeCode
+              }}<span v-if="marks[e.id]?.source"> · {{ t(`hr.source.${marks[e.id].source}`) }}</span>
             </p>
           </ion-label>
           <ion-select
@@ -25,33 +32,46 @@
             :disabled="!canEdit || marks[e.id].source === 'leave'"
           >
             <ion-select-option v-for="s in STAFF_ATTENDANCE_STATUSES" :key="s" :value="s">{{
-              s
+              t(ATTENDANCE_STATUS[s].label)
             }}</ion-select-option>
           </ion-select>
         </ion-item>
       </ion-list>
-      <ion-button v-can="'hr.edit'" expand="block" :disabled="saving" @click="save"
-        >Save attendance</ion-button
-      >
+      <ion-button v-can="'hr.edit'" expand="block" :disabled="saving" @click="save">{{
+        t('hr.attendance.save')
+      }}</ion-button>
       <ion-button v-can="'hr.edit'" expand="block" fill="outline" @click="markAll('present')">
-        Mark unmarked as present
+        {{ t('hr.attendance.markAll') }}
       </ion-button>
     </template>
 
     <template v-else>
       <ion-item>
-        <ion-input v-model="month" type="month" label="Month" label-placement="stacked" @ion-change="load" />
+        <ion-input
+          v-model="month"
+          type="month"
+          :label="t('hr.month')"
+          label-placement="stacked"
+          @ion-change="load"
+        />
       </ion-item>
       <ion-list>
         <ion-item v-for="r in summary" :key="r.employee.id">
           <ion-label>
             <h3>{{ r.employee.name }}</h3>
             <p>
-              P {{ r.present }} · A {{ r.absent }} · Late {{ r.late }} · Leave {{ r.leave }} · Half
-              {{ r.half_day }}
+              {{
+                t('hr.attendance.summary', {
+                  present: formatNumber(r.present),
+                  absent: formatNumber(r.absent),
+                  late: formatNumber(r.late),
+                  leave: formatNumber(r.leave),
+                  halfDay: formatNumber(r.half_day),
+                })
+              }}
             </p>
           </ion-label>
-          <ion-note slot="end">LOP {{ r.lopDays }}</ion-note>
+          <ion-note slot="end">{{ t('hr.attendance.lop', { n: formatNumber(r.lopDays) }) }}</ion-note>
         </ion-item>
       </ion-list>
     </template>
@@ -60,6 +80,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   IonButton,
   IonInput,
@@ -74,9 +95,12 @@ import {
 } from '@ionic/vue';
 import { STAFF_ATTENDANCE_STATUSES, type EmployeeDto, type StaffAttendanceStatus } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import { formatNumber } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
-import { hrApi, todayIso, type AttendanceSummaryRow } from './api';
+import { ATTENDANCE_STATUS, hrApi, todayIso, type AttendanceSummaryRow } from './api';
+
+const { t } = useI18n();
 
 const auth = useAuthStore();
 const canEdit = computed(() => auth.can('hr.edit'));
@@ -121,7 +145,7 @@ async function save() {
   saving.value = true;
   try {
     await hrApi.saveAttendance(entries);
-    await toast('Attendance saved');
+    await toast(t('hr.attendance.saved'));
     await load();
   } catch (e) {
     await toastError(e);

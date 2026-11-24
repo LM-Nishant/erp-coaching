@@ -8,6 +8,7 @@ import {
   type ReportFiltersInput,
 } from '@erp/shared';
 import type { LocationQuery, LocationQueryRaw } from 'vue-router';
+import { i18n } from '@/i18n';
 
 /** Filter form state of a report or dashboard; mirrored in the route query so views can be shared. */
 export interface ReportFilterState {
@@ -121,11 +122,12 @@ export function todayIn(timezone: string, now = new Date()): string {
 /** Why a custom range can't be used yet, or null (same rules as the API). */
 export function customRangeError(state: Pick<ReportFilterState, 'preset' | 'from' | 'to'>): string | null {
   if (state.preset !== 'custom') return null;
-  if (!state.from || !state.to) return 'Choose both a from and a to date';
-  if (!YMD.test(state.from) || !YMD.test(state.to)) return 'Dates must be in YYYY-MM-DD form';
-  if (state.from > state.to) return 'The from date must be on or before the to date';
+  const { t } = i18n.global;
+  if (!state.from || !state.to) return t('reports.filters.errors.bothDates');
+  if (!YMD.test(state.from) || !YMD.test(state.to)) return t('reports.filters.errors.format');
+  if (state.from > state.to) return t('reports.filters.errors.order');
   if (daysInRange(state.from, state.to) > REPORT_MAX_RANGE_DAYS) {
-    return `The date range can be at most ${REPORT_MAX_RANGE_DAYS} days`;
+    return t('reports.filters.errors.maxRange', { days: REPORT_MAX_RANGE_DAYS });
   }
   return null;
 }
@@ -155,3 +157,6 @@ export function reconcileState(state: ReportFilterState, options: ReportFilterOp
   if (next.batchId && !batchChoices(options, next).some((b) => b.id === next.batchId)) next.batchId = null;
   return next;
 }
+
+/** Translated name of a date preset (`this_month` → `This month`). */
+export const presetLabel = (preset: ReportDatePreset) => i18n.global.t(`reports.presets.${preset}`);

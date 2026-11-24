@@ -7,7 +7,7 @@ import { authRateLimit, tokenRateLimit } from '../../shared/middleware/security'
 import { BadRequest, NotFound } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
 import { idParam } from '../../shared/utilities/pagination';
-import { SECURE_SCREEN_NAME } from '@erp/shared';
+import { APP_LOCALES, SECURE_SCREEN_NAME } from '@erp/shared';
 import { User } from '../users/user.model';
 import * as auth from './auth.service';
 import { listUserDevices, revokeDevice, searchPlatformUsers } from './devices.service';
@@ -77,6 +77,11 @@ export function authRoutes(api: Router) {
 
   r.get('/me', authenticate, async (_req, res) => {
     res.json(await auth.buildMe());
+  });
+
+  r.put('/me/locale', authenticate, async (req, res) => {
+    const body = parse(z.object({ locale: z.enum(APP_LOCALES) }), req.body);
+    res.json(await auth.setUserLocale(req.ctx.userId!, body.locale));
   });
 
   r.post('/select-institute', authenticate, async (req, res) => {
