@@ -19,6 +19,7 @@ import {
 } from '@erp/shared';
 import { setFileResponseHeaders } from '../../shared/utilities/file-response';
 import { FileObject } from '../files/file.model';
+import { setupStatus } from './setup-status';
 
 const color = z
   .string()
@@ -124,6 +125,11 @@ export function instituteRoutes(api: Router) {
       },
     });
     res.json(await profileDto(inst));
+  });
+
+  /** New-institute checklist for the staff home (course → batch → fees → people → payments). */
+  r.get('/setup-status', requirePermission('institute', 'configure'), async (_req, res) => {
+    res.json(await setupStatus(requireTenantContext().instituteId));
   });
 
   r.get('/settings', requirePermission('institute', 'view'), async (_req, res) => {

@@ -1,34 +1,56 @@
 <template>
-  <AppPage title="Fee accounts" :on-refresh="load">
+  <AppPage :title="t('fees.accounts.title')" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'fees.create'" aria-label="Assign fees" @click="openCreate"
+      <ion-button v-can="'fees.create'" :aria-label="t('fees.accounts.assign')" @click="openCreate"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
+    <ion-button v-can="'fees.create'" expand="block" class="collect" @click="collecting = true">
+      <ion-icon slot="start" :icon="walletOutline" />{{ t('fees.collect.title') }}
+    </ion-button>
     <ion-searchbar
       v-model="search"
       :debounce="400"
-      placeholder="Student name / admission no."
+      :placeholder="t('fees.accounts.search')"
       @ion-input="load"
     />
     <ion-item lines="none"
-      ><ion-checkbox v-model="duesOnly" @ion-change="load">Only with dues</ion-checkbox></ion-item
+      ><ion-checkbox v-model="duesOnly" @ion-change="load">{{
+        t('fees.accounts.duesOnly')
+      }}</ion-checkbox></ion-item
     >
-    <ion-list>
+    <p v-if="total" class="muted count">{{ t('fees.accounts.count', { n: total }, total) }}</p>
+    <ion-list v-if="accounts.length">
       <ion-item v-for="a in accounts" :key="a.id" button :router-link="`/fees/accounts/${a.id}`">
         <ion-label>
           <h3>
             {{ a.studentName }} <small class="muted">{{ a.admissionNumber }}</small>
           </h3>
           <p>{{ a.title }}</p>
-          <p class="muted">Net {{ rupees(a.net) }} · paid {{ rupees(a.paid) }}</p>
+          <p class="muted">
+            {{ t('fees.accounts.netPaid', { net: formatMoney(a.net), paid: formatMoney(a.paid) }) }}
+          </p>
         </ion-label>
-        <ion-badge slot="end" :color="a.balance > 0 ? 'warning' : STATUS_COLORS[a.status]">{{
-          a.balance > 0 ? `${rupees(a.balance)} due` : a.status
-        }}</ion-badge>
+        <StatusChip
+          slot="end"
+          :tone="a.balance > 0 ? 'warning' : a.status === 'active' ? 'success' : 'medium'"
+          :label="
+            a.balance > 0 ? t('fees.collect.due', { amount: formatMoney(a.balance) }) : statusLabel(a.status)
+          "
+        />
       </ion-item>
-      <ion-item v-if="!accounts.length"><ion-label class="muted">No fee accounts.</ion-label></ion-item>
     </ion-list>
+    <EmptyState
+      v-else-if="!loading"
+      :icon="walletOutline"
+      :title="t('fees.accounts.emptyTitle')"
+      :message="t('fees.accounts.emptyMessage')"
+    />
+    <ion-infinite-scroll :disabled="!hasMore" @ion-infinite="more">
+      <ion-infinite-scroll-content />
+    </ion-infinite-scroll>
+
+    <CollectFeeSheet :is-open="collecting" @close="collecting = false" @recorded="load" />
 
     <ion-modal :is-open="!!create" @did-dismiss="create = null">
       <ion-header>
@@ -90,15 +112,18 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import {
-  IonBadge,
   IonButton,
   IonButtons,
   IonCheckbox,
   IonContent,
   IonHeader,
   IonIcon,
+  IonInfiniteScroll,
+  IonInfiniteScrollContent,
   IonInput,
   IonItem,
   IonLabel,
@@ -112,17 +137,33 @@ import {
   IonSelectOption,
   IonTitle,
   IonToolbar,
+  type InfiniteScrollCustomEvent,
 } from '@ionic/vue';
-import { add } from 'ionicons/icons';
+import { add, walletOutline } from 'ionicons/icons';
 import type { BatchDto, FeeAccountDto, FeeStructureDto, StudentDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import EmptyState from '@/components/EmptyState.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { formatMoney } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
 import { academicsApi } from '../academics/api';
 import { rupees } from '../hr/api';
 import { studentsApi } from '../students/api';
-import { STATUS_COLORS, feesApi } from './api';
+import { feesApi } from './api';
+import CollectFeeSheet from './CollectFeeSheet.vue';
 
+const PAGE_SIZE = 30;
+const { t, te } = useI18n();
+const route = useRoute();
+const router = useRouter();
 const accounts = ref<FeeAccountDto[]>([]);
+const total = ref(0);
+const page = ref(1);
+const loading = ref(true);
+const collecting = ref(false);
+let ready = false;
+// `dues` is filtered after paging on the server, so pages can be short: stop on the page count, not items.
+const hasMore = computed(() => page.value * PAGE_SIZE < total.value);
 const search = ref('');
 const duesOnly = ref(false);
 const structures = ref<FeeStructureDto[]>([]);
@@ -138,15 +179,57 @@ const create = ref<{
   firstDueDate: string;
 } | null>(null);
 
+const statusLabel = (s: string) => (te(`fees.accounts.status.${s}`) ? t(`fees.accounts.status.${s}`) : s);
+
+const fetchPage = (n: number) =>
+  feesApi.accounts({
+    search: search.value || undefined,
+    dues: duesOnly.value ? 'true' : undefined,
+    page: n,
+    pageSize: PAGE_SIZE,
+  });
+
 async function load() {
+  loading.value = true;
   try {
-    accounts.value = (
-      await feesApi.accounts({ search: search.value || undefined, dues: duesOnly.value ? 'true' : undefined })
-    ).items;
+    const r = await fetchPage(1);
+    page.value = 1;
+    accounts.value = r.items;
+    total.value = r.total;
   } catch (e) {
     void toastError(e);
+  } finally {
+    loading.value = false;
   }
 }
+
+async function more(ev: InfiniteScrollCustomEvent) {
+  try {
+    const r = await fetchPage(page.value + 1);
+    page.value++;
+    accounts.value.push(...r.items.filter((x) => !accounts.value.some((y) => y.id === x.id)));
+    total.value = r.total;
+  } catch (e) {
+    void toastError(e);
+  } finally {
+    await ev.target.complete();
+  }
+}
+
+// Links from the staff home: `?dues=1` lists who owes, `?collect=1` opens the collect sheet.
+watch(
+  () => route.query,
+  (q) => {
+    if (route.path !== '/fees/accounts') return;
+    if (q.dues === '1' && !duesOnly.value) {
+      duesOnly.value = true;
+      if (ready) void load();
+    }
+    if (q.collect === '1') collecting.value = true;
+    if (q.dues || q.collect) void router.replace({ query: {} });
+  },
+  { immediate: true },
+);
 
 async function openCreate() {
   create.value = {
@@ -203,5 +286,22 @@ async function saveCreate() {
   }
 }
 
-onMounted(load);
+onMounted(() => {
+  ready = true;
+  void load();
+});
 </script>
+
+<style scoped>
+.collect {
+  min-height: var(--app-tap-target);
+  margin: 0 12px 4px;
+}
+.count {
+  margin: 0 16px;
+  font-size: 13px;
+}
+.muted {
+  color: var(--ion-color-medium);
+}
+</style>

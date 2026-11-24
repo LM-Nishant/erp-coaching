@@ -443,7 +443,7 @@ Shared dashboards render cards from every module's `widgets` (`DashboardWidget` 
 | `platform-home` | `/home` dashboard, super admin (not impersonating) | none                    | Built-in: reports platform summary (order 10).                                            |
 | `student-home`  | Student "Today" home (host added by the UX rework) | none                    | Next class, continue watching, due work, fee due. Not rendered until its host lands.      |
 | `teacher-home`  | Teacher "Today" home (host added by the UX rework) | none                    | Now/next class, quick actions, things to check. Not rendered until its host lands.        |
-| `staff-home`    | Staff "Today" home (host added by the UX rework)   | none                    | Admins, accountant, front desk. Not rendered until its host lands.                        |
+| `staff-home`    | `/home` StaffHome, staff persona                   | none                    | Admins, accountant, front desk; after quick actions. Built-in: fees (10), enquiries (20). |
 
 For `home` and `platform-home`, load your own data and follow the error rules below. The active branch is sent automatically as `X-Branch-Id`.
 

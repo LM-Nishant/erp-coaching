@@ -12,7 +12,9 @@
           <span v-if="a.advance"> · advance {{ rupees(a.advance) }}</span>
           <ion-badge :color="STATUS_COLORS[a.status]" class="ml">{{ a.status }}</ion-badge>
           <div v-if="a.status === 'active'" class="actions">
-            <ion-button v-can="'fees.create'" size="small" @click="openPay">Collect payment</ion-button>
+            <ion-button v-can="'fees.create'" @click="paying = true">{{
+              t('fees.collect.title')
+            }}</ion-button>
             <ion-button v-can="'fees.create'" size="small" fill="outline" @click="openAdjust"
               >Discount / concession</ion-button
             >
@@ -95,54 +97,7 @@
       </ion-list>
     </template>
 
-    <ion-modal :is-open="!!pay" @did-dismiss="pay = null">
-      <ion-header>
-        <ion-toolbar>
-          <ion-title>Collect payment</ion-title>
-          <ion-buttons slot="end"><ion-button @click="pay = null">Close</ion-button></ion-buttons>
-        </ion-toolbar>
-      </ion-header>
-      <ion-content v-if="pay" class="ion-padding">
-        <ion-list>
-          <ion-item>
-            <ion-input v-model="pay.amount" type="number" label="Amount (₹)" label-placement="stacked" />
-          </ion-item>
-          <ion-item>
-            <ion-select v-model="pay.mode" label="Mode" label-placement="stacked">
-              <ion-select-option v-for="m in OFFLINE_PAYMENT_MODES" :key="m" :value="m">{{
-                MODE_LABELS[m]
-              }}</ion-select-option>
-            </ion-select>
-          </ion-item>
-          <ion-item
-            ><ion-input v-model="pay.paidOn" type="date" label="Paid on" label-placement="stacked"
-          /></ion-item>
-          <ion-item v-if="pay.mode !== 'cash' && pay.mode !== 'cheque'">
-            <ion-input v-model="pay.referenceNo" label="UTR / reference" label-placement="stacked" />
-          </ion-item>
-          <template v-if="pay.mode === 'cheque'">
-            <ion-item
-              ><ion-input v-model="pay.chequeNumber" label="Cheque no." label-placement="stacked"
-            /></ion-item>
-            <ion-item
-              ><ion-input v-model="pay.chequeDate" type="date" label="Cheque date" label-placement="stacked"
-            /></ion-item>
-            <ion-item><ion-input v-model="pay.bankName" label="Bank" label-placement="stacked" /></ion-item>
-          </template>
-          <ion-item v-if="pay.mode !== 'cash' && banks.length">
-            <ion-select v-model="pay.bankAccountId" label="Deposited to" label-placement="stacked">
-              <ion-select-option :value="null">Default bank</ion-select-option>
-              <ion-select-option v-for="b in banks" :key="b.id" :value="b.id">{{ b.name }}</ion-select-option>
-            </ion-select>
-          </ion-item>
-          <ion-item><ion-textarea v-model="pay.notes" label="Notes" label-placement="stacked" /></ion-item>
-        </ion-list>
-        <p class="muted">
-          Amounts above the balance are kept as advance. Instalments are settled oldest first.
-        </p>
-        <ion-button expand="block" :disabled="saving" @click="savePay">Record payment</ion-button>
-      </ion-content>
-    </ion-modal>
+    <CollectFeeSheet :is-open="paying" :account-id="id" @close="paying = false" @recorded="load" />
 
     <ion-modal :is-open="!!adjust" @did-dismiss="adjust = null">
       <ion-header>
@@ -166,8 +121,8 @@
           <template v-if="!adjust.ruleId">
             <ion-item>
               <ion-select v-model="adjust.type" label="Type" label-placement="stacked">
-                <ion-select-option v-for="t in FEE_ADJUSTMENT_TYPES" :key="t" :value="t">{{
-                  t
+                <ion-select-option v-for="ty in FEE_ADJUSTMENT_TYPES" :key="ty" :value="ty">{{
+                  ty
                 }}</ion-select-option>
               </ion-select>
             </ion-item>
@@ -288,23 +243,21 @@ import {
   IonModal,
   IonSelect,
   IonSelectOption,
-  IonTextarea,
   IonTitle,
   IonToolbar,
 } from '@ionic/vue';
 import { documentOutline, logoWhatsapp, returnDownBackOutline } from 'ionicons/icons';
 import {
   FEE_ADJUSTMENT_TYPES,
-  OFFLINE_PAYMENT_MODES,
-  type BankAccountDto,
   type FeeAdjustmentType,
   type FeePaymentDto,
   type LedgerEntryDto,
-  type OfflinePaymentMode,
 } from '@erp/shared';
+import { useI18n } from 'vue-i18n';
 import AppPage from '@/components/AppPage.vue';
+import CollectFeeSheet from './CollectFeeSheet.vue';
 import { toast, toastError } from '@/core/toast';
-import { rupees, todayIso } from '../hr/api';
+import { rupees } from '../hr/api';
 import {
   MODE_LABELS,
   STATUS_COLORS,
@@ -315,23 +268,13 @@ import {
   type ConcessionRule,
 } from './api';
 
+const { t } = useI18n();
 const id = Number(useRoute().params.id);
 const a = ref<AccountDetail | null>(null);
-const banks = ref<BankAccountDto[]>([]);
 const rules = ref<ConcessionRule[]>([]);
 const ledger = ref<LedgerEntryDto[] | null>(null);
 const saving = ref(false);
-const pay = ref<{
-  amount: string;
-  mode: OfflinePaymentMode;
-  paidOn: string;
-  referenceNo: string;
-  chequeNumber: string;
-  chequeDate: string;
-  bankName: string;
-  bankAccountId: number | null;
-  notes: string;
-} | null>(null);
+const paying = ref(false);
 const adjust = ref<{
   ruleId: number | null;
   type: FeeAdjustmentType;
@@ -364,44 +307,6 @@ async function load() {
   } catch (e) {
     void toastError(e);
   }
-}
-
-async function openPay() {
-  pay.value = {
-    amount: String((a.value?.balance ?? 0) / 100),
-    mode: 'cash',
-    paidOn: todayIso(),
-    referenceNo: '',
-    chequeNumber: '',
-    chequeDate: '',
-    bankName: '',
-    bankAccountId: null,
-    notes: '',
-  };
-  banks.value = await feesApi.bankAccounts().catch(() => []);
-}
-
-async function savePay() {
-  const p = pay.value;
-  if (!p) return;
-  const ok = await run(async () => {
-    const r = await feesApi.recordOffline({
-      accountId: id,
-      amount: toPaise(p.amount),
-      mode: p.mode,
-      paidOn: p.paidOn,
-      referenceNo: p.referenceNo || null,
-      chequeNumber: p.chequeNumber || null,
-      chequeDate: p.chequeDate || null,
-      bankName: p.bankName || null,
-      bankAccountId: p.bankAccountId,
-      notes: p.notes || null,
-    });
-    await toast(
-      r.status === 'successful' ? `Receipt ${r.receiptNumber} issued` : 'Payment recorded; awaiting approval',
-    );
-  });
-  if (ok) pay.value = null;
 }
 
 async function openAdjust() {

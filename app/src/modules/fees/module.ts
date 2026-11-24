@@ -185,6 +185,15 @@ export default defineAppModule({
   ],
   widgets: [
     {
+      id: 'fees.today',
+      slot: 'staff-home',
+      title: 'Fees today',
+      component: defineAsyncComponent(() => import('./FeesTodayCard.vue')),
+      permission: 'fees.view',
+      planModule: 'fees',
+      order: 10,
+    },
+    {
       id: 'fees.due',
       slot: 'student-home',
       title: 'Fees',
