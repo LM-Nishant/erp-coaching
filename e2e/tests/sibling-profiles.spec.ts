@@ -83,11 +83,12 @@ test('siblings sharing a mobile: admitted into the batch, on the roster, "Who\'s
     const content = activePage(page);
     await content.locator('ion-item').filter({ hasText: batch.batchName }).click();
     await expect(page).toHaveURL(/\/attendance\/sessions\/\d+$/);
-    const row = (name: string) => content.locator('ion-item').filter({ hasText: name });
-    await row(sibling).getByRole('button', { name: 'P', exact: true }).click();
-    await row('Riya Sharma').getByRole('button', { name: 'A', exact: true }).click();
-    await content.getByRole('button', { name: 'Save (2)' }).click();
-    await expectToast(page, 'Saved 2 mark(s)');
+    const row = (name: string) => content.locator(`li[data-student="${name}"]`);
+    await row(sibling).getByRole('button', { name: `${sibling}: Not marked` }).click();
+    await row('Riya Sharma').getByRole('button', { name: 'More choices for Riya Sharma' }).click();
+    await actionSheet(page).getByRole('button', { name: 'Absent', exact: true }).click();
+    await content.getByRole('button', { name: 'Save for now (2)' }).click();
+    await expectToast(page, 'Saved 2 changes');
   });
 
   const today = `${isoDate()} · ${batch.batchName}`;
