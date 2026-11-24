@@ -1,14 +1,22 @@
 <template>
-  <AppPage title="Syllabus" :on-refresh="load">
+  <AppPage :title="t('academics.syllabus.title')" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'academics.create'" aria-label="Add subject" @click="addSubject"
+      <ion-button
+        v-can="'academics.create'"
+        :aria-label="t('academics.syllabus.addSubject')"
+        @click="addSubject"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
 
     <ion-item lines="none">
-      <ion-select v-model="courseId" label="Course" interface="popover" @ion-change="load">
-        <ion-select-option :value="null">All subjects</ion-select-option>
+      <ion-select
+        v-model="courseId"
+        :label="t('academics.syllabus.course')"
+        interface="popover"
+        @ion-change="load"
+      >
+        <ion-select-option :value="null">{{ t('academics.syllabus.allSubjects') }}</ion-select-option>
         <ion-select-option v-for="c in courses" :key="c.id" :value="c.id">{{ c.name }}</ion-select-option>
       </ion-select>
     </ion-item>
@@ -35,14 +43,14 @@
                   fill="clear"
                   size="small"
                   @click="addTopic(s.id, ch.id)"
-                  >+ Topic</ion-button
+                  >{{ t('academics.syllabus.addTopic') }}</ion-button
                 >
                 <ion-button
                   slot="end"
                   v-can="'academics.edit'"
                   fill="clear"
                   size="small"
-                  :aria-label="`Rename ${ch.name}`"
+                  :aria-label="t('academics.syllabus.rename', { name: ch.name })"
                   @click="renameChapter(s.id, ch)"
                   ><ion-icon slot="icon-only" :icon="createOutline"
                 /></ion-button>
@@ -52,15 +60,17 @@
                   fill="clear"
                   size="small"
                   color="danger"
-                  :aria-label="`Delete ${ch.name}`"
+                  :aria-label="t('academics.syllabus.delete', { name: ch.name })"
                   @click="run(s.id, () => academicsApi.removeChapter(ch.id))"
                   ><ion-icon slot="icon-only" :icon="trashOutline"
                 /></ion-button>
               </ion-item>
-              <ion-item v-for="t in ch.topics" :key="t.id" class="topic">
+              <ion-item v-for="topic in ch.topics" :key="topic.id" class="topic">
                 <ion-label>
-                  {{ t.name }}
-                  <p v-if="t.durationMinutes">{{ t.durationMinutes }} min</p>
+                  {{ topic.name }}
+                  <p v-if="topic.durationMinutes">
+                    {{ t('academics.syllabus.minutes', { n: topic.durationMinutes }) }}
+                  </p>
                 </ion-label>
                 <ion-button
                   slot="end"
@@ -68,29 +78,34 @@
                   fill="clear"
                   size="small"
                   color="danger"
-                  :aria-label="`Delete ${t.name}`"
-                  @click="run(s.id, () => academicsApi.removeTopic(t.id))"
+                  :aria-label="t('academics.syllabus.delete', { name: topic.name })"
+                  @click="run(s.id, () => academicsApi.removeTopic(topic.id))"
                   ><ion-icon slot="icon-only" :icon="trashOutline"
                 /></ion-button>
               </ion-item>
             </template>
             <ion-item v-if="chapters[s.id] && !chapters[s.id].length"
-              ><ion-label class="muted">No chapters yet.</ion-label></ion-item
+              ><ion-label class="muted">{{ t('academics.syllabus.noChapters') }}</ion-label></ion-item
             >
             <ion-item v-can="'academics.create'" lines="none">
-              <ion-button fill="outline" size="small" @click="addChapter(s.id)">Add chapter</ion-button>
+              <ion-button fill="outline" size="small" @click="addChapter(s.id)">{{
+                t('academics.syllabus.addChapter')
+              }}</ion-button>
             </ion-item>
           </ion-list>
         </div>
       </ion-accordion>
     </ion-accordion-group>
-    <p v-if="!loading && !subjects.length" class="muted ion-padding">No subjects yet.</p>
+    <p v-if="!loading && !subjects.length" class="muted ion-padding">
+      {{ t('academics.syllabus.noSubjects') }}
+    </p>
   </AppPage>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import {
   IonAccordion,
   IonAccordionGroup,
@@ -111,6 +126,7 @@ import AppPage from '@/components/AppPage.vue';
 import { toastError } from '@/core/toast';
 import { academicsApi, type ChapterWithTopics } from './api';
 
+const { t } = useI18n();
 const route = useRoute();
 const courses = ref<CourseDto[]>([]);
 const subjects = ref<SubjectDto[]>([]);
@@ -156,8 +172,8 @@ async function prompt(
     header,
     inputs,
     buttons: [
-      { text: 'Cancel', role: 'cancel' },
-      { text: 'Save', role: 'confirm' },
+      { text: t('common.actions.cancel'), role: 'cancel' },
+      { text: t('common.actions.save'), role: 'confirm' },
     ],
   });
   await alert.present();
@@ -166,9 +182,9 @@ async function prompt(
 }
 
 async function addSubject() {
-  const v = await prompt('New subject', [
-    { name: 'name', placeholder: 'Name' },
-    { name: 'code', placeholder: 'Code (optional)' },
+  const v = await prompt(t('academics.syllabus.newSubject'), [
+    { name: 'name', placeholder: t('academics.syllabus.name') },
+    { name: 'code', placeholder: t('academics.syllabus.code') },
   ]);
   if (!v?.name) return;
   try {
@@ -180,7 +196,9 @@ async function addSubject() {
 }
 
 async function addChapter(subjectId: number) {
-  const v = await prompt('New chapter', [{ name: 'name', placeholder: 'Chapter name' }]);
+  const v = await prompt(t('academics.syllabus.newChapter'), [
+    { name: 'name', placeholder: t('academics.syllabus.chapterName') },
+  ]);
   if (!v?.name) return;
   await run(subjectId, () =>
     academicsApi.saveChapter({ subjectId, name: v.name, sortOrder: (chapters[subjectId]?.length ?? 0) + 1 }),
@@ -188,15 +206,17 @@ async function addChapter(subjectId: number) {
 }
 
 async function renameChapter(subjectId: number, ch: ChapterWithTopics) {
-  const v = await prompt('Rename chapter', [{ name: 'name', placeholder: 'Chapter name', value: ch.name }]);
+  const v = await prompt(t('academics.syllabus.renameChapter'), [
+    { name: 'name', placeholder: t('academics.syllabus.chapterName'), value: ch.name },
+  ]);
   if (!v?.name) return;
   await run(subjectId, () => academicsApi.saveChapter({ name: v.name }, ch.id));
 }
 
 async function addTopic(subjectId: number, chapterId: number) {
-  const v = await prompt('New topic', [
-    { name: 'name', placeholder: 'Topic name' },
-    { name: 'durationMinutes', placeholder: 'Planned minutes (optional)', type: 'number' },
+  const v = await prompt(t('academics.syllabus.newTopic'), [
+    { name: 'name', placeholder: t('academics.syllabus.topicName') },
+    { name: 'durationMinutes', placeholder: t('academics.syllabus.plannedMinutes'), type: 'number' },
   ]);
   if (!v?.name) return;
   await run(subjectId, () =>

@@ -1,45 +1,49 @@
 <template>
-  <AppPage title="Website settings & SEO" :on-refresh="load">
+  <AppPage :title="t('website.settings.title')" :on-refresh="load">
     <ion-list v-if="form">
-      <ion-list-header><ion-label>Address</ion-label></ion-list-header>
+      <ion-list-header
+        ><ion-label>{{ t('website.settings.address') }}</ion-label></ion-list-header
+      >
       <ion-item lines="none">
         <ion-label class="ion-text-wrap">
           <p>
-            Public URL: <a :href="site?.publicUrl" target="_blank" rel="noopener">{{ site?.publicUrl }}</a>
+            {{ t('website.settings.publicUrl') }}
+            <a :href="site?.publicUrl" target="_blank" rel="noopener">{{ site?.publicUrl }}</a>
           </p>
         </ion-label>
       </ion-item>
       <ion-item>
         <ion-input
           v-model="form.subdomain"
-          label="Subdomain"
+          :label="t('website.settings.subdomain')"
           label-placement="stacked"
-          helper-text="e.g. “apex” for apex.<platform domain>"
+          :helper-text="t('website.settings.subdomainHelp', { domain: '<platform domain>' })"
         />
       </ion-item>
       <ion-item>
         <ion-input
           v-model="form.customDomain"
-          label="Custom domain"
+          :label="t('website.settings.customDomain')"
           label-placement="stacked"
-          helper-text="e.g. www.apexacademy.in — point its DNS (CNAME) at the platform, save, then verify it below."
+          :helper-text="t('website.settings.customDomainHelp')"
         />
       </ion-item>
       <ion-item v-if="site?.domainVerification" lines="none">
         <ion-label class="ion-text-wrap">
           <p v-if="site.domainVerification.verifiedAt">
-            <ion-note color="success">Verified</ion-note> — the site is served on {{ site.customDomain }}.
+            <ion-note color="success">{{ t('website.settings.verified') }}</ion-note>
+            {{ t('website.settings.servedOn', { domain: site.customDomain }) }}
           </p>
           <template v-else>
             <p>
-              <ion-note color="warning">Not verified</ion-note> — {{ site.customDomain }} isn't served until
-              you verify it. Add this TXT record at your DNS provider, then select Verify domain:
+              <ion-note color="warning">{{ t('website.settings.notVerified') }}</ion-note>
+              {{ t('website.settings.notServed', { domain: site.customDomain }) }}
             </p>
             <p>
-              Name: <code>{{ site.domainVerification.recordName }}</code>
+              {{ t('website.settings.recordName') }} <code>{{ site.domainVerification.recordName }}</code>
             </p>
             <p>
-              Value: <code>{{ site.domainVerification.recordValue }}</code>
+              {{ t('website.settings.recordValue') }} <code>{{ site.domainVerification.recordValue }}</code>
             </p>
           </template>
         </ion-label>
@@ -50,39 +54,39 @@
           :disabled="verifying"
           @click="verifyDomain"
         >
-          Verify domain
+          {{ t('website.settings.verifyDomain') }}
         </ion-button>
       </ion-item>
       <ion-item>
         <ion-input
           v-model="form.appUrl"
-          label="App URL for online admission"
+          :label="t('website.settings.appUrl')"
           label-placement="stacked"
-          helper-text="Self-registration links go to <app URL>/register/<institute>. Leave blank for the default."
+          :helper-text="t('website.settings.appUrlHelp', { path: '<app URL>/register/<institute>' })"
         />
       </ion-item>
       <ion-item>
         <ion-select
           v-model="form.defaultBranchId"
-          label="Branch for website enquiries"
+          :label="t('website.settings.enquiryBranch')"
           label-placement="stacked"
           interface="popover"
         >
-          <ion-select-option :value="null">Main branch</ion-select-option>
+          <ion-select-option :value="null">{{ t('website.settings.mainBranch') }}</ion-select-option>
           <ion-select-option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</ion-select-option>
         </ion-select>
       </ion-item>
 
-      <ion-list-header><ion-label>Branding</ion-label></ion-list-header>
+      <ion-list-header
+        ><ion-label>{{ t('website.settings.branding') }}</ion-label></ion-list-header
+      >
       <ion-item lines="none">
-        <ion-note
-          >Logo and colours default to your institute branding; override them for the website below.</ion-note
-        >
+        <ion-note>{{ t('website.settings.brandingNote') }}</ion-note>
       </ion-item>
       <ion-item>
         <ion-input
           v-model="form.theme.primaryColor"
-          label="Primary colour"
+          :label="t('website.settings.primaryColour')"
           label-placement="stacked"
           placeholder="#1e40af"
         />
@@ -96,7 +100,7 @@
       <ion-item>
         <ion-input
           v-model="form.theme.secondaryColor"
-          label="Secondary colour"
+          :label="t('website.settings.secondaryColour')"
           label-placement="stacked"
           placeholder="#f59e0b"
         />
@@ -108,53 +112,75 @@
         />
       </ion-item>
       <ion-item>
-        <ion-select v-model="form.theme.font" label="Font" label-placement="stacked" interface="popover">
-          <ion-select-option value="system">System sans-serif</ion-select-option>
-          <ion-select-option value="serif">Serif</ion-select-option>
-          <ion-select-option value="rounded">Rounded</ion-select-option>
+        <ion-select
+          v-model="form.theme.font"
+          :label="t('website.settings.font')"
+          label-placement="stacked"
+          interface="popover"
+        >
+          <ion-select-option value="system">{{ t('website.settings.fonts.system') }}</ion-select-option>
+          <ion-select-option value="serif">{{ t('website.settings.fonts.serif') }}</ion-select-option>
+          <ion-select-option value="rounded">{{ t('website.settings.fonts.rounded') }}</ion-select-option>
         </ion-select>
       </ion-item>
       <ion-item>
         <ion-textarea
           v-model="form.theme.footerText"
-          label="Footer text"
+          :label="t('website.settings.footerText')"
           label-placement="stacked"
           :auto-grow="true"
         />
       </ion-item>
       <ion-item v-for="(l, i) in form.theme.socialLinks" :key="i">
-        <ion-input v-model="l.label" label="Label" label-placement="stacked" placeholder="YouTube" />
-        <ion-input v-model="l.url" label="URL" label-placement="stacked" placeholder="Full web address" />
+        <ion-input
+          v-model="l.label"
+          :label="t('website.settings.label')"
+          label-placement="stacked"
+          placeholder="YouTube"
+        />
+        <ion-input
+          v-model="l.url"
+          :label="t('website.settings.url')"
+          label-placement="stacked"
+          :placeholder="t('website.settings.urlPlaceholder')"
+        />
         <ion-button
           slot="end"
           fill="clear"
           color="danger"
-          aria-label="Remove social link"
+          :aria-label="t('website.settings.removeSocial')"
           @click="form.theme.socialLinks!.splice(i, 1)"
         >
           <ion-icon slot="icon-only" :icon="trashOutline" />
         </ion-button>
       </ion-item>
-      <ion-button fill="clear" size="small" @click="form.theme.socialLinks!.push({ label: '', url: '' })"
-        >+ Add social link</ion-button
-      >
+      <ion-button fill="clear" size="small" @click="form.theme.socialLinks!.push({ label: '', url: '' })">{{
+        t('website.settings.addSocial')
+      }}</ion-button>
 
-      <ion-list-header><ion-label>SEO</ion-label></ion-list-header>
+      <ion-list-header
+        ><ion-label>{{ t('website.settings.seo') }}</ion-label></ion-list-header
+      >
       <ion-item>
-        <ion-input v-model="form.seo.title" label="Default title" label-placement="stacked" :maxlength="70" />
+        <ion-input
+          v-model="form.seo.title"
+          :label="t('website.settings.defaultTitle')"
+          label-placement="stacked"
+          :maxlength="70"
+        />
       </ion-item>
       <ion-item>
         <ion-textarea
           v-model="form.seo.description"
-          label="Default meta description"
+          :label="t('website.settings.defaultDescription')"
           label-placement="stacked"
           :maxlength="300"
           :auto-grow="true"
         />
       </ion-item>
-      <ImageField v-model="form.seo.ogImageFileId" label="Default social share (OG) image" />
+      <ImageField v-model="form.seo.ogImageFileId" :label="t('website.settings.defaultOgImage')" />
       <ion-item>
-        <ion-toggle v-model="form.seo.indexable">Allow search engines to index the site</ion-toggle>
+        <ion-toggle v-model="form.seo.indexable">{{ t('website.settings.indexable') }}</ion-toggle>
       </ion-item>
       <ion-item lines="none">
         <ion-label class="ion-text-wrap">
@@ -164,13 +190,16 @@
           </p>
         </ion-label>
       </ion-item>
-      <ion-button expand="block" :disabled="saving" @click="save">Save settings</ion-button>
+      <ion-button expand="block" :disabled="saving" @click="save">{{
+        t('website.settings.save')
+      }}</ion-button>
     </ion-list>
   </AppPage>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   IonButton,
   IonIcon,
@@ -202,6 +231,7 @@ interface Form {
   seo: WebsiteSeo & { indexable: boolean };
 }
 
+const { t } = useI18n();
 const site = ref<WebsiteSiteDto | null>(null);
 const form = ref<Form | null>(null);
 const branches = ref<NamedRef[]>([]);
@@ -260,7 +290,7 @@ async function save() {
       },
     });
     form.value = toForm(site.value);
-    await toast('Website settings saved');
+    await toast(t('website.settings.saved'));
   } catch (e) {
     await toastError(e);
   } finally {
@@ -272,7 +302,7 @@ async function verifyDomain() {
   verifying.value = true;
   try {
     site.value = await websiteApi.verifyDomain();
-    await toast('Domain verified');
+    await toast(t('website.settings.domainVerified'));
   } catch (e) {
     await toastError(e);
   } finally {

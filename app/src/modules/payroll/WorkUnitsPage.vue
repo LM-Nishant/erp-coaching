@@ -1,85 +1,109 @@
 <template>
-  <AppPage title="Lectures & incentives" :on-refresh="load">
-    <p class="muted">
-      Lectures/classes taken by per-lecture or per-class staff, and incentives. Other modules (timetable,
-      batches) can post these via <code>POST /api/payroll/work-units/bulk</code> with an
-      <code>externalRef</code> for idempotency.
-    </p>
+  <AppPage :title="t('payroll.workUnits.title')" :on-refresh="load">
+    <i18n-t keypath="payroll.workUnits.intro" tag="p" class="muted">
+      <template #api><code>POST /api/payroll/work-units/bulk</code></template>
+      <template #field><code>externalRef</code></template>
+    </i18n-t>
     <ion-item>
-      <ion-input v-model="month" type="month" label="Month" label-placement="stacked" @ion-change="load" />
+      <ion-input
+        v-model="month"
+        type="month"
+        :label="t('payroll.month')"
+        label-placement="stacked"
+        @ion-change="load"
+      />
     </ion-item>
     <ion-list>
       <ion-item v-for="u in units" :key="u.id">
         <ion-label>
-          <h3>{{ u.employee?.name }} · {{ u.unitType }}</h3>
+          <h3>{{ u.employee?.name }} · {{ t(`payroll.unitType.${u.unitType}`) }}</h3>
           <p>
-            {{ u.date }} · {{ u.unitType === 'incentive' ? rupees(u.amount) : `${u.quantity} unit(s)` }}
+            {{ formatDate(u.date) }} ·
+            {{
+              u.unitType === 'incentive' ? formatMoney(u.amount) : t('payroll.workUnits.units', u.quantity)
+            }}
             <span v-if="u.description"> · {{ u.description }}</span>
           </p>
         </ion-label>
-        <ion-badge v-if="u.payrollRunId" slot="end" color="success">paid</ion-badge>
+        <StatusChip v-if="u.payrollRunId" slot="end" :label="t('common.status.paid')" tone="success" />
         <ion-button
           v-else
           slot="end"
           v-can="'payroll.delete'"
           fill="clear"
           color="danger"
-          aria-label="Delete work unit"
+          :aria-label="t('payroll.workUnits.delete')"
           @click="remove(u.id)"
         >
           <ion-icon slot="icon-only" :icon="trashOutline" />
         </ion-button>
       </ion-item>
       <ion-item v-if="!units.length"
-        ><ion-label class="muted">Nothing recorded for this month.</ion-label></ion-item
+        ><ion-label class="muted">{{ t('payroll.workUnits.empty') }}</ion-label></ion-item
       >
     </ion-list>
 
     <form v-can="'payroll.create'" @submit.prevent="save">
       <ion-list>
-        <ion-list-header>Add entry</ion-list-header>
+        <ion-list-header>{{ t('payroll.workUnits.addEntry') }}</ion-list-header>
         <ion-item>
-          <ion-select v-model="form.employeeId" label="Employee" label-placement="stacked">
+          <ion-select v-model="form.employeeId" :label="t('payroll.employee')" label-placement="stacked">
             <ion-select-option v-for="e in employees" :key="e.id" :value="e.id">{{
               e.name
             }}</ion-select-option>
           </ion-select>
         </ion-item>
         <ion-item>
-          <ion-select v-model="form.unitType" label="Type" label-placement="stacked">
-            <ion-select-option value="lecture">Lecture</ion-select-option>
-            <ion-select-option value="class">Class</ion-select-option>
-            <ion-select-option value="incentive">Incentive</ion-select-option>
+          <ion-select v-model="form.unitType" :label="t('payroll.workUnits.type')" label-placement="stacked">
+            <ion-select-option value="lecture">{{ t('payroll.unitType.lecture') }}</ion-select-option>
+            <ion-select-option value="class">{{ t('payroll.unitType.class') }}</ion-select-option>
+            <ion-select-option value="incentive">{{ t('payroll.unitType.incentive') }}</ion-select-option>
           </ion-select>
         </ion-item>
         <ion-item
-          ><ion-input v-model="form.date" type="date" label="Date" label-placement="stacked" required
+          ><ion-input
+            v-model="form.date"
+            type="date"
+            :label="t('common.labels.date')"
+            label-placement="stacked"
+            required
         /></ion-item>
         <ion-item v-if="form.unitType === 'incentive'">
           <ion-input
             v-model="form.amount"
             type="number"
-            label="Amount (₹)"
+            :label="t('payroll.amountRupees')"
             label-placement="stacked"
             required
           />
         </ion-item>
         <ion-item v-else>
-          <ion-input v-model="form.quantity" type="number" label="Count" label-placement="stacked" required />
+          <ion-input
+            v-model="form.quantity"
+            type="number"
+            :label="t('payroll.workUnits.count')"
+            label-placement="stacked"
+            required
+          />
         </ion-item>
         <ion-item
-          ><ion-input v-model="form.description" label="Description" label-placement="stacked"
+          ><ion-input
+            v-model="form.description"
+            :label="t('payroll.workUnits.description')"
+            label-placement="stacked"
         /></ion-item>
       </ion-list>
-      <ion-button expand="block" type="submit" :disabled="!form.employeeId">Add</ion-button>
+      <ion-button expand="block" type="submit" :disabled="!form.employeeId">{{
+        t('common.actions.add')
+      }}</ion-button>
     </form>
   </AppPage>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
-  IonBadge,
   IonButton,
   IonIcon,
   IonInput,
@@ -93,10 +117,13 @@ import {
 import { trashOutline } from 'ionicons/icons';
 import type { EmployeeDto, WorkUnitType } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { formatDate, formatMoney } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
-import { hrApi, rupees, todayIso } from '../hr/api';
+import { hrApi, todayIso } from '../hr/api';
 import { payrollApi, type WorkUnit } from './api';
 
+const { t } = useI18n();
 const month = ref(todayIso().slice(0, 7));
 const units = ref<WorkUnit[]>([]);
 const employees = ref<EmployeeDto[]>([]);
@@ -135,7 +162,7 @@ async function save() {
       description: f.description || null,
     });
     form.value = { ...blank(), employeeId: f.employeeId, unitType: f.unitType };
-    await toast('Saved');
+    await toast(t('common.saved'));
     await load();
   } catch (e) {
     await toastError(e);

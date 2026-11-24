@@ -2,23 +2,23 @@
   <ion-item>
     <ion-select
       :value="kind"
-      :label="label"
+      :label="label ?? t('website.link.buttonLink')"
       label-placement="stacked"
       interface="popover"
       @ion-change="setKind($event.detail.value)"
     >
-      <ion-select-option value="">None</ion-select-option>
-      <ion-select-option value="admission">Online admission (self-registration)</ion-select-option>
-      <ion-select-option value="enquiry">Enquiry form on this page</ion-select-option>
-      <ion-select-option value="page">Another page</ion-select-option>
-      <ion-select-option value="checkout">Buy a course online (checkout)</ion-select-option>
-      <ion-select-option value="url">Custom URL</ion-select-option>
+      <ion-select-option value="">{{ t('common.labels.none') }}</ion-select-option>
+      <ion-select-option value="admission">{{ t('website.link.admission') }}</ion-select-option>
+      <ion-select-option value="enquiry">{{ t('website.link.enquiry') }}</ion-select-option>
+      <ion-select-option value="page">{{ t('website.link.page') }}</ion-select-option>
+      <ion-select-option value="checkout">{{ t('website.link.checkout') }}</ion-select-option>
+      <ion-select-option value="url">{{ t('website.link.url') }}</ion-select-option>
     </ion-select>
   </ion-item>
   <ion-item v-if="kind === 'page'">
     <ion-select
       :value="modelValue?.slice(5)"
-      label="Page"
+      :label="t('website.link.pageLabel')"
       label-placement="stacked"
       interface="popover"
       @ion-change="emit('update:modelValue', `page:${$event.detail.value}`)"
@@ -29,7 +29,7 @@
   <ion-item v-else-if="kind === 'checkout'">
     <ion-select
       :value="Number(modelValue?.slice(9)) || null"
-      label="Course"
+      :label="t('website.editor.course')"
       label-placement="stacked"
       interface="popover"
       @ion-change="emit('update:modelValue', `checkout:${$event.detail.value}`)"
@@ -40,7 +40,7 @@
   <ion-item v-else-if="kind === 'url'">
     <ion-input
       :value="modelValue"
-      label="URL"
+      :label="t('website.link.urlLabel')"
       label-placement="stacked"
       placeholder="https://…, /path, #anchor, tel:, mailto:"
       @ion-input="emit('update:modelValue', String($event.detail.value ?? ''))"
@@ -50,6 +50,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { IonInput, IonItem, IonSelect, IonSelectOption } from '@ionic/vue';
 import type { NamedRef } from './api';
 
@@ -60,8 +61,9 @@ const props = withDefaults(
     courses: NamedRef[];
     label?: string;
   }>(),
-  { label: 'Button link' },
+  { label: undefined },
 );
+const { t } = useI18n();
 const emit = defineEmits<{ 'update:modelValue': [string | null] }>();
 
 const kind = computed(() => {

@@ -1,18 +1,24 @@
 <template>
-  <AppPage title="Live classes" :on-refresh="reload">
+  <AppPage :title="t('liveClasses.list.title')" :on-refresh="reload">
     <template #actions>
       <ion-button
         v-if="auth.can('live-classes.create')"
-        aria-label="Schedule live class"
+        :aria-label="t('liveClasses.schedule.title')"
         @click="openSchedule"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
 
     <ion-segment v-model="tab">
-      <ion-segment-button value="upcoming"><ion-label>Upcoming</ion-label></ion-segment-button>
-      <ion-segment-button value="past"><ion-label>Past</ion-label></ion-segment-button>
-      <ion-segment-button value="recordings"><ion-label>Recordings</ion-label></ion-segment-button>
+      <ion-segment-button value="upcoming"
+        ><ion-label>{{ t('common.status.upcoming') }}</ion-label></ion-segment-button
+      >
+      <ion-segment-button value="past"
+        ><ion-label>{{ t('liveClasses.list.past') }}</ion-label></ion-segment-button
+      >
+      <ion-segment-button value="recordings"
+        ><ion-label>{{ t('liveClasses.list.recordings') }}</ion-label></ion-segment-button
+      >
     </ion-segment>
 
     <ion-list v-if="tab !== 'recordings'">
@@ -22,7 +28,7 @@
           <p>{{ s.batchName }} · {{ s.teacher.name }}</p>
           <p>{{ when(s.scheduledStartAt) }} – {{ time(s.scheduledEndAt) }}</p>
         </ion-label>
-        <ion-badge slot="end" :color="statusColor(s.status)">{{ s.status }}</ion-badge>
+        <StatusChip slot="end" v-bind="chip(s)" />
         <ion-button
           v-if="s.status === 'live'"
           slot="end"
@@ -30,11 +36,11 @@
           size="small"
           :router-link="`/live-classes/${s.id}/room`"
           @click.stop
-          >Join</ion-button
+          >{{ t('liveClasses.list.join') }}</ion-button
         >
       </ion-item>
       <ion-item v-if="!loading && !sessions.length">
-        <ion-label class="muted">No live classes here.</ion-label>
+        <ion-label class="muted">{{ t('liveClasses.list.empty') }}</ion-label>
       </ion-item>
     </ion-list>
 
@@ -48,25 +54,32 @@
         <ion-icon slot="start" :icon="playCircleOutline" />
         <ion-label>
           <h2>{{ r.title }}</h2>
-          <p>{{ when(r.createdAt) }} · {{ duration(r.durationSeconds) }} · {{ size(r.sizeBytes) }}</p>
+          <p>{{ when(r.createdAt) }} · {{ formatDuration(r.durationSeconds) }} · {{ size(r.sizeBytes) }}</p>
         </ion-label>
       </ion-item>
       <ion-item v-if="!loading && !recordings.length">
-        <ion-label class="muted">No recordings yet.</ion-label>
+        <ion-label class="muted">{{ t('liveClasses.list.noRecordings') }}</ion-label>
       </ion-item>
     </ion-list>
 
     <ion-modal :is-open="scheduling" @did-dismiss="scheduling = false">
       <ion-header>
         <ion-toolbar>
-          <ion-title>Schedule live class</ion-title>
-          <ion-buttons slot="end"><ion-button @click="scheduling = false">Close</ion-button></ion-buttons>
+          <ion-title>{{ t('liveClasses.schedule.title') }}</ion-title>
+          <ion-buttons slot="end"
+            ><ion-button @click="scheduling = false">{{ t('common.actions.close') }}</ion-button></ion-buttons
+          >
         </ion-toolbar>
       </ion-header>
       <ion-content class="ion-padding">
         <ion-list>
           <ion-item>
-            <ion-select v-model="form.batchId" label="Batch" label-placement="stacked" interface="popover">
+            <ion-select
+              v-model="form.batchId"
+              :label="t('liveClasses.schedule.batch')"
+              label-placement="stacked"
+              interface="popover"
+            >
               <ion-select-option v-for="b in batches" :key="b.id" :value="b.id">{{
                 b.name
               }}</ion-select-option>
@@ -75,25 +88,31 @@
           <ion-item v-if="form.batchId">
             <ion-select
               v-model="form.classSessionId"
-              label="Timetable class (optional)"
+              :label="t('liveClasses.schedule.timetableClass')"
               label-placement="stacked"
               interface="popover"
             >
-              <ion-select-option :value="null">Not linked</ion-select-option>
+              <ion-select-option :value="null">{{ t('liveClasses.schedule.notLinked') }}</ion-select-option>
               <ion-select-option v-for="c in classSessions" :key="c.id" :value="c.id">
-                {{ c.date }} {{ c.startTime }}–{{ c.endTime }} {{ c.subject?.name ?? '' }}
+                {{ formatDayShort(c.date) }} {{ clock(c.date, c.startTime) }}–{{ clock(c.date, c.endTime) }}
+                {{ c.subject?.name ?? '' }}
               </ion-select-option>
             </ion-select>
           </ion-item>
           <ion-item>
-            <ion-input v-model="form.title" label="Title" label-placement="stacked" :maxlength="200" />
+            <ion-input
+              v-model="form.title"
+              :label="t('liveClasses.schedule.name')"
+              label-placement="stacked"
+              :maxlength="200"
+            />
           </ion-item>
           <template v-if="!form.classSessionId">
             <ion-item>
               <ion-input
                 v-model="form.start"
                 type="datetime-local"
-                label="Starts at"
+                :label="t('liveClasses.schedule.startsAt')"
                 label-placement="stacked"
               />
             </ion-item>
@@ -101,7 +120,7 @@
               <ion-input
                 v-model.number="form.duration"
                 type="number"
-                label="Duration (minutes)"
+                :label="t('liveClasses.schedule.duration')"
                 label-placement="stacked"
                 min="5"
                 max="600"
@@ -111,25 +130,26 @@
           <ion-item>
             <ion-textarea
               v-model="form.description"
-              label="Description"
+              :label="t('liveClasses.schedule.description')"
               label-placement="stacked"
               auto-grow
             />
           </ion-item>
           <ion-item>
-            <ion-toggle v-model="form.recordingEnabled">Record automatically</ion-toggle>
+            <ion-toggle v-model="form.recordingEnabled">{{ t('liveClasses.schedule.record') }}</ion-toggle>
           </ion-item>
         </ion-list>
-        <ion-button expand="block" :disabled="saving || !form.batchId" @click="schedule">Schedule</ion-button>
+        <ion-button expand="block" :disabled="saving || !form.batchId" @click="schedule">{{
+          t('liveClasses.schedule.submit')
+        }}</ion-button>
       </ion-content>
     </ion-modal>
   </AppPage>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue';
+import { onBeforeUnmount, reactive, ref, watch } from 'vue';
 import {
-  IonBadge,
   IonButton,
   IonButtons,
   IonContent,
@@ -154,11 +174,14 @@ import { add, playCircleOutline } from 'ionicons/icons';
 import { useRouter } from 'vue-router';
 import type { BatchDto, ClassSessionDto, LiveRecordingDto, LiveSessionDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { useI18n } from 'vue-i18n';
+import { formatDayShort, formatDuration, formatTime } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import { academicsApi } from '@/modules/academics/api';
 import { liveApi } from './api';
-import { duration, size, statusColor, time, when } from './format';
+import { joinState, size, time, when } from './format';
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -166,6 +189,23 @@ const tab = ref<'upcoming' | 'past' | 'recordings'>('upcoming');
 const sessions = ref<LiveSessionDto[]>([]);
 const recordings = ref<LiveRecordingDto[]>([]);
 const loading = ref(true);
+const { t } = useI18n();
+
+// Ticks so "Starts in N min" counts down while the list is open.
+const now = ref(Date.now());
+const tick = setInterval(() => (now.value = Date.now()), 30_000);
+onBeforeUnmount(() => clearInterval(tick));
+
+type Tone = 'success' | 'warning' | 'danger' | 'primary' | 'medium';
+function chip(s: LiveSessionDto): { label: string; tone: Tone } {
+  const j = joinState(s, now.value);
+  if (j.kind === 'live') return { label: t('liveClasses.list.live'), tone: 'danger' };
+  if (j.kind === 'soon')
+    return { label: t('liveClasses.widgets.startsIn', { n: j.minutes }), tone: 'warning' };
+  if (j.kind === 'waiting') return { label: t('liveClasses.widgets.waiting'), tone: 'warning' };
+  if (j.kind === 'later') return { label: t('liveClasses.list.scheduled'), tone: 'primary' };
+  return { label: t(`liveClasses.list.${s.status}`), tone: 'medium' };
+}
 
 async function load() {
   loading.value = true;
@@ -192,6 +232,8 @@ const scheduling = ref(false);
 const saving = ref(false);
 const batches = ref<BatchDto[]>([]);
 const classSessions = ref<ClassSessionDto[]>([]);
+// Timetable times are wall-clock times on the class date.
+const clock = (date: string, hm: string) => formatTime(`${date}T${hm}`);
 const localInput = (d: Date) => new Date(+d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 const form = reactive({
   batchId: null as number | null,
@@ -206,7 +248,9 @@ const form = reactive({
 async function openSchedule() {
   scheduling.value = true;
   try {
-    batches.value = (await academicsApi.batches({ status: 'active' })).items;
+    batches.value = (await academicsApi.batches()).items.filter(
+      (b) => b.status === 'planned' || b.status === 'active',
+    );
   } catch (e) {
     await toastError(e);
   }
@@ -246,7 +290,7 @@ async function schedule() {
       recordingEnabled: form.recordingEnabled,
     });
     scheduling.value = false;
-    await toast('Live class scheduled');
+    await toast(t('liveClasses.schedule.done'));
     await router.push(`/live-classes/${created.id}`);
   } catch (e) {
     await toastError(e);

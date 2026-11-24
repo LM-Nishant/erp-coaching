@@ -1,13 +1,13 @@
 import { actionSheetController } from '@ionic/vue';
 import type { ReportExportFormat, ReportExportStatus } from '@erp/shared';
+import { i18n } from '@/i18n';
 
-export const FORMAT_LABELS: Record<ReportExportFormat, string> = {
-  xlsx: 'Excel (.xlsx)',
-  pdf: 'PDF',
-  csv: 'CSV',
-};
+export const formatLabel = (format: ReportExportFormat) => i18n.global.t(`reports.exports.formats.${format}`);
 
-export const STATUS_COLORS: Record<ReportExportStatus, string> = {
+export const STATUS_TONES: Record<
+  ReportExportStatus,
+  'success' | 'warning' | 'danger' | 'primary' | 'medium'
+> = {
   queued: 'medium',
   running: 'primary',
   ready: 'success',
@@ -16,13 +16,15 @@ export const STATUS_COLORS: Record<ReportExportStatus, string> = {
 };
 
 /** Asks for an export format; null when cancelled. */
-export async function pickExportFormat(header = 'Export as'): Promise<ReportExportFormat | null> {
+export async function pickExportFormat(
+  header = i18n.global.t('reports.exports.exportAs'),
+): Promise<ReportExportFormat | null> {
   const formats: ReportExportFormat[] = ['xlsx', 'pdf', 'csv'];
   const sheet = await actionSheetController.create({
     header,
     buttons: [
-      ...formats.map((format) => ({ text: FORMAT_LABELS[format], data: format })),
-      { text: 'Cancel', role: 'cancel' },
+      ...formats.map((format) => ({ text: formatLabel(format), data: format })),
+      { text: i18n.global.t('common.actions.cancel'), role: 'cancel' },
     ],
   });
   await sheet.present();

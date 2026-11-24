@@ -1,38 +1,48 @@
 <template>
-  <AppPage title="Check in" :on-refresh="load">
+  <AppPage :title="t('attendance.check.title')" :on-refresh="load">
     <template v-if="opts">
       <div v-if="qrEnabled" class="scan">
         <ion-button expand="block" size="large" :disabled="busy" @click="scan">
-          <ion-icon slot="start" :icon="qrCodeOutline" />Scan class QR
+          <ion-icon slot="start" :icon="qrCodeOutline" />{{ t('attendance.check.scanQr') }}
         </ion-button>
         <video v-show="scanning" ref="video" playsinline muted />
-        <ion-button v-if="scanning" fill="clear" @click="stopCamera">Cancel scan</ion-button>
+        <ion-button v-if="scanning" fill="clear" @click="stopCamera">{{
+          t('attendance.check.cancelScan')
+        }}</ion-button>
         <ion-item v-if="manual">
-          <ion-input v-model="token" label="Code shown on screen" label-placement="stacked" />
-          <ion-button slot="end" :disabled="!token || busy" @click="submitQr(token)">Submit</ion-button>
+          <ion-input v-model="token" :label="t('attendance.check.code')" label-placement="stacked" />
+          <ion-button slot="end" :disabled="!token || busy" @click="submitQr(token)">{{
+            t('common.actions.submit')
+          }}</ion-button>
         </ion-item>
       </div>
 
       <ion-list>
-        <ion-list-header><ion-label>Today</ion-label></ion-list-header>
-        <p v-if="!opts.items.length" class="empty">No classes today.</p>
+        <ion-list-header
+          ><ion-label>{{ t('attendance.check.today') }}</ion-label></ion-list-header
+        >
+        <p v-if="!opts.items.length" class="empty">{{ t('attendance.check.noClasses') }}</p>
         <ion-item v-for="it in opts.items" :key="it.classSessionId ?? `b${it.batchId}`">
           <ion-label>
             <h3>
               {{ it.batchName }}<span v-if="it.subjectName"> · {{ it.subjectName }}</span>
             </h3>
-            <p v-if="it.startTime">{{ it.startTime.slice(0, 5) }}–{{ it.endTime?.slice(0, 5) }}</p>
+            <p v-if="it.startTime">{{ hhmm(it.startTime) }}–{{ hhmm(it.endTime) }}</p>
           </ion-label>
           <ion-badge v-if="it.myStatus" slot="end" :color="STATUS_COLOR[it.myStatus]">{{
-            STATUS_LABEL[it.myStatus]
+            statusLabel(it.myStatus)
           }}</ion-badge>
-          <ion-button v-else-if="it.canCheckIn" slot="end" :disabled="busy" @click="mobile(it)"
-            >Check in</ion-button
-          >
-          <ion-note v-else slot="end">{{ it.sessionStatus === 'closed' ? 'Closed' : 'Not open' }}</ion-note>
+          <ion-button v-else-if="it.canCheckIn" slot="end" :disabled="busy" @click="mobile(it)">{{
+            t('attendance.check.checkIn')
+          }}</ion-button>
+          <ion-note v-else slot="end">{{
+            it.sessionStatus === 'closed' ? t('common.status.closed') : t('attendance.check.notOpen')
+          }}</ion-note>
         </ion-item>
       </ion-list>
-      <ion-button fill="clear" expand="block" router-link="/attendance/my">My attendance</ion-button>
+      <ion-button fill="clear" expand="block" router-link="/attendance/my">{{
+        t('attendance.check.myAttendance')
+      }}</ion-button>
     </template>
   </AppPage>
 </template>
@@ -51,11 +61,19 @@ import {
   IonNote,
 } from '@ionic/vue';
 import { qrCodeOutline } from 'ionicons/icons';
-import type { CheckInOptionDto, CheckInOptionsDto, CheckInResult } from '@erp/shared';
+import { useI18n } from 'vue-i18n';
+import type { AttendanceStatus, CheckInOptionDto, CheckInOptionsDto, CheckInResult } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import { formatTime } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
-import { STATUS_COLOR, STATUS_LABEL, attendanceApi } from './api';
+import { STATUS_COLOR, attendanceApi } from './api';
+import { clock } from './roster';
 import { currentPosition, scanQr, webDetector } from './scanner';
+
+const { t } = useI18n();
+const statusLabel = (s: AttendanceStatus) =>
+  t(s === 'leave' ? 'attendance.widgets.status.leave' : `attendance.status.${s}`);
+const hhmm = (time: string | null | undefined) => clock(time, (d) => formatTime(d));
 
 const opts = ref<CheckInOptionsDto | null>(null);
 const busy = ref(false);
@@ -76,7 +94,7 @@ async function load() {
 }
 
 async function done(r: CheckInResult) {
-  await toast(r.duplicate ? 'You were already marked' : `Marked ${r.status.replace('_', ' ')}`);
+  await toast(r.duplicate ? t('attendance.check.alreadyMarked') : t(`attendance.check.marked.${r.status}`));
   await load();
 }
 

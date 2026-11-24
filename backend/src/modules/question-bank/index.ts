@@ -1,12 +1,20 @@
 import { defineModule } from '../../shared/module';
 import { associateQuestionBankModels, initQuestionBankModels } from './models';
 import { questionBankRoutes } from './question-bank.routes';
+import { registerJobFailureHandler } from '../../infrastructure/jobs/queue';
+import { PDF_IMPORT_JOB, failPdfImportJob, runPdfImportJob } from './pdf-import.service';
 
 export default defineModule({
   name: 'question-bank',
   models: initQuestionBankModels,
   associate: associateQuestionBankModels,
   routes: questionBankRoutes,
+  jobs: {
+    [PDF_IMPORT_JOB]: (payload) => runPdfImportJob(payload as { importId: number }),
+  },
+  onReady: () => {
+    registerJobFailureHandler(PDF_IMPORT_JOB, failPdfImportJob);
+  },
   permissions: [
     {
       module: 'question-bank',

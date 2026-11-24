@@ -1,0 +1,99 @@
+{
+  "list": {
+    "emptyTitle": "अभी कोई छात्र नहीं",
+    "emptyMessage": "अपना पहला छात्र जोड़ें। बैच और फीस प्लान के साथ इसमें एक मिनट से कम लगता है।",
+    "noMatchTitle": "कोई छात्र नहीं मिला"
+  },
+  "add": {
+    "title": "छात्र जोड़ें",
+    "progress": "चरण {step} / {total}",
+    "steps": {
+      "details": "विवरण",
+      "batch": "बैच",
+      "fees": "फीस प्लान"
+    },
+    "name": "छात्र का पूरा नाम",
+    "mobile": "मोबाइल नंबर",
+    "mobileHelp": "छात्र इसी नंबर से लॉग इन करेगा। अभिभावक का नंबर भी चलेगा।",
+    "branch": "शाखा",
+    "classGrade": "कक्षा",
+    "email": "ईमेल",
+    "dateOfBirth": "जन्म तिथि",
+    "gender": "लिंग",
+    "genders": {
+      "male": "पुरुष",
+      "female": "महिला",
+      "other": "अन्य"
+    },
+    "idNumber": "पहचान संख्या (जैसे आधार)",
+    "school": "स्कूल या कॉलेज",
+    "duplicatesTitle": "यह छात्र शायद पहले से जुड़ा है",
+    "matchedOn": "समान {fields}",
+    "duplicatesHelp": "भाई-बहन एक ही मोबाइल नंबर रख सकते हैं। फिर भी सेव करने पर इस छात्र को उसी नंबर पर अपना अलग लॉगिन मिलेगा।",
+    "saveAnyway": "फिर भी सेव करें",
+    "save": "छात्र जोड़ें",
+    "saveNext": "सेव करें और आगे बढ़ें",
+    "whichBatch": "{name} किस बैच में जुड़ेगा?",
+    "findBatch": "बैच खोजें",
+    "seats": "{capacity} में से {n} सीटें भरी",
+    "noBatches": "इस शाखा में अभी कोई खुला बैच नहीं।",
+    "skip": "अभी छोड़ें",
+    "whichFee": "कौन सा फीस प्लान लागू होगा?",
+    "forThisBatch": "इस बैच के लिए",
+    "noFees": "अभी कोई सक्रिय फीस प्लान नहीं।",
+    "doneTitle": "{name} जुड़ गया",
+    "admissionNumber": "प्रवेश संख्या {number}",
+    "enrolledIn": "{batch} में जुड़ा",
+    "collectFirst": "पहली फीस लें",
+    "openProfile": "प्रोफ़ाइल खोलें",
+    "another": "एक और छात्र जोड़ें"
+  },
+  "profile": {
+    "title": "मेरी प्रोफ़ाइल",
+    "notFound": "इस संस्थान में आपके खाते से कोई छात्र प्रोफ़ाइल जुड़ी नहीं है।",
+    "roll": "रोल नं. {roll}",
+    "status": {
+      "active": "सक्रिय",
+      "suspended": "निलंबित",
+      "discontinued": "पढ़ाई बंद",
+      "inactive": "निष्क्रिय"
+    },
+    "relation": {
+      "father": "पिता",
+      "mother": "माता",
+      "guardian": "अभिभावक",
+      "sibling": "भाई/बहन",
+      "relative": "रिश्तेदार",
+      "other": "अन्य"
+    },
+    "personal": "निजी जानकारी",
+    "email": "ईमेल",
+    "dateOfBirth": "जन्म तिथि",
+    "gender": "लिंग",
+    "genders": {
+      "male": "पुरुष",
+      "female": "महिला",
+      "other": "अन्य"
+    },
+    "address": "पता",
+    "city": "शहर",
+    "state": "राज्य",
+    "pincode": "पिनकोड",
+    "school": "स्कूल / कॉलेज",
+    "classGrade": "कक्षा",
+    "targetExam": "लक्ष्य परीक्षा",
+    "save": "सेव करें",
+    "documents": "दस्तावेज़",
+    "docType": {
+      "photo": "फ़ोटो",
+      "id_proof": "पहचान पत्र",
+      "address_proof": "पते का प्रमाण",
+      "marksheet": "मार्कशीट",
+      "certificate": "प्रमाण पत्र",
+      "other": "अन्य"
+    },
+    "noDocuments": "कोई दस्तावेज़ अपलोड नहीं हुआ।",
+    "updated": "प्रोफ़ाइल अपडेट हो गई",
+    "uploaded": "अपलोड हो गया"
+  }
+}

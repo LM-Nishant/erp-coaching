@@ -12,6 +12,8 @@ import {
 import { getDeviceDescriptor } from '@/core/device';
 import { loadProfile, loadSession, patchSession, saveProfile, saveSession } from '@/core/token-storage';
 import { applyBranding } from '@/core/branding';
+import { syncLocaleFromMe } from '@/core/locale-sync';
+import { personaOf, type Persona } from '@/core/persona';
 import {
   BiometricError,
   biometricAvailability,
@@ -87,7 +89,25 @@ export const useAuthStore = defineStore('auth', {
   getters: {
     isAuthenticated: (s) => !!s.me,
     isPlatformAdmin: (s) => !!s.me?.user.isSuperAdmin && !s.me.impersonatedBy,
-    needsInstitute: (s) => !!s.me && !s.me.institute && !s.me.user.isSuperAdmin,
+    /** Shell persona (home, tabs, menu); null when signed out. See core/persona.ts. */
+    persona: (s): Persona | null =>
+      s.me
+        ? personaOf({
+            isPlatformAdmin: !!s.me.user.isSuperAdmin && !s.me.impersonatedBy,
+            hasInstitute: !!s.me.institute,
+            roles: s.me.roles,
+          })
+        : null,
+    /** Member of institutes but none chosen yet. Marketplace learners and instructors belong to none and skip this. */
+    needsInstitute: (s) =>
+      !!s.me && !s.me.institute && !s.me.user.isSuperAdmin && s.me.memberships.length > 0,
+    /**
+     * Signed in without an institute (marketplace learners, independent instructors): notifications come from the
+     * personal inbox (`/notifications/personal`), which needs no institute permission.
+     */
+    personalInbox: (s) => !!s.me && !s.me.institute && !s.me.user.isSuperAdmin && !s.me.impersonatedBy,
+    /** The login is linked to an HR employee, so "My leave" and "My payslips" have something to show. */
+    hasStaffProfile: (s) => !s.me?.features || s.me.features.includes('staff-profile'),
     permissionSet: (s) => new Set<string>((s.me?.permissions as string[]) ?? []),
     /** Locked: no session, but biometric unlock can start one. */
     canUnlock: (s) => !s.me && !!s.biometric,
@@ -163,6 +183,7 @@ export const useAuthStore = defineStore('auth', {
       this.me = me;
       this.offline = false;
       applyBranding(me.institute);
+      syncLocaleFromMe(me);
       return me;
     },
 
@@ -229,7 +250,7 @@ export const useAuthStore = defineStore('auth', {
           await this.selectInstitute(me.memberships[0]!.id);
           return 'home';
         }
-        return 'select-institute';
+        if (me.memberships.length) return 'select-institute';
       }
       return 'home';
     },

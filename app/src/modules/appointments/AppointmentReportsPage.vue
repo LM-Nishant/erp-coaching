@@ -1,7 +1,7 @@
 <template>
-  <AppPage title="Meeting reports" :on-refresh="load">
+  <AppPage :title="t('appointments.reports.title')" :on-refresh="load">
     <template #actions>
-      <ion-button :disabled="downloading" aria-label="Download CSV" @click="download">
+      <ion-button :disabled="downloading" :aria-label="t('appointments.downloadCsv')" @click="download">
         <ion-icon slot="icon-only" :icon="downloadOutline" />
       </ion-button>
     </template>
@@ -10,15 +10,26 @@
         <ion-input
           v-model="filters.from"
           type="date"
-          label="From"
+          :label="t('common.labels.from')"
           label-placement="stacked"
           @ion-change="load"
         />
-        <ion-input v-model="filters.to" type="date" label="To" label-placement="stacked" @ion-change="load" />
+        <ion-input
+          v-model="filters.to"
+          type="date"
+          :label="t('common.labels.to')"
+          label-placement="stacked"
+          @ion-change="load"
+        />
       </ion-item>
       <ion-item v-if="branches.length > 1">
-        <ion-select v-model="filters.branchId" label="Branch" interface="popover" @ion-change="load">
-          <ion-select-option :value="null">All branches</ion-select-option>
+        <ion-select
+          v-model="filters.branchId"
+          :label="t('appointments.fields.branch')"
+          interface="popover"
+          @ion-change="load"
+        >
+          <ion-select-option :value="null">{{ t('appointments.reports.allBranches') }}</ion-select-option>
           <ion-select-option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</ion-select-option>
         </ion-select>
       </ion-item>
@@ -26,42 +37,63 @@
 
     <template v-if="summary">
       <div class="stats">
-        <StatCard label="Meetings" :value="summary.total" />
-        <StatCard label="Held" :value="summary.byStatus.completed" />
-        <StatCard label="Pending" :value="summary.byStatus.requested" />
+        <StatCard :label="t('appointments.reports.meetings')" :value="formatNumber(summary.total)" />
+        <StatCard :label="t('appointments.reports.held')" :value="formatNumber(summary.byStatus.completed)" />
+        <StatCard :label="t('common.status.pending')" :value="formatNumber(summary.byStatus.requested)" />
         <StatCard
-          label="Avg. response"
-          :value="summary.avgResponseHours === null ? '—' : `${summary.avgResponseHours.toFixed(1)} h`"
+          :label="t('appointments.reports.avgResponse')"
+          :value="formatDuration(summary.avgResponseHours === null ? null : summary.avgResponseHours * 3600)"
         />
         <StatCard
-          label="Online"
-          :value="summary.byMode.online"
-          :hint="`${summary.byMode.offline} in person`"
+          :label="t('appointments.mode.online')"
+          :value="formatNumber(summary.byMode.online)"
+          :hint="t('appointments.reports.inPerson', { n: formatNumber(summary.byMode.offline) })"
         />
-        <StatCard label="No-shows" :value="summary.byStatus.no_show" />
+        <StatCard
+          :label="t('appointments.reports.noShows')"
+          :value="formatNumber(summary.byStatus.no_show)"
+        />
       </div>
 
       <ion-list>
-        <ion-list-header><ion-label>By branch</ion-label></ion-list-header>
+        <ion-list-header
+          ><ion-label>{{ t('appointments.reports.byBranch') }}</ion-label></ion-list-header
+        >
         <ion-item v-for="b in summary.byBranch" :key="b.branchId">
-          <ion-label>{{ b.branchName ?? `Branch #${b.branchId}` }}</ion-label>
-          <ion-note slot="end">{{ b.completed }} held / {{ b.total }}</ion-note>
+          <ion-label>{{
+            b.branchName ?? t('appointments.reports.branchNumber', { id: b.branchId })
+          }}</ion-label>
+          <ion-note slot="end">{{
+            t('appointments.reports.heldOf', {
+              held: formatNumber(b.completed),
+              total: formatNumber(b.total),
+            })
+          }}</ion-note>
         </ion-item>
       </ion-list>
 
       <ion-list>
-        <ion-list-header><ion-label>By teacher</ion-label></ion-list-header>
-        <ion-item v-for="t in summary.byTeacher" :key="t.teacherUserId">
+        <ion-list-header
+          ><ion-label>{{ t('appointments.reports.byTeacher') }}</ion-label></ion-list-header
+        >
+        <ion-item v-for="row in summary.byTeacher" :key="row.teacherUserId">
           <ion-label class="ion-text-wrap">
-            <h2>{{ t.teacherName ?? `#${t.teacherUserId}` }}</h2>
+            <h2>{{ row.teacherName ?? `#${row.teacherUserId}` }}</h2>
             <p>
-              {{ t.total }} requests · {{ t.confirmed }} upcoming · {{ t.completed }} held ·
-              {{ t.rejected }} rejected · {{ t.cancelled }} cancelled
+              {{
+                t('appointments.reports.teacherLine', {
+                  total: formatNumber(row.total),
+                  confirmed: formatNumber(row.confirmed),
+                  held: formatNumber(row.completed),
+                  rejected: formatNumber(row.rejected),
+                  cancelled: formatNumber(row.cancelled),
+                })
+              }}
             </p>
           </ion-label>
         </ion-item>
         <ion-item v-if="!summary.byTeacher.length">
-          <ion-label class="muted">No meetings in this period.</ion-label>
+          <ion-label class="muted">{{ t('appointments.reports.empty') }}</ion-label>
         </ion-item>
       </ion-list>
     </template>
@@ -83,14 +115,17 @@ import {
   IonSelectOption,
 } from '@ionic/vue';
 import { downloadOutline } from 'ionicons/icons';
+import { useI18n } from 'vue-i18n';
 import type { AppointmentReportSummary } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import StatCard from '@/components/StatCard.vue';
 import { saveFile } from '@/core/downloads';
+import { formatDuration, formatNumber } from '@/core/format';
 import { toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import { addDaysIso, appointmentsApi, todayIso, type ReportFilters } from './api';
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const branches = computed(() => auth.me?.branches ?? []);
 const filters = reactive<ReportFilters>({

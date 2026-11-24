@@ -2,20 +2,28 @@
   <div v-if="shown" class="test-result" :class="shown.ok ? 'ok' : 'fail'">
     <ion-icon :icon="shown.ok ? checkmarkCircle : alertCircle" />
     <span
-      >{{ shown.ok ? 'Test passed' : 'Test failed' }}: {{ shown.message }}
-      <span class="muted">({{ new Date(shown.at).toLocaleString('en-IN') }})</span></span
+      >{{
+        t('platform.test.result', {
+          outcome: shown.ok ? t('platform.test.passed') : t('platform.test.failed'),
+          message: shown.message,
+        })
+      }}
+      <span class="muted">({{ formatDateTime(shown.at) }})</span></span
     >
   </div>
-  <p v-else class="muted small">Not tested yet. Enabling runs a connection test first.</p>
+  <p v-else class="muted small">{{ t('platform.test.notTested') }}</p>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { IonIcon } from '@ionic/vue';
 import { alertCircle, checkmarkCircle } from 'ionicons/icons';
 import type { IntegrationTestResultDto, IntegrationTestStatus } from '@erp/shared';
+import { formatDateTime } from '@/core/format';
 import { lastTest } from '../api';
 
+const { t } = useI18n();
 const props = defineProps<{ status: IntegrationTestStatus; result: IntegrationTestResultDto | null }>();
 const shown = computed(() => lastTest(props.status, props.result));
 </script>

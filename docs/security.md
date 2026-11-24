@@ -122,8 +122,10 @@ Some limits sit outside the limiters:
   has an account (then 429 `OTP_RATE_LIMITED`). Each device the user has signed in on has a
   budget of its own, so requests from elsewhere can't use up the user's.
 - Failed sign-ins lock the account ([sign-in lockout](#passwords-otps-and-sign-in-lockout)).
-- A user can have at most `MAX_ACTIVE_DEVICES` active devices; every further new device needs an
-  OTP.
+- A user can have at most `MAX_ACTIVE_DEVICES` active devices. Sign-in on another device is
+  refused (`device_limit_reached`) until one is signed out under **My devices** or by an admin;
+  signing out from the account menu doesn't free it. A password sign-in on a new device needs an
+  OTP, except on the user's first device.
 - Behind a proxy, set `TRUST_PROXY` to the number of proxies (1 behind the bundled nginx).
   Otherwise every client shares the proxy's IP and budget.
 - `RATE_LIMIT_ENABLED=false` is for tests and load runs only.

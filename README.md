@@ -80,6 +80,36 @@ npm run dev:app       # http://localhost:5173
 | Apex Coaching: Institute Admin / Branch Admin / Accountant / Teacher / Student / Parent | `9100000001` … `9100000006` | `Password@123` |
 | Zenith Academy: same roles                                                              | `9200000001` … `9200000006` | `Password@123` |
 
+### Rich demo data (optional)
+
+`npm run db:seed` leaves most screens empty. To fill Apex and Zenith with realistic data, run this after it:
+
+```bash
+npm run db:seed:demo                 # about 2 minutes; safe to re-run, nothing is duplicated
+npm run db:seed:demo -- --only=apex  # one institute
+```
+
+It drives the real API in-process, so balances, enrolments and ledgers follow the business rules. It creates:
+
+- Sessions, courses, JEE/NEET/Foundation batches with a weekly timetable and 4 weeks of class sessions and attendance.
+- About 40 (Apex) and 20 (Zenith) students with guardians, siblings sharing a parent's mobile, and enquiries and admissions.
+- Fee plans with paid, partial and overdue accounts, plus receipts and expenses.
+- Published exams with results, LMS link resources, graded homework and live classes (mock provider).
+- Staff attendance and a locked payroll run, SMS/in-app campaigns, a website page, grievances, appointments, and _Front Desk_ and _Auditor_ custom roles.
+
+No messages leave the machine: SMS, WhatsApp, email and push notifications are recorded as skipped (in-app ones are kept), and the background jobs it triggers run inside the seed process. It also forces console/mock providers and refuses to run if real messaging providers are configured (`--allow-real-providers`). It also refuses when `NODE_ENV=production` unless you pass `--allow-production`.
+
+The new users have no password, so sign in with **Mobile OTP** (see below). Apex numbers are shown; Zenith uses `9622…` (teachers `9622100001`–`3`, Front Desk `9622100004`, Auditor `9622100005`, Sharma siblings `9622300018`, parent `9622300019`).
+
+| Who (Apex)                                       | Mobile                            |
+| ------------------------------------------------ | --------------------------------- |
+| Teachers                                         | `9621100001` … `9621100005`       |
+| Front Desk (custom role)                         | `9621100006`                      |
+| Auditor (custom role, read-only)                 | `9621100007`                      |
+| Kulkarni siblings (one mobile, pick a profile)   | `9621300037`                      |
+| Swati Kulkarni, their mother                     | `9621300038`                      |
+| Rohan / Riya Patil, and their mother Meera Patil | `9621200037` / `8` / `9621300039` |
+
 **No OTP in dev.** With `NODE_ENV=development` (the default), `AUTH_DEV_SKIP_OTP` is on and sign-in never asks for a code: a password signs in on a new device straight away, and **Mobile OTP** › **Send OTP** signs in at once (no SMS, no code to enter). A number shared by several accounts still opens "Who's signing in?", and **Switch profile** goes straight to it. Devices are still registered and the limit of 2 active devices still applies; revoke one under **My devices**. The API logs a `WARN` at startup while the bypass is on.
 
 To test the real OTP flows locally, set `AUTH_DEV_SKIP_OTP=false` in `backend/.env` and restart the API. OTPs are then asked for on OTP login and on the first login from a _new_ device when the user already has one; SMS uses a console adapter, so the code is printed in the API log as `[DEV] OTP for <mobile>: 123456`. The bypass is off in tests and E2E, and the API refuses to start with it on in production.
@@ -156,6 +186,7 @@ Native project notes:
   - An OpenAI-compatible provider configuration screen with presets: OpenAI, Azure, Gemini, Groq, OpenRouter and Ollama, plus a deterministic mock provider for development and tests (never available in production).
   - The key is encrypted at rest (AES-256-GCM) and never returned to the browser.
   - Test connection, plus an `aiChat()` service with per-institute usage metering (tokens, images and estimated cost) and quota (`ai_usage`).
+  - **Question paper import from PDF** (Question bank › a bank › _Import PDF paper_): upload an existing paper (up to 20 MB and 30 pages, plus an optional answer-key PDF of up to 10 pages). A background job reads it page by page with pdf.js; scanned or photographed pages, diagrams and equation-heavy pages are sent to the AI model as images (the model must accept images). Questions, options and printed answers are copied as drafts. Answer keys are matched by question number and never guessed; missing, conflicting or hard-to-read answers are flagged. Diagrams are cropped and attached to the question. The teacher reviews and edits the drafts, sets the subject, difficulty and marks, and saves only the ones they pick. Unsaved uploads stay under _Earlier uploads_ until they are saved or discarded.
 - **Integrations**: adapter interfaces with console or mock implementations for SMS, WhatsApp, email, push, payments, live streaming and biometric devices.
 - **App shell**
   - Login, OTP and institute selection.

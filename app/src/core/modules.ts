@@ -1,6 +1,7 @@
 import type { Component } from 'vue';
 import type { RouteLocationNormalized, RouteLocationRaw, RouteRecordRaw } from 'vue-router';
 import type { ParentChildDto, PermissionKey, SystemRoleSlug } from '@erp/shared';
+import { MAX_TABS, MENU_GROUPS, type MenuGroup, type Persona } from './persona';
 
 export interface MenuItem {
   title: string;
@@ -18,8 +19,23 @@ export interface MenuItem {
   superAdmin?: boolean;
   /** Hidden when the institute's plan doesn't enable this module id (backend `requireModule`). */
   planModule?: string;
+  /** Extra check, run first: when it returns false the item is hidden; when true the other checks still apply. */
+  visible?: () => boolean;
   /** Lower comes first. Default 100. */
   order?: number;
+  /** i18n key for the title (e.g. `fees.menu.myFees`); `title` stays the English fallback. */
+  titleKey?: string;
+  /** Section of the grouped "More" menu and desktop side menu. Default `other`. */
+  group?: MenuGroup;
+  /** Shown only to these personas (checked with `roles`; see core/persona.ts). Omit = every persona. */
+  personas?: readonly Persona[];
+  /**
+   * Bottom tab on phones for these personas: the position (lower first). Each persona gets its
+   * `MAX_TABS - 1` lowest items plus "More". E.g. `{ student: 2 }` = second tab for students.
+   */
+  tab?: Partial<Record<Persona, number>>;
+  /** i18n key of the short bottom-tab label (e.g. `nav.tabs.study` for "My courses"); default `titleKey`. */
+  tabTitleKey?: string;
 }
 
 export interface AppModule {
@@ -63,6 +79,12 @@ export interface WidgetSlotProps {
   home: Record<string, never>;
   /** Home dashboard (`/home`) of the platform super admin (not while impersonating). */
   'platform-home': Record<string, never>;
+  /** "Today" home of the `student` persona: next class, continue watching, due work, fee due. */
+  'student-home': Record<string, never>;
+  /** "Today" home of the `teacher` persona: now/next class, quick actions, things to check. */
+  'teacher-home': Record<string, never>;
+  /** "Today" home of the `staff` persona (admins, accountant, front desk): quick actions, today's numbers, setup. */
+  'staff-home': Record<string, never>;
 }
 export type WidgetSlot = keyof WidgetSlotProps;
 
@@ -78,6 +100,11 @@ export interface DashboardWidget<S extends WidgetSlot = WidgetSlot> {
   permission?: PermissionKey;
   /** Hidden when the institute's plan doesn't enable this module id. */
   planModule?: string;
+  /**
+   * Only for these personas. Use on the shared `home` slot when a persona's own home (`teacher-home`…) already
+   * shows the same card, so it isn't shown twice.
+   */
+  personas?: readonly Persona[];
   /** Lower comes first. Default 100. */
   order?: number;
   /** `full` spans the whole row on wide screens; default `half`. */
@@ -88,9 +115,30 @@ export function defineAppModule(m: AppModule): AppModule {
   return m;
 }
 
-/** Whether a user with `roles` is someone `item` is for (see `MenuItem.roles`). */
-export const fitsPersona = (item: MenuItem, roles: readonly string[] = []) =>
-  !item.roles || item.roles.some((r) => roles.includes(r));
+/** Whether a user with `roles` (and `persona`, when known) is someone `item` is for (`MenuItem.roles`/`personas`). */
+export const fitsPersona = (item: MenuItem, roles: readonly string[] = [], persona?: Persona) =>
+  (!item.roles || item.roles.some((r) => roles.includes(r))) &&
+  (!item.personas || !persona || item.personas.includes(persona));
+
+/** Whether a dashboard widget is for `persona` (`DashboardWidget.personas`); unknown persona = yes. */
+export const widgetFitsPersona = (w: Pick<DashboardWidget, 'personas'>, persona?: Persona) =>
+  !w.personas || !persona || w.personas.includes(persona);
+
+/** Bottom tabs of `persona` among already-filtered menu `items`: at most `MAX_TABS - 1`, "More" comes after. */
+export function tabsFor(items: readonly MenuItem[], persona: Persona): MenuItem[] {
+  return items
+    .filter((i) => i.tab?.[persona] !== undefined)
+    .sort((a, b) => a.tab![persona]! - b.tab![persona]!)
+    .slice(0, MAX_TABS - 1);
+}
+
+/** Already-filtered menu `items` by `MenuItem.group`, in `MENU_GROUPS` order; empty groups left out. */
+export function groupMenu(items: readonly MenuItem[]): { group: MenuGroup; items: MenuItem[] }[] {
+  return MENU_GROUPS.map((group) => ({
+    group,
+    items: items.filter((i) => (i.group ?? 'other') === group),
+  })).filter((g) => g.items.length > 0);
+}
 
 /**
  * Auto-discovers every `src/modules/<name>/module.ts`. A new feature module only adds its own folder —

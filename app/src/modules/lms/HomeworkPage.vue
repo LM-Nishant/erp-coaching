@@ -1,24 +1,33 @@
 <template>
-  <AppPage title="Homework" :on-refresh="load">
+  <AppPage :title="t('lms.homework.title')" :on-refresh="load">
     <template #actions>
       <ion-button
         v-if="isStaff"
         v-can="'lms-assignments.edit'"
         router-link="/lms/homework/new"
-        aria-label="New homework"
+        :aria-label="t('lms.homework.new')"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
 
     <ion-item v-if="isStaff">
-      <ion-select v-model="batchId" label="Batch" label-placement="stacked" interface="popover">
-        <ion-select-option :value="null">All batches</ion-select-option>
+      <ion-select
+        v-model="batchId"
+        :label="t('lms.homework.batch')"
+        label-placement="stacked"
+        interface="popover"
+      >
+        <ion-select-option :value="null">{{ t('lms.homework.allBatches') }}</ion-select-option>
         <ion-select-option v-for="b in batches" :key="b.id" :value="b.id">{{ b.name }}</ion-select-option>
       </ion-select>
     </ion-item>
     <ion-segment v-else v-model="tab">
-      <ion-segment-button value="pending"><ion-label>To do</ion-label></ion-segment-button>
-      <ion-segment-button value="done"><ion-label>Submitted</ion-label></ion-segment-button>
+      <ion-segment-button value="pending"
+        ><ion-label>{{ t('lms.homework.tabs.pending') }}</ion-label></ion-segment-button
+      >
+      <ion-segment-button value="done"
+        ><ion-label>{{ t('lms.homework.tabs.done') }}</ion-label></ion-segment-button
+      >
     </ion-segment>
 
     <ion-list>
@@ -32,19 +41,36 @@
           <h2>{{ a.title }}</h2>
           <p>
             <span v-if="a.student">{{ a.student.name }} · </span>{{ a.batchName }}
-            <span v-if="a.subjectName"> · {{ a.subjectName }}</span> · due {{ fmtDateTime(a.dueAt) }}
+            <span v-if="a.subjectName"> · {{ a.subjectName }}</span> ·
+            {{ t('lms.homework.dueAt', { date: formatDateTime(a.dueAt) }) }}
           </p>
           <p v-if="a.counts">
-            {{ a.counts.submitted }}/{{ a.counts.students }} submitted · {{ a.counts.graded }} graded
+            {{
+              t('lms.homework.counts', {
+                submitted: a.counts.submitted,
+                students: a.counts.students,
+                graded: a.counts.graded,
+              })
+            }}
           </p>
         </ion-label>
-        <ion-badge v-if="isStaff" slot="end" :color="statusColor[a.status]">{{ a.status }}</ion-badge>
-        <ion-badge v-else slot="end" :color="badge(a).color">{{ badge(a).text }}</ion-badge>
+        <ion-badge v-if="isStaff" slot="end" :color="statusColor[a.status]">{{
+          t(`common.status.${a.status}`)
+        }}</ion-badge>
+        <StatusChip v-else slot="end" :label="badge(a).text" :tone="badge(a).tone" />
       </ion-item>
-      <ion-item v-if="!loading && !items.length"
-        ><ion-label class="muted">No homework here.</ion-label></ion-item
-      >
     </ion-list>
+    <EmptyState
+      v-if="!loading && !items.length"
+      :icon="checkmarkDoneOutline"
+      :title="
+        isStaff
+          ? t('lms.homework.emptyStaff')
+          : tab === 'pending'
+            ? t('lms.homework.emptyPending')
+            : t('lms.homework.emptyDone')
+      "
+    />
   </AppPage>
 </template>
 
@@ -63,15 +89,21 @@ import {
   IonSelectOption,
   onIonViewWillEnter,
 } from '@ionic/vue';
-import { add } from 'ionicons/icons';
+import { add, checkmarkDoneOutline } from 'ionicons/icons';
+import { useI18n } from 'vue-i18n';
 import type { BatchDto, LmsAssignmentDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import EmptyState from '@/components/EmptyState.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { formatDateTime } from '@/core/format';
 import { toastError } from '@/core/toast';
 import { academicsApi } from '@/modules/academics/api';
-import { fmtDateTime, lmsApi } from './api';
+import { lmsApi } from './api';
+import { HOMEWORK_TONE, homeworkState } from './homework';
 import { useLmsRole } from './roles';
 
 const { isStaff, isParent } = useLmsRole();
+const { t } = useI18n();
 const statusColor: Record<string, string> = { draft: 'medium', published: 'primary', closed: 'dark' };
 const items = ref<LmsAssignmentDto[]>([]);
 const batches = ref<BatchDto[]>([]);
@@ -80,14 +112,15 @@ const tab = ref<'pending' | 'done'>('pending');
 const loading = ref(true);
 
 function badge(a: LmsAssignmentDto) {
+  const state = homeworkState(a);
   const s = a.mySubmission;
-  if (s?.status === 'graded')
-    return { text: a.maxMarks ? `${s.marks ?? '—'}/${a.maxMarks}` : 'graded', color: 'success' };
-  if (s?.status === 'returned') return { text: 'redo', color: 'warning' };
-  if (s) return { text: s.isLate ? 'late' : 'submitted', color: 'primary' };
-  return new Date(a.dueAt) < new Date()
-    ? { text: 'overdue', color: 'danger' }
-    : { text: 'pending', color: 'medium' };
+  const text =
+    state === 'graded' && s && a.maxMarks
+      ? t('lms.homework.marks', { got: s.marks ?? '—', max: a.maxMarks })
+      : state === 'submitted' && s?.isLate
+        ? t('lms.homework.state.late')
+        : t(`lms.homework.state.${state}`);
+  return { text, tone: HOMEWORK_TONE[state] };
 }
 
 async function load() {

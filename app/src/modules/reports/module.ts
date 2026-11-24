@@ -34,6 +34,10 @@ export default defineAppModule({
     {
       title: 'Reports',
       path: '/reports',
+      // Students and parents hold `reports.view` for their own report cards; the catalogue is for staff.
+      personas: ['staff', 'teacher'],
+      group: 'reports',
+      titleKey: 'nav.reports.reports',
       icon: barChartOutline,
       permission: 'reports.view',
       planModule: 'reports',
@@ -42,6 +46,10 @@ export default defineAppModule({
     {
       title: 'Platform analytics',
       path: '/reports/platform',
+      group: 'platform',
+      titleKey: 'nav.reports.platform',
+      tab: { platform: 4 },
+      tabTitleKey: 'nav.tabs.analytics',
       icon: analyticsOutline,
       superAdmin: true,
       order: 15,

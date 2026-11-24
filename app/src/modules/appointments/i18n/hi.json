@@ -1,0 +1,136 @@
+{
+  "status": {
+    "requested": "अनुरोध भेजा",
+    "noShow": "नहीं आए"
+  },
+  "action": {
+    "requested": "अनुरोध भेजा",
+    "approved": "मंज़ूर किया",
+    "rejected": "अस्वीकार किया",
+    "rescheduled": "समय बदला",
+    "cancelled": "रद्द किया",
+    "completed": "मीटिंग हुई",
+    "noShow": "नहीं आए",
+    "notesUpdated": "नोट्स बदले",
+    "reminderSent": "रिमाइंडर भेजा"
+  },
+  "mode": {
+    "label": "तरीका",
+    "online": "ऑनलाइन",
+    "offline": "आमने-सामने",
+    "both": "ऑनलाइन या आमने-सामने",
+    "onlineOnly": "सिर्फ़ ऑनलाइन",
+    "offlineOnly": "सिर्फ़ आमने-सामने"
+  },
+  "fields": {
+    "branch": "शाखा",
+    "location": "जगह"
+  },
+  "downloadCsv": "CSV डाउनलोड करें",
+  "item": {
+    "with": "{name} के साथ",
+    "by": "{name} ने माँगी"
+  },
+  "list": {
+    "title": "अभिभावक मीटिंग",
+    "request": "मीटिंग माँगें",
+    "history": "पुरानी मीटिंग",
+    "branchWide": "मेरी सभी ब्रांच की मीटिंग",
+    "empty": "यहाँ कोई मीटिंग नहीं।"
+  },
+  "widget": {
+    "empty": "{name} के टीचरों के साथ कोई आने वाली मीटिंग नहीं।"
+  },
+  "slotPicker": {
+    "loading": "खाली समय लोड हो रहा है…",
+    "empty": "इन तारीख़ों में कोई खाली समय नहीं। आगे की तारीख़ें देखें।"
+  },
+  "request": {
+    "title": "मीटिंग माँगें",
+    "child": "बच्चा",
+    "teacher": "टीचर",
+    "choose": "चुनें",
+    "noTeachers": "इस बच्चे के बैच में कोई टीचर नहीं मिला।",
+    "pickTime": "खाली समय चुनें",
+    "at": "जगह: {location}",
+    "agenda": "आप किस बारे में बात करना चाहते हैं?",
+    "submit": "मीटिंग माँगें",
+    "submitAt": "{when} की मीटिंग माँगें",
+    "sent": "अनुरोध भेज दिया। टीचर पक्का करेंगे।"
+  },
+  "detail": {
+    "title": "मीटिंग",
+    "titleWithId": "मीटिंग #{id}",
+    "rescheduledTimes": "{n} बार समय बदला | {n} बार समय बदला",
+    "student": "छात्र",
+    "requestedBy": "किसने माँगी",
+    "agenda": "बात का विषय",
+    "join": "ऑनलाइन मीटिंग में जुड़ें",
+    "googleCalendar": "Google कैलेंडर",
+    "teacherNote": "टीचर का नोट",
+    "reason": "कारण",
+    "reschedule": "समय बदलें",
+    "cancelMeeting": "मीटिंग रद्द करें",
+    "markHeld": "मीटिंग हुई",
+    "newTime": "नया समय",
+    "start": "शुरू",
+    "end": "खत्म",
+    "reasonOptional": "कारण (वैकल्पिक)",
+    "saveNewTime": "नया समय सेव करें",
+    "notes": "मीटिंग के नोट्स",
+    "sharedSummary": "अभिभावक को दिखने वाला सारांश",
+    "privateNotes": "निजी नोट्स (सिर्फ़ स्टाफ़ के लिए)",
+    "saveNotes": "नोट्स सेव करें",
+    "noSummary": "टीचर ने अभी सारांश नहीं लिखा है।",
+    "approveTitle": "मीटिंग मंज़ूर करें",
+    "approveLinkHint": "मीटिंग लिंक खाली छोड़ें, वीडियो मीटिंग का लिंक अपने-आप बन जाएगा।",
+    "notePlaceholder": "अभिभावक के लिए नोट (वैकल्पिक)",
+    "linkPlaceholder": "मीटिंग लिंक (वैकल्पिक)",
+    "invalidLink": "पूरा मीटिंग लिंक डालें, जो https:// से शुरू हो",
+    "confirmed": "मीटिंग पक्की हो गई",
+    "rejectTitle": "अनुरोध अस्वीकार करें",
+    "reasonPlaceholder": "कारण (दूसरी तरफ़ को दिखेगा)",
+    "reasonRequired": "कृपया कारण बताएँ",
+    "rejected": "अनुरोध अस्वीकार कर दिया",
+    "cancelled": "मीटिंग रद्द कर दी",
+    "pickNewTime": "नया समय चुनें",
+    "rescheduledToast": "मीटिंग का समय बदल दिया",
+    "newTimeRequested": "नए समय का अनुरोध भेज दिया",
+    "markedHeld": "मीटिंग हुई, मार्क कर दिया",
+    "markedNoShow": "नहीं आए, मार्क कर दिया",
+    "notesSaved": "नोट्स सेव हो गए"
+  },
+  "availability": {
+    "title": "मीटिंग का खाली समय",
+    "mySlots": "मेरे स्लॉट",
+    "every": "हर {day}",
+    "meetingLength": "{length} की मीटिंग",
+    "emptyTitle": "अभी कोई खाली समय नहीं",
+    "emptyMessage": "अभिभावक सिर्फ़ आपके स्लॉट में ही मीटिंग माँग सकते हैं।",
+    "add": "खाली समय जोड़ें",
+    "weekly": "हर हफ़्ते",
+    "oneDate": "एक तारीख़",
+    "day": "दिन",
+    "length": "मीटिंग कितनी लंबी",
+    "locationPlaceholder": "कमरा 4",
+    "startingOptional": "कब से (वैकल्पिक)",
+    "untilOptional": "कब तक (वैकल्पिक)",
+    "addSlot": "स्लॉट जोड़ें",
+    "added": "खाली समय जुड़ गया"
+  },
+  "reports": {
+    "title": "मीटिंग रिपोर्ट",
+    "allBranches": "सभी शाखाएँ",
+    "meetings": "मीटिंग",
+    "held": "हो चुकीं",
+    "avgResponse": "जवाब का औसत समय",
+    "inPerson": "{n} आमने-सामने",
+    "noShows": "नहीं आए",
+    "byBranch": "ब्रांच के अनुसार",
+    "branchNumber": "ब्रांच #{id}",
+    "heldOf": "{total} में से {held} हुईं",
+    "byTeacher": "टीचर के अनुसार",
+    "teacherLine": "{total} अनुरोध · {confirmed} आने वाली · {held} हुईं · {rejected} अस्वीकार · {cancelled} रद्द",
+    "empty": "इस समय में कोई मीटिंग नहीं।"
+  }
+}

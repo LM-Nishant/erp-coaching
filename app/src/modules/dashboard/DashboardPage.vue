@@ -1,88 +1,59 @@
 <template>
-  <AppPage title="Dashboard" :on-refresh="refresh">
-    <h2 class="hello">Hello, {{ auth.me?.user.name }}</h2>
+  <!-- Students get their own "Today" page at /home (parents are sent to /parent-home by the router). -->
+  <StudentHome v-if="auth.persona === 'student'" />
+  <AppPage v-else :title="pageTitle" :on-refresh="refresh">
+    <!-- The teacher persona gets a "Today" home (teacher-home widgets) instead of plan and usage numbers. -->
+    <TeacherHome v-if="auth.persona === 'teacher'" :key="`teacher-${refreshKey}`" />
+    <template v-else>
+      <h2 class="hello">{{ t('dashboard.home.hello', { name: auth.me?.user.name }) }}</h2>
 
-    <template v-if="auth.isPlatformAdmin">
-      <ion-grid v-if="platform">
+      <ion-grid v-if="auth.isPlatformAdmin && platform">
         <ion-row>
           <ion-col v-for="s in platform.institutesByStatus" :key="s.status" size="6" size-md="3">
-            <StatCard :label="`${s.status} institutes`" :value="s.count" />
+            <StatCard :label="institutesLabel(s.status)" :value="s.count" />
           </ion-col>
-          <ion-col size="6" size-md="3"><StatCard label="Institute users" :value="platform.users" /></ion-col>
-          <ion-col size="6" size-md="3"><StatCard label="Branches" :value="platform.branches" /></ion-col>
+          <ion-col size="6" size-md="3">
+            <StatCard :label="t('dashboard.home.platform.users')" :value="platform.users" />
+          </ion-col>
+          <ion-col size="6" size-md="3">
+            <StatCard :label="t('dashboard.home.platform.branches')" :value="platform.branches" />
+          </ion-col>
         </ion-row>
       </ion-grid>
-    </template>
 
-    <template v-else>
-      <p class="muted cap">
-        {{ auth.me?.institute?.name }} · {{ auth.me?.roles.join(', ').replace(/-/g, ' ') }}
-      </p>
-      <ion-grid v-if="sub">
-        <ion-row>
-          <ion-col size="6" size-md="3">
-            <StatCard
-              label="Plan"
-              :value="sub.subscription?.plan?.name ?? '—'"
-              :hint="sub.subscription?.status"
-            />
-          </ion-col>
-          <ion-col size="6" size-md="3">
-            <StatCard label="Branches" :value="sub.usage.branches" :hint="limit(sub.limits?.maxBranches)" />
-          </ion-col>
-          <ion-col size="6" size-md="3">
-            <StatCard
-              label="Storage (MB)"
-              :value="sub.usage.storageMb"
-              :hint="limit(sub.limits?.storageMb)"
-            />
-          </ion-col>
-          <ion-col size="6" size-md="3">
-            <StatCard
-              label="AI tokens this month"
-              :value="sub.usage.aiTokensThisMonth"
-              :hint="limit(sub.limits?.aiTokensMonthly)"
-            />
-          </ion-col>
-        </ion-row>
-      </ion-grid>
-      <ion-card v-else>
-        <ion-card-content>
-          Your branches: {{ auth.me?.branches.map((b) => b.name).join(', ') || '—' }}
-        </ion-card-content>
-      </ion-card>
+      <template v-else-if="!auth.isPlatformAdmin">
+        <p class="muted">{{ [auth.me?.institute?.name, roles].filter(Boolean).join(' · ') }}</p>
+        <StaffHome v-if="auth.persona === 'staff'" :key="`staff-${refreshKey}`" />
+        <p v-else class="muted">
+          {{
+            t('dashboard.home.yourBranches', {
+              names: auth.me?.branches.map((b) => b.name).join(', ') || '—',
+            })
+          }}
+        </p>
+      </template>
     </template>
 
     <!-- Module widgets for this audience; `:key` remounts them (and so reloads them) on refresh. -->
-    <div v-if="widgets.length" :key="refreshKey" class="widgets">
-      <ion-card v-for="w in widgets" :key="w.id" :class="['widget', w.size ?? 'half']">
-        <ion-card-header>
-          <ion-card-title>{{ w.title }}</ion-card-title>
-        </ion-card-header>
-        <ion-card-content>
-          <component :is="w.component" />
-        </ion-card-content>
-      </ion-card>
-    </div>
+    <WidgetGrid :key="`widgets-${refreshKey}`" :widgets="widgets" class="shared-widgets" />
   </AppPage>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
-import { IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonCol, IonGrid, IonRow } from '@ionic/vue';
-import type { PlanLimits, SubscriptionDto } from '@erp/shared';
+import { useI18n } from 'vue-i18n';
+import { IonCol, IonGrid, IonRow } from '@ionic/vue';
 import AppPage from '@/components/AppPage.vue';
 import StatCard from '@/components/StatCard.vue';
 import { api } from '@/core/api';
-import { widgetsFor } from '@/core/modules';
+import { widgetFitsPersona, widgetsFor } from '@/core/modules';
+import { roleNames } from '@/core/roles';
 import { useAuthStore } from '@/stores/auth';
+import StaffHome from './StaffHome.vue';
+import StudentHome from './StudentHome.vue';
+import TeacherHome from './TeacherHome.vue';
+import WidgetGrid from './WidgetGrid.vue';
 
-interface SubscriptionInfo {
-  subscription: SubscriptionDto | null;
-  limits: PlanLimits | null;
-  usage: { branches: number; storageMb: number; aiTokensThisMonth: number };
-}
 interface PlatformStats {
   institutesByStatus: { status: string; count: number }[];
   users: number;
@@ -90,22 +61,31 @@ interface PlatformStats {
 }
 
 const auth = useAuthStore();
-const route = useRoute();
-const sub = ref<SubscriptionInfo | null>(null);
+const { t, te } = useI18n();
+const pageTitle = computed(() =>
+  auth.persona === 'teacher' ? t('dashboard.teacher.title') : t('dashboard.home.title'),
+);
+const roles = computed(() => roleNames(auth.me?.roles, t));
+const institutesLabel = (status: string) => {
+  const key = `dashboard.home.platform.statuses.${status}`;
+  return t('dashboard.home.platform.institutes', { status: te(key) ? t(key) : status });
+};
 const platform = ref<PlatformStats | null>(null);
-
-const limit = (n: number | null | undefined) => (n === null || n === undefined ? 'unlimited' : `of ${n}`);
 
 const refreshKey = ref(0);
 const widgets = computed(() =>
   widgetsFor(auth.isPlatformAdmin ? 'platform-home' : 'home').filter(
-    (w) => (!w.permission || auth.can(w.permission)) && (!w.planModule || auth.moduleEnabled(w.planModule)),
+    (w) =>
+      (!w.permission || auth.can(w.permission)) &&
+      (!w.planModule || auth.moduleEnabled(w.planModule)) &&
+      widgetFitsPersona(w, auth.persona ?? undefined),
   ),
 );
 
 async function load() {
+  // Plan, storage and AI-token usage live on the billing page (/billing).
+  if (auth.persona === 'student') return;
   if (auth.isPlatformAdmin) platform.value = await api.get<PlatformStats>('/admin/dashboard');
-  else if (auth.can('subscription.view')) sub.value = await api.get<SubscriptionInfo>('/subscription');
 }
 
 async function refresh() {
@@ -114,27 +94,16 @@ async function refresh() {
 }
 
 onMounted(load);
-// Also another profile on the same number (siblings usually share the institute).
-watch(() => [route.query.b, auth.me?.user.id, auth.me?.institute?.id, auth.activeBranchId], refresh);
+// Another branch, institute or profile on the same number (siblings usually share the institute). Only these
+// ids, not the route: a getter returning a new array would reload every widget whenever the user leaves home.
+watch(() => `${auth.me?.user.id}|${auth.me?.institute?.id}|${auth.activeBranchId}`, refresh);
 </script>
 
 <style scoped>
 .hello {
   margin-top: 0;
 }
-.cap {
-  text-transform: capitalize;
-}
-.widgets {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.widget.full {
-  grid-column: 1 / -1;
-}
-@media (max-width: 768px) {
-  .widgets {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.shared-widgets {
+  margin-top: 12px;
 }
 </style>

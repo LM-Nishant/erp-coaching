@@ -2,6 +2,7 @@ import express, { Router, type Request, type Response } from 'express';
 import { Op } from 'sequelize';
 import { z } from 'zod';
 import {
+  BATCH_RECIPIENTS,
   MESSAGE_STATUSES,
   MESSAGING_PROVIDER_KINDS,
   NOTIFICATION_CHANNELS,
@@ -31,8 +32,10 @@ import {
   verifyProvider,
 } from './providers.service';
 import { campaignRepo, createCampaign, effectiveRule, retryMessage } from './notify.service';
+import { resolveAudience } from './recipients';
 import { renderTemplate, sampleVars } from './templates';
 import { inboxRoutes } from './inbox.routes';
+import { platformInboxRoutes } from './platform-inbox';
 import { processMessagingWebhook, whatsappHandshake, type MessagingWebhookVendor } from './webhooks.service';
 
 export const templateRepo = new TenantRepository(NotificationTemplate, { entity: 'Template' });
@@ -81,22 +84,25 @@ const ruleBody = z.object({
   isActive: z.boolean().default(true),
 });
 
+const campaignAudience = z
+  .object({
+    branchIds: z.array(z.number().int().positive()).max(100).optional(),
+    roles: z.array(z.string().max(60)).max(20).optional(),
+    batchIds: z.array(z.number().int().positive()).max(200).optional(),
+    batchRecipients: z.array(z.enum(BATCH_RECIPIENTS)).min(1).max(3).optional(),
+    userIds: z.array(z.number().int().positive()).max(5000).optional(),
+  })
+  .refine(
+    (a) => !!(a.branchIds?.length || a.roles?.length || a.batchIds?.length || a.userIds?.length),
+    'Choose at least one audience filter',
+  );
+
 const campaignBody = z.object({
   title: z.string().trim().min(2).max(150),
   channels: z.array(channelEnum).min(1).max(5),
   subject: z.string().trim().max(255).nullable().optional(),
   body: z.string().trim().min(1).max(4000),
-  audience: z
-    .object({
-      branchIds: z.array(z.number().int().positive()).max(100).optional(),
-      roles: z.array(z.string().max(60)).max(20).optional(),
-      batchIds: z.array(z.number().int().positive()).max(200).optional(),
-      userIds: z.array(z.number().int().positive()).max(5000).optional(),
-    })
-    .refine(
-      (a) => !!(a.branchIds?.length || a.roles?.length || a.batchIds?.length || a.userIds?.length),
-      'Choose at least one audience filter',
-    ),
+  audience: campaignAudience,
   scheduledAt: z.coerce.date().nullable().optional(),
 });
 
@@ -431,15 +437,26 @@ export function notificationAdminRoutes(r: Router) {
     res.json(campaignDto(await campaignRepo.findById(id)));
   });
 
+  /** Branch-limited senders must target exactly one of their branches. */
+  function audienceBranches(audience: z.infer<typeof campaignAudience>): number[] {
+    const { allowedBranchIds } = requireTenantContext();
+    const branchIds = unique(audience.branchIds ?? []);
+    if (allowedBranchIds !== null && (branchIds.length !== 1 || !allowedBranchIds.includes(branchIds[0]!)))
+      throw Forbidden('Choose one of your branches as the audience', 'BRANCH_FORBIDDEN');
+    return branchIds;
+  }
+
+  // How many people an audience reaches, shown in compose before sending.
+  r.post('/campaigns/preview', can('create'), async (req, res) => {
+    const { audience } = parse(z.object({ audience: campaignAudience }), req.body);
+    const branchIds = audienceBranches(audience);
+    const recipients = await resolveAudience({ ...audience, branchIds });
+    res.json({ recipients: recipients.size });
+  });
+
   r.post('/campaigns', can('create'), async (req, res) => {
     const body = parse(campaignBody, req.body);
-    const { allowedBranchIds } = requireTenantContext();
-    const branchIds = unique(body.audience.branchIds ?? []);
-    if (allowedBranchIds !== null) {
-      // Branch-limited senders must target exactly one of their branches.
-      if (branchIds.length !== 1 || !allowedBranchIds.includes(branchIds[0]!))
-        throw Forbidden('Choose one of your branches as the audience', 'BRANCH_FORBIDDEN');
-    }
+    const branchIds = audienceBranches(body.audience);
     if (body.scheduledAt && body.scheduledAt.getTime() < Date.now() - 60_000)
       throw BadRequest('Scheduled time is in the past');
     const campaign = await createCampaign({
@@ -516,6 +533,7 @@ export function notificationRoutes(api: Router) {
   publicWebhookRoutes(api);
   const r = Router();
   r.use(authenticate);
+  platformInboxRoutes(r);
   inboxRoutes(r);
   notificationAdminRoutes(r);
   api.use('/notifications', r);

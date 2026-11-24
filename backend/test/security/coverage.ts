@@ -46,6 +46,7 @@ export const SEGMENT_TABLES: Record<string, string> = {
   'notifications/inbox': 'notification_messages',
   'payroll/settlements': 'final_settlements',
   'public/sites/*/checkout': 'courses',
+  'question-bank/pdf-imports': 'question_imports',
   'tenant-data/exports': 'data_exports',
   'website/referrals': 'website_referral_codes',
 };
@@ -236,9 +237,11 @@ export const BRANCH_SHARED: Record<string, string> = {};
 /** Authenticated routes that need no permission (self-service for any signed-in user). */
 export const SELF_SERVICE_ROUTES: Record<string, string> = {
   'GET /api/auth/me': 'own profile',
+  'PUT /api/auth/me/locale': 'own app language',
   'POST /api/auth/select-institute': 'switch between own institutes',
   'GET /api/auth/devices': 'own devices',
   'GET /api/subscription/status': 'subscription banner state for every member',
+  'GET /api/branches': 'own allowed branches (names only without branches.view)',
   'DELETE /api/auth/devices/:id': 'own devices',
   'POST /api/auth/activity': 'own session keep-alive (inactivity timeout)',
   'POST /api/auth/capture-events': 'reports screen capture on own device',
@@ -251,6 +254,91 @@ export const SELF_SERVICE_ROUTES: Record<string, string> = {
   'PUT /api/lms/uploads/:uploadId/chunk': 'own upload sessions',
   'POST /api/lms/uploads/:uploadId/complete': 'own upload sessions',
   'DELETE /api/lms/uploads/:uploadId': 'own upload sessions',
+  // Course marketplace: learners and independent instructors have no institute permissions.
+  'GET /api/marketplace/account': 'own marketplace account',
+  'PUT /api/marketplace/instructor-profile': 'become an independent instructor (own profile)',
+  'GET /api/marketplace/courses/:id/access': 'own enrolment and cart state for a public course',
+  'POST /api/marketplace/courses/:id/enrol': 'enrol self in a free public course',
+  'GET /api/marketplace/cart': 'own cart',
+  'POST /api/marketplace/cart/items': 'own cart',
+  'DELETE /api/marketplace/cart/items/:id': 'own cart',
+  'POST /api/marketplace/checkout': 'own cart checkout',
+  'GET /api/marketplace/orders': 'own orders',
+  'GET /api/marketplace/orders/:id': 'own orders',
+  'POST /api/marketplace/orders/:id/sync': 'own orders',
+  'POST /api/marketplace/orders/:id/mock-complete': 'own orders (mock gateway, 404 in production)',
+  'GET /api/marketplace/learning': 'own enrolled courses',
+  'GET /api/marketplace/learning/:id': 'own enrolled courses',
+  'GET /api/marketplace/learning/:id/lectures/:lectureId': 'own enrolled courses',
+  'PUT /api/marketplace/learning/:id/lectures/:lectureId/progress': 'own lecture progress',
+  'GET /api/marketplace/learning/:id/lectures/:lectureId/quiz': 'own enrolled course quiz',
+  'POST /api/marketplace/learning/:id/lectures/:lectureId/quiz/attempts': 'own quiz attempts',
+  'GET /api/marketplace/learning/:id/lectures/:lectureId/quiz/attempts/:attemptId': 'own quiz attempts',
+  'GET /api/marketplace/certificates': 'own course certificates',
+  'GET /api/marketplace/instructor/profile': 'own instructor storefront',
+  'POST /api/marketplace/instructor/media': 'own instructor storefront',
+  'GET /api/marketplace/instructor/media/:id': 'own instructor storefront',
+  'PUT /api/marketplace/instructor/media/:id/content': 'own instructor storefront',
+  'GET /api/marketplace/instructor/courses': 'own instructor storefront',
+  'POST /api/marketplace/instructor/courses': 'own instructor storefront',
+  'GET /api/marketplace/instructor/courses/:id': 'own instructor storefront',
+  'PATCH /api/marketplace/instructor/courses/:id': 'own instructor storefront',
+  'DELETE /api/marketplace/instructor/courses/:id': 'own instructor storefront',
+  'GET /api/marketplace/instructor/courses/:id/readiness': 'own instructor storefront',
+  'POST /api/marketplace/instructor/courses/:id/submit': 'own instructor storefront',
+  'POST /api/marketplace/instructor/courses/:id/unpublish': 'own instructor storefront',
+  'PUT /api/marketplace/instructor/courses/:id/curriculum-order': 'own instructor storefront',
+  'GET /api/marketplace/orders/:id/refunds': 'own orders (refund requests)',
+  'POST /api/marketplace/orders/:id/refunds': 'own orders (refund requests)',
+  'GET /api/marketplace/instructor/revenue': 'own instructor storefront (revenue)',
+  'GET /api/marketplace/instructor/payout-account': 'own instructor payout details',
+  'PUT /api/marketplace/instructor/payout-account': 'own instructor payout details',
+  'GET /api/marketplace/instructor/payouts': 'own instructor payouts',
+  'GET /api/marketplace/instructor/payouts/:id': 'own instructor payouts',
+  'GET /api/marketplace/instructor/payouts/:id/statement.csv': 'own instructor payouts',
+  'POST /api/marketplace/instructor/courses/:id/sections': 'own instructor storefront',
+  'PATCH /api/marketplace/instructor/courses/:id/sections/:sectionId': 'own instructor storefront',
+  'DELETE /api/marketplace/instructor/courses/:id/sections/:sectionId': 'own instructor storefront',
+  'POST /api/marketplace/instructor/courses/:id/sections/:sectionId/lectures': 'own instructor storefront',
+  'PATCH /api/marketplace/instructor/courses/:id/lectures/:lectureId': 'own instructor storefront',
+  'DELETE /api/marketplace/instructor/courses/:id/lectures/:lectureId': 'own instructor storefront',
+  'GET /api/marketplace/instructor/courses/:id/lectures/:lectureId/content': 'own instructor storefront',
+  'GET /api/marketplace/instructor/courses/:id/lectures/:lectureId/quiz': 'own instructor storefront',
+  'PUT /api/marketplace/instructor/courses/:id/lectures/:lectureId/quiz': 'own instructor storefront',
+  'GET /api/marketplace/instructor/coupons': 'own instructor storefront',
+  'POST /api/marketplace/instructor/coupons': 'own instructor storefront',
+  'PATCH /api/marketplace/instructor/coupons/:id': 'own instructor storefront',
+  'DELETE /api/marketplace/instructor/coupons/:id': 'own instructor storefront',
+  'GET /api/marketplace/instructor/sales': 'own instructor storefront',
+  // Marketplace reviews, Q&A and wishlist: enrolment (or course ownership) is checked in the services.
+  'GET /api/marketplace/courses/:id/reviews/me': 'own review of a course',
+  'PUT /api/marketplace/courses/:id/reviews/me': 'own review of an enrolled course',
+  'DELETE /api/marketplace/courses/:id/reviews/me': 'own review of a course',
+  'POST /api/marketplace/reviews/:id/report': 'report a public review',
+  'GET /api/marketplace/courses/:id/questions': 'Q&A of an enrolled or own course',
+  'POST /api/marketplace/courses/:id/questions': 'Q&A of an enrolled course',
+  'GET /api/marketplace/courses/:id/questions/:questionId': 'Q&A of an enrolled or own course',
+  'DELETE /api/marketplace/courses/:id/questions/:questionId': 'own question, or the seller',
+  'POST /api/marketplace/courses/:id/questions/:questionId/answers': 'Q&A of an enrolled or own course',
+  'DELETE /api/marketplace/courses/:id/questions/:questionId/answers/:answerId': 'own answer, or the seller',
+  'PUT /api/marketplace/courses/:id/questions/:questionId/answered': 'own question, or the seller',
+  // Personal inbox (users without an institute): filtered by the caller's own user id.
+  'GET /api/notifications/personal/inbox': 'own personal notifications',
+  'GET /api/notifications/personal/inbox/unread-count': 'own personal notifications',
+  'POST /api/notifications/personal/inbox/read-all': 'own personal notifications',
+  'POST /api/notifications/personal/inbox/:id/read': 'own personal notifications',
+  'POST /api/notifications/personal/push-tokens': 'own push devices',
+  'DELETE /api/notifications/personal/push-tokens': 'own push devices',
+  'GET /api/marketplace/wishlist': 'own wishlist',
+  'GET /api/marketplace/wishlist/ids': 'own wishlist',
+  'POST /api/marketplace/wishlist': 'own wishlist',
+  'DELETE /api/marketplace/wishlist/:id': 'own wishlist',
+  'POST /api/marketplace/wishlist/:id/move-to-cart': 'own wishlist and cart',
+  'GET /api/marketplace/instructor/reviews': 'own instructor storefront',
+  'PUT /api/marketplace/instructor/reviews/:id/reply': 'own instructor storefront',
+  'GET /api/marketplace/instructor/questions': 'own instructor storefront',
+  'POST /api/marketplace/instructor/questions/:id/answers': 'own instructor storefront',
+  'PUT /api/marketplace/instructor/questions/:id/answered': 'own instructor storefront',
 };
 
 /** Public routes outside `/public/` (everything else public must live under `/api/public/...`). */
@@ -348,6 +436,19 @@ export const UNIFORM_RESPONSE: Record<string, string> = {
  * findings must be fixed, never listed here. Also listed in docs/security.md.
  */
 export const KNOWN_FINDINGS: Record<string, string> = {};
+
+/**
+ * Route prefixes whose records are not owned by an institute, so the record crawls (which pick a
+ * row of the victim institute) do not apply, with the reason and where isolation is tested instead.
+ */
+export const NOT_INSTITUTE_RECORDS: Record<string, string> = {
+  '/api/marketplace/':
+    'public course marketplace: carts, orders, enrolments and courses belong to a learner or a seller ' +
+    'across institutes; cross-seller and cross-learner isolation is tested in test/marketplace.test.ts',
+  '/api/notifications/personal/':
+    'personal inbox of users without an institute: rows belong to a user, not an institute; ' +
+    'cross-user isolation is tested in test/notifications-platform-inbox.test.ts',
+};
 
 /**
  * Routes the crawls cannot probe yet, with the reason. A stale entry (the route is gone, or now

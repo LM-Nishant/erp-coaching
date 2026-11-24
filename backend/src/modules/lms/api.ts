@@ -20,8 +20,10 @@ export {
   type CourseEntitlementProvider,
   type EntitlementQuery,
 } from './entitlements';
-export { setVideoTranscoder, type VideoTranscoder } from './transcoder';
-export { LmsResource, LmsAssignment, LmsSubmission, LmsProgress } from './models';
+export { getVideoTranscoder, setVideoTranscoder, type VideoTranscoder } from './transcoder';
+/** Deletes an HLS rendition written next to its `manifest.json` (marketplace reuses the LMS pipeline). */
+export { removeRendition } from './transcode.job';
+export { LmsResource, LmsResourceBatch, LmsAssignment, LmsSubmission, LmsProgress } from './models';
 
 /** Read-only report queries (reports module, spec §4.17); callers pass a validated `ReportScope`. */
 export { lmsEngagementReport } from './reporting';

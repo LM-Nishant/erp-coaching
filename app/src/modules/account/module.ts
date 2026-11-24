@@ -12,5 +12,14 @@ export default defineAppModule({
       meta: { allowWhenSuspended: true },
     },
   ],
-  menu: [{ title: 'My devices', path: '/account/devices', icon: phonePortraitOutline, order: 200 }],
+  menu: [
+    {
+      title: 'My devices',
+      path: '/account/devices',
+      group: 'settings',
+      titleKey: 'nav.account.myDevices',
+      icon: phonePortraitOutline,
+      order: 200,
+    },
+  ],
 });

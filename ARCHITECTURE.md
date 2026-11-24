@@ -255,6 +255,28 @@ Deployment, TLS, backups and scaling are covered in [docs/deployment.md](docs/de
 
   Rows registered with `retainOnInstituteDeletion` (the operator's SaaS invoices, payments and credit notes) are kept with `institute_id` set to NULL. Every step is audited. An institute reactivated during the grace period is never deleted.
 
+## Course marketplace (`marketplace`)
+
+A Udemy-style public marketplace shared by every institute. Courses are sold by **sellers** (`mkt_sellers`): an institute storefront or an independent instructor with no institute. Anyone can browse; any signed-in user can buy from any seller.
+
+- **Not tenant data.** Marketplace tables (`mkt_*`) are platform tables keyed by seller and learner user ids, not `institute_id`. Isolation is by seller (studio routes only see the caller's seller) and by learner (carts, orders, enrolments, progress). `NOT_INSTITUTE_RECORDS` in `test/security/coverage.ts` exempts `/api/marketplace/` from the cross-institute crawl; `test/marketplace.test.ts` covers cross-seller and cross-learner isolation.
+- **Accounts.** `POST /api/marketplace/public/signup` creates a user with no membership (a learner). Such users skip institute selection (`needsInstitute` needs memberships) and land on My learning. Anyone can become an independent instructor with `PUT /api/marketplace/instructor-profile` while `instructor_signup_open` is on.
+- **APIs.** `/api/marketplace/public/*` (catalog, landing, preview lectures, signed media/HLS, signup, checkout return), `/api/marketplace/*` (account, cart, checkout, orders, learning, progress), `/api/marketplace/instructor/*` and `/api/marketplace/institute/*` (the same studio: profile, media, courses, curriculum, coupons, sales; the institute scope needs `marketplace.*` permissions), `/api/admin/marketplace/*` (platform admin: review, publish, categories, settings, sellers, platform coupons, ledger).
+- **Course lifecycle.** draft → in_review → published / rejected (with reason) → unpublished. Submission requires the readiness checklist (`GET …/courses/:id/readiness`). Edits to a published course stay live; learners keep access after unpublishing.
+- **Media.** Own store (`mkt_media`) with chunked uploads; videos reuse the LMS transcoder (`getVideoTranscoder` from `lms/api`) in the `marketplace.transcode` job. Playback uses short-lived HMAC-signed links; preview lectures are public, others need an enrolment or seller/admin access.
+- **Quizzes and certificates.** A `quiz` lecture owns one `mkt_quizzes` row (pass mark, attempt limit, shuffle) and its `mkt_quiz_questions` (one or several correct answers, explanation); institute sellers can import multiple-choice and true/false questions from the question bank. Learners never get the answer key before submitting; attempts are scored on the server (`mkt_quiz_attempts`) and only a passing attempt completes the lecture. When every lecture is complete, `completed_at` is set and one `mkt_certificates` row is issued with a random code; `/api/marketplace/public/certificates/:code` (and `/pdf`) verify it for anyone, and the app shows it at `/market/certificates/:code`.
+- **Money.** Checkout uses the existing gateway adapters (mock by default) through `mkt_orders`. Coupons are per seller or platform-wide. On payment success (verify, return or webhook, idempotent) the learner is enrolled and one `mkt_sale_ledger` row per item records gross, commission (platform `commission_percent`, overridable per seller, charged on the amount paid after coupons) and seller net. A payout run sets `payout_id` on the ledger rows it pays; refunds add negative rows that come off the next payout, and one order is credited and refunded only once (`mkt_order_items.refund_id`). Free courses enrol without an order.
+- **Reviews, Q&A and wishlist.** `mkt_reviews` (one per learner and course, editable, enrolled learners only; seller reply; learners report into `mkt_review_reports`; platform admins hide/restore at `/api/admin/marketplace/reviews`) keep `mkt_courses.rating_avg`/`rating_count` in sync over visible reviews. Course Q&A (`mkt_questions`, `mkt_answers`, optionally per lecture) is open to enrolled learners and the seller; the asker or seller marks a question answered. New questions and answers call `notify()` for institute members and `notifyPlatformUsers()` (the personal inbox plus push) for users without an institute. `mkt_wishlist_items` is a learner's saved list with move-to-cart. Studio inbox: `…/instructor|institute/reviews` and `…/questions`.
+
+## Doubts (`doubts`)
+
+Students ask a teacher a question (text, optionally a photo of their work) about a lecture, a live class or a batch subject; the teacher answers in a thread and either side marks it solved.
+
+- **Tables.** `doubts` (student, assigned teacher, batch, subject, lecture + video position, live class, status `open` → `answered` → `resolved`) and `doubt_replies` (text and/or photo, through the files module). Both are tenant tables.
+- **Routing.** A live-class doubt goes to that class's teacher, otherwise to the batch teacher of the subject, otherwise to the batch's first teacher. A student follow-up reopens an answered doubt.
+- **Access.** `doubts.create` (self-service: ask and follow up on your own), `doubts.edit` (answer the doubts assigned to you or in your batches), `doubts.export` (branch admins: every doubt in the branch). Plan module `lms`. New doubts and answers call `notify()` (`doubts.asked`, `doubts.answered`).
+- **App.** `/doubts` (my doubts), `/doubts/ask`, `/doubts/inbox`, `/doubts/:id`; `DoubtButton` (`@/modules/doubts`) is the "Ask doubt" button for lecture and live-class pages; widgets on `student-home`, `teacher-home` and `home`.
+
 ## Frontend app
 
 ```
@@ -264,13 +286,15 @@ app/src/
                            # v-can directive, toast, session (lock / sign-out), idle monitor, biometric, secure screens
   stores/auth.ts           # session, memberships, permissions: can('module.action'), moduleEnabled()
   router/index.ts          # collects routes from modules; guards: auth, institute selection, meta.permission, meta.superAdmin
-  components/              # AppPage, StatCard, ImpersonationBanner, ...
+  components/              # AppPage, StatCard, StatusChip, EmptyState, FormSection, QuickActions, ImpersonationBanner, ...
+  i18n/                    # vue-i18n setup (index.ts) and shared strings (locales/{en,hi}.json → common.*)
   modules/<name>/module.ts # defineAppModule({ id, routes, menu, toolbarItems }), auto-discovered with import.meta.glob
+  modules/<name>/i18n/     # the module's strings: en.json (complete), hi.json (may be partial)
 ```
 
 - **API client** (`core/api.ts`): adds the Bearer token and `X-Branch-Id`. On a 401 it refreshes once (single-flight) and retries. If the refresh fails, the session ends. `SESSION_IDLE`, `SESSION_REVOKED` and `ACCOUNT_INACTIVE` end it without a refresh. `core/session.ts` then locks the app when biometric unlock is set up, unless the device was revoked or the account deactivated, and otherwise signs out. A revoked device or deactivated account also runs every module's `wipeUserData`. Pass `{ background: true }` for automatic polls.
 - **Branding**: after institute selection, `applyBranding()` sets the Ionic `--ion-color-primary/secondary` variants and the document title from the institute's settings. The logo is shown in the menu header.
-- **Menu**: built from every module's `menu` items, filtered by `permission`, `superAdmin` and `planModule` (whether the institute's plan includes the module).
+- **Menu**: built from every module's `menu` items, filtered by `permission`, `superAdmin`, `planModule` (whether the institute's plan includes the module), `roles` and `personas`.
 - **Subscription state**:
   - The subscriptions module adds a toolbar chip for the trial, grace, restricted and suspended states.
   - Through its `navigationGuards` entry, a suspended institute can only open routes with `meta.allowWhenSuspended`.
@@ -280,6 +304,58 @@ app/src/
 - **Native apps**: the same build runs in Capacitor (`app/android`, `app/ios`). Device provides the device id.
   - Tokens, the cached profile, offline content keys and the biometric credential live in secure storage (`core/secure-storage.ts`: iOS Keychain, Android Keystore-backed AES-GCM), never plain preferences. The web build uses localStorage.
   - iOS uses Swift Package Manager (`ios/App/CapApp-SPM`, written by `cap sync`): every plugin must ship a `Package.swift`. Android `minSdkVersion` is 26 (required by the QR scanner).
+
+### App shell contract (personas, tabs, strings)
+
+The shell is moving from one long menu to a home page and bottom tabs per kind of user (design: the UX rework, 2026-11). These are the extension points modules use; the shell reads them, modules never edit the shell.
+
+**Personas** (`core/persona.ts`, `auth.persona`): one per session, from the roles in the selected institute.
+
+| Persona    | Who                                                                     | Home slot       |
+| ---------- | ----------------------------------------------------------------------- | --------------- |
+| `student`  | `student` role                                                          | `student-home`  |
+| `parent`   | `parent` role                                                           | `parent-home`   |
+| `teacher`  | `teacher` role                                                          | `teacher-home`  |
+| `staff`    | institute admin, branch admin, accountant, any custom role (front desk) | `staff-home`    |
+| `learner`  | no institute: marketplace learners and independent instructors          | –               |
+| `platform` | super admin, not impersonating                                          | `platform-home` |
+
+With several roles the most capable wins: staff, teacher, student, parent.
+
+**`MenuItem` fields** (`core/modules.ts`), on top of `permission`, `roles`, `planModule` and `order`:
+
+- `group`: section of the grouped menu, one of `MENU_GROUPS` (`home`, `learning`, `classes`, `tests`, `people`, `fees`, `messages`, `hr`, `reports`, `website`, `marketplace`, `settings`, `platform`, `other`). Labels are `common.menuGroups.<group>`.
+- `personas`: shown only to these personas. Omit for everyone the other checks allow.
+- `tab`: bottom-tab position per persona, e.g. `{ student: 2 }`. `tabsFor(items, persona)` takes the `MAX_TABS - 1` (4) lowest; "More" is always last. `groupMenu(items)` builds the grouped list.
+- `titleKey`: i18n key for the title, `nav.<module>.<item>` in `i18n/locales/{en,hi}.json` (owned by the shell, so module JSON files stay conflict-free); `title` stays the English fallback and is what E2E selects by.
+- `tabTitleKey`: shorter bottom-tab label when the menu title is too long for a tab (`nav.tabs.*`, e.g. "Classes" for "Live classes").
+
+**Shell** (`App.vue`, `core/navigation.ts`, `components/TabBar.vue`): `useMenu()` filters every module's menu for the signed-in user (offline, `visible`, permission, persona, plan module), sorts by `order` and drops repeated paths. Phones (below Ionic's `lg`, 992 px) get the persona's tabs plus "More", which opens the menu; wider screens show the menu beside the page. The menu is grouped by `group`, searchable (label in the user's language, English title or group name) and ends with Display settings: language and text size (`theme/text-size.ts`, 100/115/130 %, key `erp.textSize`). Parents opening `/home` land on `/parent-home`. Sign-in opens on mobile OTP with a language switch. `AppPage`'s `loading` prop shows skeleton rows during a first load.
+
+**Widget slots**: `home` (generic dashboard), `parent-home`, `platform-home`, and the persona homes `student-home`, `teacher-home`, `staff-home` (no props; load your own data). A `home` widget whose card a persona home already shows sets `personas` (`DashboardWidget.personas`) so it isn't shown twice. See CONTRIBUTING.md, "Dashboard widgets".
+
+**Formatting** (`core/format.ts`, in the user's language, `en-IN`/`hi-IN`): `formatDate` (`27 Nov 2026`), `formatDayShort` (`Fri, 27 Nov`), `formatTime` (`9:00 pm`), `formatDateTime`, `formatRelative` (`in 25 minutes`), `formatDuration` (`1 h 5 min`), `formatMoney` (paise → `₹41,250`), `formatMoneyCompact` (`₹6.6L`), `formatNumber`, `formatPercent`. Pass `{ timeZone }` to show an instant in the institute's timezone; `YYYY-MM-DD` strings are never shifted.
+
+**Strings** (`i18n/index.ts`, vue-i18n in Composition mode, `const { t } = useI18n()`):
+
+- Shared words: `i18n/locales/{en,hi}.json` under `common.*` (`common.actions.save`, `common.status.overdue`).
+- A module's words: `modules/<folder>/i18n/{en,hi}.json`, namespaced by the camel-cased folder name (`parent-portal` → `parentPortal.*`). Group keys by page: `fees.myFees.payNow`. Menu titles are the exception: `nav.*` in the core files (see `titleKey`).
+- English is complete; Hindi may lag and falls back to English. A test fails when `hi.json` has a key `en.json` lacks.
+- `setLocale('hi')` switches the app and remembers the choice on the device (`localStorage`, key `erp.locale`). The side menu's language switch calls `chooseLocale()` (`core/locale-sync.ts`), which also saves it on the account (`users.locale`, `PUT /api/auth/me/locale`). English is the default everywhere (new devices, new accounts: `users.locale` defaults to `en`; the browser language is ignored). After `/auth/me` the app opens in the account's language; a language picked on the sign-in screen (`pickSignedOutLocale()`) is saved on the account that signs in.
+
+**Shared components**: `StatusChip` (tone + plain label), `EmptyState` (what will appear here + next-step slot), `FormSection` (`advanced` collapses rarely used fields), `QuickActions` (grid of big buttons for homes). Tap targets: `var(--app-tap-target)` (48 px).
+
+**Who edits what during the UX rework.** To keep parallel work conflict-free:
+
+| Stream                            | Owns                                                                                                                                                                         |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WS1 shell and navigation          | `App.vue`, `router/index.ts`, `components/AppPage.vue`, new tab bar and More menu, `theme/*`, `modules/auth/*`, `modules/account/*`, the `menu:` arrays of every `module.ts` |
+| WS2 student and parent            | student and parent pages and `student-home`/`parent-home` widgets (lms, live-classes, exams, fees, attendance "My …" pages, parent-portal, marketplace player)               |
+| WS3 teacher                       | teacher pages and `teacher-home` widgets (attendance taking, exam editor, homework, content and live-class host)                                                             |
+| WS4 admin, front desk, accountant | `staff-home` widgets, fee accounts and collection, communication compose, students, batches, admissions, subscriptions; backend setup status                                 |
+| WS5 doubts, Hindi, formatting     | the new doubts module (backend, app, shared), `users.locale`, Hindi and `core/format.ts` adoption in modules no other stream owns                                            |
+
+Streams other than WS1 edit only `routes:` and `widgets:` in a `module.ts`; a new module (WS5 doubts) asks WS1 for its menu entry and `nav.*` strings, or adds them once WS1 has merged. `core/modules.ts`, `core/persona.ts`, `core/format.ts`, `i18n/index.ts`, `main.ts` and `app/package.json` change only by agreement; add strings to your module's own JSON, not to `common`, unless every stream needs them.
 
 ## Mobile and device security (spec 4.18) and platform limits (spec 9)
 

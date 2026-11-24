@@ -27,6 +27,7 @@ async function requestOtpLogin(page: Page, user: Person): Promise<number> {
 }
 
 async function submitPassword(page: Page, user: Person): Promise<void> {
+  await selectSegment(page, 'Password');
   await page.getByLabel('Mobile or email').fill(user.mobile);
   await page.getByLabel('Password', { exact: true }).fill(user.password);
   await page.getByRole('button', { name: 'Sign in' }).click();
@@ -39,7 +40,9 @@ async function enterOtp(page: Page, user: Person, since: number): Promise<void> 
 
 async function expectHome(page: Page, user: Person): Promise<void> {
   await expect(page).toHaveURL(/\/home$/);
-  await expect(activePage(page).getByRole('heading', { name: `Hello, ${user.name}` })).toBeVisible();
+  // Teachers land on their "Today" home, greeted by first name.
+  const greeting = new RegExp(`^Good (morning|afternoon|evening), ${user.name.split(' ')[0]}$`);
+  await expect(activePage(page).getByRole('heading', { name: greeting })).toBeVisible();
 }
 
 test('OTP login, then the device limit blocks a third device until one is signed out', async ({

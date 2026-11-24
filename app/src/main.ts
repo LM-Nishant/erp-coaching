@@ -17,11 +17,13 @@ import './theme/variables.css';
 
 import App from './App.vue';
 import { router } from './router';
+import { currentLocale, i18n } from './i18n';
 import { vCan } from './core/permissions';
 import { installSession } from './core/session';
 import { initSecureScreen } from './core/secure-screen';
 
-const app = createApp(App).use(IonicVue).use(createPinia());
+const app = createApp(App).use(IonicVue).use(createPinia()).use(i18n);
+document.documentElement.lang = currentLocale();
 // Before the router: installing it starts the first navigation, which restores the session.
 installSession(router);
 initSecureScreen();

@@ -34,11 +34,19 @@ export default defineAppModule({
       component: () => import('./GenerateQuestionsPage.vue'),
       meta: { permission: 'question-bank.create' },
     },
+    {
+      path: '/question-bank/banks/:bankId(\\d+)/import-pdf',
+      name: 'question-pdf-import',
+      component: () => import('./PdfImportPage.vue'),
+      meta: { permission: 'question-bank.create' },
+    },
   ],
   menu: [
     {
       title: 'Question bank',
       path: '/question-bank',
+      group: 'tests',
+      titleKey: 'nav.questionBank.questionBank',
       icon: libraryOutline,
       permission: 'question-bank.view',
       planModule: 'question-bank',

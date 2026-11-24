@@ -1,0 +1,154 @@
+{
+  "collect": {
+    "title": "Collect fee",
+    "back": "Back to search",
+    "searchPlaceholder": "Student name, admission no. or mobile",
+    "due": "{amount} due",
+    "dueOn": "due {date}",
+    "noMatchTitle": "No student with dues found",
+    "noMatchMessage": "Check the spelling, or search by admission number or mobile.",
+    "noDuesTitle": "No pending fees",
+    "noDuesMessage": "Everyone has paid. Search a student to take an advance.",
+    "amount": "Amount in rupees",
+    "suggestion": {
+      "overdue": "Overdue: {label}",
+      "next": "Next instalment: {label}",
+      "balance": "Full balance"
+    },
+    "mode": "Payment mode",
+    "modes": {
+      "cash": "Cash",
+      "upi": "UPI",
+      "cheque": "Cheque",
+      "bank_transfer": "Bank transfer"
+    },
+    "reference": "UTR / reference no.",
+    "chequeNumber": "Cheque no.",
+    "bankName": "Bank",
+    "paidOn": "Paid on",
+    "chequeDate": "Cheque date",
+    "depositedTo": "Deposited to",
+    "defaultBank": "Default account",
+    "notes": "Notes",
+    "advanceNote": "Amounts above the balance are kept as advance. Instalments are settled oldest first.",
+    "submit": "Record {amount}",
+    "doneTitle": "{amount} received",
+    "doneMessage": "Receipt {receipt} issued to {name}.",
+    "pendingTitle": "Payment recorded",
+    "pendingMessage": "It will show in the account once it is approved.",
+    "shareWhatsapp": "Send receipt on WhatsApp",
+    "receiptPdf": "View receipt PDF",
+    "shared": "Receipt sent on WhatsApp",
+    "another": "Collect from another student",
+    "finish": "Done"
+  },
+  "today": {
+    "collected": "Collected today",
+    "overdue": "Overdue · no students | Overdue · 1 student | Overdue · {n} students",
+    "approvals": "No payments to approve | 1 payment to approve | {n} payments to approve",
+    "month": "{amount} collected this month",
+    "failed": "Could not load fees."
+  },
+  "accounts": {
+    "title": "Fee accounts",
+    "assign": "Assign fees",
+    "search": "Student name, admission no. or mobile",
+    "duesOnly": "Only with dues",
+    "count": "No accounts | 1 account | {n} accounts",
+    "netPaid": "Net {net} · paid {paid}",
+    "emptyTitle": "No fee accounts yet",
+    "emptyMessage": "Assign a fee structure to a student or a whole batch with the + button.",
+    "status": {
+      "active": "Fully paid",
+      "closed": "Closed",
+      "cancelled": "Cancelled"
+    }
+  },
+  "my": {
+    "title": "My fees",
+    "due": "{amount} due",
+    "allPaid": "All fees paid",
+    "allPaidHint": "Nothing to pay right now. Receipts are below.",
+    "next": "Next: {amount} by {date}",
+    "overdueNote": "{amount} is overdue. Please pay soon to avoid a late fee.",
+    "payOnline": "Pay online",
+    "payThis": "Pay this fee",
+    "ofTotal": "of {amount}",
+    "dueOn": "Due {date}",
+    "lateFee": "incl. late fee {amount}",
+    "concessions": "Concessions applied: {amount}",
+    "payments": "Payments & receipts",
+    "noPayments": "No payments yet.",
+    "downloadReceipt": "Download receipt",
+    "sendWhatsapp": "Send to WhatsApp",
+    "checkStatus": "Check status",
+    "office": {
+      "title": "Pay at the office",
+      "message": "Online payment isn't set up by your institute yet. Pay by cash, UPI or cheque at {name}.",
+      "call": "Call office",
+      "email": "Email office"
+    },
+    "state": {
+      "paid": "Paid",
+      "waived": "Waived",
+      "overdue": "Overdue",
+      "dueSoon": "Due soon",
+      "pending": "Upcoming"
+    },
+    "paymentStatus": {
+      "pending": "Pending",
+      "failed": "Failed",
+      "successful": "Successful",
+      "partially_refunded": "Partly refunded",
+      "refunded": "Refunded",
+      "cancelled": "Cancelled"
+    },
+    "mode": {
+      "online": "Online",
+      "cash": "Cash",
+      "upi": "UPI",
+      "bank_transfer": "Bank transfer",
+      "cheque": "Cheque"
+    },
+    "instalment": "Instalment {n}",
+    "pay": {
+      "title": "Pay fees",
+      "next": "Next instalment · {amount}",
+      "full": "Full balance · {amount}",
+      "other": "Other amount",
+      "amount": "Amount (₹)",
+      "with": "Pay with",
+      "proceed": "Proceed to pay {amount}",
+      "testGateway": "Test gateway. No real money moves. Choose how this checkout ends.",
+      "order": "Order {id}",
+      "payNow": "Pay now",
+      "simulateFailure": "Simulate failure",
+      "payIn": "Pay in the {gateway} checkout. If it closed before you finished, open it again.",
+      "open": "Open {gateway}",
+      "checkPaid": "I've paid, check status",
+      "enterAmount": "Enter an amount"
+    },
+    "toast": {
+      "success": "Payment successful. Receipt {receipt}",
+      "failed": "Payment failed. You can try again.",
+      "stillPending": "The payment is still pending. Check again in a moment.",
+      "receiptSent": "Receipt sent to your WhatsApp",
+      "status": {
+        "pending": "Payment pending",
+        "failed": "Payment failed",
+        "successful": "Payment successful",
+        "partially_refunded": "Payment partially refunded",
+        "refunded": "Payment refunded",
+        "cancelled": "Payment cancelled"
+      }
+    }
+  },
+  "widgets": {
+    "due": "Fees",
+    "payNow": "Pay now",
+    "view": "View fees",
+    "nothingDue": "No fees due",
+    "nextDue": "Next {amount} by {date}",
+    "today": "Fees today"
+  }
+}

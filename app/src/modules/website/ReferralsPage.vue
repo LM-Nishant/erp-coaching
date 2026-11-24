@@ -1,39 +1,58 @@
 <template>
-  <AppPage title="Referrals & affiliates" :on-refresh="load">
+  <AppPage :title="t('website.referrals.title')" :on-refresh="load">
     <template #actions>
-      <ion-button v-if="auth.can('website.create')" aria-label="New referral code" @click="openEditor()"
+      <ion-button
+        v-if="auth.can('website.create')"
+        :aria-label="t('website.referrals.new')"
+        @click="openEditor()"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
     <div class="stats">
-      <StatCard label="Clicks" :value="totals.clicks" />
-      <StatCard label="Sign-ups / enquiries" :value="totals.signups" />
-      <StatCard label="Purchases" :value="totals.purchases" />
+      <StatCard :label="t('website.referrals.clicks')" :value="formatNumber(totals.clicks)" />
+      <StatCard :label="t('website.referrals.signupsEnquiries')" :value="formatNumber(totals.signups)" />
+      <StatCard :label="t('website.referrals.purchases')" :value="formatNumber(totals.purchases)" />
     </div>
     <ion-list>
       <ion-item v-for="r in items" :key="r.id" button :detail="false" @click="openEditor(r)">
         <ion-label class="ion-text-wrap">
           <h2>
             <strong>{{ r.code }}</strong> — {{ r.name }}
-            <ion-badge v-if="!r.isActive" color="medium">inactive</ion-badge>
+            <StatusChip v-if="!r.isActive" :label="t('common.status.inactive')" />
           </h2>
           <p>
-            {{ r.clicks }} clicks · {{ r.signups }} sign-ups · {{ r.purchases }} purchases · {{ rate(r) }}
+            {{
+              t('website.referrals.stats', {
+                clicks: formatNumber(r.clicks),
+                signups: formatNumber(r.signups),
+                purchases: formatNumber(r.purchases),
+                rate: rate(r),
+              })
+            }}
           </p>
           <p v-if="r.commissionNote">{{ r.commissionNote }}</p>
         </ion-label>
-        <ion-button slot="end" fill="clear" aria-label="Copy share link" @click.stop="copy(r.shareUrl)">
+        <ion-button
+          slot="end"
+          fill="clear"
+          :aria-label="t('website.referrals.copyLink')"
+          @click.stop="copy(r.shareUrl)"
+        >
           <ion-icon slot="icon-only" :icon="copyOutline" />
         </ion-button>
       </ion-item>
-      <ion-item v-if="!items.length" lines="none"><ion-label>No referral codes yet.</ion-label></ion-item>
+      <ion-item v-if="!items.length" lines="none"
+        ><ion-label>{{ t('website.referrals.empty') }}</ion-label></ion-item
+      >
     </ion-list>
 
     <ion-modal :is-open="!!form" @did-dismiss="form = null">
       <ion-header>
         <ion-toolbar>
-          <ion-title>{{ editing ? editing.code : 'New referral code' }}</ion-title>
-          <ion-buttons slot="end"><ion-button @click="form = null">Close</ion-button></ion-buttons>
+          <ion-title>{{ editing ? editing.code : t('website.referrals.new') }}</ion-title>
+          <ion-buttons slot="end"
+            ><ion-button @click="form = null">{{ t('common.actions.close') }}</ion-button></ion-buttons
+          >
         </ion-toolbar>
       </ion-header>
       <ion-content class="ion-padding">
@@ -42,56 +61,65 @@
             <ion-item>
               <ion-input
                 v-model="form.code"
-                label="Code"
+                :label="t('website.coupons.code')"
                 label-placement="stacked"
                 required
-                helper-text="e.g. RAHUL10"
+                :helper-text="t('website.referrals.codeHelp')"
               />
             </ion-item>
             <ion-item>
               <ion-input
                 v-model="form.name"
-                label="Referrer / affiliate name"
+                :label="t('website.referrals.name')"
                 label-placement="stacked"
                 required
               />
             </ion-item>
             <ion-item>
-              <ion-input v-model="form.commissionNote" label="Commission note" label-placement="stacked" />
+              <ion-input
+                v-model="form.commissionNote"
+                :label="t('website.referrals.commissionNote')"
+                label-placement="stacked"
+              />
             </ion-item>
-            <ion-item><ion-toggle v-model="form.isActive">Active</ion-toggle></ion-item>
+            <ion-item
+              ><ion-toggle v-model="form.isActive">{{ t('common.status.active') }}</ion-toggle></ion-item
+            >
           </ion-list>
-          <ion-button expand="block" type="submit" :disabled="saving">Save</ion-button>
+          <ion-button expand="block" type="submit" :disabled="saving">{{
+            t('common.actions.save')
+          }}</ion-button>
         </form>
         <template v-if="editing">
           <ion-item lines="none">
             <ion-label class="ion-text-wrap"
-              ><p>Share link: {{ editing.shareUrl }}</p></ion-label
+              ><p>{{ t('website.referrals.shareLink', { url: editing.shareUrl }) }}</p></ion-label
             >
-            <ion-button slot="end" fill="clear" aria-label="Copy share link" @click="copy(editing.shareUrl)"
+            <ion-button
+              slot="end"
+              fill="clear"
+              :aria-label="t('website.referrals.copyLink')"
+              @click="copy(editing.shareUrl)"
               ><ion-icon slot="icon-only" :icon="copyOutline"
             /></ion-button>
           </ion-item>
           <ion-segment :value="kind" @ion-change="setKind(String($event.detail.value))">
-            <ion-segment-button value="">All</ion-segment-button>
-            <ion-segment-button value="click">Clicks</ion-segment-button>
-            <ion-segment-button value="signup">Sign-ups</ion-segment-button>
-            <ion-segment-button value="purchase">Purchases</ion-segment-button>
+            <ion-segment-button value="">{{ t('common.labels.all') }}</ion-segment-button>
+            <ion-segment-button value="click">{{ t('website.referrals.clicks') }}</ion-segment-button>
+            <ion-segment-button value="signup">{{ t('website.referrals.signups') }}</ion-segment-button>
+            <ion-segment-button value="purchase">{{ t('website.referrals.purchases') }}</ion-segment-button>
           </ion-segment>
           <ion-list>
             <ion-item v-for="e in events" :key="e.id">
               <ion-label>
-                <h3>{{ e.kind }}</h3>
-                <p>
-                  {{ new Date(e.createdAt).toLocaleString()
-                  }}{{ e.refType ? ` · ${e.refType} #${e.refId}` : '' }}
-                </p>
+                <h3>{{ kindLabel(e.kind) }}</h3>
+                <p>{{ formatDateTime(e.createdAt) }}{{ e.refType ? ` · ${e.refType} #${e.refId}` : '' }}</p>
               </ion-label>
-              <ion-note v-if="e.amountPaise !== null" slot="end"
-                >₹{{ (e.amountPaise / 100).toLocaleString('en-IN') }}</ion-note
-              >
+              <ion-note v-if="e.amountPaise !== null" slot="end">{{ formatMoney(e.amountPaise) }}</ion-note>
             </ion-item>
-            <ion-item v-if="!events.length" lines="none"><ion-label>No activity yet.</ion-label></ion-item>
+            <ion-item v-if="!events.length" lines="none"
+              ><ion-label>{{ t('website.referrals.noActivity') }}</ion-label></ion-item
+            >
           </ion-list>
           <ion-button
             v-if="auth.can('website.delete')"
@@ -99,7 +127,7 @@
             fill="clear"
             color="danger"
             @click="remove"
-            >Delete code</ion-button
+            >{{ t('website.referrals.delete') }}</ion-button
           >
         </template>
       </ion-content>
@@ -109,8 +137,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
-  IonBadge,
   IonButton,
   IonButtons,
   IonContent,
@@ -132,10 +160,13 @@ import { add, copyOutline } from 'ionicons/icons';
 import type { ReferralCodeDto, ReferralEventDto, ReferralEventKind } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import StatCard from '@/components/StatCard.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { formatDateTime, formatMoney, formatNumber, formatPercent } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import { websiteApi } from './api';
 
+const { t, te } = useI18n();
 const auth = useAuthStore();
 const items = ref<ReferralCodeDto[]>([]);
 const form = ref<{ code: string; name: string; commissionNote: string; isActive: boolean } | null>(null);
@@ -146,16 +177,22 @@ const saving = ref(false);
 
 const totals = computed(() =>
   items.value.reduce(
-    (t, r) => ({
-      clicks: t.clicks + r.clicks,
-      signups: t.signups + r.signups,
-      purchases: t.purchases + r.purchases,
+    (sum, r) => ({
+      clicks: sum.clicks + r.clicks,
+      signups: sum.signups + r.signups,
+      purchases: sum.purchases + r.purchases,
     }),
     { clicks: 0, signups: 0, purchases: 0 },
   ),
 );
 const rate = (r: ReferralCodeDto) =>
-  r.clicks ? `${Math.round(((r.signups + r.purchases) / r.clicks) * 100)}% conversion` : 'no clicks yet';
+  r.clicks
+    ? t('website.referrals.conversion', {
+        percent: formatPercent(Math.round(((r.signups + r.purchases) / r.clicks) * 100)),
+      })
+    : t('website.referrals.noClicks');
+const kindLabel = (k: string) =>
+  te(`website.referrals.kinds.${k}`, 'en') ? t(`website.referrals.kinds.${k}`) : k;
 
 async function load() {
   try {
@@ -205,7 +242,7 @@ async function save() {
       isActive: f.isActive,
     });
     form.value = null;
-    await toast('Referral code saved');
+    await toast(t('website.referrals.saved'));
     await load();
   } catch (e) {
     await toastError(e);
@@ -228,7 +265,7 @@ async function remove() {
 async function copy(url: string) {
   try {
     await navigator.clipboard.writeText(url);
-    await toast('Link copied');
+    await toast(t('website.referrals.linkCopied'));
   } catch {
     await toast(url, 'medium');
   }

@@ -1,3 +1,4 @@
+import { defineAsyncComponent } from 'vue';
 import { chatbubblesOutline, clipboardOutline, documentTextOutline } from 'ionicons/icons';
 import { defineAppModule } from '@/core/modules';
 
@@ -23,10 +24,24 @@ export default defineAppModule({
       meta: { permission: 'admissions.configure' },
     },
   ],
+  widgets: [
+    {
+      id: 'admissions.today',
+      slot: 'staff-home',
+      title: 'Enquiries today',
+      component: defineAsyncComponent(() => import('./EnquiriesTodayCard.vue')),
+      permission: 'admissions.view',
+      planModule: 'admissions',
+      order: 20,
+    },
+  ],
   menu: [
     {
       title: 'Enquiries',
       path: '/admissions/enquiries',
+      group: 'people',
+      titleKey: 'nav.admissions.enquiries',
+      tab: { staff: 5 },
       icon: chatbubblesOutline,
       permission: 'admissions.view',
       order: 25,
@@ -34,6 +49,8 @@ export default defineAppModule({
     {
       title: 'Applications',
       path: '/admissions/applications',
+      group: 'people',
+      titleKey: 'nav.admissions.applications',
       icon: clipboardOutline,
       permission: 'admissions.view',
       order: 26,
@@ -41,6 +58,8 @@ export default defineAppModule({
     {
       title: 'Admission forms',
       path: '/admissions/forms',
+      group: 'people',
+      titleKey: 'nav.admissions.forms',
       icon: documentTextOutline,
       permission: 'admissions.configure',
       order: 27,

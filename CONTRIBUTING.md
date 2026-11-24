@@ -182,6 +182,8 @@ await notify({
 
 - **Events.** The catalogue lives in `packages/shared/src/notifications.ts` (`NOTIFICATION_EVENTS`). Add new events there, or at runtime with `registerNotificationEvents([...])`. Each event defines label, category, variables, default channels, recipient types and default title/body. Unknown event keys throw.
 - **Context.** `notify()` needs tenant context: call it from a request handler or a job, not at module load. Inside a job it uses the job's institute.
+- **Dates and money in `data`.** Pass raw values: a `Date` (or ISO instant) reads as `27 Nov 2026, 9:00 pm` in the institute's timezone, `YYYY-MM-DD` as `16 Nov 2026` and `HH:MM` as `4:00 pm`. Pass amounts through `notifyAmount(paise)` (`46,250`, paise only when non-zero) and keep `₹` in the template. Output stays plain ASCII and short, so it fits SMS, WhatsApp and DLT variables.
+- **Users without an institute.** `notify()` only reaches institute members. For marketplace learners and independent instructors, call `notifyPlatformUsers({ event, userIds, data })`. It writes to the personal inbox (`notification_platform_messages`, served at `/api/notifications/personal/*`, which the app's bell uses when no institute is selected) and pushes via the platform's default provider. It takes the catalogue's default title and body (no institute templates, rules or preferences) and needs no tenant context.
 - **Receipts.** Provider webhooks should call `recordDeliveryReceipt({ provider, providerMessageId, status })`.
 - **Tests.** Run `processDueJobs()` and assert on `consoleOutbox` (from `infrastructure/messaging`) to check what would have been sent.
 
@@ -237,6 +239,7 @@ Current wiring:
 | students → branches                               | `students/integrations.ts`      | `registerBranchClosureGuard`: a branch with active or suspended students can't be closed until they are transferred                                                                                                                                                      |
 | subscriptions → every tenant request              | `subscriptions/index.ts`        | `addTenantRequestGuard('subscription-access')`: 402 `SUBSCRIPTION_RESTRICTED` / `SUBSCRIPTION_SUSPENDED` once the grace period ends (see ARCHITECTURE.md)                                                                                                                |
 | authentication → live-classes (events)            | `live-classes/integrations.ts`  | `onDeviceRevoked('live-classes.sockets')` and `onDeviceSignedOut('live-classes.sockets')` drop the device's live-class sockets and media connections (`removeParticipant`); a sign-out is skipped if the device has signed in again                                      |
+| hr → authentication (`/auth/me`)                  | `hr/integrations.ts`            | `registerMeFeature('staff-profile')`: `MeDto.features` lists it for users with an employee record, so only they see "My HR" and "My payslips"                                                                                                                            |
 
 Identity note: academics rosters and grievances key students by **login user id**; students/guardians use `students.id`. Every student has a login account, siblings sharing a parent's mobile included (`ensureStudentUser` in `students/students.service.ts`): one account owns a number (`users.mobile`, unique) and the others have none and are reached on it (`users.shared_mobile`), so read a user's number with `contactMobile`/`reachedOn` and find a number's accounts with `accountsOnMobile` (`users/user.model.ts`). `students.user_id` stays nullable only for students admitted before that, until `students:backfill-accounts` runs ([deployment.md](docs/deployment.md#student-login-accounts-backfill)). Use `getStudentUserId`, `getLinkedStudentUsers`, `getGuardianUserIdsForStudentUsers` from `guardians/guardian-access` to convert.
 
@@ -405,6 +408,7 @@ export default defineAppModule({
   - Route paths are prefixed with the module id.
   - Always lazy-load pages.
   - Set `meta.permission` (or `meta.superAdmin` for platform screens).
+  - Public pages go in `publicRoutes`. Add `meta.shell: true` to keep the side menu for signed-in users (as the course marketplace does).
   - A suspended institute can only open routes with `meta.allowWhenSuspended: true`, such as sign-in, Subscription & billing, data export and Member devices. Set it only when every API call the page makes is still allowed while suspended (`ALWAYS_ALLOWED` in `subscriptions/access-guard.ts`).
 - **Pages.** Wrap every page in `<AppPage title="…">`, which provides the header, menu button and pull-to-refresh.
 - **UI.** Use Ionic components so the app works on web, Android and iOS.
@@ -426,17 +430,22 @@ export default defineAppModule({
   - Keep tokens and secrets in `core/secure-storage.ts`, never `Preferences` or `localStorage`.
   - A module that keeps a user's data on the device implements `wipeUserData(userId)` in its `defineAppModule`. It runs when the device is revoked or the account deactivated.
 - **Dashboard widgets.** Contribute cards to shared dashboards with `widgets` instead of editing the host page (see below).
+- **Words, dates and money.** Show dates, times and money with `core/format.ts` (`formatDate`, `formatDateTime`, `formatRelative`, `formatMoney` for paise…), never bare `toLocaleString()`. New UI text goes through vue-i18n: `t('<namespace>.<key>')` with the English string in `modules/<folder>/i18n/en.json` and, when you have it, Hindi in `hi.json` (see ARCHITECTURE.md, "App shell contract"). Use `StatusChip` for statuses, `EmptyState` for empty lists, `FormSection advanced` for rarely used fields and `QuickActions` on home pages; keep tap targets at least `var(--app-tap-target)` (48 px).
+- **Menu metadata.** Give each `menu` item a `group` (section of the grouped menu), a `titleKey` (`nav.<module>.<item>`, added to `app/src/i18n/locales/{en,hi}.json`), and `personas`/`tab` (plus `tabTitleKey` for a shorter label) when it is a bottom tab for a persona (`MenuItem` in `core/modules.ts`). `core/navigation.test.ts` checks every item has a group and a translated title, and pins each persona's tabs.
 - **Shared types.** Request and response DTOs used by both sides go in `packages/shared/src/<module>.ts`, exported from its `index.ts`. That one-line export is the only shared edit expected.
 
 ### Dashboard widgets
 
-Shared dashboards render cards from every module's `widgets` (`DashboardWidget` in `app/src/core/modules.ts`). There are three slots:
+Shared dashboards render cards from every module's `widgets` (`DashboardWidget` in `app/src/core/modules.ts`). There are six slots:
 
 | Slot            | Host                                               | Props                   | Notes                                                                                     |
 | --------------- | -------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
 | `parent-home`   | `/parent-home` (parent-portal)                     | `child: ParentChildDto` | The parent picks a linked child. Contract below.                                          |
 | `home`          | `/home` dashboard, institute users                 | none                    | Remounted on pull-to-refresh and branch switch. Built-in: reports `Analytics` (order 10). |
 | `platform-home` | `/home` dashboard, super admin (not impersonating) | none                    | Built-in: reports platform summary (order 10).                                            |
+| `student-home`  | Student "Today" home (host added by the UX rework) | none                    | Next class, continue watching, due work, fee due. Not rendered until its host lands.      |
+| `teacher-home`  | `/home` dashboard, teacher persona (TeacherHome)   | none                    | Built-in: today's classes (10), homework (20) and tests (30) to check.                    |
+| `staff-home`    | `/home` StaffHome, staff persona                   | none                    | Admins, accountant, front desk. Built-in: fees (10), enquiries (20), attendance (30).     |
 
 For `home` and `platform-home`, load your own data and follow the error rules below. The active branch is sent automatically as `X-Branch-Id`.
 

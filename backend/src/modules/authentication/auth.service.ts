@@ -8,6 +8,7 @@ import type {
   LoginResult,
   MeDto,
   SignInProfileDto,
+  AppLocale,
 } from '@erp/shared';
 import { config } from '../../infrastructure/config';
 import { getSequelize } from '../../infrastructure/database/sequelize';
@@ -15,6 +16,7 @@ import { randomDigits, randomToken, sha256, safeEqual } from '../../infrastructu
 import { captureError } from '../../infrastructure/error-tracking';
 import { getDefaultMessagingProvider, otpSms } from '../../infrastructure/messaging';
 import { logger } from '../../infrastructure/logger';
+import { meFeatures } from './me-features';
 import { hashPassword, verifyPassword } from '../../infrastructure/password';
 import { windowCounter } from '../../infrastructure/rate-store';
 import { AppError, BadRequest, Forbidden, Unauthorized, NotFound } from '../../shared/errors';
@@ -765,6 +767,23 @@ export async function stopImpersonation(sessionId: number) {
 
 // ---------------------------------------------------------------- me
 
+/** Saves the user's app language so every device opens in it. */
+export async function setUserLocale(userId: number, locale: AppLocale) {
+  const user = await User.findByPk(userId);
+  if (!user) throw Unauthorized();
+  const before = user.locale;
+  if (before !== locale) {
+    await user.update({ locale });
+    await audit({
+      action: 'user.locale_changed',
+      entityType: 'user',
+      entityId: userId,
+      metadata: { before, after: locale },
+    });
+  }
+  return { locale };
+}
+
 export async function buildMe(): Promise<MeDto> {
   const ctx = getContext();
   const user = await User.findByPk(ctx.userId!);
@@ -804,6 +823,7 @@ export async function buildMe(): Promise<MeDto> {
   const device = ctx.deviceId && !ctx.impersonatorId ? await Device.findByPk(ctx.deviceId) : null;
   const mobile = contactMobile(user);
   const profileCount = (await numberAccounts(mobile)).length;
+  const features = ctx.instituteId && !isPlatformAdmin ? await meFeatures() : [];
   return {
     user: {
       id: user.id,
@@ -813,6 +833,7 @@ export async function buildMe(): Promise<MeDto> {
       isSuperAdmin: user.isSuperAdmin,
       sharesMobile: user.mobile === null,
       profileCount,
+      locale: user.locale === 'hi' ? 'hi' : 'en',
     },
     institute,
     branches,
@@ -827,6 +848,7 @@ export async function buildMe(): Promise<MeDto> {
       idleTimeoutMinutes: ctx.impersonatorId ? 0 : await getIdleTimeoutMinutes(ctx.instituteId ?? null),
       biometricUnlock: !!device?.unlockKeyHash,
     },
+    features,
   };
 }
 

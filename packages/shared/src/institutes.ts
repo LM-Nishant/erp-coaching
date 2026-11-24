@@ -23,3 +23,34 @@ export function isValidTimeZone(tz: unknown): tz is string {
     return false;
   }
 }
+
+/** Steps of the new-institute setup checklist, in the order staff should do them. */
+export const SETUP_STEPS = [
+  'profile',
+  'course',
+  'batch',
+  'feeStructure',
+  'teacher',
+  'student',
+  'paymentGateway',
+  'parents',
+] as const;
+export type SetupStepKey = (typeof SETUP_STEPS)[number];
+
+export interface SetupStepDto {
+  key: SetupStepKey;
+  done: boolean;
+  /** How many records exist for the step (e.g. batches), for "3 added" hints. */
+  count: number;
+}
+
+/**
+ * `GET /institute/setup-status`: the steps that apply to the institute's plan, with done flags.
+ * `complete` is true once every listed step is done, so the app can hide the checklist.
+ */
+export interface SetupStatusDto {
+  steps: SetupStepDto[];
+  done: number;
+  total: number;
+  complete: boolean;
+}

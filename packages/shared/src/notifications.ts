@@ -381,6 +381,14 @@ export const NOTIFICATION_EVENTS: NotificationEventDef[] = [
     ['student'],
   ),
   ev(
+    'live-classes.reminder',
+    'Live class reminder',
+    'Live classes',
+    ['title', 'minutes', 'joinUrl'],
+    'Live class soon',
+    '"{{title}}" starts in {{minutes}} minutes. Tap to join.',
+  ),
+  ev(
     'homework.assigned',
     'Homework assigned',
     'Homework',
@@ -584,8 +592,13 @@ export interface CampaignAudience {
   roles?: string[];
   /** Batch ids, resolved by the batches module via a recipient resolver. */
   batchIds?: number[];
+  /** Who in the chosen batches gets it; defaults to students and teachers. */
+  batchRecipients?: BatchRecipient[];
   userIds?: number[];
 }
+
+export const BATCH_RECIPIENTS = ['students', 'parents', 'teachers'] as const;
+export type BatchRecipient = (typeof BATCH_RECIPIENTS)[number];
 
 export interface CampaignDto {
   id: number;

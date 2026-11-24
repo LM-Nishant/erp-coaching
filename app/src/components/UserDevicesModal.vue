@@ -48,6 +48,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDateTime } from '@/core/format';
 import { computed, ref, watch } from 'vue';
 import {
   alertController,
@@ -94,7 +95,7 @@ const busy = ref(false);
 const lockedUntil = ref<string | null>(null);
 const locked = computed(() => !!lockedUntil.value && new Date(lockedUntil.value).getTime() > Date.now());
 
-const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
+const when = (iso: string | null) => (iso ? formatDateTime(iso) : '—');
 function describe(d: DeviceDto) {
   if (d.status !== 'active') return `Signed out ${when(d.revokedAt)}`;
   return `Signed in · last seen ${when(d.lastSeenAt)}${d.biometricUnlock ? ' · biometric unlock on' : ''}`;

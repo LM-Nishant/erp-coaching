@@ -2,6 +2,7 @@ import type {
   PayType,
   PayrollComponentDto,
   PayrollRunDto,
+  PayrollRunStatus,
   PayslipDto,
   PayslipLine,
   SettlementStatus,
@@ -10,7 +11,7 @@ import type {
 } from '@erp/shared';
 import { api } from '@/core/api';
 import { openFileLink, saveFile } from '@/core/downloads';
-import type { Page } from '../hr/api';
+import type { Chip, Page } from '../hr/api';
 
 export interface SalaryStructure {
   id: number;
@@ -112,8 +113,14 @@ export async function downloadReport(kind: ReportKind, query: Record<string, num
 }
 
 export const openSigned = (s: SignedUrl) => openFileLink(s.url);
-export const PAY_TYPE_LABELS: Record<PayType, string> = {
-  fixed_monthly: 'Fixed monthly',
-  per_lecture: 'Per lecture',
-  per_class: 'Per class',
+
+export const RUN_STATUS: Record<PayrollRunStatus, Chip> = {
+  draft: { label: 'common.status.draft', tone: 'medium' },
+  approved: { label: 'common.status.approved', tone: 'warning' },
+  locked: { label: 'payroll.status.locked', tone: 'success' },
+};
+export const SETTLEMENT_STATUS: Record<SettlementStatus, Chip> = {
+  draft: { label: 'common.status.draft', tone: 'medium' },
+  approved: { label: 'common.status.approved', tone: 'warning' },
+  paid: { label: 'common.status.paid', tone: 'success' },
 };

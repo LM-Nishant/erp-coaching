@@ -1,23 +1,28 @@
 <template>
-  <AppPage title="My complaints" :on-refresh="reload">
+  <AppPage :title="t('grievances.mine.title')" :on-refresh="reload">
     <template #actions>
-      <ion-button router-link="/grievances/new" aria-label="New complaint"
+      <ion-button router-link="/grievances/new" :aria-label="t('grievances.newComplaint')"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
 
     <ion-segment v-model="tab">
-      <ion-segment-button value="open"><ion-label>Open</ion-label></ion-segment-button>
-      <ion-segment-button value="done"><ion-label>Resolved / closed</ion-label></ion-segment-button>
+      <ion-segment-button value="open"
+        ><ion-label>{{ t('common.status.open') }}</ion-label></ion-segment-button
+      >
+      <ion-segment-button value="done"
+        ><ion-label>{{ t('grievances.mine.done') }}</ion-label></ion-segment-button
+      >
     </ion-segment>
     <ion-list>
-      <TicketItem v-for="t in tickets" :key="t.id" :ticket="t" />
-      <ion-item v-if="!loading && !tickets.length">
-        <ion-label class="muted">
-          No complaints here. Tap <strong>+</strong> to raise a new complaint.
-        </ion-label>
-      </ion-item>
+      <TicketItem v-for="item in tickets" :key="item.id" :ticket="item" />
     </ion-list>
+    <EmptyState
+      v-if="!loading && !tickets.length"
+      :icon="chatbubblesOutline"
+      :title="t('grievances.mine.emptyTitle')"
+      :message="t('grievances.mine.emptyMessage')"
+    />
     <ion-infinite-scroll :disabled="tickets.length >= total" @ion-infinite="more">
       <ion-infinite-scroll-content />
     </ion-infinite-scroll>
@@ -31,7 +36,6 @@ import {
   IonIcon,
   IonInfiniteScroll,
   IonInfiniteScrollContent,
-  IonItem,
   IonLabel,
   IonList,
   IonSegment,
@@ -39,13 +43,16 @@ import {
   onIonViewWillEnter,
   type InfiniteScrollCustomEvent,
 } from '@ionic/vue';
-import { add } from 'ionicons/icons';
+import { add, chatbubblesOutline } from 'ionicons/icons';
+import { useI18n } from 'vue-i18n';
 import type { GrievanceTicketDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import EmptyState from '@/components/EmptyState.vue';
 import { toastError } from '@/core/toast';
 import { grievancesApi } from './api';
 import TicketItem from './TicketItem.vue';
 
+const { t } = useI18n();
 const tab = ref<'open' | 'done'>('open');
 const tickets = ref<GrievanceTicketDto[]>([]);
 const total = ref(0);

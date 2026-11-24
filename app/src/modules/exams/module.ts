@@ -1,3 +1,4 @@
+import { defineAsyncComponent } from 'vue';
 import { codeWorkingOutline, documentTextOutline, ribbonOutline, schoolOutline } from 'ionicons/icons';
 import { defineAppModule } from '@/core/modules';
 
@@ -85,6 +86,9 @@ export default defineAppModule({
     {
       title: 'Exams',
       path: '/exams',
+      group: 'tests',
+      titleKey: 'nav.exams.exams',
+      tab: { teacher: 6 },
       icon: documentTextOutline,
       permission: 'exams.view',
       planModule: 'exams',
@@ -93,6 +97,8 @@ export default defineAppModule({
     {
       title: 'AI grading prompts',
       path: '/exams/prompts',
+      group: 'tests',
+      titleKey: 'nav.exams.prompts',
       icon: codeWorkingOutline,
       permission: 'exams.configure',
       planModule: 'exams',
@@ -101,6 +107,10 @@ export default defineAppModule({
     {
       title: 'My exams',
       path: '/my-exams',
+      group: 'tests',
+      titleKey: 'nav.exams.myExams',
+      tab: { student: 4 },
+      tabTitleKey: 'nav.tabs.tests',
       icon: schoolOutline,
       permission: 'exam-portal.create',
       planModule: 'exams',
@@ -109,10 +119,53 @@ export default defineAppModule({
     {
       title: 'Exam results',
       path: '/exam-results',
+      group: 'tests',
+      titleKey: 'nav.exams.results',
+      tab: { parent: 4, student: 9 },
+      tabTitleKey: 'nav.tabs.progress',
       icon: ribbonOutline,
       permission: 'exam-portal.view',
       planModule: 'exams',
       order: 42,
+    },
+  ],
+  widgets: [
+    {
+      id: 'exams.teacherToCheck',
+      slot: 'teacher-home',
+      title: 'Tests to publish',
+      component: defineAsyncComponent(() => import('./widgets/ExamsToCheckWidget.vue')),
+      permission: 'exams.edit',
+      planModule: 'exams',
+      order: 30,
+      size: 'half',
+    },
+    {
+      id: 'exams.upcoming',
+      slot: 'student-home',
+      title: 'Upcoming tests',
+      component: defineAsyncComponent(() => import('./widgets/UpcomingTestsWidget.vue')),
+      permission: 'exam-portal.create',
+      planModule: 'exams',
+      order: 40,
+    },
+    {
+      id: 'exams.latestResult',
+      slot: 'student-home',
+      title: 'Latest result',
+      component: defineAsyncComponent(() => import('./widgets/LatestResultWidget.vue')),
+      permission: 'exam-portal.view',
+      planModule: 'exams',
+      order: 70,
+    },
+    {
+      id: 'exams.latestResult',
+      slot: 'parent-home',
+      title: 'Latest result',
+      component: defineAsyncComponent(() => import('./widgets/LatestResultWidget.vue')),
+      permission: 'exam-portal.view',
+      planModule: 'exams',
+      order: 40,
     },
   ],
 });

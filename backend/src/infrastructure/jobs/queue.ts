@@ -66,12 +66,13 @@ export async function enqueueJob(
   payload: Record<string, unknown>,
   opts: { runAt?: Date; maxAttempts?: number; instituteId?: number | null; transaction?: Transaction } = {},
 ): Promise<Job> {
-  return Job.create(
+  const runAt = opts.runAt ?? new Date();
+  const job = await Job.create(
     {
       name,
       payload,
       instituteId: opts.instituteId !== undefined ? opts.instituteId : (getContext().instituteId ?? null),
-      runAt: opts.runAt ?? new Date(),
+      runAt: held ? HELD_RUN_AT : runAt,
       maxAttempts: opts.maxAttempts ?? 5,
       lockedAt: null,
       lastError: null,
@@ -79,6 +80,57 @@ export async function enqueueJob(
     },
     { transaction: opts.transaction },
   );
+  held?.set(job.id, runAt);
+  return job;
+}
+
+/** Placeholder `run_at` for held jobs: far enough ahead that no worker claims them. */
+export const HELD_RUN_AT = new Date('2999-01-01T00:00:00Z');
+/** Held job id → the `run_at` it was enqueued with. */
+let held: Map<number, Date> | null = null;
+
+/**
+ * Holds every job this process enqueues from now on: it is stored with `HELD_RUN_AT`, so no other
+ * worker (for example a running API server sharing the database) can claim it. `releaseHeldJobs`
+ * then runs the due ones in this process and gives the rest their real `run_at`.
+ */
+export function holdJobs(): void {
+  held ??= new Map();
+}
+
+/**
+ * Runs held jobs that are due, in this process and in id order, including any jobs they enqueue;
+ * a job that fails and has attempts left is retried here too. Jobs scheduled for later are released
+ * to the normal queue with their original `run_at`. Stops holding. Returns how many ran and how
+ * many were released for later.
+ */
+export async function releaseHeldJobs(): Promise<{ ran: number; scheduled: number }> {
+  let ran = 0;
+  let scheduled = 0;
+  while (held?.size) {
+    const [id, runAt] = [...held].sort(([a], [b]) => a - b)[0];
+    held.delete(id);
+    if (runAt.getTime() > Date.now()) {
+      const [count] = await Job.update({ runAt }, { where: { id, status: 'pending' } });
+      scheduled += count;
+      continue;
+    }
+    const job = await Job.findOne({ where: { id, status: 'pending' } });
+    if (!job) continue; // rolled back with its transaction, or already handled
+    const [claimed] = await Job.update(
+      { status: 'running', lockedAt: new Date(), attempts: job.attempts + 1, runAt },
+      { where: { id, status: 'pending', attempts: job.attempts } },
+    );
+    if (!claimed) continue;
+    await job.reload();
+    await execute(job);
+    ran++;
+    // Failed with attempts left: execute() requeued it for any worker; keep it here instead.
+    const [requeued] = await Job.update({ runAt: HELD_RUN_AT }, { where: { id, status: 'pending' } });
+    if (requeued) held.set(id, new Date());
+  }
+  held = null;
+  return { ran, scheduled };
 }
 
 async function claimNext(): Promise<Job | null> {

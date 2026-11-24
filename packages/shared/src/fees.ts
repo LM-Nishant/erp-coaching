@@ -417,6 +417,8 @@ export interface MyFeesDto {
   payments: FeePaymentDto[];
   gateways: PaymentGatewayKey[];
   totalDue: number;
+  /** The student's branch, so families can pay at (or call) the office when online payment is off. */
+  office: { name: string; address: string | null; phone: string | null; email: string | null } | null;
 }
 
 /** Ledger account codes. Bank accounts are `bank:<id>`, gateway clearing `gateway:<name>`. */

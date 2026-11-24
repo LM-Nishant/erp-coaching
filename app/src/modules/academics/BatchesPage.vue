@@ -1,7 +1,7 @@
 <template>
   <AppPage title="Batches" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'academics.create'" aria-label="New batch" @click="openEditor()"
+      <ion-button v-can="'academics.create'" aria-label="New batch" @click="wizardOpen = true"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
@@ -63,10 +63,30 @@
           ><ion-icon slot="icon-only" :icon="trashOutline"
         /></ion-button>
       </ion-item>
-      <ion-item v-if="!loading && !batches.length"
-        ><ion-label class="muted">No batches yet.</ion-label></ion-item
-      >
     </ion-list>
+    <EmptyState
+      v-if="!loading && !batches.length"
+      :icon="peopleOutline"
+      :title="t('academics.batches.emptyTitle')"
+      :message="t('academics.batches.emptyMessage')"
+    >
+      <ion-button v-can="'academics.create'" @click="wizardOpen = true">{{
+        t('academics.wizard.title')
+      }}</ion-button>
+    </EmptyState>
+
+    <BatchWizard
+      :is-open="wizardOpen"
+      :courses="courses"
+      :branches="branches"
+      :sessions="sessions"
+      :subjects="subjects"
+      :teachers="teachers"
+      :taken-codes="batches.map((b) => b.code)"
+      :initial-course-id="filters.courseId"
+      @close="wizardOpen = false"
+      @saved="onCreated"
+    />
 
     <ion-modal :is-open="!!form" @did-dismiss="form = null">
       <ion-header>
@@ -146,13 +166,13 @@
               </ion-select>
             </ion-item>
             <ion-list-header>Subject teachers</ion-list-header>
-            <ion-item v-for="(t, i) in form.teachers" :key="i">
-              <ion-select v-model="t.teacherUserId" label="Teacher" label-placement="stacked">
+            <ion-item v-for="(bt, i) in form.teachers" :key="i">
+              <ion-select v-model="bt.teacherUserId" label="Teacher" label-placement="stacked">
                 <ion-select-option v-for="u in teachers" :key="u.id" :value="u.id">{{
                   u.name
                 }}</ion-select-option>
               </ion-select>
-              <ion-select v-model="t.subjectId" label="Subject" label-placement="stacked">
+              <ion-select v-model="bt.subjectId" label="Subject" label-placement="stacked">
                 <ion-select-option :value="null">Any</ion-select-option>
                 <ion-select-option v-for="s in subjects" :key="s.id" :value="s.id">{{
                   s.name
@@ -229,7 +249,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import {
   IonBadge,
   IonButton,
@@ -249,7 +271,7 @@ import {
   IonToolbar,
   alertController,
 } from '@ionic/vue';
-import { add, closeOutline, createOutline, trashOutline } from 'ionicons/icons';
+import { add, closeOutline, createOutline, peopleOutline, trashOutline } from 'ionicons/icons';
 import {
   COURSE_MODES,
   type AcademicSessionDto,
@@ -261,9 +283,11 @@ import {
   type SubjectDto,
 } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import EmptyState from '@/components/EmptyState.vue';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 import { academicsApi, isoToday, statusColor, type BranchRef, type PersonRef } from './api';
+import BatchWizard from './BatchWizard.vue';
 
 interface Form {
   name: string;
@@ -280,6 +304,10 @@ interface Form {
 }
 
 const auth = useAuthStore();
+const route = useRoute();
+const router = useRouter();
+const { t } = useI18n();
+const wizardOpen = ref(false);
 const batches = ref<BatchDto[]>([]);
 const sessions = ref<AcademicSessionDto[]>([]);
 const courses = ref<CourseDto[]>([]);
@@ -439,5 +467,22 @@ async function unenroll(studentUserId: number) {
   }
 }
 
+async function onCreated(b: BatchDto) {
+  wizardOpen.value = false;
+  await toast(t('academics.wizard.created', { name: b.name }));
+  await load();
+  // Next thing staff do with a new batch is put students in it.
+  if (auth.can('academics.edit')) await openRoster(b);
+}
+
 onMounted(load);
+watch(
+  () => route.query.new,
+  (v) => {
+    if (v !== '1') return;
+    wizardOpen.value = auth.can('academics.create');
+    void router.replace({ query: { ...route.query, new: undefined } });
+  },
+  { immediate: true },
+);
 </script>

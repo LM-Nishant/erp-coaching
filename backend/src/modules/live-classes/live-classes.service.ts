@@ -59,6 +59,9 @@ export const MODULE = 'live-classes';
 export const IMPORT_RECORDING_JOB = 'live-classes.import-recording';
 export const COLLECT_RECORDINGS_JOB = 'live-classes.collect-recordings';
 export const ENSURE_RECORDING_JOB = 'live-classes.ensure-recording';
+export const REMINDER_JOB = 'live-classes.reminder';
+/** Students and parents get a "starts in 10 minutes" push before each scheduled class. */
+export const REMINDER_LEAD_MINUTES = 10;
 /** Catch-up for provider recordings whose webhook was missed: first check after the class, then retries. */
 const COLLECT_DELAY_MS = 15 * 60_000;
 const COLLECT_MAX_ATTEMPTS = 4;
@@ -332,6 +335,7 @@ export async function createSession(input: CreateLiveSessionInput) {
       branchId: session.branchId,
     });
   });
+  await scheduleReminder(session);
   return getSessionDto(session.id);
 }
 
@@ -353,6 +357,7 @@ export async function updateSession(id: number, input: UpdateLiveSessionInput) {
     patch.scheduledEndAt = new Date(+start + minutes * 60000);
   }
   await session.update(patch);
+  if (patch.scheduledStartAt) await scheduleReminder(session);
   await audit({
     action: 'live_session.updated',
     entityType: 'LiveSession',
@@ -545,6 +550,38 @@ export async function verifyJoinCredentials(token: string): Promise<JoinTokenCla
   const claims = getStreamingProvider().verifyJoinToken?.(token) ?? null;
   if (!claims) return null;
   return (await isDeviceSignedIn(claims.deviceId)) ? claims : null;
+}
+
+/** Queues the pre-class reminder; a stale job (after a reschedule or cancel) is ignored by the handler. */
+async function scheduleReminder(session: LiveSession) {
+  const runAt = new Date(+session.scheduledStartAt - REMINDER_LEAD_MINUTES * 60_000);
+  if (+runAt <= Date.now()) return;
+  const { enqueueJob } = await import('../../infrastructure/jobs/queue');
+  await enqueueJob(
+    REMINDER_JOB,
+    { liveSessionId: session.id, startsAt: session.scheduledStartAt.toISOString() },
+    { runAt },
+  );
+}
+
+/** `live-classes.reminder` job: runs in the institute's context. */
+export async function runReminder(payload: { liveSessionId: number; startsAt: string }) {
+  const { instituteId } = requireTenantContext();
+  const session = await LiveSession.findOne({ where: { instituteId, id: payload.liveSessionId } });
+  if (!session || session.status !== 'scheduled') return;
+  if (session.scheduledStartAt.toISOString() !== payload.startsAt) return;
+  const students = await getBatchMemberUserIds(session.batchId, { teachers: false });
+  await notify({
+    event: 'live-classes.reminder',
+    recipients: [batchMembersOf(session.batchId), guardiansOfStudentUsers(students)],
+    data: {
+      title: session.title,
+      minutes: REMINDER_LEAD_MINUTES,
+      joinUrl: `/live-classes/${session.id}`,
+      liveSessionId: session.id,
+    },
+    branchId: session.branchId,
+  });
 }
 
 async function safeNotify(fn: () => Promise<unknown>) {

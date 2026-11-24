@@ -1,31 +1,36 @@
 <template>
-  <AppPage title="Report exports" back-href="/reports" :on-refresh="load">
-    <p class="muted intro">
-      Exports stay available for 24 hours. Large exports are prepared in the background and you are notified
-      when they are ready.
-    </p>
-    <p v-if="loaded && !exports.length" class="muted">You have not exported any reports yet.</p>
+  <AppPage :title="t('reports.exports.title')" back-href="/reports" :on-refresh="load">
+    <p class="muted intro">{{ t('reports.exports.intro') }}</p>
+    <p v-if="loaded && !exports.length" class="muted">{{ t('reports.exports.empty') }}</p>
     <ion-list v-if="exports.length">
       <ion-item v-for="e in exports" :key="e.id">
         <ion-label class="ion-text-wrap">
           <h3>
-            {{ e.title }} <small class="muted">{{ FORMAT_LABELS[e.format] }}</small>
+            {{ e.title }} <small class="muted">{{ formatLabel(e.format) }}</small>
           </h3>
           <p>{{ e.periodLabel }} · {{ e.scopeLabel }}</p>
           <p>
-            Requested {{ when(e.createdAt) }}
-            <span v-if="e.rowCount !== null"> · {{ e.rowCount.toLocaleString('en-IN') }} rows</span>
-            <span v-if="e.status === 'ready' && e.expiresAt"> · available until {{ when(e.expiresAt) }}</span>
+            {{ t('reports.exports.requested', { when: when(e.createdAt) }) }}
+            <span v-if="e.rowCount !== null">
+              · {{ t('reports.exports.rows', { n: formatNumber(e.rowCount) }, e.rowCount) }}</span
+            >
+            <span v-if="e.status === 'ready' && e.expiresAt">
+              · {{ t('reports.exports.availableUntil', { when: when(e.expiresAt) }) }}</span
+            >
           </p>
           <p v-if="e.status === 'failed' && e.error" class="error">{{ e.error }}</p>
         </ion-label>
-        <ion-badge slot="end" :color="STATUS_COLORS[e.status]">{{ humanize(e.status) }}</ion-badge>
+        <StatusChip
+          slot="end"
+          :label="t(`reports.exports.status.${e.status}`)"
+          :tone="STATUS_TONES[e.status]"
+        />
         <ion-button
           v-if="e.status === 'ready'"
           slot="end"
           fill="clear"
           :disabled="downloading === e.id"
-          aria-label="Download"
+          :aria-label="t('common.actions.download')"
           @click="download(e)"
           ><ion-icon slot="icon-only" :icon="downloadOutline"
         /></ion-button>
@@ -36,8 +41,8 @@
 
 <script setup lang="ts">
 import { onUnmounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
-  IonBadge,
   IonButton,
   IonIcon,
   IonItem,
@@ -49,12 +54,15 @@ import {
 import { downloadOutline } from 'ionicons/icons';
 import { DEFAULT_INSTITUTE_TIMEZONE, type ReportExportDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { formatNumber } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
 import { reportsApi, saveExport } from './api';
-import { FORMAT_LABELS, STATUS_COLORS } from './exportUi';
-import { displayDateTime, humanize } from './format';
+import { formatLabel, STATUS_TONES } from './exportUi';
+import { displayDateTime } from './format';
 
 const POLL_MS = 5000;
+const { t } = useI18n();
 
 const exports = ref<ReportExportDto[]>([]);
 const loaded = ref(false);
@@ -120,8 +128,5 @@ onUnmounted(() => {
 }
 .error {
   color: var(--ion-color-danger);
-}
-ion-badge {
-  text-transform: capitalize;
 }
 </style>

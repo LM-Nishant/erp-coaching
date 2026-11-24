@@ -1,8 +1,8 @@
 # Google Calendar
 
 Parent-teacher meetings (the appointments module) become events in Google Calendar. Online meetings get a Google Meet
-link, and accepting, rescheduling and cancelling a meeting in the app updates the event. Google emails the invitations
-and updates to the guests.
+link, and approving, rescheduling and cancelling a meeting in the app updates the event. Google emails the
+invitations and updates to the guests.
 
 Calendars are connected per institute and per teacher through the platform's own Google OAuth client. Institutes need
 no Google Cloud project, and going live only needs that client's ID and secret.
@@ -14,8 +14,8 @@ no Google Cloud project, and going live only needs that client's ID and secret.
 
 ## Whose calendar holds the events
 
-The teacher who accepts a meeting runs it, so a meeting goes to **the teacher's own calendar**. If the teacher hasn't
-connected one, it goes to **the institute's organiser calendar**, for example a shared office account.
+The teacher who approves a meeting runs it, so a meeting goes to **the teacher's own calendar**. If the teacher
+hasn't connected one, it goes to **the institute's organiser calendar**, for example a shared office account.
 
 - An event stays in the calendar that created it. Moving it would send every guest a new invitation.
 - A teacher's connection that **needs reconnecting blocks** syncing; it doesn't fall back to the organiser calendar.
@@ -63,14 +63,14 @@ Do this once for the platform, in a Google Cloud project owned by the SaaS opera
 | `GOOGLE_OAUTH_CLIENT_SECRET` |                                                        | Required with `google`. Keep it like the [other secrets](../deployment.md#secrets)                    |
 | `GOOGLE_OAUTH_REDIRECT_URI`  | `<API_PUBLIC_URL>/api/calendar/public/google/callback` | Override it only behind an unusual proxy. It must stay on the `API_PUBLIC_URL` host (the flow cookie) |
 
-Set them in `deploy/.env` (`backend/.env` in development) and restart the API. In production `API_PUBLIC_URL` is
-`PUBLIC_URL`.
+Set them in `deploy/.env` and run `docker compose up -d --wait` (in development, set them in `backend/.env` and
+restart the API). In production `API_PUBLIC_URL` is `PUBLIC_URL`.
 
 - The client ID and secret live only in the environment, never in the database, and no API returns them. So the app
   has no form for them, and the encrypted settings' rule that a changed endpoint needs its secret re-entered
   (`SECRET_REQUIRED`) doesn't apply.
-- **Rotating the secret:** add a second secret to the client in Google Cloud, put it in `.env`, restart the API, then
-  disable the old secret. Refresh tokens stay valid, so calendars stay connected.
+- **Rotating the secret:** add a second secret to the client in Google Cloud, put it in `.env`, run
+  `docker compose up -d --wait`, then disable the old secret. Refresh tokens stay valid, so calendars stay connected.
 - **Switching from `mock` to `google`:** upcoming meetings move to Google Calendar when a calendar is connected, or on
   their next change. Mock events live in memory and need no clean-up.
 
@@ -90,8 +90,8 @@ Set them in `deploy/.env` (`backend/.env` in development) and restart the API. I
   - the organiser calendar, with **Connect Google Calendar**, **Test connection**, **Disconnect** and **Reconnect**;
   - every teacher's connection, with test and disconnect;
   - the upcoming meetings that are "In Google Calendar", "Waiting to sync" or "Not in Google Calendar".
-- **Teachers → Appointments → Availability** has a **Google Calendar** card to connect, test, disconnect or reconnect
-  their own calendar, and says whether the organiser calendar is connected.
+- **My availability** (`/appointments/availability`), for teachers, has a **Google Calendar** card to connect, test,
+  disconnect or reconnect their own calendar, and says whether the organiser calendar is connected.
 - **A meeting's details** show its teacher and appointment managers where it stands in Google Calendar, with the last
   error. Parents only see the meeting link.
 
@@ -161,10 +161,10 @@ institute. A Super Admin impersonating a user can't connect calendars.
 | In the app                                                    | In Google Calendar                                                                                             |
 | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | A parent requests a slot                                      | Nothing yet                                                                                                    |
-| The teacher **accepts**                                       | The event is created and Google emails the invitations. Online meetings get a Meet link, stored on the meeting |
+| The teacher presses **Approve**                               | The event is created and Google emails the invitations. Online meetings get a Meet link, stored on the meeting |
 | The teacher **rejects** the request                           | Nothing: it never reached Google                                                                               |
 | The teacher **reschedules** a confirmed meeting               | The same event moves (only the time is patched) and keeps its Meet link; guests get an update                  |
-| The parent reschedules (the meeting goes back to "requested") | The event is cancelled until the teacher accepts again; then a new event is created                            |
+| The parent reschedules (the meeting goes back to "requested") | The event is cancelled until the teacher approves it again; then a new event is created                        |
 | Either side **cancels**                                       | The event is cancelled; guests get a cancellation                                                              |
 | Reminders                                                     | Sent by the app's notifications. The event uses the calendar's default reminders                               |
 | The meeting is held (completed or no-show); notes and history | The event stays as it is. Notes and history stay in the app                                                    |

@@ -15,6 +15,7 @@
     "db:migrate:undo": "tsx src/infrastructure/database/cli.ts migrate:undo",
     "db:migrate:status": "tsx src/infrastructure/database/cli.ts migrate:status",
     "db:seed": "tsx src/infrastructure/database/cli.ts seed",
+    "db:seed:demo": "tsx src/infrastructure/database/demo/run.ts",
     "db:seed:undo": "tsx src/infrastructure/database/cli.ts seed:undo",
     "db:reset": "tsx src/infrastructure/database/cli.ts reset",
     "secrets:reencrypt": "tsx src/infrastructure/database/cli.ts secrets:reencrypt",
@@ -24,6 +25,7 @@
   },
   "dependencies": {
     "@erp/shared": "0.1.0",
+    "@napi-rs/canvas": "^1.2.0",
     "@socket.io/redis-adapter": "^8.3.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
@@ -35,6 +37,7 @@
     "multer": "^2.0.2",
     "mysql2": "^3.15.3",
     "nodemailer": "^10.6.0",
+    "pdfjs-dist": "^6.5.438",
     "pino": "^10.1.0",
     "pino-http": "^11.0.0",
     "rate-limit-redis": "^6.0.2",

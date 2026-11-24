@@ -28,6 +28,8 @@ export default defineAppModule({
     {
       title: 'Tally export',
       path: '/accounting/tally',
+      group: 'fees',
+      titleKey: 'nav.tally.export',
       icon: swapHorizontalOutline,
       permission: 'tally.view',
       // The backend serves Tally under the fees module of the plan.

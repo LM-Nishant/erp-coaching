@@ -1,0 +1,69 @@
+{
+  "compose": {
+    "open": "Send a notice",
+    "title": "Send a notice",
+    "message": "Message",
+    "subjectLine": "Title",
+    "subjectPlaceholder": "For example: Holiday on Friday",
+    "body": "Message",
+    "alsoSend": "Also send as",
+    "appAlways": "Everyone gets it in the app as a notification. SMS and WhatsApp may cost extra.",
+    "emailSubject": "Email subject",
+    "schedule": "Send later",
+    "sendAt": "Send at",
+    "scheduleSubmit": "Schedule",
+    "sendNow": "Send now",
+    "sendTo": "Send to nobody | Send to 1 person | Send to {n} people",
+    "reach": "Nobody matches yet | Reaches 1 person | Reaches {n} people",
+    "chooseAudience": "Choose who should get this message",
+    "chooseTime": "Choose when to send",
+    "scheduled": "Message scheduled",
+    "sending": "Message is being sent",
+    "listTitle": "Sent and scheduled notices",
+    "scheduledOn": "Scheduled {date}",
+    "sentOn": "Sent {date}",
+    "recipients": "no recipients | 1 recipient | {n} recipients",
+    "emptyTitle": "No notices sent yet",
+    "emptyMessage": "Send holidays, test dates and fee reminders to students, parents and teachers.",
+    "cancelHeader": "Cancel “{title}”?",
+    "keep": "Keep",
+    "cancelMessage": "Cancel message",
+    "status": {
+      "scheduled": "Scheduled",
+      "processing": "Sending",
+      "sent": "Sent",
+      "cancelled": "Cancelled",
+      "failed": "Failed"
+    }
+  },
+  "audience": {
+    "sendTo": "Send to",
+    "scope": {
+      "institute": "Whole institute",
+      "batches": "Selected batches"
+    },
+    "findBatch": "Find a batch",
+    "students": "no students | 1 student | {n} students",
+    "noBatches": "No active batches.",
+    "whoTitle": "Who in it",
+    "who": {
+      "students": "Students",
+      "parents": "Parents",
+      "teachers": "Teachers",
+      "staff": "Office staff"
+    },
+    "branch": "Branch",
+    "allBranches": "All branches",
+    "batchCount": "no batches | 1 batch | {n} batches",
+    "userCount": "no people | 1 person | {n} people",
+    "everyone": "Everyone"
+  },
+  "inbox": {
+    "title": "Notifications",
+    "markAllRead": "Mark all read",
+    "preferences": "Preferences",
+    "all": "All",
+    "unread": "Unread",
+    "caughtUp": "You're all caught up."
+  }
+}

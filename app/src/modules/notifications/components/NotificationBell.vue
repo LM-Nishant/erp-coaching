@@ -1,5 +1,11 @@
 <template>
-  <ion-button v-if="enabled" router-link="/notifications" aria-label="Notifications" class="bell">
+  <ion-button
+    v-if="enabled"
+    router-link="/notifications"
+    aria-label="Notifications"
+    class="bell"
+    data-testid="notification-bell"
+  >
     <ion-icon slot="icon-only" :icon="notificationsOutline" />
     <ion-badge v-if="unread > 0" color="danger">{{ unread > 99 ? '99+' : unread }}</ion-badge>
   </ion-button>
@@ -15,7 +21,10 @@ import { refreshUnread, registerPush, unread } from '../push';
 
 const auth = useAuthStore();
 const router = useRouter();
-const enabled = computed(() => !!auth.me?.institute && auth.can('notification-inbox.view'));
+// Users without an institute (marketplace learners, independent instructors) get the personal inbox.
+const enabled = computed(
+  () => auth.personalInbox || (!!auth.me?.institute && auth.can('notification-inbox.view')),
+);
 let timer: ReturnType<typeof setInterval> | null = null;
 
 function start() {
@@ -24,7 +33,7 @@ function start() {
   if (!enabled.value) return;
   void refreshUnread();
   // An impersonating admin's device must not take over the user's pushes.
-  if (auth.can('notification-inbox.edit') && !auth.me!.impersonatedBy)
+  if ((auth.personalInbox || auth.can('notification-inbox.edit')) && !auth.me!.impersonatedBy)
     void registerPush(auth.me!.user.id, () => void router.push({ name: 'notifications-inbox' }));
   timer = setInterval(refreshUnread, 60_000);
 }

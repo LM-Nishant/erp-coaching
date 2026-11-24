@@ -2,12 +2,14 @@
   <AppPage :title="title" back-href="/reports" :on-refresh="load">
     <template #actions>
       <ion-button v-if="item?.exportable" :disabled="exporting || !!rangeError" @click="exportReport">
-        <ion-icon slot="start" :icon="downloadOutline" />Export
+        <ion-icon slot="start" :icon="downloadOutline" />{{ t('common.actions.export') }}
       </ion-button>
     </template>
 
-    <p v-if="!known" class="muted">This report does not exist.</p>
-    <p v-else-if="loaded && !item" class="muted">This report is not available for your role or plan.</p>
+    <p v-if="!known" class="muted">{{ t('reports.report.notFound') }}</p>
+    <p v-else-if="loaded && !item" class="muted">
+      {{ t('reports.report.notAvailable') }}
+    </p>
 
     <template v-if="item && options">
       <p class="muted description">{{ item.description }}</p>
@@ -26,14 +28,22 @@
         <span v-if="applied"> · {{ applied }}</span>
       </p>
       <MetricGrid :metrics="result.summary" :timezone="result.period.timezone" />
-      <ReportTable v-for="t in result.tables" :key="t.key" :table="t" :timezone="result.period.timezone" />
+      <ReportTable
+        v-for="tbl in result.tables"
+        :key="tbl.key"
+        :table="tbl"
+        :timezone="result.period.timezone"
+      />
       <ul v-if="result.notes.length" class="notes muted">
         <li v-for="(n, i) in result.notes" :key="i">{{ n }}</li>
       </ul>
       <p class="muted generated">
-        Generated {{ displayDateTime(result.generatedAt, result.period.timezone) }} ({{
-          result.period.timezone
-        }})
+        {{
+          t('reports.report.generated', {
+            when: displayDateTime(result.generatedAt, result.period.timezone),
+            timezone: result.period.timezone,
+          })
+        }}
       </p>
     </template>
   </AppPage>
@@ -42,6 +52,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { IonButton, IonIcon, IonProgressBar, toastController } from '@ionic/vue';
 import { downloadOutline } from 'ionicons/icons';
 import {
@@ -69,6 +80,7 @@ import {
 } from './filters';
 import { displayDateTime } from './format';
 
+const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 
@@ -84,7 +96,7 @@ const exporting = ref(false);
 let ready = false;
 let requestId = 0;
 
-const title = computed(() => item.value?.title ?? result.value?.title ?? 'Report');
+const title = computed(() => item.value?.title ?? result.value?.title ?? t('reports.report.fallbackTitle'));
 const rangeError = computed(() => customRangeError(state.value));
 const filtersInput = computed(() =>
   toFiltersInput(state.value, item.value?.filters, options.value?.audience),
@@ -92,7 +104,10 @@ const filtersInput = computed(() =>
 const applied = computed(() => {
   const f = result.value?.filters;
   if (!f) return '';
-  return [f.courseName && `Course: ${f.courseName}`, f.batchName && `Batch: ${f.batchName}`]
+  return [
+    f.courseName && t('reports.report.course', { name: f.courseName }),
+    f.batchName && t('reports.report.batch', { name: f.batchName }),
+  ]
     .filter(Boolean)
     .join(' · ');
 });
@@ -128,7 +143,7 @@ async function load() {
 }
 
 async function exportReport() {
-  const format = await pickExportFormat(`Export ${title.value}`);
+  const format = await pickExportFormat(t('reports.report.exportTitle', { title: title.value }));
   if (!format) return;
   exporting.value = true;
   try {
@@ -145,15 +160,14 @@ async function exportReport() {
 }
 
 async function queuedToast() {
-  const t = await toastController.create({
-    message:
-      'This export is large, so it is being prepared in the background. We will notify you when it is ready.',
+  const el = await toastController.create({
+    message: t('reports.report.queued'),
     color: 'medium',
     duration: 6000,
     position: 'top',
-    buttons: [{ text: 'View exports', handler: () => void router.push('/reports/exports') }],
+    buttons: [{ text: t('reports.report.viewExports'), handler: () => void router.push('/reports/exports') }],
   });
-  await t.present();
+  await el.present();
 }
 
 // Filter changes update the URL (shareable) and reload once the filters are usable.

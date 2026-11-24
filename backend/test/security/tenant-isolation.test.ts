@@ -16,6 +16,7 @@ import {
   BRANCH_SHARED,
   KNOWN_FINDINGS,
   KNOWN_UNCOVERED,
+  NOT_INSTITUTE_RECORDS,
   OWNER_STATUS,
   PARAM_SQL,
   PORTAL_SHARED,
@@ -137,7 +138,13 @@ const PORTALS: {
 ];
 
 const recordRoutes = () =>
-  routes.filter((r) => r.authenticated && !r.superAdmin && idParamsOf(r.path).length > 0);
+  routes.filter(
+    (r) =>
+      r.authenticated &&
+      !r.superAdmin &&
+      idParamsOf(r.path).length > 0 &&
+      !Object.keys(NOT_INSTITUTE_RECORDS).some((prefix) => r.path.startsWith(prefix)),
+  );
 
 async function resolveAll(list: RouteInfo[], scope: Scope, crawl: string): Promise<Probe[]> {
   crawlsRun.add(crawl);

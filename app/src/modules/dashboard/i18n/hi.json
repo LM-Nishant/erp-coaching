@@ -1,0 +1,98 @@
+{
+  "home": {
+    "title": "होम",
+    "hello": "नमस्ते, {name}",
+    "yourBranches": "आपकी शाखाएँ: {names}",
+    "platform": {
+      "institutes": "{status} संस्थान",
+      "statuses": {
+        "active": "सक्रिय",
+        "inactive": "निष्क्रिय",
+        "suspended": "निलंबित"
+      },
+      "users": "संस्थान के यूज़र",
+      "branches": "शाखाएँ"
+    }
+  },
+  "staff": {
+    "quickActions": "तुरंत करें",
+    "actions": {
+      "collectFee": "फीस जमा करें",
+      "addStudent": "छात्र जोड़ें",
+      "sendNotice": "सूचना भेजें",
+      "newEnquiry": "नई पूछताछ",
+      "attendance": "हाज़िरी",
+      "newBatch": "नया बैच"
+    }
+  },
+  "setup": {
+    "title": "सेटअप पूरा करें",
+    "progress": "{total} में से {done} पूरे",
+    "hide": "अभी छिपाएँ",
+    "steps": {
+      "profile": {
+        "title": "अपना लोगो, पता और फ़ोन जोड़ें",
+        "hint": "रसीद, ID कार्ड और वेबसाइट पर दिखता है।"
+      },
+      "course": {
+        "title": "एक कोर्स जोड़ें",
+        "hint": "जैसे: JEE 2027, NEET फ़ाउंडेशन, कक्षा 10।"
+      },
+      "batch": {
+        "title": "एक बैच बनाएँ",
+        "hint": "छात्रों का समूह, उसका समय और शिक्षक।"
+      },
+      "feeStructure": {
+        "title": "फीस सेट करें",
+        "hint": "किसी कोर्स की फीस और किस्तें।"
+      },
+      "teacher": {
+        "title": "एक शिक्षक जोड़ें",
+        "hint": "फिर वे हाज़िरी और क्लास ले सकते हैं।"
+      },
+      "student": {
+        "title": "पहला छात्र जोड़ें",
+        "hint": "या Excel से एक साथ कई छात्र इम्पोर्ट करें।"
+      },
+      "paymentGateway": {
+        "title": "ऑनलाइन भुगतान लें",
+        "hint": "Razorpay या दूसरा गेटवे जोड़ें ताकि अभिभावक UPI से भुगतान कर सकें।"
+      },
+      "parents": {
+        "title": "अभिभावक जोड़ें",
+        "hint": "अभिभावकों को हाज़िरी, रिज़ल्ट और फीस रिमाइंडर मिलते हैं।"
+      }
+    },
+    "showDone": "{n} पूरे हुए चरण दिखाएँ",
+    "hideDone": "पूरे हुए चरण छिपाएँ"
+  },
+  "student": {
+    "title": "आज",
+    "greeting": "नमस्ते {name} 👋",
+    "shortcuts": "शॉर्टकट",
+    "actions": {
+      "classes": "लाइव कक्षाएँ",
+      "courses": "मेरे कोर्स",
+      "homework": "होमवर्क",
+      "tests": "टेस्ट",
+      "results": "रिज़ल्ट",
+      "attendance": "उपस्थिति",
+      "fees": "फ़ीस",
+      "downloads": "डाउनलोड"
+    }
+  },
+  "teacher": {
+    "morning": "सुप्रभात, {name}",
+    "afternoon": "नमस्ते, {name}",
+    "evening": "शुभ संध्या, {name}",
+    "quickActions": "त्वरित काम",
+    "actions": {
+      "take": "हाज़िरी लें",
+      "homework": "होमवर्क दें",
+      "new": "नया टेस्ट",
+      "upload": "लेक्चर अपलोड करें",
+      "classes": "लाइव कक्षाएँ"
+    },
+    "title": "होम"
+  }
+}

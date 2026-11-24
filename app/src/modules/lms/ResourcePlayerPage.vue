@@ -11,7 +11,7 @@
           controls
           playsinline
           disablepictureinpicture
-          controlslist="nodownload noremoteplayback noplaybackrate"
+          controlslist="nodownload noremoteplayback"
           preload="metadata"
           @loadedmetadata="onLoaded"
           @timeupdate="onTime"
@@ -21,6 +21,7 @@
           @error="onVideoError"
         />
       </SecureView>
+      <PlaybackControls v-if="isVideo" v-model:quality="quality" :video="videoEl" :qualities="qualities" />
 
       <template v-else-if="playback?.kind === 'file'">
         <SecureView v-if="inline" class="doc" screen="lms-content" :text="watermark">
@@ -54,6 +55,12 @@
       </div>
       <p v-if="offlineItem" class="muted">Offline copy · expires {{ fmtDateTime(offlineItem.expiresAt) }}</p>
     </template>
+    <DoubtButton
+      v-if="isLearner && !offlineMode && resource"
+      :lecture-id="id"
+      :title="title"
+      :position="() => (isVideo ? videoEl?.currentTime : null)"
+    />
   </AppPage>
 </template>
 
@@ -64,8 +71,10 @@ import { IonBadge, IonButton, IonIcon, onIonViewDidLeave, onIonViewWillEnter } f
 import { cloudDownloadOutline, downloadOutline } from 'ionicons/icons';
 import type { LmsLearnerResourceDto, LmsPlaybackDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import PlaybackControls from '@/components/PlaybackControls.vue';
 import SecureView from '@/components/SecureView.vue';
 import { openFileLink } from '@/core/downloads';
+import { DoubtButton } from '@/modules/doubts';
 import { hlsPlayable, useVideoSource, type VideoSource } from '@/core/hls';
 import { useSessionHold } from '@/core/idle';
 import { toast, toastError } from '@/core/toast';
@@ -137,7 +146,7 @@ const showOfflineSave = computed(
     !!playback.value?.offlineAllowed,
 );
 
-useVideoSource(videoEl, videoSource, () => void onVideoError());
+const { qualities, quality } = useVideoSource(videoEl, videoSource, () => void onVideoError());
 
 async function load() {
   error.value = '';

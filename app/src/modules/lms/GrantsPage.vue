@@ -50,7 +50,7 @@
         <ion-label>
           <h3>{{ g.studentName }} → {{ g.courseName }}</h3>
           <p>
-            {{ g.validUntil ? `until ${new Date(g.validUntil).toLocaleDateString()}` : 'lifetime' }}
+            {{ g.validUntil ? `until ${formatDate(g.validUntil)}` : 'lifetime' }}
             <span v-if="g.note"> · {{ g.note }}</span>
           </p>
         </ion-label>
@@ -62,6 +62,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDate } from '@/core/format';
 import { reactive, ref } from 'vue';
 import {
   IonButton,

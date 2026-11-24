@@ -3,16 +3,31 @@
  *
  * Setup (API): daily attendance with parent absent alerts on; a teacher's batch with three
  * students, each with a guardian. Browser: a parent signs in with a mobile OTP (nothing to see
- * yet); the teacher marks one student present and one absent, saves, then closes the session,
+ * yet); the teacher marks one student present and one absent, saves, then submits the roll call,
  * which marks the unmarked third student absent. The parent then finds the alert in the app's
  * notifications. Both absent students' parents also get the SMS (dev outbox) and the present
  * student's parent gets nothing.
  */
 import { expect, test } from '../support/fixtures';
 import { loginWithPassword, newDevice } from '../support/api';
-import { addGuardian, addStaff, addStudent, createBatch, createInstitute, isoDate } from '../support/data';
+import {
+  addGuardian,
+  addStaff,
+  addStudent,
+  createBatch,
+  createInstitute,
+  isoDate,
+  messageDay,
+} from '../support/data';
 import { outboxMark, outboxMessages, waitForMessage } from '../support/outbox';
-import { activePage, alertDialog, confirmAlert, expectToast, signInWithOtp } from '../support/ui';
+import {
+  actionSheet,
+  activePage,
+  alertDialog,
+  confirmAlert,
+  expectToast,
+  signInWithOtp,
+} from '../support/ui';
 
 test('attendance marked absent → parent receives the absent alert', async ({ http, superAdmin, openAs }) => {
   const institute = await createInstitute(http, superAdmin, 'attendance');
@@ -48,25 +63,36 @@ test('attendance marked absent → parent receives the absent alert', async ({ h
     await batchItem.click();
     await expect(page).toHaveURL(/\/attendance\/sessions\/\d+$/);
 
-    const row = (name: string) => content.locator('ion-item').filter({ hasText: name });
-    await row(present.name).getByRole('button', { name: 'P', exact: true }).click();
-    await row(absent.name).getByRole('button', { name: 'A', exact: true }).click();
-    await content.getByRole('button', { name: 'Save (2)' }).click();
-    await expectToast(page, 'Saved 2 mark(s)');
+    // Students can also check themselves in here, so nobody starts as present: tap marks present,
+    // "More choices" picks any other status, and submitting marks whoever is left absent.
+    const row = (name: string) => content.locator(`li[data-student="${name}"]`);
+    await row(present.name)
+      .getByRole('button', { name: `${present.name}: Not marked` })
+      .click();
+    await expect(row(present.name)).toContainText('Present');
+    await row(absent.name)
+      .getByRole('button', { name: `More choices for ${absent.name}` })
+      .click();
+    await actionSheet(page).getByRole('button', { name: 'Absent', exact: true }).click();
+    await expect(row(absent.name)).toContainText('Absent');
+    await content.getByRole('button', { name: 'Save for now (2)' }).click();
+    await expectToast(page, 'Saved 2 changes');
 
-    await content.getByRole('button', { name: 'Close & mark rest absent' }).click();
-    await expect(alertDialog(page)).toContainText(
-      '1 unmarked student(s) will be marked absent and parents alerted.',
-    );
-    await confirmAlert(page, 'Close');
-    await expectToast(page, 'Attendance closed');
-    await expect(content.locator('ion-chip').filter({ hasText: 'Present' })).toHaveText('Present 1');
-    await expect(content.locator('ion-chip').filter({ hasText: 'Absent' })).toHaveText('Absent 2');
+    await content.getByRole('button', { name: 'Submit · 1 present, 1 absent, 1 not marked' }).click();
+    await expect(alertDialog(page)).toContainText('1 student is not marked yet and will be marked absent.');
+    await confirmAlert(page, 'Submit');
+    await expectToast(page, 'Attendance submitted');
+    await expect(content.getByText('Submitted', { exact: true })).toBeVisible();
+    const summary = content.getByRole('group', { name: 'Attendance summary — tap to filter' });
+    await expect(summary.getByRole('button', { name: /Present$/ })).toHaveText('1 Present');
+    await expect(summary.getByRole('button', { name: /Absent$/ })).toHaveText('2 Absent');
+    await expect(row(unmarked.name)).toContainText('Absent');
     return day;
   });
   expect(date).toBe(isoDate());
 
-  const alertText = (name: string) => `${name} was marked absent in ${batch.batchName} on ${date}.`;
+  const alertText = (name: string) =>
+    `${name} was marked absent in ${batch.batchName} on ${messageDay(date)}.`;
 
   await test.step("absent students' parents get the SMS; the present student's parent does not", async () => {
     for (const student of [absent, unmarked])

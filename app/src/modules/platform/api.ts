@@ -15,6 +15,9 @@ import type {
   StorageDriverKey,
 } from '@erp/shared';
 import { api } from '@/core/api';
+import { i18n } from '@/i18n';
+
+const t = (key: string) => i18n.global.t(key);
 
 const base = '/admin/platform';
 
@@ -49,25 +52,28 @@ export const platformApi = {
   testLiveStreaming: () => api.post<LiveStreamingTestResultDto>('/admin/live-streaming/test', {}),
 };
 
-export const GATEWAY_LABELS: Record<PaymentGatewayKey, string> = {
-  mock: 'Mock gateway (testing)',
-  paytm: 'Paytm',
-  razorpay: 'Razorpay',
-  cashfree: 'Cashfree',
-};
+export const gatewayLabel = (k: string): string =>
+  ({
+    mock: t('platform.labels.mockGateway'),
+    paytm: 'Paytm',
+    razorpay: 'Razorpay',
+    cashfree: 'Cashfree',
+  })[k as PaymentGatewayKey] ?? k;
 
-export const CHANNEL_LABELS: Record<ExternalChannel, string> = {
-  sms: 'SMS',
-  whatsapp: 'WhatsApp',
-  email: 'Email',
-  push: 'Push notifications',
-};
+export const channelLabel = (c: ExternalChannel): string =>
+  ({
+    sms: 'SMS',
+    whatsapp: 'WhatsApp',
+    email: t('platform.labels.email'),
+    push: t('platform.labels.push'),
+  })[c] ?? c;
 
-export const STORAGE_LABELS: Record<StorageDriverKey, string> = {
-  local: 'Local disk',
-  s3: 'Amazon S3',
-  r2: 'Cloudflare R2',
-};
+export const storageLabel = (d: string): string =>
+  ({
+    local: t('platform.labels.localDisk'),
+    s3: 'Amazon S3',
+    r2: 'Cloudflare R2',
+  })[d as StorageDriverKey] ?? d;
 
 /** The latest test outcome to show: a test run on this screen, else the saved configuration's. */
 export function lastTest(

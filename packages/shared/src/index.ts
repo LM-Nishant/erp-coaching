@@ -22,3 +22,8 @@ export * from './reports';
 export * from './billing';
 export * from './devices';
 export * from './tally';
+export * from './marketplace';
+export * from './marketplace-quiz';
+export * from './marketplace-engagement';
+export * from './marketplace-payouts';
+export * from './doubts';

@@ -1,9 +1,9 @@
 <template>
-  <AppPage title="Audit log" :on-refresh="() => load(true)">
+  <AppPage :title="t('admin.audit.title')" :on-refresh="() => load(true)">
     <ion-searchbar
       v-model="action"
       :debounce="400"
-      placeholder="Filter by action, e.g. institute."
+      :placeholder="t('admin.audit.filterPlaceholder')"
       @ion-input="load(true)"
     />
     <ion-list>
@@ -11,9 +11,12 @@
         <ion-label class="ion-text-wrap">
           <h3>{{ e.action }}</h3>
           <p>
-            {{ new Date(e.createdAt).toLocaleString() }} · actor #{{ e.actorUserId ?? '—' }}
-            <span v-if="e.impersonatorUserId"> (impersonated by #{{ e.impersonatorUserId }})</span>
-            · institute #{{ e.instituteId ?? '—' }} · {{ e.entityType }} {{ e.entityId }} · {{ e.ip }}
+            {{ formatDateTime(e.createdAt) }} · {{ t('admin.audit.actor', { id: e.actorUserId ?? '—' }) }}
+            <span v-if="e.impersonatorUserId">
+              {{ t('admin.audit.impersonatedBy', { id: e.impersonatorUserId }) }}</span
+            >
+            · {{ t('admin.audit.institute', { id: e.instituteId ?? '—' }) }} · {{ e.entityType }}
+            {{ e.entityId }} · {{ e.ip }}
           </p>
           <p v-if="e.metadata">
             <code>{{ JSON.stringify(e.metadata) }}</code>
@@ -21,6 +24,7 @@
         </ion-label>
       </ion-item>
     </ion-list>
+    <p v-if="loaded && !rows.length" class="muted">{{ t('admin.audit.empty') }}</p>
     <ion-infinite-scroll :disabled="rows.length >= total" @ion-infinite="more">
       <ion-infinite-scroll-content />
     </ion-infinite-scroll>
@@ -29,6 +33,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   IonInfiniteScroll,
   IonInfiniteScrollContent,
@@ -39,9 +44,12 @@ import {
   type InfiniteScrollCustomEvent,
 } from '@ionic/vue';
 import AppPage from '@/components/AppPage.vue';
+import { formatDateTime } from '@/core/format';
 import { toastError } from '@/core/toast';
 import { adminApi, type AuditEventRow } from './api';
 
+const { t } = useI18n();
+const loaded = ref(false);
 const rows = ref<AuditEventRow[]>([]);
 const total = ref(0);
 const page = ref(1);
@@ -55,6 +63,8 @@ async function load(reset = false) {
     total.value = res.total;
   } catch (e) {
     await toastError(e);
+  } finally {
+    loaded.value = true;
   }
 }
 

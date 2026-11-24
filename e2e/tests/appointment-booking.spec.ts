@@ -11,7 +11,15 @@
  */
 import { expect, test } from '../support/fixtures';
 import { loginWithPassword, newDevice } from '../support/api';
-import { addGuardian, addStaff, addStudent, createBatch, createInstitute, isoDate } from '../support/data';
+import {
+  addGuardian,
+  addStaff,
+  addStudent,
+  createBatch,
+  createInstitute,
+  isoDate,
+  messageDay,
+} from '../support/data';
 import {
   activePage,
   alertDialog,
@@ -49,11 +57,19 @@ test('parent-teacher appointment: parent requests a slot → teacher accepts', a
     location: 'Room 4',
     branchId: institute.branchId,
   });
-  const when = `${date} · 16:00–16:15`;
+  // The app shows dates and times in Indian English (`25 Nov 2026`, `4:00 pm`).
+  const enIN = (opts: Intl.DateTimeFormatOptions, value: Date) =>
+    new Intl.DateTimeFormat('en-IN', opts).format(value);
+  const clock = (hhmm: string) => enIN({ hour: 'numeric', minute: '2-digit' }, new Date(`${date}T${hhmm}`));
+  const day = enIN(
+    { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' },
+    new Date(`${date}T12:00Z`),
+  );
+  const when = `${day} · ${clock('16:00')}–${clock('16:15')}`;
   const agenda = 'How can Kabir improve in algebra?';
   const note = 'Please bring his last two test papers.';
   const location = 'Room 4, first floor';
-  /** The meeting's summary row (date, time, status badge, mode) on the detail page. */
+  /** The meeting's summary row (date, time, status chip, mode) on the detail page. */
   const summary = (content: Locator) => content.locator('ion-item').filter({ hasText: when }).first();
 
   const { parent, appointmentPath } =
@@ -72,17 +88,17 @@ test('parent-teacher appointment: parent requests a slot → teacher accepts', a
         content.locator('ion-select').filter({ hasText: 'Teacher' }),
         `${teacher.name} (${batch.batchName})`,
       );
-      const slot = content.locator('ion-chip').filter({ hasText: '16:00' });
-      await expect(content.locator('ion-chip')).toHaveText(['16:00', '16:15']);
+      const slot = content.locator('ion-chip').filter({ hasText: clock('16:00') });
+      await expect(content.locator('ion-chip')).toHaveText([clock('16:00'), clock('16:15')]);
       await slot.click();
       await selectSegment(content, 'In person');
       await expect(content.getByText('At Room 4')).toBeVisible();
       await content.getByLabel('What would you like to discuss?').fill(agenda);
-      await content.getByRole('button', { name: `Request ${date} 16:00` }).click();
+      await content.getByRole('button', { name: `Request ${day}, ${clock('16:00')}` }).click();
       await expectToast(page, 'Request sent. The teacher will confirm.');
 
       await expect(page).toHaveURL(/\/appointments\/\d+$/);
-      await expect(summary(content).locator('ion-badge')).toHaveText('Requested');
+      await expect(summary(content).locator('.status-chip')).toHaveText('Requested');
       await expect(summary(content)).toContainText('In person');
       return { parent: page, appointmentPath: new URL(page.url()).pathname };
     });
@@ -95,7 +111,7 @@ test('parent-teacher appointment: parent requests a slot → teacher accepts', a
     await expect(request).toContainText(when);
     await expect(request).toContainText(`by ${guardian.name}`);
     await expect(request).toContainText(agenda);
-    await expect(request.locator('ion-badge')).toHaveText('Requested');
+    await expect(request.locator('.status-chip')).toHaveText('Requested');
     await request.click();
     await expect(page).toHaveURL(new RegExp(`${appointmentPath}$`));
 
@@ -107,13 +123,13 @@ test('parent-teacher appointment: parent requests a slot → teacher accepts', a
     await alert.getByPlaceholder('Location').fill(location);
     await confirmAlert(page, 'Approve');
     await expectToast(page, 'Meeting confirmed');
-    await expect(summary(content).locator('ion-badge')).toHaveText('Confirmed');
+    await expect(summary(content).locator('.status-chip')).toHaveText('Confirmed');
   });
 
   await test.step("parent sees the confirmed meeting, the teacher's note and the history", async () => {
     const content = activePage(parent);
     await parent.reload();
-    await expect(summary(content).locator('ion-badge')).toHaveText('Confirmed');
+    await expect(summary(content).locator('.status-chip')).toHaveText('Confirmed');
     await expect(content.locator('ion-item').filter({ hasText: "Teacher's note" })).toContainText(note);
     await expect(content.getByText(location, { exact: true })).toBeVisible();
     await expect(
@@ -130,7 +146,7 @@ test('parent-teacher appointment: parent requests a slot → teacher accepts', a
     const confirmed = activePage(parent).locator('ion-item').filter({ hasText: 'Meeting confirmed' });
     await expect(confirmed).toHaveCount(1);
     await expect(confirmed).toContainText(
-      `Your meeting with ${teacher.name} on ${date} at 16:00 (offline) is confirmed.`,
+      `Your meeting with ${teacher.name} on ${messageDay(date)} at 4:00 pm (offline) is confirmed.`,
     );
   });
 });

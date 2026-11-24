@@ -82,6 +82,7 @@ describe('auth store "Who\'s signing in?"', () => {
       isSuperAdmin: false,
       sharesMobile: id !== 1,
       profileCount: 2,
+      locale: 'en',
     },
     institute,
     branches: [],
@@ -95,7 +96,17 @@ describe('auth store "Who\'s signing in?"', () => {
   const profiles: SignInProfileDto[] = [1, 2].map((id) => ({
     id,
     name: `User ${id}`,
-    memberships: [{ id: 7, name: 'Demo Institute', logoUrl: null, primaryColor: null, roles: ['student'] }],
+    memberships: [
+      {
+        id: 7,
+        name: 'Demo Institute',
+        slug: 'demo',
+        logoUrl: null,
+        primaryColor: null,
+        secondaryColor: null,
+        roles: ['student'],
+      },
+    ],
   }));
   const chooseProfile = {
     status: 'choose_profile',
@@ -224,5 +235,51 @@ describe('auth store "Who\'s signing in?"', () => {
     expect(auth.me).toBeNull();
     expect(await loadSession()).toBeNull();
     expect(calls.find((c) => c.route === 'POST /auth/logout')?.body).toEqual({ refreshToken: 'r1' });
+  });
+});
+
+describe('needsInstitute', () => {
+  const me = (memberships: MeDto['memberships']) =>
+    ({
+      user: { id: 9, name: 'Learner', mobile: '9640000009', email: null, isSuperAdmin: false },
+      institute: null,
+      branches: [],
+      allowedBranchIds: null,
+      roles: [],
+      permissions: [],
+      memberships,
+      impersonatedBy: null,
+      enabledModules: null,
+    }) as unknown as MeDto;
+
+  it('asks institute members to choose one, but not marketplace-only accounts', () => {
+    const auth = useAuthStore();
+    auth.me = me([
+      {
+        id: 7,
+        name: 'Demo Institute',
+        slug: 'demo',
+        logoUrl: null,
+        primaryColor: null,
+        secondaryColor: null,
+        roles: ['student'],
+      },
+    ]);
+    expect(auth.needsInstitute).toBe(true);
+    auth.me = me([]);
+    expect(auth.needsInstitute).toBe(false);
+  });
+});
+
+describe('auth store hasStaffProfile', () => {
+  it('follows the features the server reports, and assumes yes from an older server', () => {
+    const auth = useAuthStore();
+    expect(auth.hasStaffProfile).toBe(true);
+    auth.me = { features: [] } as unknown as MeDto;
+    expect(auth.hasStaffProfile).toBe(false);
+    auth.me = { features: ['staff-profile'] } as unknown as MeDto;
+    expect(auth.hasStaffProfile).toBe(true);
+    auth.me = {} as MeDto;
+    expect(auth.hasStaffProfile).toBe(true);
   });
 });

@@ -40,6 +40,8 @@ export default defineAppModule({
     {
       title: 'Parent meetings',
       path: '/appointments',
+      group: 'people',
+      titleKey: 'nav.appointments.meetings',
       icon: chatbubblesOutline,
       permission: 'appointments.view',
       planModule: 'appointments',
@@ -48,6 +50,8 @@ export default defineAppModule({
     {
       title: 'My availability',
       path: '/appointments/availability',
+      group: 'people',
+      titleKey: 'nav.appointments.availability',
       icon: calendarClearOutline,
       permission: 'appointments.edit',
       // Only teachers have slots; managers hold `edit` to manage meetings.
@@ -58,6 +62,8 @@ export default defineAppModule({
     {
       title: 'Meeting reports',
       path: '/appointments/reports',
+      group: 'reports',
+      titleKey: 'nav.appointments.reports',
       icon: barChartOutline,
       permission: 'appointments.export',
       planModule: 'appointments',

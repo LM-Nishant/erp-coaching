@@ -24,6 +24,8 @@ declare module 'vue-router' {
     offline?: boolean | ((to: RouteLocation) => boolean);
     /** Stays reachable while the institute's subscription is suspended (billing, data export). */
     allowWhenSuspended?: boolean;
+    /** Public page that keeps the side menu for signed-in users (e.g. the course marketplace). */
+    shell?: boolean;
   }
 }
 
@@ -78,6 +80,15 @@ router.beforeEach(async (to: RouteLocationNormalized) => {
     const home = offlineHome();
     if (home && home !== to.path) return home;
   }
+  // Parents land on their children's home (their "Home" tab), not the staff dashboard.
+  if (
+    to.path === '/home' &&
+    auth.persona === 'parent' &&
+    !auth.offline &&
+    auth.can('parent-portal.view') &&
+    auth.moduleEnabled('parent-portal')
+  )
+    return { path: '/parent-home', replace: true };
   if (to.meta.superAdmin && !auth.isPlatformAdmin) return '/home';
   if (to.meta.permission && !auth.can(to.meta.permission)) return { name: 'forbidden' };
   for (const guard of navigationGuards) {

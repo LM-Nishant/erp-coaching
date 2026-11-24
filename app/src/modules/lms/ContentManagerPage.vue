@@ -16,8 +16,8 @@
       <ion-item>
         <ion-select v-model="filters.type" label="Type" label-placement="stacked" interface="popover">
           <ion-select-option value="">All types</ion-select-option>
-          <ion-select-option v-for="t in LMS_RESOURCE_TYPES" :key="t" :value="t">{{
-            RESOURCE_TYPE_LABEL[t]
+          <ion-select-option v-for="ty in LMS_RESOURCE_TYPES" :key="ty" :value="ty">{{
+            RESOURCE_TYPE_LABEL[ty]
           }}</ion-select-option>
         </ion-select>
         <ion-select v-model="filters.status" label="Status" label-placement="stacked" interface="popover">
@@ -44,15 +44,24 @@
         <ion-badge slot="end" :color="r.access === 'free' ? 'success' : 'tertiary'">{{ r.access }}</ion-badge>
         <ion-badge slot="end" :color="statusColor[r.status]">{{ r.status }}</ion-badge>
       </ion-item>
-      <ion-item v-if="!loading && !items.length">
-        <ion-label class="muted">No learning resources yet. Tap + to upload a lecture or notes.</ion-label>
-      </ion-item>
     </ion-list>
+    <EmptyState
+      v-if="!loading && !items.length"
+      :title="t('lms.contentList.emptyTitle')"
+      :message="t('lms.contentList.emptyMessage')"
+      :icon="cloudUploadOutline"
+    >
+      <ion-button v-can="'lms.create'" router-link="/lms/content/new?type=video">{{
+        t('lms.contentList.upload')
+      }}</ion-button>
+    </EmptyState>
   </AppPage>
 </template>
 
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
+import EmptyState from '@/components/EmptyState.vue';
 import {
   IonBadge,
   IonButton,
@@ -64,13 +73,14 @@ import {
   IonSelectOption,
   onIonViewWillEnter,
 } from '@ionic/vue';
-import { add } from 'ionicons/icons';
+import { add, cloudUploadOutline } from 'ionicons/icons';
 import { LMS_RESOURCE_STATUSES, LMS_RESOURCE_TYPES, type CourseDto, type LmsResourceDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import { toastError } from '@/core/toast';
 import { academicsApi } from '@/modules/academics/api';
 import { RESOURCE_TYPE_LABEL, formatDuration, lmsApi } from './api';
 
+const { t } = useI18n();
 const statusColor: Record<string, string> = { draft: 'medium', published: 'primary', archived: 'dark' };
 const filters = reactive({ courseId: null as number | null, type: '', status: '' });
 const courses = ref<CourseDto[]>([]);

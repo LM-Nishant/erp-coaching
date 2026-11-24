@@ -1,0 +1,40 @@
+{
+  "widgets": {
+    "next": "Next live class",
+    "noClass": "No live classes scheduled",
+    "noClassHint": "When your teacher schedules one, it shows up here with a Join button.",
+    "startsIn": "Starts in {n} min",
+    "waiting": "Waiting for the teacher",
+    "joinNow": "Join class",
+    "openClass": "Open class",
+    "details": "Details"
+  },
+  "list": {
+    "live": "Live now",
+    "scheduled": "Scheduled",
+    "ended": "Ended",
+    "cancelled": "Cancelled",
+    "title": "Live classes",
+    "past": "Past",
+    "recordings": "Recordings",
+    "join": "Join",
+    "empty": "No live classes here.",
+    "noRecordings": "No recordings yet."
+  },
+  "detail": {
+    "autoJoinHint": "This page updates itself: Join appears when the teacher starts the class."
+  },
+  "schedule": {
+    "title": "Schedule live class",
+    "batch": "Batch",
+    "timetableClass": "Timetable class (optional)",
+    "notLinked": "Not linked",
+    "name": "Title",
+    "startsAt": "Starts at",
+    "duration": "Duration (minutes)",
+    "description": "Description",
+    "record": "Record automatically",
+    "submit": "Schedule",
+    "done": "Live class scheduled"
+  }
+}

@@ -43,6 +43,13 @@ export function isoDate(offsetDays = 0, from = new Date()): string {
   }).format(new Date(from.getTime() + offsetDays * 86_400_000));
 }
 
+/** `2026-11-26` → `26 Nov 2026`, as server notifications show a day. */
+export function messageDay(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1];
+  return `${d} ${month} ${y}`;
+}
+
 export interface Person {
   id: number;
   name: string;

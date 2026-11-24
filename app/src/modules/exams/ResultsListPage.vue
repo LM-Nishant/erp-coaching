@@ -1,5 +1,5 @@
 <template>
-  <AppPage title="Exam results" :on-refresh="load">
+  <AppPage :title="t('exams.results.title')" :on-refresh="load">
     <div v-if="loading && !items.length" class="ion-text-center ion-padding"><ion-spinner /></div>
     <ion-list>
       <ion-item
@@ -16,17 +16,25 @@
           </p>
           <p>{{ formatDate(it.exam.startAt) }}</p>
           <p>
-            Score {{ fmtMarks(it.totalScore) }} / {{ fmtMarks(it.maxScore) }} ({{ pct(it) }}%)
-            <template v-if="it.rank"> · Rank {{ it.rank }}</template>
-            <template v-if="it.percentile !== null"> · {{ fmtMarks(it.percentile) }} percentile</template>
+            {{
+              t('exams.results.score', {
+                got: fmtMarks(it.totalScore),
+                max: fmtMarks(it.maxScore),
+                pct: pct(it),
+              })
+            }}
+            <template v-if="it.rank"> · {{ t('exams.results.rank', { n: it.rank }) }}</template>
+            <template v-if="it.percentile !== null">
+              · {{ t('exams.results.percentile', { n: fmtMarks(it.percentile) }) }}</template
+            >
           </p>
         </ion-label>
         <ion-badge v-if="passed(it) !== null" slot="end" :color="passed(it) ? 'success' : 'danger'">
-          {{ passed(it) ? 'Passed' : 'Not passed' }}
+          {{ passed(it) ? t('exams.results.passed') : t('exams.results.notPassed') }}
         </ion-badge>
       </ion-item>
       <ion-item v-if="!loading && !items.length">
-        <ion-label class="muted">No results have been published yet.</ion-label>
+        <ion-label class="muted">{{ t('exams.results.empty') }}</ion-label>
       </ion-item>
     </ion-list>
   </AppPage>
@@ -34,13 +42,16 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { IonBadge, IonItem, IonLabel, IonList, IonSpinner, onIonViewWillEnter } from '@ionic/vue';
 import type { ChildResultListItem } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import { formatDate } from '@/core/format';
 import { toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
-import { examsApi, fmtMarks, formatDate } from './api';
+import { examsApi, fmtMarks } from './api';
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const isStudent = computed(() => auth.can('exam-portal.create'));
 const items = ref<ChildResultListItem[]>([]);

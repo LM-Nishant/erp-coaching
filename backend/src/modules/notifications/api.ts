@@ -15,3 +15,5 @@ export {
   type RecipientSpec,
 } from './recipients';
 export { registerNotificationEvents } from './catalogue';
+export { notifyPlatformUsers } from './platform-inbox';
+export { notifyAmount } from './format';

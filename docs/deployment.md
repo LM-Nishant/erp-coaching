@@ -7,7 +7,7 @@ API stores its data in MySQL 8.4 (`mysql`) and its media files on a local volume
 example `/srv/erp/deploy`).
 
 Backups and restores are covered in [backup-restore.md](backup-restore.md), security controls in
-[security.md](security.md).
+[security.md](security.md), and monitoring, incidents and support in [operations.md](operations.md).
 
 - [Files](#files)
 - [Architecture](#architecture)
@@ -252,15 +252,15 @@ Relative paths are relative to `deploy/`. `ERP_ENV_FILE` names the env file that
 
 ### Secrets
 
-| Secret                        | Generate with                                | Purpose                                                                                                                                                                                                                     |
-| ----------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DB_PASSWORD`                 | `openssl rand -hex 24`                       | MySQL password of `DB_USER`                                                                                                                                                                                                 |
-| `secrets/mysql_root_password` | `openssl rand -hex 32`                       | MySQL root password, used by `backup` and `restore`. MySQL reads it only on the first start of an empty `mysql-data` volume                                                                                                 |
-| `JWT_ACCESS_SECRET`           | `openssl rand -base64 48`                    | Signs access tokens and live-class join tokens                                                                                                                                                                              |
-| `ENCRYPTION_KEY`              | `openssl rand -base64 32` (exactly 32 bytes) | Encrypts stored integration credentials: AI keys, payment and notification settings, offline LMS keys. **It is not in the backups.** Without it, those values can't be decrypted ([rotation](#rotating-the-encryption-key)) |
-| `FILE_URL_SECRET`             | `openssl rand -hex 32`                       | Signs short-lived file and media URLs                                                                                                                                                                                       |
-| `OTP_HASH_SECRET`             | `openssl rand -hex 32`                       | Keys the stored OTP codes, the OTP counters per mobile number and the sign-in locks of unregistered numbers and emails                                                                                                      |
-| `GOOGLE_OAUTH_CLIENT_SECRET`  | Google Cloud (the OAuth client)              | Google Calendar's OAuth client, only with `CALENDAR_PROVIDER=google`. To rotate it, see [Google Calendar](integrations/google-calendar.md#configuration)                                                                    |
+| Secret                        | Generate with                                | Purpose                                                                                                                                                                                                                                             |
+| ----------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DB_PASSWORD`                 | `openssl rand -hex 24`                       | MySQL password of `DB_USER`                                                                                                                                                                                                                         |
+| `secrets/mysql_root_password` | `openssl rand -hex 32`                       | MySQL root password, used by `backup` and `restore`. MySQL reads it only on the first start of an empty `mysql-data` volume                                                                                                                         |
+| `JWT_ACCESS_SECRET`           | `openssl rand -base64 48`                    | Signs access tokens, and live-class join tokens when `STREAMING_PROVIDER=mock`                                                                                                                                                                      |
+| `ENCRYPTION_KEY`              | `openssl rand -base64 32` (exactly 32 bytes) | Encrypts stored integration credentials: AI keys, payment and notification settings, offline LMS keys, Google Calendar tokens. **It is not in the backups.** Without it, those values can't be decrypted ([rotation](#rotating-the-encryption-key)) |
+| `FILE_URL_SECRET`             | `openssl rand -hex 32`                       | Signs short-lived file and media URLs                                                                                                                                                                                                               |
+| `OTP_HASH_SECRET`             | `openssl rand -hex 32`                       | Keys the stored OTP codes, the OTP counters per mobile number and the sign-in locks of unregistered numbers and emails                                                                                                                              |
+| `GOOGLE_OAUTH_CLIENT_SECRET`  | Google Cloud (the OAuth client)              | Google Calendar's OAuth client, only with `CALENDAR_PROVIDER=google`. To rotate it, see [Google Calendar](integrations/google-calendar.md#configuration)                                                                                            |
 
 - **Where secrets live:**
   - on the server, only in `deploy/.env` and `deploy/secrets/` (mode 600, owned by root or the deploy user);
@@ -285,9 +285,10 @@ Relative paths are relative to `deploy/`. `ERP_ENV_FILE` names the env file that
      start), `migrate` and `api`.
 - **MySQL root password:** run `ALTER USER 'root'@'%' IDENTIFIED BY '…';` and
   `ALTER USER 'root'@'localhost' IDENTIFIED BY '…';`, then write the new value to `secrets/mysql_root_password`.
-- **`JWT_ACCESS_SECRET`:** set the new value and run `docker compose up -d --wait`. Access tokens (15 minutes) and
-  live-class join tokens become invalid. Refresh tokens are stored hashed in the database and are not affected, so the
-  apps renew their sessions without asking users to sign in.
+- **`JWT_ACCESS_SECRET`:** set the new value and run `docker compose up -d --wait`. Access tokens (15 minutes)
+  become invalid, and so do live-class join tokens with `STREAMING_PROVIDER=mock` (LiveKit signs its own with
+  `LIVEKIT_API_SECRET`). Refresh tokens are stored hashed in the database and are not affected, so the apps renew
+  their sessions without asking users to sign in.
 - **`FILE_URL_SECRET`:** set the new value and run `docker compose up -d --wait`. Only signed URLs from the last
   `SIGNED_URL_TTL_SECONDS` become invalid.
 - **`ENCRYPTION_KEY`:** follow [rotating the encryption key](#rotating-the-encryption-key).
@@ -300,7 +301,8 @@ Relative paths are relative to `deploy/`. `ERP_ENV_FILE` names the env file that
 Every encrypted value carries the id of the key that wrote it (`v2:<key id>:…`, derived from the key). `ENCRYPTION_KEY`
 encrypts, and both it and the keys in `ENCRYPTION_PREVIOUS_KEYS` decrypt. Values saved before key ids existed (`v1:`)
 are tried with each key until they are re-encrypted. The stored secrets are the AI keys, payment gateway credentials,
-notification and platform integration settings, Google Calendar refresh tokens, and offline LMS content keys.
+notification and platform integration settings, Google Calendar refresh tokens, offline LMS content keys, and the
+course marketplace sellers' bank account numbers and UPI IDs, including the copies kept on paid payouts.
 
 1. Back up ([backup-restore.md](backup-restore.md)). Keep the old key in your vault as long as you keep backups made
    before the rotation: they can only be restored with it.
@@ -403,8 +405,10 @@ and selects **Verify domain**:
 | `_erp-verification.<custom domain>` | `TXT` | `erp-verification=<token>` |
 
 The token is random and new each time the institute changes the domain. Until the domain is verified, the custom
-domain gets a 404 and the site's links use its subdomain. Once it's verified and its DNS points at the server, HTTPS on
-the domain shows the platform certificate until you install one. To issue one:
+domain gets a 404, and the site's links use its platform address (`/api/public/sites/<institute slug>` under
+`API_PUBLIC_URL`). Its subdomain under `SITES_DOMAIN`, if the site has one, keeps working. Once the custom domain
+is verified and its DNS points at the server, HTTPS on it shows the platform certificate until you install one. To
+issue one:
 
 1. Check that the domain is verified for an institute and resolves to this server:
 
@@ -440,14 +444,14 @@ Caveats:
 - **Ownership:**
   - several institutes may save the same domain, but only the one that verifies it is served. If another institute
     later verifies the domain with its own record, the domain moves to that institute; the previous institute's site
-    falls back to its subdomain. Both institutes' audit logs record the move (`website.domain_released` and
-    `website.domain_verified`).
+    falls back to its platform address. Both institutes' audit logs record the move (`website.domain_released`
+    and `website.domain_verified`).
   - changing or clearing the domain un-verifies it at once.
   - the institute may delete the `TXT` record after verifying. It needs the record again only to take the domain back
     after another institute has verified it.
 - **Upgrading:** domains saved before domain verification existed start unverified, so those sites fall back to their
-  subdomains until the institute verifies. To keep serving a domain whose ownership you've already confirmed, apply
-  the migrations first ([upgrades](#upgrades), step 4), mark the domain verified, then switch:
+  platform addresses until the institute verifies. To keep serving a domain whose ownership you've already
+  confirmed, apply the migrations first ([upgrades](#upgrades), step 4), mark the domain verified, then switch:
 
   ```sh
   docker compose exec mysql mysql -uroot -p erp_coaching -e "UPDATE website_sites \
@@ -586,6 +590,13 @@ This release only ships development adapters for the external integrations:
 - **Payments:** the mock gateway (`PAYMENT_GATEWAY=mock`) doesn't charge anyone, and production won't use it.
   Institutes and the platform take real payments once they enter their Paytm, Razorpay or Cashfree keys in the app
   ([payment gateways](integrations/payments.md)).
+- **Course marketplace:** learners pay the platform through the gateway with **Use for SaaS subscription
+  payments** under **Integrations → Payment gateways**, or else the first one enabled. With none, checkout answers
+  "Online payment is not configured yet; please try later" (`GATEWAY_NOT_CONFIGURED`). Keep a disabled gateway's
+  keys while its marketplace orders may still need status checks or refunds. Cashfree orders carry the marketplace
+  webhook URL; Razorpay and Paytm orders are confirmed when the learner returns or checks the order
+  ([webhooks](integrations/payments.md#webhooks)). The Super Admin decides refunds and runs the monthly payouts
+  ([course marketplace](operations.md#513-course-marketplace)).
 - **Live classes:** `STREAMING_PROVIDER=mock` is the peer-to-peer WebRTC transport ([live classes](#live-classes)). For
   production, use LiveKit, self-hosted or LiveKit Cloud ([live streaming](integrations/live-streaming.md)).
 - **Biometrics:** ZKTeco and eSSL devices connect directly over ADMS push
@@ -777,7 +788,11 @@ Monitor and alert on:
 - `/api/ready` not returning 200 for more than a couple of minutes;
 - certificate expiry: `erp-certs` warns 14 days ahead, so alert on that or probe the certificates externally;
 - free disk space;
-- the age of the newest backup ([backup-restore.md](backup-restore.md#schedule)).
+- the age of the newest backup ([backup-restore.md](backup-restore.md#schedule));
+- Redis, which `/api/ready` doesn't check: `docker compose ps redis` not `healthy`, or the api errors
+  `Redis connection error` and `Redis connect failed` ([operations.md](operations.md#512-redis-unavailable)).
+
+[operations.md](operations.md#2-monitoring-and-alerting) has the full alert matrix and the runbooks.
 
 ### Logs
 

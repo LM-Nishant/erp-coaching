@@ -1,25 +1,29 @@
 <template>
-  <AppPage title="Statutory & custom components" :on-refresh="load">
+  <AppPage :title="t('payroll.components.title')" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'payroll.configure'" aria-label="New component" @click="edit()"
+      <ion-button v-can="'payroll.configure'" :aria-label="t('payroll.components.new')" @click="edit()"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
-    <p class="muted">
-      Defaults are editable starting points, not legal advice. Add a new version with a later “effective from”
-      date when rates change; payroll uses the version effective for each month.
-    </p>
+    <p class="muted">{{ t('payroll.components.intro') }}</p>
     <ion-list>
       <ion-item v-for="c in components" :key="c.id" button @click="edit(c)">
         <ion-label class="ion-text-wrap">
           <h3>
             {{ c.name }} ({{ c.code }})
-            <ion-badge v-if="c.statutory" color="tertiary">statutory</ion-badge>
-            <ion-badge v-if="!c.active" color="medium">inactive</ion-badge>
+            <StatusChip v-if="c.statutory" :label="t('payroll.components.statutory')" tone="primary" />
+            <StatusChip v-if="!c.active" :label="t('common.status.inactive')" />
           </h3>
           <p>{{ describe(c) }}</p>
           <p class="muted">
-            From {{ c.effectiveFrom }}<span v-if="c.effectiveTo"> to {{ c.effectiveTo }}</span>
+            {{
+              c.effectiveTo
+                ? t('payroll.components.range', {
+                    from: formatDate(c.effectiveFrom),
+                    to: formatDate(c.effectiveTo),
+                  })
+                : t('payroll.fromDate', { date: formatDate(c.effectiveFrom) })
+            }}
           </p>
         </ion-label>
       </ion-item>
@@ -28,36 +32,52 @@
     <ion-modal :is-open="!!form" @did-dismiss="form = null">
       <ion-header>
         <ion-toolbar>
-          <ion-title>{{ form?.id ? 'Edit component' : 'New component' }}</ion-title>
-          <ion-buttons slot="end"><ion-button @click="form = null">Close</ion-button></ion-buttons>
+          <ion-title>{{ form?.id ? t('payroll.components.edit') : t('payroll.components.new') }}</ion-title>
+          <ion-buttons slot="end"
+            ><ion-button @click="form = null">{{ t('common.actions.close') }}</ion-button></ion-buttons
+          >
         </ion-toolbar>
       </ion-header>
       <ion-content class="ion-padding">
         <form v-if="form" @submit.prevent="save">
           <ion-list>
             <ion-item
-              ><ion-input v-model="form.code" label="Code" label-placement="stacked" required
+              ><ion-input
+                v-model="form.code"
+                :label="t('payroll.components.code')"
+                label-placement="stacked"
+                required
             /></ion-item>
             <ion-item
-              ><ion-input v-model="form.name" label="Name" label-placement="stacked" required
+              ><ion-input
+                v-model="form.name"
+                :label="t('common.labels.name')"
+                label-placement="stacked"
+                required
             /></ion-item>
             <ion-item>
-              <ion-select v-model="form.kind" label="Kind" label-placement="stacked">
-                <ion-select-option value="earning">Earning</ion-select-option>
-                <ion-select-option value="deduction">Deduction</ion-select-option>
+              <ion-select v-model="form.kind" :label="t('payroll.components.kind')" label-placement="stacked">
+                <ion-select-option value="earning">{{ t('payroll.components.earning') }}</ion-select-option>
+                <ion-select-option value="deduction">{{
+                  t('payroll.components.deduction')
+                }}</ion-select-option>
               </ion-select>
             </ion-item>
             <ion-item>
-              <ion-select v-model="form.calcType" label="Calculation" label-placement="stacked">
-                <ion-select-option value="percent">Percentage</ion-select-option>
-                <ion-select-option value="fixed">Fixed amount</ion-select-option>
-                <ion-select-option value="slab">Slab on base</ion-select-option>
+              <ion-select
+                v-model="form.calcType"
+                :label="t('payroll.components.calculation')"
+                label-placement="stacked"
+              >
+                <ion-select-option value="percent">{{ t('payroll.components.percent') }}</ion-select-option>
+                <ion-select-option value="fixed">{{ t('payroll.components.fixed') }}</ion-select-option>
+                <ion-select-option value="slab">{{ t('payroll.components.slab') }}</ion-select-option>
               </ion-select>
             </ion-item>
             <ion-item>
-              <ion-select v-model="form.base" label="Base" label-placement="stacked">
-                <ion-select-option value="basic">Basic</ion-select-option>
-                <ion-select-option value="gross">Gross</ion-select-option>
+              <ion-select v-model="form.base" :label="t('payroll.components.base')" label-placement="stacked">
+                <ion-select-option value="basic">{{ t('payroll.components.basic') }}</ion-select-option>
+                <ion-select-option value="gross">{{ t('payroll.components.gross') }}</ion-select-option>
               </ion-select>
             </ion-item>
             <template v-if="form.calcType === 'percent'">
@@ -65,21 +85,21 @@
                 ><ion-input
                   v-model="form.employeeRate"
                   type="number"
-                  label="Employee %"
+                  :label="t('payroll.components.employeeRate')"
                   label-placement="stacked"
               /></ion-item>
               <ion-item
                 ><ion-input
                   v-model="form.employerRate"
                   type="number"
-                  label="Employer %"
+                  :label="t('payroll.components.employerRate')"
                   label-placement="stacked"
               /></ion-item>
               <ion-item
                 ><ion-input
                   v-model="form.wageCeiling"
                   type="number"
-                  label="Wage ceiling (₹, blank = none)"
+                  :label="t('payroll.components.wageCeiling')"
                   label-placement="stacked"
               /></ion-item>
             </template>
@@ -87,28 +107,33 @@
               <ion-input
                 v-model="form.fixedAmount"
                 type="number"
-                label="Amount (₹)"
+                :label="t('payroll.amountRupees')"
                 label-placement="stacked"
               />
             </ion-item>
             <template v-if="form.calcType === 'slab'">
-              <ion-list-header>Slabs (base up to ₹ → amount ₹; blank “up to” = above)</ion-list-header>
+              <ion-list-header>{{ t('payroll.components.slabsHeader') }}</ion-list-header>
               <ion-item v-for="(s, i) in form.slabs" :key="i">
-                <ion-input v-model="s.upTo" type="number" placeholder="Up to ₹" />
-                <ion-input v-model="s.amount" type="number" placeholder="Amount ₹" />
-                <ion-button slot="end" fill="clear" color="danger" @click="form.slabs.splice(i, 1)"
+                <ion-input v-model="s.upTo" type="number" :placeholder="t('payroll.components.upTo')" />
+                <ion-input v-model="s.amount" type="number" :placeholder="t('payroll.components.amount')" />
+                <ion-button
+                  slot="end"
+                  fill="clear"
+                  color="danger"
+                  :aria-label="t('payroll.components.removeSlab')"
+                  @click="form.slabs.splice(i, 1)"
                   >✕</ion-button
                 >
               </ion-item>
-              <ion-button fill="clear" size="small" @click="form.slabs.push({ upTo: '', amount: '' })"
-                >Add slab</ion-button
-              >
+              <ion-button fill="clear" size="small" @click="form.slabs.push({ upTo: '', amount: '' })">{{
+                t('payroll.components.addSlab')
+              }}</ion-button>
             </template>
             <ion-item>
               <ion-input
                 v-model="form.eligibilityMaxGross"
                 type="number"
-                label="Applies only when gross ≤ ₹ (blank = always)"
+                :label="t('payroll.components.eligibility')"
                 label-placement="stacked"
               />
             </ion-item>
@@ -116,7 +141,7 @@
               ><ion-input
                 v-model="form.effectiveFrom"
                 type="date"
-                label="Effective from"
+                :label="t('payroll.effectiveFrom')"
                 label-placement="stacked"
                 required
             /></ion-item>
@@ -124,12 +149,16 @@
               ><ion-input
                 v-model="form.effectiveTo"
                 type="date"
-                label="Effective to"
+                :label="t('payroll.components.effectiveTo')"
                 label-placement="stacked"
             /></ion-item>
-            <ion-item><ion-checkbox v-model="form.active">Active</ion-checkbox></ion-item>
+            <ion-item
+              ><ion-checkbox v-model="form.active">{{ t('common.status.active') }}</ion-checkbox></ion-item
+            >
           </ion-list>
-          <ion-button v-can="'payroll.configure'" expand="block" type="submit">Save</ion-button>
+          <ion-button v-can="'payroll.configure'" expand="block" type="submit">{{
+            t('common.actions.save')
+          }}</ion-button>
           <ion-button
             v-if="form.id"
             v-can="'payroll.configure'"
@@ -138,7 +167,7 @@
             color="danger"
             @click="remove"
           >
-            Delete
+            {{ t('common.actions.delete') }}
           </ion-button>
         </form>
       </ion-content>
@@ -148,8 +177,8 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
-  IonBadge,
   IonButton,
   IonButtons,
   IonCheckbox,
@@ -170,8 +199,10 @@ import {
 import { add } from 'ionicons/icons';
 import type { PayrollComponentDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { formatDate, formatMoney, formatNumber } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
-import { rupees, todayIso } from '../hr/api';
+import { todayIso } from '../hr/api';
 import { payrollApi } from './api';
 
 type Str<T> = { [K in keyof T]: string };
@@ -189,6 +220,7 @@ type Form = Pick<
     slabs: { upTo: string; amount: string }[];
   };
 
+const { t } = useI18n();
 const components = ref<PayrollComponentDto[]>([]);
 const form = ref<Form | null>(null);
 const str = (v: number | string | null | undefined, paise = false) =>
@@ -196,14 +228,30 @@ const str = (v: number | string | null | undefined, paise = false) =>
 const num = (v: string, paise = false) => (v === '' ? null : paise ? Math.round(Number(v) * 100) : Number(v));
 
 function describe(c: PayrollComponentDto) {
-  const on = c.base === 'gross' ? 'gross' : 'basic';
-  if (c.calcType === 'percent')
-    return `${c.employeeRate ?? 0}% employee${c.employerRate ? ` + ${c.employerRate}% employer` : ''} of ${on}${
-      c.wageCeiling ? ` (ceiling ${rupees(c.wageCeiling)})` : ''
-    }${c.eligibilityMaxGross ? `, if gross ≤ ${rupees(c.eligibilityMaxGross)}` : ''}`;
-  if (c.calcType === 'fixed') return `Fixed ${rupees(c.fixedAmount ?? 0)}`;
+  const parts: string[] = [];
+  if (c.calcType === 'percent') {
+    parts.push(t('payroll.components.descEmployee', { rate: formatNumber(c.employeeRate ?? 0) }));
+    if (c.employerRate)
+      parts.push(t('payroll.components.descEmployer', { rate: formatNumber(c.employerRate) }));
+    parts.push(
+      t('payroll.components.descOf', {
+        base: t(`payroll.components.${c.base === 'gross' ? 'gross' : 'basic'}`),
+      }),
+    );
+    if (c.wageCeiling)
+      parts.push(t('payroll.components.descCeiling', { amount: formatMoney(c.wageCeiling) }));
+    const text = parts.join(' ');
+    return c.eligibilityMaxGross
+      ? `${text}, ${t('payroll.components.descIfGross', { amount: formatMoney(c.eligibilityMaxGross) })}`
+      : text;
+  }
+  if (c.calcType === 'fixed')
+    return t('payroll.components.descFixed', { amount: formatMoney(c.fixedAmount ?? 0) });
   return (c.slabs ?? [])
-    .map((s) => `${s.upTo === null ? 'above' : `≤ ${rupees(s.upTo)}`}: ${rupees(s.amount)}`)
+    .map(
+      (s) =>
+        `${s.upTo === null ? t('payroll.components.descAbove') : t('payroll.components.descUpTo', { amount: formatMoney(s.upTo) })}: ${formatMoney(s.amount)}`,
+    )
     .join(' · ');
 }
 
@@ -261,7 +309,7 @@ async function save() {
       f.id,
     );
     form.value = null;
-    await toast('Component saved');
+    await toast(t('payroll.components.saved'));
     await load();
   } catch (e) {
     await toastError(e);

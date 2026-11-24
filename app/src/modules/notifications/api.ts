@@ -1,3 +1,4 @@
+import { formatDateTime as coreFormatDateTime } from '@/core/format';
 import type {
   CampaignAudience,
   CampaignDto,
@@ -17,6 +18,7 @@ import type {
   RecipientType,
 } from '@erp/shared';
 import { api } from '@/core/api';
+import { useAuthStore } from '@/stores/auth';
 
 export interface Page<T> {
   items: T[];
@@ -63,14 +65,17 @@ export interface HistoryFilter {
 const base = '/notifications';
 
 /** Current user's inbox, preferences and devices. */
+/** Users without an institute read their personal inbox; everyone else the institute one. */
+const inboxBase = () => (useAuthStore().personalInbox ? `${base}/personal` : base);
+
 export const inboxApi = {
   list: (q: { page?: number; unreadOnly?: boolean } = {}) =>
-    api.get<Page<InboxItemDto> & { unread: number }>(`${base}/inbox`, q),
+    api.get<Page<InboxItemDto> & { unread: number }>(`${inboxBase()}/inbox`, q),
   /** Polled by the bell: a background request, so it does not count as activity for inactivity logout. */
   unreadCount: () =>
-    api.get<{ unread: number }>(`${base}/inbox/unread-count`, undefined, { background: true }),
-  markRead: (id: number) => api.post<InboxItemDto>(`${base}/inbox/${id}/read`),
-  markAllRead: () => api.post<{ updated: number }>(`${base}/inbox/read-all`),
+    api.get<{ unread: number }>(`${inboxBase()}/inbox/unread-count`, undefined, { background: true }),
+  markRead: (id: number) => api.post<InboxItemDto>(`${inboxBase()}/inbox/${id}/read`),
+  markAllRead: () => api.post<{ updated: number }>(`${inboxBase()}/inbox/read-all`),
   preferences: () => api.get<NotificationPreferenceDto[]>(`${base}/preferences`),
   savePreferences: (preferences: NotificationPreferenceDto[]) =>
     api.put<NotificationPreferenceDto[]>(`${base}/preferences`, { preferences }),
@@ -78,8 +83,10 @@ export const inboxApi = {
     token: string;
     platform: 'web' | 'android' | 'ios';
     deviceUid?: string | null;
-  }) => api.post<{ id: number }>(`${base}/push-tokens`, body),
-  removePushToken: (token: string) => api.delete(`${base}/push-tokens`, { body: { token } }),
+  }) => api.post<{ id: number }>(`${inboxBase()}/push-tokens`, body),
+  /** `personal`: the inbox the token was registered with (the account may have changed since). */
+  removePushToken: (token: string, personal = useAuthStore().personalInbox) =>
+    api.delete(`${personal ? `${base}/personal` : base}/push-tokens`, { body: { token } }),
 };
 
 /** Institute admin: providers, templates, rules, campaigns, delivery history. */
@@ -121,6 +128,8 @@ export const commsApi = {
 
   campaigns: () => api.get<Page<CampaignDto>>(`${base}/campaigns`, { pageSize: 50 }),
   createCampaign: (c: CampaignInput) => api.post<CampaignDto>(`${base}/campaigns`, c),
+  previewAudience: (audience: CampaignInput['audience']) =>
+    api.post<{ recipients: number }>(`${base}/campaigns/preview`, { audience }),
   cancelCampaign: (id: number) => api.post<CampaignDto>(`${base}/campaigns/${id}/cancel`),
 };
 
@@ -140,4 +149,4 @@ export const STATUS_COLORS: Record<MessageStatus, string> = {
   skipped: 'medium',
 };
 
-export const formatDate = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
+export const formatDate = (iso: string | null) => (iso ? coreFormatDateTime(iso) : '—');

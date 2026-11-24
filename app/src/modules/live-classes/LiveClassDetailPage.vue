@@ -19,6 +19,11 @@
         </ion-card-content>
       </ion-card>
 
+      <div v-if="!isModerator && session.status === 'scheduled'" class="waiting" role="status">
+        <StatusChip v-bind="learnerChip" />
+        <span class="muted">{{ t('liveClasses.detail.autoJoinHint') }}</span>
+      </div>
+
       <div class="actions">
         <ion-button v-if="isHost && session.status === 'scheduled'" color="danger" @click="start">
           <ion-icon slot="start" :icon="radioOutline" />Go live
@@ -103,11 +108,13 @@
         </ion-list>
       </template>
     </template>
+    <DoubtButton v-if="session && !isModerator" :live-class-id="id" :title="session.title" />
   </AppPage>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import {
   IonBadge,
@@ -130,12 +137,14 @@ import { enterOutline, playCircleOutline, radioOutline } from 'ionicons/icons';
 import type { LiveRecordingDto, LiveRecordingUrlDto, LiveSessionDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import SecureView from '@/components/SecureView.vue';
+import StatusChip from '@/components/StatusChip.vue';
 import { hlsPlayable, useVideoSource } from '@/core/hls';
 import { useSessionHold } from '@/core/idle';
 import { toast, toastError } from '@/core/toast';
+import { DoubtButton } from '@/modules/doubts';
 import { useAuthStore } from '@/stores/auth';
 import { liveApi, type ParticipationReport } from './api';
-import { duration, size, statusColor, time, when } from './format';
+import { duration, joinState, size, statusColor, time, when } from './format';
 
 const route = useRoute();
 const router = useRouter();
@@ -177,6 +186,22 @@ async function load() {
   }
 }
 onIonViewWillEnter(load);
+
+// A learner waiting for a scheduled class: count down and re-check every 30 s, so Join appears when it goes live.
+const { t } = useI18n();
+const now = ref(Date.now());
+const poll = setInterval(() => {
+  now.value = Date.now();
+  if (session.value?.status === 'scheduled' && !isModerator.value && !document.hidden) void load();
+}, 30_000);
+onBeforeUnmount(() => clearInterval(poll));
+const learnerChip = computed(() => {
+  const j = session.value ? joinState(session.value, now.value) : { kind: 'over' as const };
+  if (j.kind === 'soon')
+    return { label: t('liveClasses.widgets.startsIn', { n: j.minutes }), tone: 'warning' as const };
+  if (j.kind === 'waiting') return { label: t('liveClasses.widgets.waiting'), tone: 'warning' as const };
+  return { label: t('liveClasses.list.scheduled'), tone: 'primary' as const };
+});
 // Hidden Ionic pages stay mounted: stop the recording rather than let it play on in the background.
 onIonViewDidLeave(() => {
   playing.value = null;
@@ -267,6 +292,13 @@ function onRecordingLoaded() {
 </script>
 
 <style scoped>
+.waiting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 16px 8px;
+}
 .actions {
   display: flex;
   flex-wrap: wrap;

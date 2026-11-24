@@ -1,0 +1,9 @@
+{
+  "children": {
+    "title": "My children",
+    "roll": "Roll {roll}",
+    "linkedAs": "You are linked as {relation}",
+    "primary": "(primary)",
+    "none": "No children are linked to your account yet. Please contact the institute."
+  }
+}

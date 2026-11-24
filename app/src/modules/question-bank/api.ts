@@ -5,7 +5,10 @@ import type {
   QuestionBankDto,
   QuestionBankInput,
   QuestionDto,
+  QuestionImportDto,
   QuestionImportResult,
+  QuestionImportSaveItem,
+  QuestionImportSaveResult,
   QuestionInput,
 } from '@erp/shared';
 import { api } from '@/core/api';
@@ -52,6 +55,18 @@ export const questionBankApi = {
 
   importFile: (bankId: number, file: File) =>
     api.post<QuestionImportResult>(`${QB}/banks/${bankId}/import`, fileForm(file, file.name)),
+  /** Uploads a question paper PDF (and optional answer key PDF) to be read in the background. */
+  startPdfImport: (bankId: number, paper: File, answerKey?: File | null) => {
+    const form = new FormData();
+    form.append('file', paper, paper.name);
+    if (answerKey) form.append('answerKey', answerKey, answerKey.name);
+    return api.post<QuestionImportDto>(`${QB}/banks/${bankId}/pdf-imports`, form);
+  },
+  pdfImports: (bankId: number) => api.get<QuestionImportDto[]>(`${QB}/banks/${bankId}/pdf-imports`),
+  pdfImport: (id: number) => api.get<QuestionImportDto>(`${QB}/pdf-imports/${id}`),
+  savePdfImport: (id: number, items: QuestionImportSaveItem[]) =>
+    api.post<QuestionImportSaveResult>(`${QB}/pdf-imports/${id}/save`, { items }),
+  discardPdfImport: (id: number) => api.delete(`${QB}/pdf-imports/${id}`),
   generate: (b: GenerateQuestionsInput) => api.post<GeneratedQuestionsDto>(`${QB}/generate`, b),
   exportCsv: (bankId: number) => download(`${QB}/banks/${bankId}/export.csv`, `question-bank-${bankId}.csv`),
   template: () => download(`${QB}/import-template.csv`, 'question-import-template.csv'),

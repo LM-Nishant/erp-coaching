@@ -5,66 +5,111 @@
         v-if="open && hasQr"
         v-can="'attendance.create'"
         :router-link="`/attendance/sessions/${id}/qr`"
-        aria-label="Show attendance QR code"
+        :aria-label="t('attendance.roster.showQr')"
         ><ion-icon slot="icon-only" :icon="qrCodeOutline"
       /></ion-button>
     </template>
 
     <template v-if="data">
-      <div class="summary">
-        <ion-chip
-          v-for="s in ATTENDANCE_STATUSES"
-          :key="s"
-          :color="STATUS_COLOR[s]"
-          @click="filter = filter === s ? null : s"
+      <p class="lead">
+        {{ when }}
+        <template v-if="editable && open">
+          · {{ start ? t('attendance.roster.tapHint') : t('attendance.roster.tapHintPresent') }}</template
         >
-          {{ STATUS_LABEL[s] }} {{ tally[s] }}
-        </ion-chip>
-        <ion-chip :outline="true" @click="filter = filter === 'unmarked' ? null : 'unmarked'"
-          >Unmarked {{ tally.unmarked }}</ion-chip
-        >
+      </p>
+      <ion-button
+        v-if="editable && open && !start && counts.unmarked"
+        class="mark-rest"
+        fill="outline"
+        expand="block"
+        @click="markRest"
+      >
+        <ion-icon slot="start" :icon="checkmarkDoneOutline" />
+        {{ t('attendance.roster.markRest', { n: counts.unmarked }) }}
+      </ion-button>
+      <div v-if="!open" class="submitted">
+        <StatusChip tone="success" :icon="checkmarkCircle" :label="t('attendance.roster.submitted')" />
+        <span v-if="data.session.closedAt" class="muted">{{ formatDateTime(data.session.closedAt) }}</span>
       </div>
-      <ion-searchbar v-model="search" placeholder="Search students" :debounce="0" />
 
-      <ion-list>
-        <ion-item v-for="r in visible" :key="r.studentUserId" lines="full">
-          <ion-label>
-            <h3>{{ r.name }}</h3>
-            <p>
-              <span v-if="r.onLeave">On approved leave · </span>
-              <span v-if="current(r) && r.source">{{ sourceLabel(r) }}</span>
-            </p>
-          </ion-label>
-          <div slot="end" class="marks">
-            <ion-button
-              v-for="s in quick"
-              :key="s"
-              size="small"
-              :fill="current(r) === s ? 'solid' : 'outline'"
-              :color="STATUS_COLOR[s]"
-              :disabled="!editable"
-              @click="set(r, s)"
-              >{{ STATUS_SHORT[s] }}</ion-button
-            >
-          </div>
-        </ion-item>
-      </ion-list>
-
-      <div class="actions">
-        <template v-if="editable">
-          <ion-button expand="block" fill="outline" @click="markRest('present')"
-            >Mark unmarked present</ion-button
-          >
-          <ion-button expand="block" :disabled="saving || !dirtyCount" @click="save"
-            >Save {{ dirtyCount ? `(${dirtyCount})` : '' }}</ion-button
-          >
-          <ion-button v-if="open" expand="block" color="dark" :disabled="saving" @click="close"
-            >Close &amp; mark rest absent</ion-button
-          >
-        </template>
-        <ion-button v-if="!open" v-can="'attendance.edit'" expand="block" fill="outline" @click="reopen"
-          >Reopen session</ion-button
+      <div class="summary" role="group" :aria-label="t('attendance.roster.summary')">
+        <button
+          v-for="c in chips"
+          :key="c.key"
+          type="button"
+          :class="['count', c.tone, { active: filter === c.key }]"
+          :aria-pressed="filter === c.key"
+          @click="filter = filter === c.key ? null : c.key"
         >
+          <strong>{{ c.count }}</strong> {{ c.label }}
+        </button>
+      </div>
+      <ion-searchbar
+        v-if="data.roster.length > 12"
+        v-model="search"
+        :placeholder="t('attendance.roster.search')"
+        :debounce="0"
+      />
+
+      <EmptyState
+        v-if="!data.roster.length"
+        :icon="peopleOutline"
+        :title="t('attendance.roster.emptyTitle')"
+        :message="t('attendance.roster.emptyMessage')"
+      />
+      <ul v-else class="roster">
+        <li v-for="r in visible" :key="r.studentUserId" class="row" :data-student="r.name">
+          <button
+            type="button"
+            class="who"
+            :disabled="!editable"
+            :aria-label="`${r.name}: ${label(shown(r))}`"
+            @click="tap(r)"
+          >
+            <span class="name">{{ r.name }}</span>
+            <span v-if="note(r)" class="note">{{ note(r) }}</span>
+          </button>
+          <StatusChip :tone="tone(shown(r))" :icon="icon(shown(r))" :label="label(shown(r))" />
+          <button
+            v-if="editable"
+            type="button"
+            class="more"
+            :aria-label="t('attendance.roster.moreFor', { name: r.name })"
+            @click="choose(r)"
+          >
+            <ion-icon :icon="ellipsisVertical" aria-hidden="true" />
+          </button>
+        </li>
+      </ul>
+
+      <div v-if="editable || canReopen" class="footer">
+        <template v-if="editable && open">
+          <ion-button expand="block" size="large" :disabled="saving" @click="submit">{{
+            submitLabel
+          }}</ion-button>
+          <ion-button
+            v-if="!start && toSave.length"
+            expand="block"
+            fill="clear"
+            :disabled="saving"
+            @click="save"
+            >{{ t('attendance.roster.saveForNow', { n: toSave.length }) }}</ion-button
+          >
+          <p v-if="settings?.absentAlerts" class="muted center">
+            {{ t('attendance.roster.parentsAlerted') }}
+          </p>
+        </template>
+        <ion-button
+          v-else-if="editable && toSave.length"
+          expand="block"
+          size="large"
+          :disabled="saving"
+          @click="save"
+          >{{ t('attendance.roster.saveChanges', { n: toSave.length }) }}</ion-button
+        >
+        <ion-button v-if="canReopen" expand="block" fill="outline" @click="reopen">{{
+          t('attendance.roster.reopen')
+        }}</ion-button>
       </div>
     </template>
   </AppPage>
@@ -73,77 +118,148 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
+import { useI18n } from 'vue-i18n';
+import { actionSheetController, alertController, IonButton, IonIcon, IonSearchbar } from '@ionic/vue';
 import {
-  alertController,
-  IonButton,
-  IonChip,
-  IonIcon,
-  IonItem,
-  IonLabel,
-  IonList,
-  IonSearchbar,
-} from '@ionic/vue';
-import { qrCodeOutline } from 'ionicons/icons';
-import {
-  ATTENDANCE_STATUSES,
-  type AttendanceRosterDto,
-  type AttendanceSettingsDto,
-  type AttendanceStatus,
-  type RosterEntryDto,
+  alarmOutline,
+  checkmarkCircle,
+  closeCircle,
+  ellipsisVertical,
+  peopleOutline,
+  qrCodeOutline,
+  airplaneOutline,
+  timeOutline,
+  checkmarkDoneOutline,
+} from 'ionicons/icons';
+import type {
+  AttendanceRosterDto,
+  AttendanceSettingsDto,
+  AttendanceStatus,
+  RosterEntryDto,
 } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import EmptyState from '@/components/EmptyState.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { formatDateTime, formatDayShort, formatTime } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
-import { STATUS_COLOR, STATUS_LABEL, STATUS_SHORT, attendanceApi } from './api';
+import { attendanceApi } from './api';
+import { changes, clock, setPending, shownStatus, startStatus, tally, tapped, type Pending } from './roster';
 
+type Tone = 'success' | 'warning' | 'danger' | 'primary' | 'medium';
+const ORDER: AttendanceStatus[] = ['present', 'absent', 'late', 'half_day', 'leave'];
+const TONE: Record<AttendanceStatus, Tone> = {
+  present: 'success',
+  absent: 'danger',
+  late: 'warning',
+  half_day: 'warning',
+  leave: 'primary',
+};
+const ICON: Record<AttendanceStatus, string> = {
+  present: checkmarkCircle,
+  absent: closeCircle,
+  late: alarmOutline,
+  half_day: timeOutline,
+  leave: airplaneOutline,
+};
+
+const { t } = useI18n();
 const route = useRoute();
 const auth = useAuthStore();
 const id = Number(route.params.id);
 const data = ref<AttendanceRosterDto | null>(null);
 const settings = ref<AttendanceSettingsDto | null>(null);
-/** Unsaved marks keyed by student user id. */
-const pending = ref<Record<number, AttendanceStatus>>({});
+const pending = ref<Pending>({});
 const search = ref('');
 const filter = ref<AttendanceStatus | 'unmarked' | null>(null);
 const saving = ref(false);
-const quick: AttendanceStatus[] = ['present', 'absent', 'late', 'half_day', 'leave'];
 
 const open = computed(() => data.value?.session.status === 'open');
 const editable = computed(() => open.value || auth.can('attendance.edit'));
+const canReopen = computed(() => !open.value && auth.can('attendance.edit'));
 const hasQr = computed(() => settings.value?.methods.includes('qr') ?? false);
+/** Start defaults only apply while the roll call is open; a closed session has every mark saved. */
+const start = computed(() => (open.value ? startStatus(settings.value?.methods) : null));
+const roster = computed(() => data.value?.roster ?? []);
+const shown = (r: RosterEntryDto) => shownStatus(r, pending.value, start.value);
+const counts = computed(() => tally(roster.value, pending.value, start.value));
+const toSave = computed(() => changes(roster.value, pending.value, start.value));
+
+const label = (s: AttendanceStatus | null) => t(`attendance.status.${s ?? 'unmarked'}`);
+const tone = (s: AttendanceStatus | null): Tone => (s ? TONE[s] : 'medium');
+const icon = (s: AttendanceStatus | null) => (s ? ICON[s] : undefined);
+
 const title = computed(() => {
   const s = data.value?.session;
-  if (!s) return 'Attendance';
-  return [s.batchName, s.subjectName, s.date].filter(Boolean).join(' · ');
+  if (!s) return t('attendance.roster.title');
+  return [s.subjectName, s.batchName].filter(Boolean).join(' · ') || t('attendance.roster.title');
 });
-const current = (r: RosterEntryDto) => pending.value[r.studentUserId] ?? r.status;
-const dirtyCount = computed(() => Object.keys(pending.value).length);
-const tally = computed(() => {
-  const t: Record<string, number> = { unmarked: 0 };
-  for (const s of ATTENDANCE_STATUSES) t[s] = 0;
-  for (const r of data.value?.roster ?? []) {
-    const c = current(r);
-    t[c ?? 'unmarked']++;
-  }
-  return t;
+const when = computed(() => {
+  const s = data.value?.session;
+  if (!s) return '';
+  const time = clock(s.startTime, (d) => formatTime(d));
+  return [formatDayShort(s.date), time].filter(Boolean).join(' · ');
+});
+const chips = computed(() => {
+  const c = counts.value;
+  const list: { key: AttendanceStatus | 'unmarked'; count: number; label: string; tone: Tone }[] =
+    ORDER.filter((s) => s === 'present' || s === 'absent' || c[s] > 0).map((s) => ({
+      key: s,
+      count: c[s],
+      label: label(s),
+      tone: TONE[s],
+    }));
+  if (c.unmarked) list.push({ key: 'unmarked', count: c.unmarked, label: label(null), tone: 'medium' });
+  return list;
 });
 const visible = computed(() => {
   const q = search.value.trim().toLowerCase();
-  return (data.value?.roster ?? []).filter(
+  return roster.value.filter(
     (r) =>
       (!q || r.name.toLowerCase().includes(q)) &&
-      (!filter.value || (current(r) ?? 'unmarked') === filter.value),
+      (!filter.value || (shown(r) ?? 'unmarked') === filter.value),
   );
 });
-const sourceLabel = (r: RosterEntryDto) =>
-  pending.value[r.studentUserId] ? 'unsaved' : r.source === 'manual' ? '' : `via ${r.source}`;
+const submitLabel = computed(() => {
+  const c = counts.value;
+  const parts = [
+    t('attendance.roster.nPresent', { n: c.present + c.late + c.half_day }),
+    t('attendance.roster.nAbsent', { n: c.absent }),
+  ];
+  if (c.unmarked) parts.push(t('attendance.roster.nUnmarked', { n: c.unmarked }));
+  return `${t('attendance.roster.submit')} · ${parts.join(', ')}`;
+});
 
-function set(r: RosterEntryDto, s: AttendanceStatus) {
-  if (r.status === s) delete pending.value[r.studentUserId];
-  else pending.value[r.studentUserId] = s;
+function note(r: RosterEntryDto) {
+  if (pending.value[r.studentUserId]) return '';
+  if (r.onLeave) return t('attendance.roster.onApprovedLeave');
+  if (r.status && r.source && r.source !== 'manual' && r.source !== 'system')
+    return t(`attendance.roster.via.${r.source}`);
+  return '';
 }
-function markRest(s: AttendanceStatus) {
-  for (const r of data.value?.roster ?? []) if (!current(r)) pending.value[r.studentUserId] = s;
+
+/** Self check-in roll call: everyone not marked yet is here (on approved leave: leave); then tap the absentees. */
+function markRest() {
+  for (const r of roster.value)
+    if (!shown(r)) pending.value = setPending(pending.value, r, r.onLeave ? 'leave' : 'present');
+}
+
+function tap(r: RosterEntryDto) {
+  if (!editable.value) return;
+  pending.value = setPending(pending.value, r, tapped(shown(r)));
+}
+
+async function choose(r: RosterEntryDto) {
+  const sheet = await actionSheetController.create({
+    header: r.name,
+    buttons: [
+      ...ORDER.map((s) => ({ text: label(s), data: s })),
+      { text: t('attendance.roster.cancel'), role: 'cancel' },
+    ],
+  });
+  await sheet.present();
+  const { data: s, role } = await sheet.onDidDismiss<AttendanceStatus>();
+  if (role !== 'cancel' && s) pending.value = setPending(pending.value, r, s);
 }
 
 async function load() {
@@ -155,17 +271,18 @@ async function load() {
   }
 }
 
+async function saveMarks() {
+  const res = await attendanceApi.mark(id, toSave.value);
+  data.value = { session: res.session, roster: res.roster };
+  pending.value = {};
+  return res.saved;
+}
+
 async function save() {
   saving.value = true;
   try {
-    const records = Object.entries(pending.value).map(([sid, status]) => ({
-      studentUserId: Number(sid),
-      status,
-    }));
-    const res = await attendanceApi.mark(id, records);
-    data.value = { session: res.session, roster: res.roster };
-    pending.value = {};
-    await toast(`Saved ${res.saved} mark(s)`);
+    const n = await saveMarks();
+    await toast(t('attendance.roster.saved', { n }, n));
   } catch (e) {
     await toastError(e);
   } finally {
@@ -173,22 +290,26 @@ async function save() {
   }
 }
 
-async function close() {
-  const a = await alertController.create({
-    header: 'Close attendance?',
-    message: `${tally.value.unmarked} unmarked student(s) will be marked absent and parents alerted.`,
-    buttons: [
-      { text: 'Cancel', role: 'cancel' },
-      { text: 'Close', role: 'confirm' },
-    ],
-  });
-  await a.present();
-  if ((await a.onDidDismiss()).role !== 'confirm') return;
+async function submit() {
+  const unmarked = counts.value.unmarked;
+  if (unmarked) {
+    const a = await alertController.create({
+      header: t('attendance.roster.confirmTitle'),
+      message: t('attendance.roster.confirmUnmarked', { n: unmarked }, unmarked),
+      buttons: [
+        { text: t('attendance.roster.cancel'), role: 'cancel' },
+        { text: t('attendance.roster.submit'), role: 'confirm' },
+      ],
+    });
+    await a.present();
+    if ((await a.onDidDismiss()).role !== 'confirm') return;
+  }
   saving.value = true;
   try {
-    if (dirtyCount.value) await save();
+    if (toSave.value.length) await saveMarks();
     data.value = await attendanceApi.close(id);
-    await toast('Attendance closed');
+    filter.value = null;
+    await toast(t('attendance.roster.submittedToast'));
   } catch (e) {
     await toastError(e);
   } finally {
@@ -206,24 +327,129 @@ async function reopen() {
 }
 
 onMounted(async () => {
-  await load();
+  // Settings first: they decide whether unmarked students start as present.
   settings.value = await attendanceApi.settings().catch(() => null);
+  await load();
 });
 </script>
 
 <style scoped>
+.lead {
+  margin: 0 0 8px;
+  color: var(--ion-color-medium-shade);
+}
+.submitted {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
 .summary {
   display: flex;
   flex-wrap: wrap;
-  padding: 8px 8px 0;
+  gap: 8px;
+  margin-bottom: 8px;
 }
-.marks ion-button {
-  --padding-start: 8px;
-  --padding-end: 8px;
-  margin-left: 2px;
-  min-width: 34px;
+.count {
+  min-height: var(--app-tap-target);
+  padding: 4px 14px;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  background: rgba(var(--ion-color-medium-rgb), 0.15);
+  color: var(--ion-color-medium-shade);
 }
-.actions {
-  padding: 8px 16px 24px;
+.count.success {
+  background: rgba(var(--ion-color-success-rgb), 0.15);
+  color: var(--ion-color-success-shade);
+}
+.count.danger {
+  background: rgba(var(--ion-color-danger-rgb), 0.12);
+  color: var(--ion-color-danger-shade);
+}
+.count.warning {
+  background: rgba(var(--ion-color-warning-rgb), 0.18);
+  color: var(--ion-color-warning-shade);
+}
+.count.primary {
+  background: rgba(var(--ion-color-primary-rgb), 0.12);
+  color: var(--ion-color-primary-shade);
+}
+.count.active {
+  border-color: currentColor;
+}
+.roster {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-radius: 14px;
+  background: var(--ion-card-background, var(--ion-item-background, #fff));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 0 16px;
+  border-bottom: 1px solid var(--ion-border-color, rgba(0, 0, 0, 0.08));
+}
+.row:last-child {
+  border-bottom: 0;
+}
+.who {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 56px;
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  color: var(--ion-text-color);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.who:disabled {
+  cursor: default;
+}
+.name {
+  font-size: 17px;
+}
+.note {
+  font-size: 13px;
+  color: var(--ion-color-medium-shade);
+}
+.more {
+  width: var(--app-tap-target);
+  height: var(--app-tap-target);
+  border: 0;
+  background: none;
+  color: var(--ion-color-medium);
+  font-size: 20px;
+  cursor: pointer;
+}
+.mark-rest {
+  --border-radius: 12px;
+  min-height: var(--app-tap-target);
+  margin: 0 0 12px;
+  text-transform: none;
+}
+.footer ion-button {
+  text-transform: none;
+  letter-spacing: normal;
+}
+.footer {
+  position: sticky;
+  bottom: 0;
+  padding: 12px 0 8px;
+  background: var(--ion-background-color, #fff);
+}
+.center {
+  text-align: center;
+  margin: 4px 0 0;
 }
 </style>

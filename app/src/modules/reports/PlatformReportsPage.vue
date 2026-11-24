@@ -1,14 +1,12 @@
 <template>
-  <AppPage title="Platform analytics" :on-refresh="load">
+  <AppPage :title="t('reports.platform.title')" :on-refresh="load">
     <template #actions>
       <ion-button :disabled="exporting || !!rangeError || !dash" @click="exportOverview">
-        <ion-icon slot="start" :icon="downloadOutline" />Export
+        <ion-icon slot="start" :icon="downloadOutline" />{{ t('common.actions.export') }}
       </ion-button>
     </template>
 
-    <p class="muted intro">
-      Institutes, users, subscriptions, revenue and resource usage across the platform.
-    </p>
+    <p class="muted intro">{{ t('reports.platform.intro') }}</p>
     <ReportFilters
       v-model="state"
       :options="options"
@@ -18,25 +16,29 @@
     <ion-progress-bar v-if="loading" type="indeterminate" />
 
     <template v-if="dash">
-      <p class="context"><strong>All institutes</strong> · {{ dash.period.label }}</p>
+      <p class="context">
+        <strong>{{ t('reports.platform.allInstitutes') }}</strong> · {{ dash.period.label }}
+      </p>
 
-      <h2>Platform</h2>
+      <h2>{{ t('reports.platform.sections.platform') }}</h2>
       <MetricGrid :metrics="platformHeadline(dash)" :timezone="tz" />
 
-      <h2>Subscriptions</h2>
+      <h2>{{ t('reports.platform.sections.subscriptions') }}</h2>
       <MetricGrid :metrics="platformSubscriptions(dash)" :timezone="tz" />
       <ReportTable :table="plansTable(dash)" :timezone="tz" />
 
-      <h2>Revenue</h2>
+      <h2>{{ t('reports.platform.sections.revenue') }}</h2>
       <MetricGrid :metrics="platformRevenue(dash)" :timezone="tz" />
       <p class="muted note">{{ revenueNote(dash) }}</p>
 
-      <h2>Resource usage</h2>
+      <h2>{{ t('reports.platform.sections.usage') }}</h2>
       <MetricGrid :metrics="platformUsage(dash)" :timezone="tz" />
       <ReportTable :table="aiFeatureTable(dash)" :timezone="tz" />
 
       <ReportTable :table="institutesTable(dash)" :timezone="tz" />
-      <p class="muted note">Generated {{ displayDateTime(dash.generatedAt, tz) }} ({{ tz }})</p>
+      <p class="muted note">
+        {{ t('reports.report.generated', { when: displayDateTime(dash.generatedAt, tz), timezone: tz }) }}
+      </p>
     </template>
   </AppPage>
 </template>
@@ -44,6 +46,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { IonButton, IonIcon, IonProgressBar } from '@ionic/vue';
 import { downloadOutline } from 'ionicons/icons';
 import type { SaasDashboardDto } from '@erp/shared';
@@ -77,6 +80,7 @@ import {
   saasExportFileName,
 } from './platform';
 
+const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 
@@ -111,13 +115,14 @@ async function load() {
 }
 
 async function exportOverview() {
-  const format = await pickExportFormat('Export platform overview');
+  const format = await pickExportFormat(t('reports.platform.exportTitle'));
   if (!format || !dash.value) return;
   exporting.value = true;
   try {
     const file = await reportsApi.saasExport(format, period());
     const name = file.fileName ?? saasExportFileName(dash.value, format);
-    if ((await saveFile(file.blob, name)) === 'downloaded') await toast(`Downloaded ${name}`);
+    if ((await saveFile(file.blob, name)) === 'downloaded')
+      await toast(t('reports.exports.downloaded', { name }));
   } catch (e) {
     void toastError(e);
   } finally {

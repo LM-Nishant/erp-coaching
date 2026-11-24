@@ -1,0 +1,337 @@
+{
+  "common": {
+    "actions": {
+      "save": "Save",
+      "cancel": "Cancel",
+      "retry": "Try again",
+      "close": "Close",
+      "more": "More",
+      "showMore": "Show more options",
+      "showLess": "Show fewer options",
+      "add": "Add",
+      "edit": "Edit",
+      "delete": "Delete",
+      "remove": "Remove",
+      "submit": "Submit",
+      "send": "Send",
+      "search": "Search",
+      "filter": "Filter",
+      "back": "Back",
+      "view": "View",
+      "open": "Open",
+      "download": "Download",
+      "export": "Export",
+      "approve": "Approve",
+      "reject": "Reject",
+      "confirm": "Confirm",
+      "refresh": "Refresh",
+      "next": "Next",
+      "previous": "Previous",
+      "loadMore": "Load more",
+      "create": "Create",
+      "update": "Update",
+      "share": "Share",
+      "copy": "Copy",
+      "yes": "Yes",
+      "no": "No"
+    },
+    "status": {
+      "pending": "Pending",
+      "dueSoon": "Due soon",
+      "overdue": "Overdue",
+      "paid": "Paid",
+      "present": "Present",
+      "absent": "Absent",
+      "late": "Late",
+      "upcoming": "Upcoming",
+      "live": "Live now",
+      "done": "Done",
+      "open": "Open",
+      "inProgress": "In progress",
+      "resolved": "Resolved",
+      "closed": "Closed",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "cancelled": "Cancelled",
+      "draft": "Draft",
+      "active": "Active",
+      "inactive": "Inactive",
+      "scheduled": "Scheduled",
+      "completed": "Completed",
+      "failed": "Failed",
+      "published": "Published",
+      "processing": "Processing",
+      "expired": "Expired",
+      "confirmed": "Confirmed"
+    },
+    "empty": {
+      "title": "Nothing here yet"
+    },
+    "language": "Language",
+    "menuGroups": {
+      "home": "Home",
+      "learning": "Learning",
+      "classes": "Classes",
+      "tests": "Tests",
+      "people": "People",
+      "fees": "Fees & money",
+      "messages": "Messages",
+      "hr": "Staff & HR",
+      "reports": "Reports",
+      "website": "Website",
+      "marketplace": "Marketplace",
+      "settings": "Settings",
+      "platform": "Platform",
+      "other": "Other"
+    },
+    "labels": {
+      "loading": "Loading…",
+      "all": "All",
+      "none": "None",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "date": "Date",
+      "from": "From",
+      "to": "To",
+      "amount": "Amount",
+      "status": "Status",
+      "name": "Name",
+      "notes": "Notes",
+      "total": "Total",
+      "optional": "Optional",
+      "required": "Required",
+      "searchPlaceholder": "Search",
+      "noResults": "No results match your search."
+    },
+    "errors": {
+      "generic": "Something went wrong. Please try again.",
+      "offline": "You are offline. Check your connection."
+    },
+    "saved": "Saved"
+  },
+  "nav": {
+    "dashboard": {
+      "home": "Home"
+    },
+    "parentPortal": {
+      "home": "Home",
+      "monthlyReports": "Monthly reports"
+    },
+    "academics": {
+      "myTimetable": "My timetable",
+      "sessions": "Academic sessions",
+      "courses": "Courses",
+      "syllabus": "Syllabus",
+      "batches": "Batches",
+      "classrooms": "Classrooms",
+      "timetable": "Timetable"
+    },
+    "account": {
+      "myDevices": "My devices"
+    },
+    "admin": {
+      "institutes": "Institutes",
+      "users": "Users & devices",
+      "plans": "Plans",
+      "ai": "AI configuration",
+      "audit": "Audit log"
+    },
+    "admissions": {
+      "enquiries": "Enquiries",
+      "applications": "Applications",
+      "forms": "Admission forms"
+    },
+    "ai": {
+      "usage": "AI usage"
+    },
+    "appointments": {
+      "meetings": "Parent meetings",
+      "availability": "My availability",
+      "reports": "Meeting reports"
+    },
+    "attendance": {
+      "take": "Take attendance",
+      "requests": "Attendance requests",
+      "reports": "Attendance reports",
+      "setup": "Attendance setup",
+      "checkIn": "Check in",
+      "my": "My attendance"
+    },
+    "branches": {
+      "branches": "Branches"
+    },
+    "calendar": {
+      "sync": "Calendar sync",
+      "google": "Google Calendar"
+    },
+    "exams": {
+      "exams": "Exams",
+      "prompts": "AI grading prompts",
+      "myExams": "My exams",
+      "results": "Exam results"
+    },
+    "fees": {
+      "fees": "Fees",
+      "accounts": "Fee accounts",
+      "structures": "Fee structures",
+      "approvals": "Fee approvals",
+      "courseEnrolments": "Course enrolments",
+      "reports": "Fee reports",
+      "accounting": "Accounting",
+      "settings": "Fee settings",
+      "myFees": "My fees"
+    },
+    "grievances": {
+      "queue": "Complaint queue",
+      "my": "My complaints",
+      "reports": "Grievance reports",
+      "setup": "Grievance setup"
+    },
+    "guardians": {
+      "guardians": "Guardians",
+      "myChildren": "My children"
+    },
+    "hr": {
+      "staff": "Staff",
+      "attendance": "Staff attendance",
+      "leaves": "Leave requests",
+      "assets": "Assets & exits",
+      "settings": "HR settings",
+      "me": "My leave & attendance"
+    },
+    "institute": {
+      "profile": "Institute profile"
+    },
+    "liveClasses": {
+      "liveClasses": "Live classes"
+    },
+    "lms": {
+      "content": "Learning content",
+      "myCourses": "My courses",
+      "homework": "Homework",
+      "offline": "Offline lectures",
+      "grants": "Course access grants"
+    },
+    "marketplace": {
+      "market": "Course marketplace",
+      "learning": "My learning",
+      "cart": "Cart",
+      "wishlist": "Wishlist",
+      "orders": "Purchase history",
+      "teach": "Teach on the marketplace",
+      "storefront": "Marketplace storefront",
+      "reviews": "Course reviews",
+      "ratings": "Rating moderation",
+      "sales": "Marketplace sales",
+      "coupons": "Platform coupons",
+      "settings": "Marketplace settings",
+      "payouts": "Marketplace payouts"
+    },
+    "notifications": {
+      "communication": "Communication",
+      "notifications": "Notifications"
+    },
+    "payroll": {
+      "runs": "Payroll runs",
+      "structures": "Salary structures",
+      "workUnits": "Lectures & incentives",
+      "settlements": "Full & final",
+      "reports": "Payroll reports",
+      "components": "Statutory components",
+      "payslips": "My payslips"
+    },
+    "permissions": {
+      "roles": "Roles & permissions"
+    },
+    "platform": {
+      "integrations": "Integrations"
+    },
+    "questionBank": {
+      "questionBank": "Question bank"
+    },
+    "reports": {
+      "reports": "Reports",
+      "platform": "Platform analytics"
+    },
+    "students": {
+      "students": "Students",
+      "myProfile": "My profile"
+    },
+    "subscriptions": {
+      "billing": "Subscription & billing",
+      "subscriptions": "Subscriptions",
+      "invoices": "SaaS invoices",
+      "payments": "SaaS payments",
+      "settings": "Billing settings"
+    },
+    "tally": {
+      "export": "Tally export"
+    },
+    "tenantData": {
+      "data": "Data export & deletion",
+      "deletion": "Data deletion"
+    },
+    "users": {
+      "devices": "Member devices"
+    },
+    "website": {
+      "builder": "Website builder",
+      "announcements": "Website announcements",
+      "coupons": "Coupons",
+      "referrals": "Referrals",
+      "settings": "Website settings & SEO"
+    },
+    "tabs": {
+      "classes": "Classes",
+      "study": "Study",
+      "tests": "Tests",
+      "attendance": "Attendance",
+      "fees": "Fees",
+      "progress": "Progress",
+      "assign": "Assign",
+      "messages": "Messages",
+      "explore": "Explore",
+      "institutes": "Institutes",
+      "users": "Users",
+      "analytics": "Analytics"
+    },
+    "doubts": {
+      "mine": "My doubts",
+      "inbox": "Doubt inbox"
+    }
+  },
+  "shell": {
+    "tabsLabel": "Main",
+    "searchMenu": "Search menu",
+    "noMatch": "Nothing matches “{query}”",
+    "display": "Display",
+    "textSize": "Text size",
+    "textSizes": {
+      "100": "Normal",
+      "115": "Large",
+      "130": "Extra large"
+    },
+    "loading": "Loading",
+    "branch": "Branch",
+    "allBranches": "All branches",
+    "allMyBranches": "All my branches",
+    "switchInstitute": "Switch",
+    "switchProfile": "Switch profile",
+    "signOut": "Sign out",
+    "platformAdmin": "Platform admin",
+    "switchProfileConfirm": {
+      "header": "Switch profile?",
+      "message": "We'll send a code to {mobile}. Then choose who's signing in; {name} will be signed out on this device.",
+      "send": "Send code"
+    },
+    "roles": {
+      "super-admin": "Platform admin",
+      "institute-admin": "Institute admin",
+      "branch-admin": "Branch admin",
+      "accountant": "Accountant",
+      "teacher": "Teacher",
+      "student": "Student",
+      "parent": "Parent"
+    }
+  }
+}

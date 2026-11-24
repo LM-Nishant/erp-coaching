@@ -1,3 +1,4 @@
+import { defineAsyncComponent } from 'vue';
 import {
   cloudDownloadOutline,
   documentTextOutline,
@@ -88,6 +89,9 @@ export default defineAppModule({
     {
       title: 'Learning content',
       path: '/lms/content',
+      group: 'learning',
+      titleKey: 'nav.lms.content',
+      tab: { teacher: 8 },
       icon: libraryOutline,
       permission: 'lms.edit',
       planModule: 'lms',
@@ -96,6 +100,10 @@ export default defineAppModule({
     {
       title: 'My courses',
       path: '/lms',
+      group: 'learning',
+      titleKey: 'nav.lms.myCourses',
+      tab: { student: 3 },
+      tabTitleKey: 'nav.tabs.study',
       icon: playCircleOutline,
       permission: 'lms.view',
       // Staff only get a pointer to Learning content there.
@@ -106,6 +114,10 @@ export default defineAppModule({
     {
       title: 'Homework',
       path: '/lms/homework',
+      group: 'learning',
+      titleKey: 'nav.lms.homework',
+      tab: { teacher: 3, student: 6 },
+      tabTitleKey: 'nav.tabs.assign',
       icon: documentTextOutline,
       permission: 'lms-assignments.view',
       planModule: 'lms',
@@ -114,6 +126,8 @@ export default defineAppModule({
     {
       title: 'Offline lectures',
       path: '/lms/offline',
+      group: 'learning',
+      titleKey: 'nav.lms.offline',
       icon: cloudDownloadOutline,
       permission: 'lms.view',
       planModule: 'lms',
@@ -122,6 +136,8 @@ export default defineAppModule({
     {
       title: 'Course access grants',
       path: '/lms/grants',
+      group: 'learning',
+      titleKey: 'nav.lms.grants',
       icon: keyOutline,
       permission: 'lms.configure',
       planModule: 'lms',
@@ -130,4 +146,44 @@ export default defineAppModule({
   ],
   // device revoked or account deactivated: the user's downloaded lectures go with it
   wipeUserData: async (userId) => (await import('./offline-store')).wipeOffline(userId),
+  widgets: [
+    {
+      id: 'lms.teacherToCheck',
+      slot: 'teacher-home',
+      title: 'Homework to check',
+      component: defineAsyncComponent(() => import('./widgets/HomeworkToCheckWidget.vue')),
+      permission: 'lms-assignments.edit',
+      planModule: 'lms',
+      order: 20,
+      size: 'half',
+    },
+    {
+      id: 'lms.continue',
+      slot: 'student-home',
+      title: 'Continue watching',
+      component: defineAsyncComponent(() => import('./widgets/ContinueWidget.vue')),
+      permission: 'lms.view',
+      planModule: 'lms',
+      order: 20,
+      size: 'full',
+    },
+    {
+      id: 'lms.homework',
+      slot: 'student-home',
+      title: 'Homework due',
+      component: defineAsyncComponent(() => import('./widgets/HomeworkDueWidget.vue')),
+      permission: 'lms-assignments.view',
+      planModule: 'lms',
+      order: 30,
+    },
+    {
+      id: 'lms.homework',
+      slot: 'parent-home',
+      title: 'Homework due',
+      component: defineAsyncComponent(() => import('./widgets/HomeworkDueWidget.vue')),
+      permission: 'lms-assignments.view',
+      planModule: 'lms',
+      order: 30,
+    },
+  ],
 });

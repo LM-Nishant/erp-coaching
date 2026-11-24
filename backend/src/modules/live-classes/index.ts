@@ -8,6 +8,8 @@ import {
   ensureRecordingJob,
   IMPORT_RECORDING_JOB,
   importProviderRecording,
+  REMINDER_JOB,
+  runReminder,
 } from './live-classes.service';
 import { dispatchLiveEvent, LIVE_EVENT_JOB } from './live-events';
 import { registerLiveClassIntegrations } from './integrations';
@@ -43,6 +45,7 @@ export default defineModule({
     [IMPORT_RECORDING_JOB]: importProviderRecording,
     [COLLECT_RECORDINGS_JOB]: collectProviderRecordings,
     [ENSURE_RECORDING_JOB]: ensureRecordingJob,
+    [REMINDER_JOB]: (payload) => runReminder(payload as { liveSessionId: number; startsAt: string }),
   },
   onReady: registerLiveClassIntegrations,
   attachServer: (server) => {

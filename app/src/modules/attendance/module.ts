@@ -1,3 +1,4 @@
+import { defineAsyncComponent } from 'vue';
 import {
   calendarOutline,
   checkmarkDoneOutline,
@@ -64,6 +65,9 @@ export default defineAppModule({
     {
       title: 'Take attendance',
       path: '/attendance',
+      group: 'classes',
+      titleKey: 'nav.attendance.take',
+      tab: { staff: 6, teacher: 5 },
       icon: checkmarkDoneOutline,
       permission: 'attendance.create',
       planModule: 'attendance',
@@ -72,6 +76,8 @@ export default defineAppModule({
     {
       title: 'Attendance requests',
       path: '/attendance/requests',
+      group: 'classes',
+      titleKey: 'nav.attendance.requests',
       icon: documentTextOutline,
       permission: 'attendance.view',
       planModule: 'attendance',
@@ -80,6 +86,8 @@ export default defineAppModule({
     {
       title: 'Attendance reports',
       path: '/attendance/reports',
+      group: 'reports',
+      titleKey: 'nav.attendance.reports',
       icon: statsChartOutline,
       permission: 'attendance.view',
       planModule: 'attendance',
@@ -88,6 +96,8 @@ export default defineAppModule({
     {
       title: 'Attendance setup',
       path: '/attendance/settings',
+      group: 'classes',
+      titleKey: 'nav.attendance.setup',
       icon: settingsOutline,
       permission: 'attendance.configure',
       planModule: 'attendance',
@@ -96,6 +106,8 @@ export default defineAppModule({
     {
       title: 'Check in',
       path: '/attendance/check-in',
+      group: 'classes',
+      titleKey: 'nav.attendance.checkIn',
       icon: qrCodeOutline,
       permission: 'attendance-self.create',
       // Parents hold it too, to request leave or corrections for their children.
@@ -106,10 +118,53 @@ export default defineAppModule({
     {
       title: 'My attendance',
       path: '/attendance/my',
+      group: 'classes',
+      titleKey: 'nav.attendance.my',
+      tab: { parent: 2, student: 8 },
+      tabTitleKey: 'nav.tabs.attendance',
       icon: calendarOutline,
       permission: 'attendance-self.view',
       planModule: 'attendance',
       order: 31,
+    },
+  ],
+  widgets: [
+    {
+      id: 'attendance.teacherToday',
+      slot: 'teacher-home',
+      title: "Today's classes",
+      component: defineAsyncComponent(() => import('./widgets/TeacherTodayWidget.vue')),
+      permission: 'attendance.create',
+      planModule: 'attendance',
+      order: 10,
+      size: 'full',
+    },
+    {
+      id: 'attendance.staffToday',
+      slot: 'staff-home',
+      title: 'Attendance today',
+      component: defineAsyncComponent(() => import('./widgets/StaffTodayWidget.vue')),
+      permission: 'attendance.create',
+      planModule: 'attendance',
+      order: 30,
+    },
+    {
+      id: 'attendance.summary',
+      slot: 'student-home',
+      title: 'Attendance',
+      component: defineAsyncComponent(() => import('./widgets/AttendanceWidget.vue')),
+      permission: 'attendance-self.view',
+      planModule: 'attendance',
+      order: 60,
+    },
+    {
+      id: 'attendance.summary',
+      slot: 'parent-home',
+      title: 'Attendance',
+      component: defineAsyncComponent(() => import('./widgets/AttendanceWidget.vue')),
+      permission: 'attendance-self.view',
+      planModule: 'attendance',
+      order: 20,
     },
   ],
 });

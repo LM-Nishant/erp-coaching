@@ -76,7 +76,8 @@ Keep these elsewhere. You need them to restore onto a new server:
   `docker-compose.override.yml` and `deploy/local/`. Keep them in a password manager or secret vault, never next to the
   backups ([secrets](deployment.md#secrets)).
   - Above all, keep `ENCRYPTION_KEY`. The integration credentials stored in the database (payment, notification and AI
-    settings, offline LMS keys) can only be decrypted with the key that encrypted them. After
+    settings, offline LMS keys, Google Calendar tokens) and the course marketplace sellers' bank account numbers and
+    UPI IDs can only be decrypted with the key that encrypted them. After
     [rotating it](deployment.md#rotating-the-encryption-key), keep the old key as long as you keep backups made before
     the rotation.
 - **TLS certificates:** `deploy/certs/` (or `ERP_CERTS_DIR`) and certbot's `/etc/letsencrypt`. They can be issued
@@ -215,8 +216,9 @@ Disk space:
 - **Separate disk:** keep the backups on a different disk from the database (an absolute `BACKUP_HOST_DIR`), so that
   one failed or full disk doesn't take both. Local backups don't protect against losing the server; offsite copies do.
 
-The backups contain all the personal data in the system. Data deleted in the app stays in the backups until they
-expire, so align the local and offsite retention with your data protection policy.
+The backups contain all the personal data in the system, including the course marketplace sellers' names, banks and
+IFSC codes, which aren't encrypted. Data deleted in the app stays in the backups until they expire, so align the
+local and offsite retention with your data protection policy.
 
 ## Offsite copies
 

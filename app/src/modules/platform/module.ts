@@ -15,6 +15,8 @@ export default defineAppModule({
     {
       title: 'Integrations',
       path: '/admin/platform',
+      group: 'platform',
+      titleKey: 'nav.platform.integrations',
       icon: extensionPuzzleOutline,
       superAdmin: true,
       order: 32,
