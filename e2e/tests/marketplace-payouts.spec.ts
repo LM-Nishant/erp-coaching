@@ -145,7 +145,7 @@ test('refund → payout details → monthly payout run marked paid → statement
       await learnerPage.reload();
       await expect(activePage(learnerPage).getByText('Refunded').first()).toBeVisible();
       await learnerPage.goto('/notifications');
-      await expect(activePage(learnerPage).getByText('Refund of ₹499.00 sent')).toBeVisible();
+      await expect(activePage(learnerPage).getByText('Refund of ₹499 sent')).toBeVisible();
     });
 
     const instructorPage = await openAs(instructor, '/market/studio/instructor/revenue');

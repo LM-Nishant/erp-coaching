@@ -11,7 +11,15 @@
  */
 import { expect, test } from '../support/fixtures';
 import { loginWithPassword, newDevice } from '../support/api';
-import { addGuardian, addStaff, addStudent, createBatch, createInstitute, isoDate } from '../support/data';
+import {
+  addGuardian,
+  addStaff,
+  addStudent,
+  createBatch,
+  createInstitute,
+  isoDate,
+  messageDay,
+} from '../support/data';
 import {
   activePage,
   alertDialog,
@@ -138,7 +146,7 @@ test('parent-teacher appointment: parent requests a slot → teacher accepts', a
     const confirmed = activePage(parent).locator('ion-item').filter({ hasText: 'Meeting confirmed' });
     await expect(confirmed).toHaveCount(1);
     await expect(confirmed).toContainText(
-      `Your meeting with ${teacher.name} on ${date} at 16:00 (offline) is confirmed.`,
+      `Your meeting with ${teacher.name} on ${messageDay(date)} at 4:00 pm (offline) is confirmed.`,
     );
   });
 });
