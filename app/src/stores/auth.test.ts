@@ -270,3 +270,16 @@ describe('needsInstitute', () => {
     expect(auth.needsInstitute).toBe(false);
   });
 });
+
+describe('auth store hasStaffProfile', () => {
+  it('follows the features the server reports, and assumes yes from an older server', () => {
+    const auth = useAuthStore();
+    expect(auth.hasStaffProfile).toBe(true);
+    auth.me = { features: [] } as unknown as MeDto;
+    expect(auth.hasStaffProfile).toBe(false);
+    auth.me = { features: ['staff-profile'] } as unknown as MeDto;
+    expect(auth.hasStaffProfile).toBe(true);
+    auth.me = {} as MeDto;
+    expect(auth.hasStaffProfile).toBe(true);
+  });
+});

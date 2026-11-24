@@ -4,16 +4,7 @@
 
     <QuickActions v-if="actions.length" :actions="actions" :label="t('dashboard.staff.quickActions')" />
 
-    <div v-if="widgets.length" class="widgets">
-      <ion-card v-for="w in widgets" :key="w.id" :class="['widget', w.size ?? 'half']">
-        <ion-card-header>
-          <ion-card-title>{{ widgetTitle(w) }}</ion-card-title>
-        </ion-card-header>
-        <ion-card-content>
-          <component :is="w.component" />
-        </ion-card-content>
-      </ion-card>
-    </div>
+    <WidgetGrid :widgets="widgets" class="home-widgets" />
 
     <CollectFeeSheet :is-open="collecting" @close="collecting = false" />
   </div>
@@ -22,7 +13,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { IonCard, IonCardContent, IonCardHeader, IonCardTitle } from '@ionic/vue';
 import {
   calendarOutline,
   checkboxOutline,
@@ -37,7 +27,7 @@ import { widgetsFor } from '@/core/modules';
 import { useAuthStore } from '@/stores/auth';
 import CollectFeeSheet from '../fees/CollectFeeSheet.vue';
 import SetupChecklist from './SetupChecklist.vue';
-import { useWidgetTitle } from './widget-title';
+import WidgetGrid from './WidgetGrid.vue';
 
 /**
  * "Today" home of the staff persona (admin, branch admin, accountant, front desk): setup checklist until the
@@ -45,7 +35,6 @@ import { useWidgetTitle } from './widget-title';
  */
 const auth = useAuthStore();
 const { t } = useI18n();
-const widgetTitle = useWidgetTitle();
 const collecting = ref(false);
 
 const allowed = (permission: PermissionKey, planModule: string) =>
@@ -111,23 +100,5 @@ const widgets = computed(() =>
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-.widgets {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.widget {
-  margin: 0 0 12px;
-}
-.widgets {
-  column-gap: 12px;
-}
-.widget.full {
-  grid-column: 1 / -1;
-}
-@media (max-width: 768px) {
-  .widgets {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 </style>

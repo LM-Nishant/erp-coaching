@@ -60,6 +60,10 @@ export interface MembershipDto extends InstituteBranding {
 export const APP_LOCALES = ['en', 'hi'] as const;
 export type AppLocale = (typeof APP_LOCALES)[number];
 
+/** Optional parts of the app that depend on the user's records rather than permissions (`MeDto.features`). */
+export const ME_FEATURES = ['staff-profile'] as const;
+export type MeFeature = (typeof ME_FEATURES)[number];
+
 export interface MeDto {
   user: {
     id: number;
@@ -86,6 +90,8 @@ export interface MeDto {
   enabledModules: string[] | null;
   /** Inactivity timeout and biometric unlock state of this session (absent on older APIs). */
   session?: SessionPolicyDto;
+  /** Record-based features, e.g. `staff-profile`: the login is linked to an HR employee (absent on older APIs). */
+  features?: MeFeature[];
 }
 
 export interface Paginated<T> {

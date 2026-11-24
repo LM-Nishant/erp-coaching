@@ -148,5 +148,9 @@
       "expired": "Expired",
       "cancelled": "Cancelled"
     }
+  },
+  "widgets": {
+    "role-dashboard": "Analytics",
+    "platform-summary": "Platform analytics · this month"
   }
 }

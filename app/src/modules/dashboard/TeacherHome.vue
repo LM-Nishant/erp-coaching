@@ -5,23 +5,13 @@
 
     <QuickActions v-if="actions.length" :actions="actions" :label="t('dashboard.teacher.quickActions')" />
 
-    <div v-if="widgets.length" class="widgets">
-      <ion-card v-for="w in widgets" :key="w.id" :class="['widget', w.size ?? 'half']">
-        <ion-card-header>
-          <ion-card-title>{{ widgetTitle(w) }}</ion-card-title>
-        </ion-card-header>
-        <ion-card-content>
-          <component :is="w.component" />
-        </ion-card-content>
-      </ion-card>
-    </div>
+    <WidgetGrid :widgets="widgets" class="home-widgets" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { IonCard, IonCardContent, IonCardHeader, IonCardTitle } from '@ionic/vue';
 import {
   calendarOutline,
   checkmarkDoneOutline,
@@ -35,7 +25,7 @@ import { formatDayShort } from '@/core/format';
 import { widgetsFor } from '@/core/modules';
 import { useAuthStore } from '@/stores/auth';
 import { greetingFor } from './teacher-home';
-import { useWidgetTitle } from './widget-title';
+import WidgetGrid from './WidgetGrid.vue';
 
 const { t } = useI18n();
 const auth = useAuthStore();
@@ -89,7 +79,6 @@ const actions = computed<QuickAction[]>(() =>
     })),
 );
 
-const widgetTitle = useWidgetTitle();
 const widgets = computed(() => widgetsFor('teacher-home').filter((w) => allowed(w.permission, w.planModule)));
 </script>
 
@@ -104,26 +93,7 @@ const widgets = computed(() => widgetsFor('teacher-home').filter((w) => allowed(
   font-size: 24px;
   font-weight: 700;
 }
-.widgets {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 8px;
-}
-.widget {
-  margin-inline: 0;
-}
-.widgets .widget:nth-child(odd):not(.full) {
-  margin-inline-end: 8px;
-}
-.widget.full {
-  grid-column: 1 / -1;
-}
-@media (max-width: 768px) {
-  .widgets {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .widgets .widget:nth-child(odd):not(.full) {
-    margin-inline-end: 0;
-  }
+.home-widgets {
+  margin-top: 16px;
 }
 </style>

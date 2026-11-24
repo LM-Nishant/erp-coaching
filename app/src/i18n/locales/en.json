@@ -290,7 +290,10 @@
       "progress": "Progress",
       "assign": "Assign",
       "messages": "Messages",
-      "explore": "Explore"
+      "explore": "Explore",
+      "institutes": "Institutes",
+      "users": "Users",
+      "analytics": "Analytics"
     },
     "doubts": {
       "mine": "My doubts",
@@ -308,6 +311,27 @@
       "115": "Large",
       "130": "Extra large"
     },
-    "loading": "Loading"
+    "loading": "Loading",
+    "branch": "Branch",
+    "allBranches": "All branches",
+    "allMyBranches": "All my branches",
+    "switchInstitute": "Switch",
+    "switchProfile": "Switch profile",
+    "signOut": "Sign out",
+    "platformAdmin": "Platform admin",
+    "switchProfileConfirm": {
+      "header": "Switch profile?",
+      "message": "We'll send a code to {mobile}. Then choose who's signing in; {name} will be signed out on this device.",
+      "send": "Send code"
+    },
+    "roles": {
+      "super-admin": "Platform admin",
+      "institute-admin": "Institute admin",
+      "branch-admin": "Branch admin",
+      "accountant": "Accountant",
+      "teacher": "Teacher",
+      "student": "Student",
+      "parent": "Parent"
+    }
   }
 }

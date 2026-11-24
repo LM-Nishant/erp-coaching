@@ -1,9 +1,6 @@
 <template>
-  <AppPage title="My devices" :on-refresh="load">
-    <p class="muted">
-      Signing in on a new device requires an OTP, and you can be signed in on a limited number of devices at a
-      time. Sign out of devices you no longer use; their downloaded lectures are removed.
-    </p>
+  <AppPage :title="t('account.devices.title')" :on-refresh="load">
+    <p class="muted">{{ t('account.devices.intro') }}</p>
 
     <ion-list v-if="bio.available && auth.me?.session" inset>
       <ion-item>
@@ -14,8 +11,8 @@
           @ion-change="toggleBiometric($event.detail.checked)"
         >
           <ion-label>
-            Unlock with {{ bio.label }}
-            <p>Use {{ bio.label }} instead of your password when the app is locked on this device.</p>
+            {{ t('account.devices.unlockWith', { method: bio.label }) }}
+            <p>{{ t('account.devices.unlockHint', { method: bio.label }) }}</p>
           </ion-label>
         </ion-toggle>
       </ion-item>
@@ -26,13 +23,17 @@
         <ion-icon slot="start" :icon="d.platform === 'web' ? desktopOutline : phonePortraitOutline" />
         <ion-label>
           <h2>
-            {{ d.name ?? d.platform ?? 'Device' }}
-            <ion-badge v-if="d.current" color="success">This device</ion-badge>
+            {{ d.name ?? d.platform ?? t('account.devices.device') }}
+            <ion-badge v-if="d.current" color="success">{{ t('account.devices.thisDevice') }}</ion-badge>
           </h2>
           <p>
-            {{ d.status === 'active' ? 'Signed in' : 'Signed out' }} · last seen
-            {{ d.lastSeenAt ? new Date(d.lastSeenAt).toLocaleString() : '—'
-            }}<template v-if="d.biometricUnlock && d.status === 'active'"> · biometric unlock on</template>
+            {{
+              t(d.status === 'active' ? 'account.devices.signedInSeen' : 'account.devices.signedOutSeen', {
+                when: formatDateTime(d.lastSeenAt),
+              })
+            }}<template v-if="d.biometricUnlock && d.status === 'active'">{{
+              t('account.devices.biometricOn')
+            }}</template>
           </p>
         </ion-label>
         <ion-button
@@ -41,7 +42,7 @@
           fill="clear"
           color="danger"
           @click="revoke(d)"
-          >Sign out</ion-button
+          >{{ t('account.devices.signOut') }}</ion-button
         >
       </ion-item>
     </ion-list>
@@ -61,13 +62,16 @@ import {
   IonToggle,
 } from '@ionic/vue';
 import { desktopOutline, phonePortraitOutline } from 'ionicons/icons';
+import { useI18n } from 'vue-i18n';
 import type { DeviceDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import { api } from '@/core/api';
 import { BiometricError, biometricAvailability } from '@/core/biometric';
+import { formatDateTime } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const devices = ref<DeviceDto[]>([]);
 const bio = reactive({ available: false, label: '' });
@@ -81,18 +85,18 @@ async function load() {
 
 async function revoke(d: DeviceDto) {
   const alert = await alertController.create({
-    header: 'Sign out this device?',
-    message: `${d.name ?? 'The device'} will be signed out at once and its downloaded lectures removed.`,
+    header: t('account.devices.confirmTitle'),
+    message: t('account.devices.confirmMessage', { name: d.name ?? t('account.devices.theDevice') }),
     buttons: [
-      { text: 'Cancel', role: 'cancel' },
-      { text: 'Sign out', role: 'destructive' },
+      { text: t('common.actions.cancel'), role: 'cancel' },
+      { text: t('account.devices.signOut'), role: 'destructive' },
     ],
   });
   await alert.present();
   if ((await alert.onDidDismiss()).role !== 'destructive') return;
   try {
     await api.delete(`/auth/devices/${d.id}`);
-    await toast('Device signed out');
+    await toast(t('account.devices.signedOut'));
     await load();
   } catch (e) {
     await toastError(e);
@@ -105,7 +109,7 @@ async function toggleBiometric(on: boolean) {
   try {
     if (on) await auth.enableBiometric();
     else await auth.disableBiometric();
-    await toast(on ? `${bio.label} unlock is on` : `${bio.label} unlock is off`);
+    await toast(t(on ? 'account.devices.unlockOn' : 'account.devices.unlockOff', { method: bio.label }));
     await load();
   } catch (e) {
     if (!(e instanceof BiometricError && e.reason === 'cancelled')) await toastError(e);

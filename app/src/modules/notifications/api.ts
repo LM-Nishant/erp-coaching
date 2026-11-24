@@ -1,3 +1,4 @@
+import { formatDateTime as coreFormatDateTime } from '@/core/format';
 import type {
   CampaignAudience,
   CampaignDto,
@@ -148,4 +149,4 @@ export const STATUS_COLORS: Record<MessageStatus, string> = {
   skipped: 'medium',
 };
 
-export const formatDate = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
+export const formatDate = (iso: string | null) => (iso ? coreFormatDateTime(iso) : '—');

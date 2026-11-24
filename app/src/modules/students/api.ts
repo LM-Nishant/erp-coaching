@@ -1,3 +1,4 @@
+import { formatDate, formatDateTime } from '@/core/format';
 import type {
   AcademicInfo,
   AcademicRecordDto,
@@ -136,8 +137,8 @@ export const humanize = (s: string) => s.replace(/_/g, ' ').replace(/^\w/, (c) =
 
 export const DOCUMENT_TYPES = ['photo', 'id_proof', 'address_proof', 'marksheet', 'certificate', 'other'];
 
+/** `27 Nov 2026` (or `27 Nov 2026, 9:00 pm`) in the user's language; empty when there is no date. */
 export function fmtDate(iso: string | null | undefined, withTime = false) {
   if (!iso) return '';
-  const d = new Date(iso);
-  return withTime ? d.toLocaleString() : d.toLocaleDateString();
+  return withTime ? formatDateTime(iso) : formatDate(iso);
 }

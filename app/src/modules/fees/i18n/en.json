@@ -109,6 +109,38 @@
       "upi": "UPI",
       "bank_transfer": "Bank transfer",
       "cheque": "Cheque"
+    },
+    "instalment": "Instalment {n}",
+    "pay": {
+      "title": "Pay fees",
+      "next": "Next instalment · {amount}",
+      "full": "Full balance · {amount}",
+      "other": "Other amount",
+      "amount": "Amount (₹)",
+      "with": "Pay with",
+      "proceed": "Proceed to pay {amount}",
+      "testGateway": "Test gateway. No real money moves. Choose how this checkout ends.",
+      "order": "Order {id}",
+      "payNow": "Pay now",
+      "simulateFailure": "Simulate failure",
+      "payIn": "Pay in the {gateway} checkout. If it closed before you finished, open it again.",
+      "open": "Open {gateway}",
+      "checkPaid": "I've paid, check status",
+      "enterAmount": "Enter an amount"
+    },
+    "toast": {
+      "success": "Payment successful. Receipt {receipt}",
+      "failed": "Payment failed. You can try again.",
+      "stillPending": "The payment is still pending. Check again in a moment.",
+      "receiptSent": "Receipt sent to your WhatsApp",
+      "status": {
+        "pending": "Payment pending",
+        "failed": "Payment failed",
+        "successful": "Payment successful",
+        "partially_refunded": "Payment partially refunded",
+        "refunded": "Payment refunded",
+        "cancelled": "Payment cancelled"
+      }
     }
   },
   "widgets": {

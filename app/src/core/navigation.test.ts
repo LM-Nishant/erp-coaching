@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { homeOutline } from 'ionicons/icons';
-import { appModules, tabsFor, type MenuItem } from './modules';
+import { appModules, fitsPersona, tabsFor, widgetFitsPersona, type MenuItem } from './modules';
 import { activeItem, searchMenu } from './navigation';
 import { MENU_GROUPS, type Persona } from './persona';
 import { i18n } from '@/i18n';
@@ -39,6 +39,40 @@ describe('module menus', () => {
       const positions = allItems.filter((i) => i.tab?.[p] !== undefined).map((i) => i.tab![p]);
       expect(new Set(positions).size, p).toBe(positions.length);
     }
+  });
+});
+
+describe('persona menus', () => {
+  const pathsFor = (p: Persona) => allItems.filter((i) => fitsPersona(i, [], p)).map((i) => i.path);
+
+  it('keep marketplace buying out of staff, teacher and platform menus', () => {
+    for (const p of ['staff', 'teacher', 'platform'] as Persona[]) {
+      expect(pathsFor(p), p).not.toContain('/market/cart');
+      expect(pathsFor(p), p).not.toContain('/market/wishlist');
+    }
+    expect(pathsFor('learner')).toContain('/market/cart');
+    expect(pathsFor('student')).toContain('/market/learning');
+  });
+
+  it('show staff analytics only to staff and teachers', () => {
+    expect(pathsFor('staff')).toContain('/reports');
+    expect(pathsFor('teacher')).toContain('/reports');
+    expect(pathsFor('student')).not.toContain('/reports');
+    expect(pathsFor('parent')).not.toContain('/reports');
+  });
+});
+
+describe('widgetFitsPersona', () => {
+  it('shows a widget only to its personas, and every widget when the persona is unknown', () => {
+    expect(widgetFitsPersona({}, 'teacher')).toBe(true);
+    expect(widgetFitsPersona({ personas: ['staff'] }, 'staff')).toBe(true);
+    expect(widgetFitsPersona({ personas: ['staff'] }, 'teacher')).toBe(false);
+    expect(widgetFitsPersona({ personas: ['staff'] })).toBe(true);
+  });
+
+  it('keeps the doubts inbox out of the teacher home slot, which TeacherHome already shows', () => {
+    const inbox = appModules.flatMap((m) => m.widgets ?? []).find((w) => w.id === 'doubts.inboxHome');
+    expect(inbox && widgetFitsPersona(inbox, 'teacher')).toBe(false);
   });
 });
 

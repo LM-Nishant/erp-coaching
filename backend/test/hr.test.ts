@@ -51,6 +51,13 @@ describe('hr module', () => {
     expect(list.body.items.map((e: { id: number }) => e.id)).toContain(teacherEmpId);
   });
 
+  it('tells /auth/me which users have a staff profile, so only they see HR self-service', async () => {
+    const features = async (token: string) =>
+      (await (await api()).get('/api/auth/me').set(bearer(token))).body.features;
+    expect(await features(teacher)).toEqual(['staff-profile']);
+    expect(await features(admin)).toEqual([]);
+  });
+
   it('supports CRUD on staff and their qualifications', async () => {
     const create = await (
       await api()

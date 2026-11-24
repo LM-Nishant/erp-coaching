@@ -10,6 +10,7 @@ export {
   type DeviceRevokedEvent,
   type DeviceSignedOutEvent,
 } from './device-events';
+export { registerMeFeature } from './me-features';
 export { listUserDevices, revokeDevice, toDeviceDto } from './devices.service';
 export { Device } from './models';
 export { clearSignInLock, confirmAccountPassword, signInLocks } from './sign-in-lock';

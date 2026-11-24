@@ -178,6 +178,7 @@ export default defineAppModule({
     {
       title: 'Course marketplace',
       path: '/market',
+      personas: ['learner', 'student', 'parent'],
       group: 'marketplace',
       titleKey: 'nav.marketplace.market',
       tab: { learner: 1 },
@@ -188,6 +189,7 @@ export default defineAppModule({
     {
       title: 'My learning',
       path: '/market/learning',
+      personas: ['learner', 'student'],
       group: 'marketplace',
       titleKey: 'nav.marketplace.learning',
       tab: { learner: 2 },
@@ -197,6 +199,7 @@ export default defineAppModule({
     {
       title: 'Cart',
       path: '/market/cart',
+      personas: ['learner'],
       group: 'marketplace',
       titleKey: 'nav.marketplace.cart',
       tab: { learner: 4 },
@@ -206,6 +209,7 @@ export default defineAppModule({
     {
       title: 'Wishlist',
       path: '/market/wishlist',
+      personas: ['learner'],
       group: 'marketplace',
       titleKey: 'nav.marketplace.wishlist',
       tab: { learner: 3 },
@@ -215,6 +219,7 @@ export default defineAppModule({
     {
       title: 'Purchase history',
       path: '/market/orders',
+      personas: ['learner', 'student', 'parent'],
       group: 'marketplace',
       titleKey: 'nav.marketplace.orders',
       icon: receiptOutline,
@@ -223,6 +228,7 @@ export default defineAppModule({
     {
       title: 'Teach on the marketplace',
       path: '/market/studio/instructor',
+      personas: ['learner'],
       group: 'marketplace',
       titleKey: 'nav.marketplace.teach',
       icon: easelOutline,

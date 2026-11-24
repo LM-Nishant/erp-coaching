@@ -1,10 +1,8 @@
 <template>
-  <AppPage title="My courses" :on-refresh="load">
+  <AppPage :title="t('lms.library.title')" :on-refresh="load">
     <template v-if="isStaff">
-      <p class="muted">
-        Staff manage lectures and notes from Learning content; use Preview there to check playback.
-      </p>
-      <ion-button router-link="/lms/content">Open learning content</ion-button>
+      <p class="muted">{{ t('lms.library.staffHint') }}</p>
+      <ion-button router-link="/lms/content">{{ t('lms.library.openContent') }}</ion-button>
     </template>
 
     <template v-else-if="isParent">
@@ -13,25 +11,24 @@
           ><ion-label>{{ c.student.name }}</ion-label></ion-list-header
         >
         <CourseCard v-for="course in c.courses" :key="course.id" :course="course" :link="false" />
-        <p v-if="!c.courses.length" class="muted ion-padding-horizontal">No courses yet.</p>
+        <p v-if="!c.courses.length" class="muted ion-padding-horizontal">{{ t('lms.library.noCourses') }}</p>
       </div>
-      <p v-if="!loading && !children.length" class="muted">No linked students.</p>
+      <p v-if="!loading && !children.length" class="muted">{{ t('lms.library.noChildren') }}</p>
     </template>
 
     <template v-else>
-      <ion-button v-if="offline" fill="outline" size="small" router-link="/lms/offline"
-        >Offline lectures</ion-button
-      >
+      <ion-button v-if="offline" fill="outline" size="small" router-link="/lms/offline">{{
+        t('lms.offline.title')
+      }}</ion-button>
       <CourseCard v-for="course in courses" :key="course.id" :course="course" :link="true" />
-      <p v-if="!loading && !courses.length" class="muted">
-        You are not enrolled in any course with learning content yet.
-      </p>
+      <p v-if="!loading && !courses.length" class="muted">{{ t('lms.library.notEnrolled') }}</p>
     </template>
   </AppPage>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { IonButton, IonLabel, IonListHeader, onIonViewWillEnter } from '@ionic/vue';
 import type { LmsLibraryCourseDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
@@ -41,6 +38,7 @@ import CourseCard from './CourseCard.vue';
 import { offlineSupported, syncOffline } from './offline-store';
 import { useLmsRole } from './roles';
 
+const { t } = useI18n();
 const { isStaff, isParent } = useLmsRole();
 const courses = ref<LmsLibraryCourseDto[]>([]);
 const children = ref<ChildCourses[]>([]);

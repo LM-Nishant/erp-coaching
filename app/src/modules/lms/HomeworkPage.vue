@@ -5,14 +5,19 @@
         v-if="isStaff"
         v-can="'lms-assignments.edit'"
         router-link="/lms/homework/new"
-        aria-label="New homework"
+        :aria-label="t('lms.homework.new')"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
 
     <ion-item v-if="isStaff">
-      <ion-select v-model="batchId" label="Batch" label-placement="stacked" interface="popover">
-        <ion-select-option :value="null">All batches</ion-select-option>
+      <ion-select
+        v-model="batchId"
+        :label="t('lms.homework.batch')"
+        label-placement="stacked"
+        interface="popover"
+      >
+        <ion-select-option :value="null">{{ t('lms.homework.allBatches') }}</ion-select-option>
         <ion-select-option v-for="b in batches" :key="b.id" :value="b.id">{{ b.name }}</ion-select-option>
       </ion-select>
     </ion-item>
@@ -40,10 +45,18 @@
             {{ t('lms.homework.dueAt', { date: formatDateTime(a.dueAt) }) }}
           </p>
           <p v-if="a.counts">
-            {{ a.counts.submitted }}/{{ a.counts.students }} submitted · {{ a.counts.graded }} graded
+            {{
+              t('lms.homework.counts', {
+                submitted: a.counts.submitted,
+                students: a.counts.students,
+                graded: a.counts.graded,
+              })
+            }}
           </p>
         </ion-label>
-        <ion-badge v-if="isStaff" slot="end" :color="statusColor[a.status]">{{ a.status }}</ion-badge>
+        <ion-badge v-if="isStaff" slot="end" :color="statusColor[a.status]">{{
+          t(`common.status.${a.status}`)
+        }}</ion-badge>
         <StatusChip v-else slot="end" :label="badge(a).text" :tone="badge(a).tone" />
       </ion-item>
     </ion-list>

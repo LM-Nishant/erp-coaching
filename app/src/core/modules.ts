@@ -100,6 +100,11 @@ export interface DashboardWidget<S extends WidgetSlot = WidgetSlot> {
   permission?: PermissionKey;
   /** Hidden when the institute's plan doesn't enable this module id. */
   planModule?: string;
+  /**
+   * Only for these personas. Use on the shared `home` slot when a persona's own home (`teacher-home`…) already
+   * shows the same card, so it isn't shown twice.
+   */
+  personas?: readonly Persona[];
   /** Lower comes first. Default 100. */
   order?: number;
   /** `full` spans the whole row on wide screens; default `half`. */
@@ -114,6 +119,10 @@ export function defineAppModule(m: AppModule): AppModule {
 export const fitsPersona = (item: MenuItem, roles: readonly string[] = [], persona?: Persona) =>
   (!item.roles || item.roles.some((r) => roles.includes(r))) &&
   (!item.personas || !persona || item.personas.includes(persona));
+
+/** Whether a dashboard widget is for `persona` (`DashboardWidget.personas`); unknown persona = yes. */
+export const widgetFitsPersona = (w: Pick<DashboardWidget, 'personas'>, persona?: Persona) =>
+  !w.personas || !persona || w.personas.includes(persona);
 
 /** Bottom tabs of `persona` among already-filtered menu `items`: at most `MAX_TABS - 1`, "More" comes after. */
 export function tabsFor(items: readonly MenuItem[], persona: Persona): MenuItem[] {

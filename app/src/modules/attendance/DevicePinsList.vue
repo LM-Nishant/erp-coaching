@@ -76,6 +76,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDateTime } from '@/core/format';
 import { computed, ref, watch } from 'vue';
 import {
   alertController,
@@ -133,7 +134,7 @@ const filtered = computed(() => {
 const shown = computed(() => filtered.value.slice(0, limit.value));
 watch(search, () => (limit.value = PAGE));
 
-const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '');
+const when = (iso: string | null) => (iso ? formatDateTime(iso) : '');
 const mapped = (p: DevicePinDto) => !!(p.student || p.employee);
 const deviceNames = (ids: number[]) =>
   ids

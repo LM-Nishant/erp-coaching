@@ -23,7 +23,8 @@ export function useMenu() {
         if (auth.offline && !worksOffline(router.resolve(item.path))) return false;
         if (item.visible && !item.visible()) return false;
         if (item.superAdmin) return auth.isPlatformAdmin;
-        if (auth.isPlatformAdmin) return !item.permission;
+        if (auth.isPlatformAdmin)
+          return !item.permission && fitsPersona(item, auth.me?.roles, auth.persona ?? undefined);
         if (item.permission && !auth.can(item.permission)) return false;
         if (!fitsPersona(item, auth.me?.roles, auth.persona ?? undefined)) return false;
         return !item.planModule || auth.moduleEnabled(item.planModule);

@@ -7,6 +7,7 @@ import {
   timeOutline,
 } from 'ionicons/icons';
 import { defineAppModule } from '@/core/modules';
+import { useAuthStore } from '@/stores/auth';
 
 export default defineAppModule({
   id: 'hr',
@@ -112,6 +113,7 @@ export default defineAppModule({
       titleKey: 'nav.hr.me',
       icon: personCircleOutline,
       permission: 'hr-self-service.view',
+      visible: () => useAuthStore().hasStaffProfile,
       planModule: 'hr',
       order: 90,
     },

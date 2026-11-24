@@ -126,7 +126,7 @@
             {{ d.name }} <ion-note>{{ d.serial }}</ion-note>
             <p>
               {{ d.protocol === 'adms' ? 'ZKTeco/eSSL push' : 'Punch API' }} · {{ branchName(d.branchId) }} ·
-              last seen {{ d.lastSeenAt ? new Date(d.lastSeenAt).toLocaleString() : 'never' }}
+              last seen {{ d.lastSeenAt ? formatDateTime(d.lastSeenAt) : 'never' }}
             </p>
             <p v-if="d.lastError" class="ion-text-wrap device-error">{{ d.lastError }}</p>
           </ion-label>
@@ -152,7 +152,7 @@
         <ion-list-header><ion-label>Recent punches</ion-label></ion-list-header>
         <ion-item v-for="ev in events" :key="ev.id">
           <ion-label>
-            {{ ev.enrolmentId }} · {{ new Date(ev.punchedAt).toLocaleString() }}
+            {{ ev.enrolmentId }} · {{ formatDateTime(ev.punchedAt) }}
             <p>
               {{ ev.deviceSerial }}<span v-if="ev.note"> · {{ ev.note }}</span>
             </p>
@@ -176,6 +176,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDateTime } from '@/core/format';
 import { onMounted, ref, watch } from 'vue';
 import {
   alertController,

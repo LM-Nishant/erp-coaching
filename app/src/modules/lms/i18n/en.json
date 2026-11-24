@@ -125,7 +125,11 @@
       "pending": "To do",
       "closed": "Closed",
       "late": "Late"
-    }
+    },
+    "new": "New homework",
+    "batch": "Batch",
+    "allBatches": "All batches",
+    "counts": "{submitted}/{students} submitted · {graded} graded"
   },
   "player": {
     "controls": "Playback controls",
@@ -143,5 +147,13 @@
     "meta": "{size} · expires {date}",
     "empty": "No lectures saved",
     "emptyHint": "Tap “Save offline” on a lecture to watch it without internet."
+  },
+  "library": {
+    "title": "My courses",
+    "staffHint": "Staff manage lectures and notes from Learning content; use Preview there to check playback.",
+    "openContent": "Open learning content",
+    "noCourses": "No courses yet.",
+    "noChildren": "No linked students.",
+    "notEnrolled": "You are not enrolled in any course with learning content yet."
   }
 }

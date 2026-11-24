@@ -3,61 +3,56 @@
   <StudentHome v-if="auth.persona === 'student'" />
   <AppPage v-else :title="pageTitle" :on-refresh="refresh">
     <!-- The teacher persona gets a "Today" home (teacher-home widgets) instead of plan and usage numbers. -->
-    <TeacherHome v-if="auth.persona === 'teacher'" :key="refreshKey" />
-    <h2 v-else class="hello">Hello, {{ auth.me?.user.name }}</h2>
+    <TeacherHome v-if="auth.persona === 'teacher'" :key="`teacher-${refreshKey}`" />
+    <template v-else>
+      <h2 class="hello">{{ t('dashboard.home.hello', { name: auth.me?.user.name }) }}</h2>
 
-    <template v-if="auth.persona === 'teacher'" />
-    <template v-else-if="auth.isPlatformAdmin">
-      <ion-grid v-if="platform">
+      <ion-grid v-if="auth.isPlatformAdmin && platform">
         <ion-row>
           <ion-col v-for="s in platform.institutesByStatus" :key="s.status" size="6" size-md="3">
-            <StatCard :label="`${s.status} institutes`" :value="s.count" />
+            <StatCard :label="institutesLabel(s.status)" :value="s.count" />
           </ion-col>
-          <ion-col size="6" size-md="3"><StatCard label="Institute users" :value="platform.users" /></ion-col>
-          <ion-col size="6" size-md="3"><StatCard label="Branches" :value="platform.branches" /></ion-col>
+          <ion-col size="6" size-md="3">
+            <StatCard :label="t('dashboard.home.platform.users')" :value="platform.users" />
+          </ion-col>
+          <ion-col size="6" size-md="3">
+            <StatCard :label="t('dashboard.home.platform.branches')" :value="platform.branches" />
+          </ion-col>
         </ion-row>
       </ion-grid>
-    </template>
 
-    <template v-else>
-      <p class="muted cap">
-        {{ auth.me?.institute?.name }} · {{ auth.me?.roles.join(', ').replace(/-/g, ' ') }}
-      </p>
-      <StaffHome v-if="auth.persona === 'staff'" :key="refreshKey" />
-      <ion-card v-else>
-        <ion-card-content>
-          Your branches: {{ auth.me?.branches.map((b) => b.name).join(', ') || '—' }}
-        </ion-card-content>
-      </ion-card>
+      <template v-else-if="!auth.isPlatformAdmin">
+        <p class="muted">{{ [auth.me?.institute?.name, roles].filter(Boolean).join(' · ') }}</p>
+        <StaffHome v-if="auth.persona === 'staff'" :key="`staff-${refreshKey}`" />
+        <p v-else class="muted">
+          {{
+            t('dashboard.home.yourBranches', {
+              names: auth.me?.branches.map((b) => b.name).join(', ') || '—',
+            })
+          }}
+        </p>
+      </template>
     </template>
 
     <!-- Module widgets for this audience; `:key` remounts them (and so reloads them) on refresh. -->
-    <div v-if="widgets.length" :key="refreshKey" class="widgets">
-      <ion-card v-for="w in widgets" :key="w.id" :class="['widget', w.size ?? 'half']">
-        <ion-card-header>
-          <ion-card-title>{{ w.title }}</ion-card-title>
-        </ion-card-header>
-        <ion-card-content>
-          <component :is="w.component" />
-        </ion-card-content>
-      </ion-card>
-    </div>
+    <WidgetGrid :key="`widgets-${refreshKey}`" :widgets="widgets" class="shared-widgets" />
   </AppPage>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
-import { IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonCol, IonGrid, IonRow } from '@ionic/vue';
+import { IonCol, IonGrid, IonRow } from '@ionic/vue';
 import AppPage from '@/components/AppPage.vue';
 import StatCard from '@/components/StatCard.vue';
 import { api } from '@/core/api';
-import { widgetsFor } from '@/core/modules';
+import { widgetFitsPersona, widgetsFor } from '@/core/modules';
+import { roleNames } from '@/core/roles';
 import { useAuthStore } from '@/stores/auth';
 import StaffHome from './StaffHome.vue';
 import StudentHome from './StudentHome.vue';
 import TeacherHome from './TeacherHome.vue';
+import WidgetGrid from './WidgetGrid.vue';
 
 interface PlatformStats {
   institutesByStatus: { status: string; count: number }[];
@@ -66,15 +61,24 @@ interface PlatformStats {
 }
 
 const auth = useAuthStore();
-const { t } = useI18n();
-const pageTitle = computed(() => (auth.persona === 'teacher' ? t('dashboard.teacher.title') : 'Dashboard'));
-const route = useRoute();
+const { t, te } = useI18n();
+const pageTitle = computed(() =>
+  auth.persona === 'teacher' ? t('dashboard.teacher.title') : t('dashboard.home.title'),
+);
+const roles = computed(() => roleNames(auth.me?.roles, t));
+const institutesLabel = (status: string) => {
+  const key = `dashboard.home.platform.statuses.${status}`;
+  return t('dashboard.home.platform.institutes', { status: te(key) ? t(key) : status });
+};
 const platform = ref<PlatformStats | null>(null);
 
 const refreshKey = ref(0);
 const widgets = computed(() =>
   widgetsFor(auth.isPlatformAdmin ? 'platform-home' : 'home').filter(
-    (w) => (!w.permission || auth.can(w.permission)) && (!w.planModule || auth.moduleEnabled(w.planModule)),
+    (w) =>
+      (!w.permission || auth.can(w.permission)) &&
+      (!w.planModule || auth.moduleEnabled(w.planModule)) &&
+      widgetFitsPersona(w, auth.persona ?? undefined),
   ),
 );
 
@@ -90,27 +94,16 @@ async function refresh() {
 }
 
 onMounted(load);
-// Also another profile on the same number (siblings usually share the institute).
-watch(() => [route.query.b, auth.me?.user.id, auth.me?.institute?.id, auth.activeBranchId], refresh);
+// Another branch, institute or profile on the same number (siblings usually share the institute). Only these
+// ids, not the route: a getter returning a new array would reload every widget whenever the user leaves home.
+watch(() => `${auth.me?.user.id}|${auth.me?.institute?.id}|${auth.activeBranchId}`, refresh);
 </script>
 
 <style scoped>
 .hello {
   margin-top: 0;
 }
-.cap {
-  text-transform: capitalize;
-}
-.widgets {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.widget.full {
-  grid-column: 1 / -1;
-}
-@media (max-width: 768px) {
-  .widgets {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.shared-widgets {
+  margin-top: 12px;
 }
 </style>

@@ -1,4 +1,19 @@
 {
+  "home": {
+    "title": "होम",
+    "hello": "नमस्ते, {name}",
+    "yourBranches": "आपकी शाखाएँ: {names}",
+    "platform": {
+      "institutes": "{status} संस्थान",
+      "statuses": {
+        "active": "सक्रिय",
+        "inactive": "निष्क्रिय",
+        "suspended": "निलंबित"
+      },
+      "users": "संस्थान के यूज़र",
+      "branches": "शाखाएँ"
+    }
+  },
   "staff": {
     "quickActions": "तुरंत करें",
     "actions": {

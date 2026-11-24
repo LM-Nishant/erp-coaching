@@ -59,7 +59,7 @@
           <span>Order</span><span>{{ order.number }}</span>
         </div>
         <div class="line">
-          <span>Date</span><span>{{ new Date(order.paidAt ?? order.createdAt).toLocaleString() }}</span>
+          <span>Date</span><span>{{ formatDateTime(order.paidAt ?? order.createdAt) }}</span>
         </div>
         <div class="line">
           <span>Billed to</span><span>{{ order.buyer.name }}</span>
@@ -105,6 +105,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDateTime } from '@/core/format';
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { IonButton, IonCard, IonCardContent, IonSpinner } from '@ionic/vue';

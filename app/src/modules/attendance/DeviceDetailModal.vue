@@ -106,6 +106,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDateTime } from '@/core/format';
 import { computed, ref, watch } from 'vue';
 import {
   alertController,
@@ -156,7 +157,7 @@ const pushUrl = `${API_URL}/api/attendance/public/device-events`;
 const commands = ref<DeviceCommandDto[]>([]);
 const busy = ref(false);
 
-const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : null);
+const when = (iso: string | null) => (iso ? formatDateTime(iso) : null);
 
 const infoRows = computed(() => {
   const i = props.device?.info;

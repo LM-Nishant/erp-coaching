@@ -7,6 +7,7 @@ import {
   walletOutline,
 } from 'ionicons/icons';
 import { defineAppModule } from '@/core/modules';
+import { useAuthStore } from '@/stores/auth';
 
 export default defineAppModule({
   id: 'payroll',
@@ -128,6 +129,7 @@ export default defineAppModule({
       titleKey: 'nav.payroll.payslips',
       icon: receiptOutline,
       permission: 'hr-self-service.view',
+      visible: () => useAuthStore().hasStaffProfile,
       planModule: 'payroll',
       order: 91,
     },

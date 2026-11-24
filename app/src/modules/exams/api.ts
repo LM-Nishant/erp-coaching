@@ -1,3 +1,4 @@
+import { formatDateTime as coreFormatDateTime } from '@/core/format';
 import type {
   AddExamQuestionsInput,
   AiAvailabilityDto,
@@ -167,6 +168,6 @@ export const REVISION_LABELS: Record<MarkRevisionKind, string> = {
   unpublished: 'Results unpublished',
 };
 
-export const formatDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString() : '—');
+export const formatDate = (iso: string | null | undefined) => (iso ? coreFormatDateTime(iso) : '—');
 export const fmtMarks = (n: number | null | undefined) =>
   n === null || n === undefined ? '—' : Number.isInteger(n) ? String(n) : n.toFixed(2);

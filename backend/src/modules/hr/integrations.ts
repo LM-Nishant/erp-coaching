@@ -1,9 +1,11 @@
 import { Forbidden } from '../../shared/errors';
 import { requireTenantContext } from '../../shared/context';
 import { setStaffPunchProvider } from '../attendance/api';
+import { registerMeFeature } from '../authentication/api';
 import { isModuleEnabled, registerUsageCounter } from '../subscriptions/api';
 import {
   applyBiometricPunches,
+  hasStaffProfile,
   employeeRepo,
   employeesByPins,
   setEmployeePin,
@@ -16,6 +18,9 @@ const hrEnabled = () => isModuleEnabled(requireTenantContext().instituteId, 'hr'
 export function registerHrIntegrations(): void {
   // Billable teacher seats use the same rule as the `maxTeachers` plan-limit check.
   registerUsageCounter('teachers', () => teacherCount());
+
+  // The app shows "My leave & attendance" and "My payslips" only to logins linked to an employee.
+  registerMeFeature('staff-profile', async () => (await hrEnabled()) && hasStaffProfile());
 
   // Staff punches on the attendance module's biometric devices become staff attendance.
   setStaffPunchProvider({

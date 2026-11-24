@@ -4,7 +4,7 @@
       <ion-item v-for="o in orders" :key="o.id" :router-link="`/market/orders/${o.id}`" detail>
         <ion-label>
           <h3>{{ o.items.map((i) => i.title).join(', ') }}</h3>
-          <p>{{ o.number }} · {{ new Date(o.createdAt).toLocaleDateString() }}</p>
+          <p>{{ o.number }} · {{ formatDate(o.createdAt) }}</p>
         </ion-label>
         <div slot="end" class="end">
           <strong>{{ rupees(o.totalPaise) }}</strong>
@@ -17,6 +17,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDate } from '@/core/format';
 import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { IonBadge, IonItem, IonLabel, IonList } from '@ionic/vue';

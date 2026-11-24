@@ -87,5 +87,39 @@
     "closed": "Ended",
     "published": "Results out",
     "cancelled": "Cancelled"
+  },
+  "my": {
+    "title": "My exams",
+    "minutes": "{n} min",
+    "marks": "{n} marks",
+    "questions": "{n} question | {n} questions",
+    "resume": "Resume",
+    "start": "Start",
+    "viewResult": "View result",
+    "empty": "No exams have been scheduled for you yet.",
+    "status": {
+      "resultPublished": "Result published",
+      "submitted": "Submitted · awaiting result",
+      "autoSubmitted": "Auto-submitted · awaiting result",
+      "live": "Live",
+      "opens": "Opens {date}",
+      "missed": "Missed"
+    },
+    "confirm": {
+      "header": "Instructions",
+      "duration": "Duration: {n} minutes. Total marks: {marks}.",
+      "finishBy": "The exam must be finished by {date}; it is submitted automatically when time runs out.",
+      "negative": "Wrong answers may carry negative marks.",
+      "start": "Start exam"
+    }
+  },
+  "results": {
+    "title": "Exam results",
+    "score": "Score {got} / {max} ({pct}%)",
+    "rank": "Rank {n}",
+    "percentile": "{n} percentile",
+    "passed": "Passed",
+    "notPassed": "Not passed",
+    "empty": "No results have been published yet."
   }
 }
