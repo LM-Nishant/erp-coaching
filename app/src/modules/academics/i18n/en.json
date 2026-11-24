@@ -41,5 +41,37 @@
     "create": "Create batch",
     "createWithout": "Create without teachers",
     "created": "{name} created. Now add students."
+  },
+  "timetable": {
+    "title": "My timetable",
+    "prevWeek": "Previous week",
+    "nextWeek": "Next week",
+    "rescheduled": "rescheduled",
+    "youSubstitute": "you substitute",
+    "substitute": "substitute",
+    "noRoom": "Online / TBA",
+    "noClasses": "No classes"
+  },
+  "syllabus": {
+    "title": "Syllabus",
+    "addSubject": "Add subject",
+    "course": "Course",
+    "allSubjects": "All subjects",
+    "addTopic": "+ Topic",
+    "rename": "Rename {name}",
+    "delete": "Delete {name}",
+    "minutes": "{n} min",
+    "noChapters": "No chapters yet.",
+    "addChapter": "Add chapter",
+    "noSubjects": "No subjects yet.",
+    "newSubject": "New subject",
+    "name": "Name",
+    "code": "Code (optional)",
+    "newChapter": "New chapter",
+    "chapterName": "Chapter name",
+    "renameChapter": "Rename chapter",
+    "newTopic": "New topic",
+    "topicName": "Topic name",
+    "plannedMinutes": "Planned minutes (optional)"
   }
 }

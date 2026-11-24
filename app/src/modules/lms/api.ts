@@ -1,3 +1,4 @@
+import { formatDateTime } from '@/core/format';
 import type {
   LmsAssignmentDto,
   LmsAssignmentInput,
@@ -118,4 +119,4 @@ export function formatBytes(n: number) {
   return `${(n / 1024 ** 3).toFixed(2)} GB`;
 }
 
-export const fmtDateTime = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString() : '—');
+export const fmtDateTime = (iso: string | null | undefined) => formatDateTime(iso);

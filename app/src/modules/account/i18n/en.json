@@ -1,0 +1,20 @@
+{
+  "devices": {
+    "title": "My devices",
+    "intro": "Signing in on a new device requires an OTP, and you can be signed in on a limited number of devices at a time. Sign out of devices you no longer use; their downloaded lectures are removed.",
+    "unlockWith": "Unlock with {method}",
+    "unlockHint": "Use {method} instead of your password when the app is locked on this device.",
+    "device": "Device",
+    "thisDevice": "This device",
+    "signedInSeen": "Signed in · last seen {when}",
+    "signedOutSeen": "Signed out · last seen {when}",
+    "biometricOn": " · biometric unlock on",
+    "signOut": "Sign out",
+    "confirmTitle": "Sign out this device?",
+    "confirmMessage": "{name} will be signed out at once and its downloaded lectures removed.",
+    "theDevice": "The device",
+    "signedOut": "Device signed out",
+    "unlockOn": "{method} unlock is on",
+    "unlockOff": "{method} unlock is off"
+  }
+}

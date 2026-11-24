@@ -16,6 +16,7 @@ import { randomDigits, randomToken, sha256, safeEqual } from '../../infrastructu
 import { captureError } from '../../infrastructure/error-tracking';
 import { getDefaultMessagingProvider, otpSms } from '../../infrastructure/messaging';
 import { logger } from '../../infrastructure/logger';
+import { meFeatures } from './me-features';
 import { hashPassword, verifyPassword } from '../../infrastructure/password';
 import { windowCounter } from '../../infrastructure/rate-store';
 import { AppError, BadRequest, Forbidden, Unauthorized, NotFound } from '../../shared/errors';
@@ -822,6 +823,7 @@ export async function buildMe(): Promise<MeDto> {
   const device = ctx.deviceId && !ctx.impersonatorId ? await Device.findByPk(ctx.deviceId) : null;
   const mobile = contactMobile(user);
   const profileCount = (await numberAccounts(mobile)).length;
+  const features = ctx.instituteId && !isPlatformAdmin ? await meFeatures() : [];
   return {
     user: {
       id: user.id,
@@ -846,6 +848,7 @@ export async function buildMe(): Promise<MeDto> {
       idleTimeoutMinutes: ctx.impersonatorId ? 0 : await getIdleTimeoutMinutes(ctx.instituteId ?? null),
       biometricUnlock: !!device?.unlockKeyHash,
     },
+    features,
   };
 }
 

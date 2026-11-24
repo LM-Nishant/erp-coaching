@@ -47,5 +47,53 @@
     "collectFirst": "पहली फीस लें",
     "openProfile": "प्रोफ़ाइल खोलें",
     "another": "एक और छात्र जोड़ें"
+  },
+  "profile": {
+    "title": "मेरी प्रोफ़ाइल",
+    "notFound": "इस संस्थान में आपके खाते से कोई छात्र प्रोफ़ाइल जुड़ी नहीं है।",
+    "roll": "रोल नं. {roll}",
+    "status": {
+      "active": "सक्रिय",
+      "suspended": "निलंबित",
+      "discontinued": "पढ़ाई बंद",
+      "inactive": "निष्क्रिय"
+    },
+    "relation": {
+      "father": "पिता",
+      "mother": "माता",
+      "guardian": "अभिभावक",
+      "sibling": "भाई/बहन",
+      "relative": "रिश्तेदार",
+      "other": "अन्य"
+    },
+    "personal": "निजी जानकारी",
+    "email": "ईमेल",
+    "dateOfBirth": "जन्म तिथि",
+    "gender": "लिंग",
+    "genders": {
+      "male": "पुरुष",
+      "female": "महिला",
+      "other": "अन्य"
+    },
+    "address": "पता",
+    "city": "शहर",
+    "state": "राज्य",
+    "pincode": "पिनकोड",
+    "school": "स्कूल / कॉलेज",
+    "classGrade": "कक्षा",
+    "targetExam": "लक्ष्य परीक्षा",
+    "save": "सेव करें",
+    "documents": "दस्तावेज़",
+    "docType": {
+      "photo": "फ़ोटो",
+      "id_proof": "पहचान पत्र",
+      "address_proof": "पते का प्रमाण",
+      "marksheet": "मार्कशीट",
+      "certificate": "प्रमाण पत्र",
+      "other": "अन्य"
+    },
+    "noDocuments": "कोई दस्तावेज़ अपलोड नहीं हुआ।",
+    "updated": "प्रोफ़ाइल अपडेट हो गई",
+    "uploaded": "अपलोड हो गया"
   }
 }

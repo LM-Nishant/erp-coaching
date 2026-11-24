@@ -47,5 +47,53 @@
     "collectFirst": "Collect first fee",
     "openProfile": "Open profile",
     "another": "Add another student"
+  },
+  "profile": {
+    "title": "My profile",
+    "notFound": "No student profile is linked to your account in this institute.",
+    "roll": "Roll {roll}",
+    "status": {
+      "active": "Active",
+      "suspended": "Suspended",
+      "discontinued": "Discontinued",
+      "inactive": "Inactive"
+    },
+    "relation": {
+      "father": "Father",
+      "mother": "Mother",
+      "guardian": "Guardian",
+      "sibling": "Sibling",
+      "relative": "Relative",
+      "other": "Other"
+    },
+    "personal": "Personal details",
+    "email": "Email",
+    "dateOfBirth": "Date of birth",
+    "gender": "Gender",
+    "genders": {
+      "male": "Male",
+      "female": "Female",
+      "other": "Other"
+    },
+    "address": "Address",
+    "city": "City",
+    "state": "State",
+    "pincode": "Pincode",
+    "school": "School / college",
+    "classGrade": "Class / grade",
+    "targetExam": "Target exam",
+    "save": "Save",
+    "documents": "Documents",
+    "docType": {
+      "photo": "Photo",
+      "id_proof": "Id proof",
+      "address_proof": "Address proof",
+      "marksheet": "Marksheet",
+      "certificate": "Certificate",
+      "other": "Other"
+    },
+    "noDocuments": "No documents uploaded.",
+    "updated": "Profile updated",
+    "uploaded": "Uploaded"
   }
 }

@@ -83,7 +83,7 @@
           <ion-list lines="inset">
             <ion-item v-for="i in a.instalments ?? []" :key="i.id">
               <ion-label>
-                <h3>{{ i.label }}</h3>
+                <h3>{{ instalmentLabel(i.label) }}</h3>
                 <p>
                   {{ t('fees.my.dueOn', { date: formatDate(i.dueDate) }) }} ·
                   {{ formatMoney(i.amount + i.lateFee)
@@ -162,8 +162,10 @@
     <ion-modal :is-open="!!payFor" :focus-trap="!vendorOpen" @did-dismiss="closePay">
       <ion-header>
         <ion-toolbar>
-          <ion-title>Pay fees</ion-title>
-          <ion-buttons slot="end"><ion-button @click="closePay">Close</ion-button></ion-buttons>
+          <ion-title>{{ t('fees.my.pay.title') }}</ion-title>
+          <ion-buttons slot="end"
+            ><ion-button @click="closePay">{{ t('common.actions.close') }}</ion-button></ion-buttons
+          >
         </ion-toolbar>
       </ion-header>
       <ion-content v-if="payFor" class="ion-padding">
@@ -172,60 +174,66 @@
           <ion-list>
             <ion-radio-group v-model="payChoice">
               <ion-item v-if="nextDue">
-                <ion-radio value="next">Next instalment · {{ formatMoney(nextDue) }}</ion-radio>
+                <ion-radio value="next">{{
+                  t('fees.my.pay.next', { amount: formatMoney(nextDue) })
+                }}</ion-radio>
               </ion-item>
               <ion-item
-                ><ion-radio value="full"
-                  >Full balance · {{ formatMoney(payFor.balance) }}</ion-radio
-                ></ion-item
+                ><ion-radio value="full">{{
+                  t('fees.my.pay.full', { amount: formatMoney(payFor.balance) })
+                }}</ion-radio></ion-item
               >
-              <ion-item><ion-radio value="custom">Other amount</ion-radio></ion-item>
+              <ion-item
+                ><ion-radio value="custom">{{ t('fees.my.pay.other') }}</ion-radio></ion-item
+              >
             </ion-radio-group>
             <ion-item v-if="payChoice === 'custom'">
-              <ion-input v-model="customAmount" type="number" label="Amount (₹)" label-placement="stacked" />
+              <ion-input
+                v-model="customAmount"
+                type="number"
+                :label="t('fees.my.pay.amount')"
+                label-placement="stacked"
+              />
             </ion-item>
             <ion-item v-if="(data?.gateways.length ?? 0) > 1">
-              <ion-select v-model="gateway" label="Pay with" label-placement="stacked">
+              <ion-select v-model="gateway" :label="t('fees.my.pay.with')" label-placement="stacked">
                 <ion-select-option v-for="g in data?.gateways" :key="g" :value="g">{{
                   GATEWAY_LABELS[g] ?? g
                 }}</ion-select-option>
               </ion-select>
             </ion-item>
           </ion-list>
-          <ion-button expand="block" :disabled="busy" @click="checkout"
-            >Proceed to pay {{ formatMoney(payAmount) }}</ion-button
-          >
+          <ion-button expand="block" :disabled="busy" @click="checkout">{{
+            t('fees.my.pay.proceed', { amount: formatMoney(payAmount) })
+          }}</ion-button>
         </template>
         <template v-else-if="order.gateway === 'mock'">
-          <p class="muted">Test gateway. No real money moves. Choose how this checkout ends.</p>
+          <p class="muted">{{ t('fees.my.pay.testGateway') }}</p>
           <h2>{{ formatMoney(order.amount) }}</h2>
-          <p class="muted selectable">Order {{ order.gatewayOrderId }}</p>
-          <ion-button expand="block" color="success" :disabled="busy" @click="complete('success')"
-            >Pay now</ion-button
-          >
+          <p class="muted selectable">{{ t('fees.my.pay.order', { id: order.gatewayOrderId }) }}</p>
+          <ion-button expand="block" color="success" :disabled="busy" @click="complete('success')">{{
+            t('fees.my.pay.payNow')
+          }}</ion-button>
           <ion-button
             expand="block"
             fill="outline"
             color="danger"
             :disabled="busy"
             @click="complete('failed')"
-            >Simulate failure</ion-button
+            >{{ t('fees.my.pay.simulateFailure') }}</ion-button
           >
         </template>
         <template v-else>
-          <p>
-            Pay in the {{ GATEWAY_LABELS[order.gateway] ?? order.gateway }} checkout. If it closed before you
-            finished, open it again.
-          </p>
-          <ion-button expand="block" :disabled="busy || vendorOpen" @click="launch(order)"
-            >Open {{ GATEWAY_LABELS[order.gateway] ?? order.gateway }}</ion-button
-          >
+          <p>{{ t('fees.my.pay.payIn', { gateway: GATEWAY_LABELS[order.gateway] ?? order.gateway }) }}</p>
+          <ion-button expand="block" :disabled="busy || vendorOpen" @click="launch(order)">{{
+            t('fees.my.pay.open', { gateway: GATEWAY_LABELS[order.gateway] ?? order.gateway })
+          }}</ion-button>
           <ion-button
             expand="block"
             fill="outline"
             :disabled="busy || vendorOpen"
             @click="refreshPayment(order.paymentId, true)"
-            >I've paid, check status</ion-button
+            >{{ t('fees.my.pay.checkPaid') }}</ion-button
           >
         </template>
       </ion-content>
@@ -286,6 +294,11 @@ const RETURN_PATH = '/my-fees';
 const route = useRoute();
 const router = useRouter();
 const { t } = useI18n();
+/** The default instalment names ("Instalment 2") in the user's language; custom names as typed. */
+const instalmentLabel = (label: string) => {
+  const m = /^Instalment (\d+)$/.exec(label);
+  return m ? t('fees.my.instalment', { n: m[1] }) : label;
+};
 
 const PAYMENT_TONE: Record<string, 'success' | 'warning' | 'danger' | 'medium'> = {
   successful: 'success',
@@ -360,7 +373,7 @@ function closePay() {
 async function checkout() {
   if (!payFor.value) return;
   if (payAmount.value <= 0) {
-    void toastError(new Error('Enter an amount'));
+    void toastError(new Error(t('fees.my.pay.enterAmount')));
     return;
   }
   busy.value = true;
@@ -411,15 +424,15 @@ async function settle(id: number, wait: boolean) {
         )
       : await feesApi.mySync(id);
     if (payment.status === 'successful') {
-      await toast(`Payment successful. Receipt ${payment.receiptNumber ?? ''}`);
+      await toast(t('fees.my.toast.success', { receipt: payment.receiptNumber ?? '' }));
       closePay();
     } else if (payment.status === 'failed') {
-      await toast('Payment failed. You can try again.', 'danger');
+      await toast(t('fees.my.toast.failed'), 'danger');
       if (order.value?.paymentId === id) order.value = null;
     } else if (payment.status !== 'pending') {
-      await toast(`Payment ${payment.status.replace('_', ' ')}`, 'medium');
+      await toast(t(`fees.my.toast.status.${payment.status}`), 'medium');
     } else if (wait) {
-      await toast('The payment is still pending. Check again in a moment.', 'medium');
+      await toast(t('fees.my.toast.stillPending'), 'medium');
     }
   } catch (e) {
     void toastError(e);
@@ -435,10 +448,10 @@ async function complete(outcome: 'success' | 'failed') {
   try {
     const r = await feesApi.myMockComplete(order.value.paymentId, outcome);
     if (r.payment.status === 'successful') {
-      await toast(`Payment successful. Receipt ${r.payment.receiptNumber ?? ''}`);
+      await toast(t('fees.my.toast.success', { receipt: r.payment.receiptNumber ?? '' }));
       closePay();
     } else {
-      await toast('Payment failed. You can try again.', 'danger');
+      await toast(t('fees.my.toast.failed'), 'danger');
       order.value = null;
     }
     await load();
@@ -453,7 +466,10 @@ async function refreshPayment(id: number, closeOnSuccess = false) {
   busy.value = true;
   try {
     const r = await feesApi.mySync(id);
-    await toast(`Payment ${r.payment.status}`, r.payment.status === 'successful' ? 'success' : 'medium');
+    await toast(
+      t(`fees.my.toast.status.${r.payment.status}`),
+      r.payment.status === 'successful' ? 'success' : 'medium',
+    );
     if (closeOnSuccess && r.payment.status === 'successful') closePay();
     await load();
   } catch (e) {
@@ -473,7 +489,7 @@ const pdf = async (id: number) => {
 const share = async (id: number) => {
   try {
     await feesApi.myShareReceipt(id);
-    await toast('Receipt sent to your WhatsApp');
+    await toast(t('fees.my.toast.receiptSent'));
   } catch (e) {
     void toastError(e);
   }

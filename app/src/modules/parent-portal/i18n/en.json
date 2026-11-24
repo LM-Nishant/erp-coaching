@@ -23,5 +23,11 @@
     "caughtUp": "You're all caught up.",
     "all": "All notices"
   },
-  "summary": { "empty": "Nothing to show yet." }
+  "summary": { "empty": "Nothing to show yet." },
+  "monthly": {
+    "title": "Monthly reports",
+    "generated": "Generated {date}",
+    "noActivity": "No activity recorded for this month.",
+    "none": "No monthly reports yet. They are prepared at the start of each month."
+  }
 }

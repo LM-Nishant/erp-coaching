@@ -76,11 +76,12 @@ export default defineAppModule({
       planModule: PLAN,
       order: 30,
     },
-    // The generic dashboard, until every persona has its own home.
+    // The shared dashboard of staff; teachers already get `doubts.inbox` on their own home.
     {
       id: 'doubts.inboxHome',
       slot: 'home',
       title: 'Doubts to answer',
+      personas: ['staff'],
       component: teacherCard,
       permission: 'doubts.edit',
       planModule: PLAN,

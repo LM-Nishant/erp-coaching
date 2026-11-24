@@ -57,6 +57,12 @@ export async function currentEmployee(): Promise<Employee> {
   return emp;
 }
 
+/** The caller's login is linked to an employee of the institute (self-service pages work). */
+export async function hasStaffProfile(): Promise<boolean> {
+  const { userId } = getContext();
+  return !!userId && (await employeeSelfRepo.count({ userId })) > 0;
+}
+
 /** Ids of employees the caller may see (branch scope applied). */
 export async function visibleEmployeeIds(where: Record<string, unknown> = {}): Promise<number[]> {
   const rows = await employeeRepo.findAll({ where, attributes: ['id'] });

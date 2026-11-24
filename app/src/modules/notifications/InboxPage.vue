@@ -1,20 +1,24 @@
 <template>
-  <AppPage title="Notifications" :on-refresh="reload">
+  <AppPage :title="t('notifications.inbox.title')" :on-refresh="reload">
     <template #actions>
-      <ion-button :disabled="!unread" @click="readAll">Mark all read</ion-button>
+      <ion-button :disabled="!unread" @click="readAll">{{ t('notifications.inbox.markAllRead') }}</ion-button>
       <ion-button
         v-if="!auth.personalInbox"
         v-can="'notification-inbox.edit'"
         router-link="/notifications/preferences"
-        aria-label="Preferences"
+        :aria-label="t('notifications.inbox.preferences')"
       >
         <ion-icon slot="icon-only" :icon="settingsOutline" />
       </ion-button>
     </template>
 
     <ion-segment :value="filter" @ion-change="changeFilter(String($event.detail.value))">
-      <ion-segment-button value="all"><ion-label>All</ion-label></ion-segment-button>
-      <ion-segment-button value="unread"><ion-label>Unread</ion-label></ion-segment-button>
+      <ion-segment-button value="all"
+        ><ion-label>{{ t('notifications.inbox.all') }}</ion-label></ion-segment-button
+      >
+      <ion-segment-button value="unread"
+        ><ion-label>{{ t('notifications.inbox.unread') }}</ion-label></ion-segment-button
+      >
     </ion-segment>
 
     <ion-list>
@@ -27,11 +31,11 @@
         <ion-label :class="{ unread: !n.readAt }">
           <h2>{{ n.title ?? n.eventKey }}</h2>
           <p class="body">{{ n.body }}</p>
-          <p class="muted">{{ formatDate(n.createdAt) }}</p>
+          <p class="muted">{{ formatDateTime(n.createdAt) }}</p>
         </ion-label>
       </ion-item>
       <ion-item v-if="!loading && !items.length"
-        ><ion-label class="muted">You're all caught up.</ion-label></ion-item
+        ><ion-label class="muted">{{ t('notifications.inbox.caughtUp') }}</ion-label></ion-item
       >
     </ion-list>
     <ion-infinite-scroll :disabled="items.length >= total" @ion-infinite="more">
@@ -55,13 +59,16 @@ import {
   type InfiniteScrollCustomEvent,
 } from '@ionic/vue';
 import { mailOpenOutline, mailUnreadOutline, settingsOutline } from 'ionicons/icons';
+import { useI18n } from 'vue-i18n';
 import type { InboxItemDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import { formatDateTime } from '@/core/format';
 import { toastError } from '@/core/toast';
 import { useAuthStore } from '@/stores/auth';
-import { formatDate, inboxApi } from './api';
+import { inboxApi } from './api';
 import { unread } from './push';
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const items = ref<InboxItemDto[]>([]);
 const total = ref(0);

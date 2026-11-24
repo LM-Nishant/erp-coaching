@@ -91,5 +91,60 @@
       "none": "आज कोई कक्षा नहीं",
       "failed": "उपस्थिति लोड नहीं हो सकी"
     }
+  },
+  "check": {
+    "title": "चेक-इन",
+    "scanQr": "कक्षा का QR स्कैन करें",
+    "cancelScan": "स्कैन रद्द करें",
+    "code": "स्क्रीन पर दिखा कोड",
+    "today": "आज",
+    "noClasses": "आज कोई कक्षा नहीं।",
+    "checkIn": "चेक-इन करें",
+    "notOpen": "अभी खुली नहीं",
+    "myAttendance": "मेरी हाज़िरी",
+    "alreadyMarked": "आपकी हाज़िरी पहले से दर्ज है",
+    "marked": {
+      "present": "उपस्थित दर्ज हुई",
+      "absent": "अनुपस्थित दर्ज हुई",
+      "late": "देर से दर्ज हुई",
+      "half_day": "आधा दिन दर्ज हुआ",
+      "leave": "छुट्टी दर्ज हुई"
+    }
+  },
+  "my": {
+    "title": "मेरी हाज़िरी",
+    "summary": "सारांश",
+    "requests": "अनुरोध",
+    "student": "छात्र",
+    "year": "साल",
+    "attendance": "हाज़िरी",
+    "leave": "छुट्टी",
+    "byMonth": "महीने के हिसाब से",
+    "monthCounts": "उपस्थित {present} · देर से {late} · आधा दिन {halfDay} · अनुपस्थित {absent} · छुट्टी {leave}",
+    "recent": "हाल की कक्षाएँ",
+    "timeVia": "{time} · {via}",
+    "via": {
+      "manual": "शिक्षक ने दर्ज की",
+      "mobile": "फ़ोन से चेक-इन",
+      "qr": "QR से चेक-इन",
+      "biometric": "बायोमेट्रिक से चेक-इन",
+      "live": "लाइव कक्षा में जुड़े",
+      "leave": "स्वीकृत छुट्टी",
+      "correction": "अनुरोध पर सुधारा गया",
+      "system": "अपने-आप दर्ज"
+    },
+    "fix": "सुधारें",
+    "leaveRequests": "छुट्टी के अनुरोध",
+    "apply": "आवेदन करें",
+    "reason": "कारण",
+    "submitLeave": "छुट्टी का अनुरोध भेजें",
+    "note": "नोट: {note}",
+    "correctionRequests": "सुधार के अनुरोध",
+    "unmarked": "दर्ज नहीं",
+    "requestCorrection": "सुधार का अनुरोध करें",
+    "shouldBe": "सही हाज़िरी",
+    "corrected": "सुधार हो गया",
+    "correctionRequested": "सुधार का अनुरोध भेजा गया",
+    "leaveRequested": "छुट्टी का अनुरोध भेजा गया"
   }
 }

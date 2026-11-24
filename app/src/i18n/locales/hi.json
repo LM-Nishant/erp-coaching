@@ -254,7 +254,7 @@
       "platform": "प्लेटफ़ॉर्म एनालिटिक्स"
     },
     "students": {
-      "students": "विद्यार्थी",
+      "students": "छात्र",
       "myProfile": "मेरी प्रोफ़ाइल"
     },
     "subscriptions": {
@@ -290,7 +290,10 @@
       "progress": "प्रगति",
       "assign": "काम दें",
       "messages": "संदेश",
-      "explore": "खोजें"
+      "explore": "खोजें",
+      "institutes": "संस्थान",
+      "users": "उपयोगकर्ता",
+      "analytics": "एनालिटिक्स"
     },
     "doubts": {
       "mine": "मेरे डाउट",
@@ -308,6 +311,27 @@
       "115": "बड़ा",
       "130": "बहुत बड़ा"
     },
-    "loading": "लोड हो रहा है"
+    "loading": "लोड हो रहा है",
+    "branch": "शाखा",
+    "allBranches": "सभी शाखाएँ",
+    "allMyBranches": "मेरी सभी शाखाएँ",
+    "switchInstitute": "बदलें",
+    "switchProfile": "प्रोफ़ाइल बदलें",
+    "signOut": "साइन आउट",
+    "platformAdmin": "प्लेटफ़ॉर्म एडमिन",
+    "switchProfileConfirm": {
+      "header": "प्रोफ़ाइल बदलें?",
+      "message": "हम {mobile} पर एक कोड भेजेंगे। फिर चुनें कि कौन साइन इन कर रहा है; इस डिवाइस से {name} साइन आउट हो जाएँगे।",
+      "send": "कोड भेजें"
+    },
+    "roles": {
+      "super-admin": "प्लेटफ़ॉर्म एडमिन",
+      "institute-admin": "संस्थान एडमिन",
+      "branch-admin": "शाखा एडमिन",
+      "accountant": "अकाउंटेंट",
+      "teacher": "शिक्षक",
+      "student": "छात्र",
+      "parent": "अभिभावक"
+    }
   }
 }

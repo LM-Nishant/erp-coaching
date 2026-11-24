@@ -41,5 +41,37 @@
     "create": "बैच बनाएँ",
     "createWithout": "बिना शिक्षक के बनाएँ",
     "created": "{name} बन गया। अब छात्र जोड़ें।"
+  },
+  "timetable": {
+    "title": "मेरा टाइमटेबल",
+    "prevWeek": "पिछला हफ़्ता",
+    "nextWeek": "अगला हफ़्ता",
+    "rescheduled": "समय बदला",
+    "youSubstitute": "आप किसी की जगह पढ़ा रहे हैं",
+    "substitute": "बदले हुए टीचर",
+    "noRoom": "ऑनलाइन / तय नहीं",
+    "noClasses": "कोई कक्षा नहीं"
+  },
+  "syllabus": {
+    "title": "सिलेबस",
+    "addSubject": "विषय जोड़ें",
+    "course": "कोर्स",
+    "allSubjects": "सभी विषय",
+    "addTopic": "+ टॉपिक",
+    "rename": "{name} का नाम बदलें",
+    "delete": "{name} हटाएँ",
+    "minutes": "{n} मिनट",
+    "noChapters": "अभी कोई अध्याय नहीं।",
+    "addChapter": "अध्याय जोड़ें",
+    "noSubjects": "अभी कोई विषय नहीं।",
+    "newSubject": "नया विषय",
+    "name": "नाम",
+    "code": "कोड (वैकल्पिक)",
+    "newChapter": "नया अध्याय",
+    "chapterName": "अध्याय का नाम",
+    "renameChapter": "अध्याय का नाम बदलें",
+    "newTopic": "नया टॉपिक",
+    "topicName": "टॉपिक का नाम",
+    "plannedMinutes": "कितने मिनट लगेंगे (वैकल्पिक)"
   }
 }

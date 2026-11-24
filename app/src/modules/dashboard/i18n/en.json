@@ -1,4 +1,19 @@
 {
+  "home": {
+    "title": "Home",
+    "hello": "Hello, {name}",
+    "yourBranches": "Your branches: {names}",
+    "platform": {
+      "institutes": "{status} institutes",
+      "statuses": {
+        "active": "Active",
+        "inactive": "Inactive",
+        "suspended": "Suspended"
+      },
+      "users": "Institute users",
+      "branches": "Branches"
+    }
+  },
   "staff": {
     "quickActions": "Quick actions",
     "actions": {

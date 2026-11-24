@@ -14,7 +14,7 @@
           {{ RESOURCE_TYPE_LABEL[r.type] }}
           <span v-if="r.durationSeconds"> · {{ formatDuration(r.durationSeconds) }}</span>
           <span v-if="r.locked"> · {{ lockText[r.lockReason ?? 'not-entitled'] }}</span>
-          <span v-else-if="r.accessUntil"> · until {{ new Date(r.accessUntil).toLocaleDateString() }}</span>
+          <span v-else-if="r.accessUntil"> · until {{ formatDate(r.accessUntil) }}</span>
         </p>
         <ion-progress-bar v-if="r.progress && !r.progress.completed" :value="r.progress.percent / 100" />
       </ion-label>
@@ -25,6 +25,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDate } from '@/core/format';
 import { IonBadge, IonIcon, IonItem, IonLabel, IonList, IonProgressBar } from '@ionic/vue';
 import {
   checkmarkCircle,

@@ -20,7 +20,7 @@
             {{ priceLabel({ isFree: !i.course.pricePaise, pricePaise: i.course.pricePaise }) }} ·
             {{ i.course.lectureCount }} lectures
           </p>
-          <p v-if="i.course.submittedAt">Submitted {{ new Date(i.course.submittedAt).toLocaleString() }}</p>
+          <p v-if="i.course.submittedAt">Submitted {{ formatDateTime(i.course.submittedAt) }}</p>
         </ion-label>
         <ion-badge slot="end" :color="STATUS_COLORS[i.course.status]">{{
           MKT_COURSE_STATUS_LABELS[i.course.status]
@@ -32,6 +32,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDateTime } from '@/core/format';
 import { onMounted, ref } from 'vue';
 import { IonBadge, IonItem, IonLabel, IonList, IonSegment, IonSegmentButton } from '@ionic/vue';
 import { MKT_COURSE_STATUS_LABELS, type MktCourseStatus, type MktReviewItemDto } from '@erp/shared';

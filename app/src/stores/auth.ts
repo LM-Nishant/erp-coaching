@@ -106,6 +106,8 @@ export const useAuthStore = defineStore('auth', {
      * personal inbox (`/notifications/personal`), which needs no institute permission.
      */
     personalInbox: (s) => !!s.me && !s.me.institute && !s.me.user.isSuperAdmin && !s.me.impersonatedBy,
+    /** The login is linked to an HR employee, so "My leave" and "My payslips" have something to show. */
+    hasStaffProfile: (s) => !s.me?.features || s.me.features.includes('staff-profile'),
     permissionSet: (s) => new Set<string>((s.me?.permissions as string[]) ?? []),
     /** Locked: no session, but biometric unlock can start one. */
     canUnlock: (s) => !s.me && !!s.biometric,

@@ -1,5 +1,5 @@
 <template>
-  <AppPage title="My exams" :on-refresh="load">
+  <AppPage :title="t('exams.my.title')" :on-refresh="load">
     <div v-if="loading && !items.length" class="ion-text-center ion-padding"><ion-spinner /></div>
     <template v-for="g in groups" :key="g.key">
       <ion-list v-if="g.items.length">
@@ -9,10 +9,11 @@
         <ion-item v-for="it in g.items" :key="it.exam.id" lines="full">
           <ion-label class="ion-text-wrap">
             <h2>{{ it.exam.title }}</h2>
-            <p>{{ formatDate(it.exam.startAt) }} – {{ formatDate(it.exam.endAt) }}</p>
+            <p>{{ formatDateTime(it.exam.startAt) }} – {{ formatDateTime(it.exam.endAt) }}</p>
             <p>
-              {{ it.exam.durationMinutes }} min · {{ fmtMarks(it.exam.totalMarks) }} marks ·
-              {{ it.exam.questionCount }} questions
+              {{ t('exams.my.minutes', { n: it.exam.durationMinutes }) }} ·
+              {{ t('exams.my.marks', { n: fmtMarks(it.exam.totalMarks) }) }} ·
+              {{ t('exams.my.questions', { n: it.exam.questionCount }, it.exam.questionCount) }}
             </p>
             <p v-if="it.exam.courseName || it.exam.batchName" class="muted">
               {{ [it.exam.courseName, it.exam.batchName].filter(Boolean).join(' · ') }}
@@ -28,7 +29,7 @@
               @click="start(it)"
             >
               <ion-icon slot="start" :icon="it.attempt ? playForwardOutline : playOutline" />
-              {{ it.attempt ? 'Resume' : 'Start' }}
+              {{ it.attempt ? t('exams.my.resume') : t('exams.my.start') }}
             </ion-button>
             <ion-button
               v-else-if="resultPublished(it)"
@@ -36,7 +37,7 @@
               fill="outline"
               :router-link="`/exam-results/${it.attempt!.id}`"
             >
-              <ion-icon slot="start" :icon="ribbonOutline" />View result
+              <ion-icon slot="start" :icon="ribbonOutline" />{{ t('exams.my.viewResult') }}
             </ion-button>
           </div>
         </ion-item>
@@ -44,7 +45,7 @@
     </template>
     <ion-list v-if="!loading && !items.length">
       <ion-item>
-        <ion-label class="muted">No exams have been scheduled for you yet.</ion-label>
+        <ion-label class="muted">{{ t('exams.my.empty') }}</ion-label>
       </ion-item>
     </ion-list>
   </AppPage>
@@ -53,6 +54,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import {
   IonBadge,
   IonButton,
@@ -68,10 +70,12 @@ import {
 import { playForwardOutline, playOutline, ribbonOutline } from 'ionicons/icons';
 import type { StudentExamListItem } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import { formatDateTime } from '@/core/format';
 import { toastError } from '@/core/toast';
-import { examsApi, fmtMarks, formatDate } from './api';
+import { examsApi, fmtMarks } from './api';
 
 const router = useRouter();
+const { t } = useI18n();
 const items = ref<StudentExamListItem[]>([]);
 const loading = ref(true);
 const busyId = ref<number | null>(null);
@@ -96,21 +100,22 @@ const groups = computed(() => {
   const byStart = (a: StudentExamListItem, b: StudentExamListItem) =>
     a.exam.startAt.localeCompare(b.exam.startAt);
   return [
-    { key: 'live', title: 'Live now', items: live.sort(byStart) },
-    { key: 'upcoming', title: 'Upcoming', items: upcoming.sort(byStart) },
-    { key: 'done', title: 'Completed', items: done.sort((a, b) => byStart(b, a)) },
+    { key: 'live', title: t('common.status.live'), items: live.sort(byStart) },
+    { key: 'upcoming', title: t('common.status.upcoming'), items: upcoming.sort(byStart) },
+    { key: 'done', title: t('common.status.completed'), items: done.sort((a, b) => byStart(b, a)) },
   ];
 });
 
 function statusOf(it: StudentExamListItem): { label: string; color: string } {
   const a = it.attempt;
-  if (a?.status === 'in_progress') return { label: 'In progress', color: 'warning' };
-  if (resultPublished(it)) return { label: 'Result published', color: 'tertiary' };
-  if (a?.status === 'submitted') return { label: 'Submitted · awaiting result', color: 'primary' };
-  if (a?.status === 'auto_submitted') return { label: 'Auto-submitted · awaiting result', color: 'primary' };
-  if (it.canStart) return { label: 'Live', color: 'success' };
-  if (it.exam.phase === 'upcoming') return { label: `Opens ${formatDate(it.exam.startAt)}`, color: 'medium' };
-  return { label: 'Missed', color: 'danger' };
+  if (a?.status === 'in_progress') return { label: t('common.status.inProgress'), color: 'warning' };
+  if (resultPublished(it)) return { label: t('exams.my.status.resultPublished'), color: 'tertiary' };
+  if (a?.status === 'submitted') return { label: t('exams.my.status.submitted'), color: 'primary' };
+  if (a?.status === 'auto_submitted') return { label: t('exams.my.status.autoSubmitted'), color: 'primary' };
+  if (it.canStart) return { label: t('exams.my.status.live'), color: 'success' };
+  if (it.exam.phase === 'upcoming')
+    return { label: t('exams.my.status.opens', { date: formatDateTime(it.exam.startAt) }), color: 'medium' };
+  return { label: t('exams.my.status.missed'), color: 'danger' };
 }
 
 async function load() {
@@ -127,18 +132,18 @@ async function load() {
 async function confirmStart(it: StudentExamListItem): Promise<boolean> {
   const e = it.exam;
   const parts = [
-    `Duration: ${e.durationMinutes} minutes. Total marks: ${fmtMarks(e.totalMarks)}.`,
-    `The exam must be finished by ${formatDate(e.endAt)}; it is submitted automatically when time runs out.`,
+    t('exams.my.confirm.duration', { n: e.durationMinutes, marks: fmtMarks(e.totalMarks) }),
+    t('exams.my.confirm.finishBy', { date: formatDateTime(e.endAt) }),
   ];
-  if (e.defaultNegativeMarks > 0) parts.push('Wrong answers may carry negative marks.');
+  if (e.defaultNegativeMarks > 0) parts.push(t('exams.my.confirm.negative'));
   if (e.instructions) parts.push(e.instructions);
   const alert = await alertController.create({
     header: e.title,
-    subHeader: 'Instructions',
+    subHeader: t('exams.my.confirm.header'),
     message: parts.join('\n\n'),
     buttons: [
-      { text: 'Cancel', role: 'cancel' },
-      { text: 'Start exam', role: 'confirm' },
+      { text: t('common.actions.cancel'), role: 'cancel' },
+      { text: t('exams.my.confirm.start'), role: 'confirm' },
     ],
   });
   await alert.present();

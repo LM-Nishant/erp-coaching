@@ -6,7 +6,7 @@
         {{ course.completedCount }} / {{ course.resourceCount }} completed
         <span v-if="!course.entitled"> · free content only</span>
         <span v-else-if="course.entitlementUntil">
-          · access until {{ new Date(course.entitlementUntil).toLocaleDateString() }}</span
+          · access until {{ formatDate(course.entitlementUntil) }}</span
         >
       </ion-card-subtitle>
     </ion-card-header>
@@ -15,6 +15,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDate } from '@/core/format';
 import {
   IonCard,
   IonCardContent,

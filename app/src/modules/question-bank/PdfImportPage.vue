@@ -64,7 +64,7 @@
           <ion-item v-for="o in open" :key="o.id" button @click="openImport(o.id)">
             <ion-label>
               <h3>{{ o.fileName }}</h3>
-              <p>{{ statusLabel(o) }} · {{ new Date(o.createdAt).toLocaleString() }}</p>
+              <p>{{ statusLabel(o) }} · {{ formatDateTime(o.createdAt) }}</p>
             </ion-label>
           </ion-item>
         </ion-list>
@@ -368,6 +368,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDateTime } from '@/core/format';
 import { computed, onBeforeUnmount, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {

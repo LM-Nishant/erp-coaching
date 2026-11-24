@@ -8,7 +8,7 @@
               <img v-if="institute?.logoUrl" :src="institute.logoUrl" alt="" />
               <div>
                 <div class="brand-name">{{ institute?.name ?? 'ERP Coaching' }}</div>
-                <div class="brand-sub">{{ auth.isPlatformAdmin ? 'Platform admin' : roleLabel }}</div>
+                <div class="brand-sub">{{ auth.isPlatformAdmin ? t('shell.platformAdmin') : roleLabel }}</div>
               </div>
             </div>
           </ion-toolbar>
@@ -17,14 +17,14 @@
           <ion-list v-if="branchOptions.length > 1" lines="none">
             <ion-item>
               <ion-select
-                label="Branch"
+                :label="t('shell.branch')"
                 label-placement="stacked"
                 interface="popover"
                 :value="auth.activeBranchId ?? 0"
                 @ion-change="changeBranch($event.detail.value)"
               >
                 <ion-select-option :value="0">{{
-                  auth.me?.allowedBranchIds ? 'All my branches' : 'All branches'
+                  auth.me?.allowedBranchIds ? t('shell.allMyBranches') : t('shell.allBranches')
                 }}</ion-select-option>
                 <ion-select-option v-for="b in branchOptions" :key="b.id" :value="b.id">{{
                   b.name
@@ -115,18 +115,16 @@
               v-if="(auth.me?.memberships.length ?? 0) > 1 && !auth.me?.impersonatedBy"
               slot="end"
               fill="clear"
-              size="small"
               router-link="/select-institute"
             >
-              Switch
+              {{ t('shell.switchInstitute') }}
             </ion-button>
             <ion-button
               v-if="auth.canSwitchProfile"
               slot="end"
               fill="clear"
-              size="small"
-              aria-label="Switch profile"
-              title="Switch profile"
+              :aria-label="t('shell.switchProfile')"
+              :title="t('shell.switchProfile')"
               @click="switchProfile"
             >
               <ion-icon slot="icon-only" :icon="peopleOutline" />
@@ -134,9 +132,9 @@
             <ion-button
               slot="end"
               fill="clear"
-              size="small"
               color="danger"
-              aria-label="Sign out"
+              :aria-label="t('shell.signOut')"
+              :title="t('shell.signOut')"
               @click="logout"
             >
               <ion-icon slot="icon-only" :icon="logOutOutline" />
@@ -185,6 +183,7 @@ import { activeItem, searchMenu, useMenu } from '@/core/navigation';
 import { toastError } from '@/core/toast';
 import { LOCALE_NAMES, LOCALES, type Locale } from '@/i18n';
 import { chooseLocale } from '@/core/locale-sync';
+import { roleNames } from '@/core/roles';
 import { useAuthStore } from '@/stores/auth';
 import { applyTextSize, storedTextSize, TEXT_SIZES, type TextSize } from '@/theme/text-size';
 import BiometricOffer from '@/components/BiometricOffer.vue';
@@ -211,7 +210,7 @@ const institute = computed(() => auth.me?.institute ?? null);
 const showMenu = computed(
   () => auth.isAuthenticated && !auth.needsInstitute && (!route.meta.public || !!route.meta.shell),
 );
-const roleLabel = computed(() => auth.me?.roles.map((r) => r.replace(/-/g, ' ')).join(', ') ?? '');
+const roleLabel = computed(() => roleNames(auth.me?.roles, t));
 const branchOptions = computed(() => auth.me?.branches ?? []);
 
 // The split pane shows the menu beside the page from Ionic's `lg` breakpoint; below it, phones get tabs.
@@ -270,11 +269,11 @@ async function switchProfile() {
   const user = auth.me?.user;
   if (!user) return;
   const alert = await alertController.create({
-    header: 'Switch profile?',
-    message: `We'll send a code to ${user.mobile}. Then choose who's signing in; ${user.name} will be signed out on this device.`,
+    header: t('shell.switchProfileConfirm.header'),
+    message: t('shell.switchProfileConfirm.message', { mobile: user.mobile, name: user.name }),
     buttons: [
-      { text: 'Cancel', role: 'cancel' },
-      { text: 'Send code', role: 'confirm' },
+      { text: t('common.actions.cancel'), role: 'cancel' },
+      { text: t('shell.switchProfileConfirm.send'), role: 'confirm' },
     ],
   });
   await alert.present();
@@ -311,7 +310,6 @@ async function switchProfile() {
 .brand-sub {
   font-size: 12px;
   opacity: 0.85;
-  text-transform: capitalize;
 }
 .menu-search {
   padding: 8px 12px 0;

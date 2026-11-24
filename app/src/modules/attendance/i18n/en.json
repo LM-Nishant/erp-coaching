@@ -91,5 +91,60 @@
       "none": "No classes today",
       "failed": "Couldn't load attendance"
     }
+  },
+  "check": {
+    "title": "Check in",
+    "scanQr": "Scan class QR",
+    "cancelScan": "Cancel scan",
+    "code": "Code shown on screen",
+    "today": "Today",
+    "noClasses": "No classes today.",
+    "checkIn": "Check in",
+    "notOpen": "Not open",
+    "myAttendance": "My attendance",
+    "alreadyMarked": "You were already marked",
+    "marked": {
+      "present": "Marked present",
+      "absent": "Marked absent",
+      "late": "Marked late",
+      "half_day": "Marked half day",
+      "leave": "Marked leave"
+    }
+  },
+  "my": {
+    "title": "My attendance",
+    "summary": "Summary",
+    "requests": "Requests",
+    "student": "Student",
+    "year": "Year",
+    "attendance": "Attendance",
+    "leave": "Leave",
+    "byMonth": "By month",
+    "monthCounts": "P {present} · L {late} · H {halfDay} · A {absent} · LV {leave}",
+    "recent": "Recent sessions",
+    "timeVia": "{time} · {via}",
+    "via": {
+      "manual": "Marked by teacher",
+      "mobile": "Checked in on phone",
+      "qr": "Checked in by QR",
+      "biometric": "Checked in by biometric",
+      "live": "Joined live class",
+      "leave": "Approved leave",
+      "correction": "Corrected on request",
+      "system": "Marked automatically"
+    },
+    "fix": "Fix",
+    "leaveRequests": "Leave requests",
+    "apply": "Apply",
+    "reason": "Reason",
+    "submitLeave": "Submit leave request",
+    "note": "Note: {note}",
+    "correctionRequests": "Correction requests",
+    "unmarked": "Unmarked",
+    "requestCorrection": "Request correction",
+    "shouldBe": "Should be",
+    "corrected": "Corrected",
+    "correctionRequested": "Correction requested",
+    "leaveRequested": "Leave requested"
   }
 }

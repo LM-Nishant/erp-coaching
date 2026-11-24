@@ -57,5 +57,13 @@
     "batchCount": "no batches | 1 batch | {n} batches",
     "userCount": "no people | 1 person | {n} people",
     "everyone": "Everyone"
+  },
+  "inbox": {
+    "title": "Notifications",
+    "markAllRead": "Mark all read",
+    "preferences": "Preferences",
+    "all": "All",
+    "unread": "Unread",
+    "caughtUp": "You're all caught up."
   }
 }

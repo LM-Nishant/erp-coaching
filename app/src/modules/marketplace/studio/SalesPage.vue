@@ -32,7 +32,7 @@
         </thead>
         <tbody>
           <tr v-for="e in data.items" :key="e.id" :class="{ refund: e.entryType === 'refund' }">
-            <td>{{ new Date(e.createdAt).toLocaleDateString() }}</td>
+            <td>{{ formatDate(e.createdAt) }}</td>
             <td>{{ e.orderNumber }}<template v-if="e.entryType === 'refund'"> · refund</template></td>
             <td>{{ e.courseTitle }}</td>
             <td v-if="platform">{{ e.seller.displayName }}</td>
@@ -69,6 +69,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDate } from '@/core/format';
 import { onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { IonButton } from '@ionic/vue';

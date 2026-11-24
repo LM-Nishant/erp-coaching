@@ -18,9 +18,7 @@
           <p>
             {{ c.kind === 'percent' ? `${c.value}% off` : `${rupees(c.value)} off` }}
             · used {{ c.usedCount }}{{ c.maxUses ? ` of ${c.maxUses}` : '' }}
-            <template v-if="c.validUntil">
-              · until {{ new Date(c.validUntil).toLocaleDateString() }}</template
-            >
+            <template v-if="c.validUntil"> · until {{ formatDate(c.validUntil) }}</template>
           </p>
         </ion-label>
         <ion-toggle
@@ -89,6 +87,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDate } from '@/core/format';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import {

@@ -103,7 +103,7 @@
       "newInPeriod": "इस अवधि में {n} नए",
       "users": "संस्थान यूज़र",
       "activeNew": "{active} सक्रिय · {new} नए",
-      "students": "विद्यार्थी",
+      "students": "छात्र",
       "activeAdmitted": "{active} सक्रिय · {admitted} दाख़िले",
       "teachers": "शिक्षक",
       "branches": "शाखाएँ",
@@ -148,5 +148,9 @@
       "expired": "समय खत्म",
       "cancelled": "रद्द"
     }
+  },
+  "widgets": {
+    "role-dashboard": "एनालिटिक्स",
+    "platform-summary": "प्लेटफ़ॉर्म एनालिटिक्स · इस महीने"
   }
 }
