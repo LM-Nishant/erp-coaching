@@ -148,7 +148,7 @@ export default defineAppModule({
   wipeUserData: async (userId) => (await import('./offline-store')).wipeOffline(userId),
   widgets: [
     {
-      id: 'lms.teacher-to-check',
+      id: 'lms.teacherToCheck',
       slot: 'teacher-home',
       title: 'Homework to check',
       component: defineAsyncComponent(() => import('./widgets/HomeworkToCheckWidget.vue')),
@@ -156,6 +156,34 @@ export default defineAppModule({
       planModule: 'lms',
       order: 20,
       size: 'half',
+    },
+    {
+      id: 'lms.continue',
+      slot: 'student-home',
+      title: 'Continue watching',
+      component: defineAsyncComponent(() => import('./widgets/ContinueWidget.vue')),
+      permission: 'lms.view',
+      planModule: 'lms',
+      order: 20,
+      size: 'full',
+    },
+    {
+      id: 'lms.homework',
+      slot: 'student-home',
+      title: 'Homework due',
+      component: defineAsyncComponent(() => import('./widgets/HomeworkDueWidget.vue')),
+      permission: 'lms-assignments.view',
+      planModule: 'lms',
+      order: 30,
+    },
+    {
+      id: 'lms.homework',
+      slot: 'parent-home',
+      title: 'Homework due',
+      component: defineAsyncComponent(() => import('./widgets/HomeworkDueWidget.vue')),
+      permission: 'lms-assignments.view',
+      planModule: 'lms',
+      order: 30,
     },
   ],
 });

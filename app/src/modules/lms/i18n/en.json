@@ -6,7 +6,17 @@
     "toGrade": "{n} to check"
   },
   "widgets": {
-    "teacherToCheck": "Homework to check"
+    "teacherToCheck": "Homework to check",
+    "continue": "Continue learning",
+    "homework": "Homework due",
+    "nothingToContinue": "Nothing in progress",
+    "nothingToContinueHint": "Start a lecture from your library and it will show up here.",
+    "browse": "Open library",
+    "left": "{time} left",
+    "percentDone": "{n}% done",
+    "allDone": "No homework due",
+    "allDoneHint": "You're all caught up.",
+    "seeAll": "See all ({n})"
   },
   "homeworkForm": {
     "newTitle": "Give homework",
@@ -86,5 +96,52 @@
     "emptyTitle": "Upload your first lecture",
     "emptyMessage": "Videos, notes and slides you upload show up here for your students.",
     "upload": "Upload a lecture"
+  },
+  "homework": {
+    "title": "Homework",
+    "tabs": {
+      "pending": "To do",
+      "done": "Done"
+    },
+    "dueAt": "Due {date}",
+    "dueRelative": "Due {when}",
+    "marks": "{got}/{max} marks",
+    "emptyStaff": "No homework yet. Create one for a batch.",
+    "emptyPending": "No homework to do. Well done!",
+    "emptyDone": "Nothing submitted yet.",
+    "notSubmitted": "Not submitted yet.",
+    "submitWork": "Submit your work",
+    "update": "Update submission",
+    "filesHint": "Files (photos of your work, PDFs…)",
+    "takePhoto": "Take a photo",
+    "submit": "Submit",
+    "pastDue": "The due date has passed.",
+    "state": {
+      "graded": "Graded",
+      "returned": "Returned",
+      "submitted": "Submitted",
+      "overdue": "Overdue",
+      "dueSoon": "Due soon",
+      "pending": "To do",
+      "closed": "Closed",
+      "late": "Late"
+    }
+  },
+  "player": {
+    "controls": "Playback controls",
+    "back10": "Back 10 seconds",
+    "forward10": "Forward 10 seconds",
+    "speed": "Speed",
+    "quality": "Quality",
+    "auto": "Auto"
+  },
+  "offline": {
+    "title": "Offline lectures",
+    "appOnly": "Download lectures in the mobile app",
+    "appOnlyHint": "Install the app on your phone to save lectures and watch them without internet. Saved lectures stay encrypted inside the app.",
+    "browse": "Back to library",
+    "meta": "{size} · expires {date}",
+    "empty": "No lectures saved",
+    "emptyHint": "Tap “Save offline” on a lecture to watch it without internet."
   }
 }

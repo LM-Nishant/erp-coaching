@@ -72,6 +72,16 @@
     "noClassesHint": "Your timetable classes for the day show up here."
   },
   "widgets": {
-    "teacherToday": "Today's classes"
+    "teacherToday": "Today's classes",
+    "summary": "Attendance",
+    "noRecords": "No attendance marked yet",
+    "present": "Present in {n} of {total} classes",
+    "absent": "{n} absent",
+    "leave": "{n} on leave",
+    "lastClass": "Last class {date}:",
+    "status": {
+      "leave": "Leave",
+      "half_day": "Half day"
+    }
   }
 }

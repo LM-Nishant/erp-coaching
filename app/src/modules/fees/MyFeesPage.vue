@@ -1,8 +1,9 @@
 <template>
-  <AppPage title="My fees" :on-refresh="load">
+  <AppPage :title="t('fees.my.title')" :on-refresh="load">
     <ion-segment
       v-if="(data?.students.length ?? 0) > 1"
       :value="studentId"
+      scrollable
       @ion-change="switchStudent($event.detail.value)"
     >
       <ion-segment-button v-for="s in data?.students" :key="s.id" :value="s.id">{{
@@ -11,20 +12,71 @@
     </ion-segment>
 
     <template v-if="data">
-      <ion-card>
+      <!-- Hero: how much, by when, and one button to pay (or where to pay when online payment is off). -->
+      <ion-card class="hero" :class="{ clear: !data.totalDue }">
         <ion-card-header>
           <ion-card-subtitle>{{ data.student.name }} · {{ data.student.admissionNumber }}</ion-card-subtitle>
           <ion-card-title>{{
-            data.totalDue ? `${rupees(data.totalDue)} due` : 'All fees paid'
+            data.totalDue ? t('fees.my.due', { amount: formatMoney(data.totalDue) }) : t('fees.my.allPaid')
           }}</ion-card-title>
         </ion-card-header>
+        <ion-card-content>
+          <template v-if="next">
+            <p class="next">
+              {{
+                t('fees.my.next', {
+                  amount: formatMoney(next.instalment.balance),
+                  date: formatDate(next.instalment.dueDate),
+                })
+              }}
+              <StatusChip
+                :label="t(`fees.my.state.${nextState}`)"
+                :tone="STATE_TONE[nextState!]"
+                class="chip"
+              />
+            </p>
+            <p v-if="overdueTotal" class="danger-text">
+              {{ t('fees.my.overdueNote', { amount: formatMoney(overdueTotal) }) }}
+            </p>
+          </template>
+          <p v-else-if="!data.totalDue" class="muted">{{ t('fees.my.allPaidHint') }}</p>
+          <ion-button
+            v-if="next && data.gateways.length && payable.length === 1"
+            v-can="'my-fees.create'"
+            expand="block"
+            class="pay"
+            @click="startPay(next.account)"
+            >{{ t('fees.my.payOnline') }}</ion-button
+          >
+        </ion-card-content>
+      </ion-card>
+
+      <ion-card v-if="data.totalDue && !data.gateways.length" class="office">
+        <ion-card-header>
+          <ion-card-title>{{ t('fees.my.office.title') }}</ion-card-title>
+        </ion-card-header>
+        <ion-card-content>
+          <p>{{ t('fees.my.office.message', { name: data.office?.name ?? '' }) }}</p>
+          <p v-if="data.office?.address" class="muted">{{ data.office.address }}</p>
+          <div class="office-actions">
+            <ion-button v-if="data.office?.phone" :href="telLink(data.office.phone)" fill="solid">
+              <ion-icon slot="start" :icon="callOutline" />{{ t('fees.my.office.call') }}
+            </ion-button>
+            <ion-button v-if="data.office?.email" :href="`mailto:${data.office.email}`" fill="outline">
+              <ion-icon slot="start" :icon="mailOutline" />{{ t('fees.my.office.email') }}
+            </ion-button>
+          </div>
+        </ion-card-content>
       </ion-card>
 
       <ion-card v-for="a in data.accounts" :key="a.id">
         <ion-card-header>
           <ion-card-subtitle>{{ a.title }}</ion-card-subtitle>
           <ion-card-title
-            >{{ rupees(a.balance) }} <small class="muted">of {{ rupees(a.net) }}</small></ion-card-title
+            >{{ formatMoney(a.balance) }}
+            <small class="muted">{{
+              t('fees.my.ofTotal', { amount: formatMoney(a.net) })
+            }}</small></ion-card-title
           >
         </ion-card-header>
         <ion-card-content>
@@ -33,47 +85,62 @@
               <ion-label>
                 <h3>{{ i.label }}</h3>
                 <p>
-                  Due {{ i.dueDate }} · {{ rupees(i.amount + i.lateFee)
-                  }}<span v-if="i.lateFee"> (incl. late fee {{ rupees(i.lateFee) }})</span>
+                  {{ t('fees.my.dueOn', { date: formatDate(i.dueDate) }) }} ·
+                  {{ formatMoney(i.amount + i.lateFee)
+                  }}<span v-if="i.lateFee">
+                    ({{ t('fees.my.lateFee', { amount: formatMoney(i.lateFee) }) }})</span
+                  >
                 </p>
               </ion-label>
-              <ion-badge slot="end" :color="i.overdue ? 'danger' : STATUS_COLORS[i.status]">{{
-                i.overdue ? 'overdue' : i.status
-              }}</ion-badge>
+              <StatusChip
+                slot="end"
+                :label="t(`fees.my.state.${instalmentState(i)}`)"
+                :tone="STATE_TONE[instalmentState(i)]"
+              />
             </ion-item>
             <ion-item v-if="a.discount">
-              <ion-label class="muted">Concessions applied: {{ rupees(a.discount) }}</ion-label>
+              <ion-label class="muted">{{
+                t('fees.my.concessions', { amount: formatMoney(a.discount) })
+              }}</ion-label>
             </ion-item>
           </ion-list>
           <ion-button
-            v-if="a.balance > 0 && a.status === 'active' && data.gateways.length"
+            v-if="payable.length > 1 && payable.includes(a)"
             v-can="'my-fees.create'"
             expand="block"
+            fill="outline"
             @click="startPay(a)"
-            >Pay online</ion-button
+            >{{ t('fees.my.payThis') }}</ion-button
           >
-          <p v-else-if="a.balance > 0 && !data.gateways.length" class="muted">
-            Online payment is not enabled; please pay at the office.
-          </p>
         </ion-card-content>
       </ion-card>
 
       <ion-list>
-        <ion-list-header>Payments & receipts</ion-list-header>
+        <ion-list-header>{{ t('fees.my.payments') }}</ion-list-header>
         <ion-item v-for="p in data.payments" :key="p.id">
           <ion-label>
-            <h3>{{ rupees(p.amount) }} · {{ MODE_LABELS[p.mode] }}</h3>
+            <h3>{{ formatMoney(p.amount) }} · {{ t(`fees.my.mode.${p.mode}`) }}</h3>
             <p>
-              {{ p.paidOn ?? p.createdAt.slice(0, 10)
+              {{ formatDate(p.paidOn ?? p.createdAt)
               }}<span v-if="p.receiptNumber"> · {{ p.receiptNumber }}</span>
             </p>
           </ion-label>
-          <ion-badge slot="end" :color="STATUS_COLORS[p.status]">{{ p.status.replace('_', ' ') }}</ion-badge>
+          <StatusChip
+            slot="end"
+            :label="t(`fees.my.paymentStatus.${p.status}`)"
+            :tone="PAYMENT_TONE[p.status] ?? 'medium'"
+          />
           <ion-buttons v-if="p.receiptId" slot="end">
-            <ion-button title="Download receipt" aria-label="Download receipt" @click="pdf(p.receiptId)"
+            <ion-button
+              :title="t('fees.my.downloadReceipt')"
+              :aria-label="t('fees.my.downloadReceipt')"
+              @click="pdf(p.receiptId)"
               ><ion-icon slot="icon-only" :icon="downloadOutline"
             /></ion-button>
-            <ion-button title="Send to WhatsApp" aria-label="Send to WhatsApp" @click="share(p.receiptId)"
+            <ion-button
+              :title="t('fees.my.sendWhatsapp')"
+              :aria-label="t('fees.my.sendWhatsapp')"
+              @click="share(p.receiptId)"
               ><ion-icon slot="icon-only" :icon="logoWhatsapp"
             /></ion-button>
           </ion-buttons>
@@ -82,11 +149,11 @@
             slot="end"
             fill="clear"
             @click="refreshPayment(p.id)"
-            >Check status</ion-button
+            >{{ t('fees.my.checkStatus') }}</ion-button
           >
         </ion-item>
         <ion-item v-if="!data.payments.length"
-          ><ion-label class="muted">No payments yet.</ion-label></ion-item
+          ><ion-label class="muted">{{ t('fees.my.noPayments') }}</ion-label></ion-item
         >
       </ion-list>
     </template>
@@ -105,10 +172,12 @@
           <ion-list>
             <ion-radio-group v-model="payChoice">
               <ion-item v-if="nextDue">
-                <ion-radio value="next">Next instalment · {{ rupees(nextDue) }}</ion-radio>
+                <ion-radio value="next">Next instalment · {{ formatMoney(nextDue) }}</ion-radio>
               </ion-item>
               <ion-item
-                ><ion-radio value="full">Full balance · {{ rupees(payFor.balance) }}</ion-radio></ion-item
+                ><ion-radio value="full"
+                  >Full balance · {{ formatMoney(payFor.balance) }}</ion-radio
+                ></ion-item
               >
               <ion-item><ion-radio value="custom">Other amount</ion-radio></ion-item>
             </ion-radio-group>
@@ -124,12 +193,12 @@
             </ion-item>
           </ion-list>
           <ion-button expand="block" :disabled="busy" @click="checkout"
-            >Proceed to pay {{ rupees(payAmount) }}</ion-button
+            >Proceed to pay {{ formatMoney(payAmount) }}</ion-button
           >
         </template>
         <template v-else-if="order.gateway === 'mock'">
           <p class="muted">Test gateway. No real money moves. Choose how this checkout ends.</p>
-          <h2>{{ rupees(order.amount) }}</h2>
+          <h2>{{ formatMoney(order.amount) }}</h2>
           <p class="muted selectable">Order {{ order.gatewayOrderId }}</p>
           <ion-button expand="block" color="success" :disabled="busy" @click="complete('success')"
             >Pay now</ion-button
@@ -168,7 +237,6 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
-  IonBadge,
   IonButton,
   IonButtons,
   IonCard,
@@ -194,9 +262,12 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/vue';
-import { downloadOutline, logoWhatsapp } from 'ionicons/icons';
+import { callOutline, downloadOutline, logoWhatsapp, mailOutline } from 'ionicons/icons';
+import { useI18n } from 'vue-i18n';
 import type { CheckoutOrderDto, FeeAccountDto, MyFeesDto, PaymentGatewayKey } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { formatDate, formatMoney } from '@/core/format';
 import {
   checkoutReturnTo,
   openCheckout,
@@ -206,17 +277,24 @@ import {
   type CheckoutOutcome,
 } from '@/core/payment-checkout';
 import { toast, toastError } from '@/core/toast';
-import { rupees } from '../hr/api';
-import { GATEWAY_LABELS, MODE_LABELS, STATUS_COLORS, feesApi, openSigned, toPaise } from './api';
+import { GATEWAY_LABELS, feesApi, openSigned, toPaise } from './api';
+import { STATE_TONE, instalmentState, nextInstalment, telLink } from './my-fees';
 
 /** App route the gateway's checkout returns to. */
 const RETURN_PATH = '/my-fees';
 
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
+
+const PAYMENT_TONE: Record<string, 'success' | 'warning' | 'danger' | 'medium'> = {
+  successful: 'success',
+  pending: 'warning',
+  failed: 'danger',
+};
 
 const data = ref<MyFeesDto | null>(null);
-const studentId = ref<number | undefined>(undefined);
+const studentId = ref<number | undefined>(Number(route.query.student) || undefined);
 const payFor = ref<FeeAccountDto | null>(null);
 const payChoice = ref<'next' | 'full' | 'custom'>('next');
 const customAmount = ref('');
@@ -225,6 +303,21 @@ const order = ref<CheckoutOrderDto | null>(null);
 const busy = ref(false);
 /** The gateway's checkout is open over the page. */
 const vendorOpen = ref(false);
+
+/** Accounts that can be paid online now. */
+const payable = computed(() =>
+  data.value?.gateways.length
+    ? data.value.accounts.filter((a) => a.balance > 0 && a.status === 'active')
+    : [],
+);
+const next = computed(() => (data.value ? nextInstalment(data.value.accounts) : null));
+const nextState = computed(() => (next.value ? instalmentState(next.value.instalment) : null));
+const overdueTotal = computed(() =>
+  (data.value?.accounts ?? [])
+    .flatMap((a) => a.instalments ?? [])
+    .filter((i) => instalmentState(i) === 'overdue')
+    .reduce((sum, i) => sum + i.balance, 0),
+);
 
 const nextDue = computed(() => {
   const i = payFor.value?.instalments?.find((x) => x.balance > 0);
@@ -393,3 +486,42 @@ onMounted(async () => {
   if (returned) await settle(returned, true);
 });
 </script>
+
+<style scoped>
+.hero {
+  border-left: 4px solid var(--ion-color-warning);
+}
+.hero.clear {
+  border-left-color: var(--ion-color-success);
+}
+.hero ion-card-title {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+.next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  color: var(--ion-text-color);
+}
+.danger-text {
+  color: var(--ion-color-danger);
+  margin-top: 6px;
+}
+.pay {
+  margin-top: 12px;
+  min-height: var(--app-tap-target, 48px);
+}
+.office-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+small.muted {
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+</style>

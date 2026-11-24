@@ -75,6 +75,8 @@ export const lmsApi = {
   revokeGrant: (id: number) => api.delete(`${L}/grants/${id}`),
 
   // homework
+  /** The learner's recently watched, unfinished lessons, newest first. */
+  continue: () => api.get<LmsLearnerResourceDto[]>(`${L}/continue`),
   assignments: (q: Q = {}) => api.get<Page<LmsAssignmentDto>>(`${L}/assignments`, { pageSize: 100, ...q }),
   childrenAssignments: (q: Q = {}) => api.get<LmsAssignmentDto[]>(`${L}/assignments/children`, q),
   assignment: (id: number) => api.get<LmsAssignmentDto>(`${L}/assignments/${id}`),

@@ -131,7 +131,7 @@ export default defineAppModule({
   ],
   widgets: [
     {
-      id: 'exams.teacher-to-check',
+      id: 'exams.teacherToCheck',
       slot: 'teacher-home',
       title: 'Tests to publish',
       component: defineAsyncComponent(() => import('./widgets/ExamsToCheckWidget.vue')),
@@ -139,6 +139,33 @@ export default defineAppModule({
       planModule: 'exams',
       order: 30,
       size: 'half',
+    },
+    {
+      id: 'exams.upcoming',
+      slot: 'student-home',
+      title: 'Upcoming tests',
+      component: defineAsyncComponent(() => import('./widgets/UpcomingTestsWidget.vue')),
+      permission: 'exam-portal.create',
+      planModule: 'exams',
+      order: 40,
+    },
+    {
+      id: 'exams.latestResult',
+      slot: 'student-home',
+      title: 'Latest result',
+      component: defineAsyncComponent(() => import('./widgets/LatestResultWidget.vue')),
+      permission: 'exam-portal.view',
+      planModule: 'exams',
+      order: 70,
+    },
+    {
+      id: 'exams.latestResult',
+      slot: 'parent-home',
+      title: 'Latest result',
+      component: defineAsyncComponent(() => import('./widgets/LatestResultWidget.vue')),
+      permission: 'exam-portal.view',
+      planModule: 'exams',
+      order: 40,
     },
   ],
 });

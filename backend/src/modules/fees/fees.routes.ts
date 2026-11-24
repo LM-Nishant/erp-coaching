@@ -19,6 +19,7 @@ import { logger } from '../../infrastructure/logger';
 import { hasPermission, requireTenantContext } from '../../shared/context';
 import { BadRequest, Conflict, NotFound } from '../../shared/errors';
 import { Student } from '../students/api';
+import { Branch } from '../branches/branch.model';
 import { linkedStudentIds } from '../guardians/guardian-access';
 import {
   FeeAccount,
@@ -921,6 +922,7 @@ function selfRoutes(r: Router) {
       limit: 100,
     });
     const gateways = (await enabledGateways()).map((g) => g.gateway);
+    const branch = await Branch.findOne({ where: { instituteId, id: student.branchId } });
     const asOf = await today();
     const dtos = accounts.map((a) => accountDto(a, asOf));
     res.json({
@@ -930,6 +932,14 @@ function selfRoutes(r: Router) {
       payments: payments.map(paymentDto),
       gateways,
       totalDue: dtos.reduce((s, a) => s + Math.max(0, a.balance), 0),
+      office: branch
+        ? {
+            name: branch.name,
+            address: [branch.address, branch.city].filter(Boolean).join(', ') || null,
+            phone: branch.phone ?? null,
+            email: branch.email ?? null,
+          }
+        : null,
     });
   });
   r.post('/me/checkout', pay, async (req, res) => {

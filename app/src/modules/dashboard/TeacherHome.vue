@@ -32,11 +32,12 @@ import {
 import type { PermissionKey } from '@erp/shared';
 import QuickActions, { type QuickAction } from '@/components/QuickActions.vue';
 import { formatDayShort } from '@/core/format';
-import { widgetsFor, type DashboardWidget } from '@/core/modules';
+import { widgetsFor } from '@/core/modules';
 import { useAuthStore } from '@/stores/auth';
-import { greetingFor, widgetTitleKey } from './teacher-home';
+import { greetingFor } from './teacher-home';
+import { useWidgetTitle } from './widget-title';
 
-const { t, te } = useI18n();
+const { t } = useI18n();
 const auth = useAuthStore();
 
 const firstName = computed(() => auth.me?.user.name.split(' ')[0] ?? '');
@@ -88,12 +89,8 @@ const actions = computed<QuickAction[]>(() =>
     })),
 );
 
+const widgetTitle = useWidgetTitle();
 const widgets = computed(() => widgetsFor('teacher-home').filter((w) => allowed(w.permission, w.planModule)));
-
-function widgetTitle(w: DashboardWidget) {
-  const key = widgetTitleKey(w.id);
-  return te(key) ? t(key) : w.title;
-}
 </script>
 
 <style scoped>

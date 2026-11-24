@@ -11,5 +11,20 @@
       "upload": "लेक्चर अपलोड करें",
       "classes": "लाइव कक्षाएँ"
     }
+  },
+  "student": {
+    "title": "आज",
+    "greeting": "नमस्ते {name} 👋",
+    "shortcuts": "शॉर्टकट",
+    "actions": {
+      "classes": "लाइव कक्षाएँ",
+      "courses": "मेरे कोर्स",
+      "homework": "होमवर्क",
+      "tests": "टेस्ट",
+      "results": "रिज़ल्ट",
+      "attendance": "उपस्थिति",
+      "fees": "फ़ीस",
+      "downloads": "डाउनलोड"
+    }
   }
 }

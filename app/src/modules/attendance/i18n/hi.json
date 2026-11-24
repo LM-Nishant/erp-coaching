@@ -72,6 +72,16 @@
     "noClassesHint": "आज की समय-सारणी की कक्षाएँ यहाँ दिखेंगी।"
   },
   "widgets": {
-    "teacherToday": "आज की कक्षाएँ"
+    "teacherToday": "आज की कक्षाएँ",
+    "summary": "उपस्थिति",
+    "noRecords": "अभी कोई उपस्थिति दर्ज नहीं",
+    "present": "{total} में से {n} कक्षाओं में उपस्थित",
+    "absent": "{n} अनुपस्थित",
+    "leave": "{n} छुट्टी",
+    "lastClass": "पिछली कक्षा {date}:",
+    "status": {
+      "leave": "छुट्टी",
+      "half_day": "आधा दिन"
+    }
   }
 }

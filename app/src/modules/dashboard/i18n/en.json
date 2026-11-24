@@ -11,5 +11,20 @@
       "upload": "Upload lecture",
       "classes": "Live classes"
     }
+  },
+  "student": {
+    "title": "Today",
+    "greeting": "Hi {name} 👋",
+    "shortcuts": "Shortcuts",
+    "actions": {
+      "classes": "Live classes",
+      "courses": "My courses",
+      "homework": "Homework",
+      "tests": "Tests",
+      "results": "Results",
+      "attendance": "Attendance",
+      "fees": "Fees",
+      "downloads": "Downloads"
+    }
   }
 }
