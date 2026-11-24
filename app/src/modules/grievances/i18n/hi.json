@@ -62,7 +62,7 @@
     "submittedWithFailures": "शिकायत {number} दर्ज हो गई, पर ये फ़ाइलें नहीं जुड़ पाईं: {files}"
   },
   "queue": {
-    "title": "शिकायतों की सूची",
+    "title": "शिकायतें",
     "searchPlaceholder": "टिकट नंबर या विषय खोजें",
     "anyone": "कोई भी",
     "me": "मैं",

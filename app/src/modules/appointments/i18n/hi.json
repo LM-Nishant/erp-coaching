@@ -23,7 +23,7 @@
     "offlineOnly": "सिर्फ़ आमने-सामने"
   },
   "fields": {
-    "branch": "ब्रांच",
+    "branch": "शाखा",
     "location": "जगह"
   },
   "downloadCsv": "CSV डाउनलोड करें",
@@ -120,7 +120,7 @@
   },
   "reports": {
     "title": "मीटिंग रिपोर्ट",
-    "allBranches": "सभी ब्रांच",
+    "allBranches": "सभी शाखाएँ",
     "meetings": "मीटिंग",
     "held": "हो चुकीं",
     "avgResponse": "जवाब का औसत समय",
