@@ -206,11 +206,13 @@ onMounted(load);
 }
 .buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 14px;
 }
 .buttons button {
-  flex: 1;
+  flex: 1 1 auto;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -224,6 +226,7 @@ onMounted(load);
   cursor: pointer;
 }
 .buttons ion-icon {
+  flex: none;
   font-size: 22px;
 }
 .primary {

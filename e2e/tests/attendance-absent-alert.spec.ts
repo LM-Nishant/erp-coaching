@@ -12,7 +12,14 @@ import { expect, test } from '../support/fixtures';
 import { loginWithPassword, newDevice } from '../support/api';
 import { addGuardian, addStaff, addStudent, createBatch, createInstitute, isoDate } from '../support/data';
 import { outboxMark, outboxMessages, waitForMessage } from '../support/outbox';
-import { actionSheet, activePage, alertDialog, confirmAlert, expectToast, signInWithOtp } from '../support/ui';
+import {
+  actionSheet,
+  activePage,
+  alertDialog,
+  confirmAlert,
+  expectToast,
+  signInWithOtp,
+} from '../support/ui';
 
 test('attendance marked absent → parent receives the absent alert', async ({ http, superAdmin, openAs }) => {
   const institute = await createInstitute(http, superAdmin, 'attendance');
@@ -51,9 +58,13 @@ test('attendance marked absent → parent receives the absent alert', async ({ h
     // Students can also check themselves in here, so nobody starts as present: tap marks present,
     // "More choices" picks any other status, and submitting marks whoever is left absent.
     const row = (name: string) => content.locator(`li[data-student="${name}"]`);
-    await row(present.name).getByRole('button', { name: `${present.name}: Not marked` }).click();
+    await row(present.name)
+      .getByRole('button', { name: `${present.name}: Not marked` })
+      .click();
     await expect(row(present.name)).toContainText('Present');
-    await row(absent.name).getByRole('button', { name: `More choices for ${absent.name}` }).click();
+    await row(absent.name)
+      .getByRole('button', { name: `More choices for ${absent.name}` })
+      .click();
     await actionSheet(page).getByRole('button', { name: 'Absent', exact: true }).click();
     await expect(row(absent.name)).toContainText('Absent');
     await content.getByRole('button', { name: 'Save for now (2)' }).click();

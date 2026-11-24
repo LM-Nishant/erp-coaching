@@ -10,7 +10,8 @@
       "new": "New test",
       "upload": "Upload lecture",
       "classes": "Live classes"
-    }
+    },
+    "title": "Home"
   },
   "student": {
     "title": "Today",

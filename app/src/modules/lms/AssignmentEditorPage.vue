@@ -251,9 +251,10 @@ async function save(publish: boolean) {
 }
 
 onIonViewWillEnter(async () => {
-  batches.value = (
-    await academicsApi.batches({ status: 'active' }).catch(() => ({ items: [] as BatchDto[] }))
-  ).items;
+  // Running batches are often still "planned"; only finished or cancelled ones are hidden.
+  batches.value = (await academicsApi.batches().catch(() => ({ items: [] as BatchDto[] }))).items.filter(
+    (b) => b.status === 'planned' || b.status === 'active',
+  );
   if (!id.value) {
     if (batches.value.length === 1 && !form.batchId) form.batchId = batches.value[0].id;
     return;

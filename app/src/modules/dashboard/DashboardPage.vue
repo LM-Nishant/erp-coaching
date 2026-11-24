@@ -1,7 +1,7 @@
 <template>
   <!-- Students get their own "Today" page at /home (parents are sent to /parent-home by the router). -->
   <StudentHome v-if="auth.persona === 'student'" />
-  <AppPage v-else title="Dashboard" :on-refresh="refresh">
+  <AppPage v-else :title="pageTitle" :on-refresh="refresh">
     <!-- The teacher persona gets a "Today" home (teacher-home widgets) instead of plan and usage numbers. -->
     <TeacherHome v-if="auth.persona === 'teacher'" :key="refreshKey" />
     <h2 v-else class="hello">Hello, {{ auth.me?.user.name }}</h2>
@@ -75,6 +75,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonCol, IonGrid, IonRow } from '@ionic/vue';
 import type { PlanLimits, SubscriptionDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
@@ -97,6 +98,8 @@ interface PlatformStats {
 }
 
 const auth = useAuthStore();
+const { t } = useI18n();
+const pageTitle = computed(() => (auth.persona === 'teacher' ? t('dashboard.teacher.title') : 'Dashboard'));
 const route = useRoute();
 const sub = ref<SubscriptionInfo | null>(null);
 const platform = ref<PlatformStats | null>(null);

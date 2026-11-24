@@ -377,11 +377,13 @@ watch(lateStart, (on) => {
 
 async function loadLookups() {
   const [b, c, s] = await Promise.allSettled([
-    academicsApi.batches({ status: 'active' }),
+    academicsApi.batches(),
     academicsApi.courses(),
     academicsApi.subjects(),
   ]);
-  if (b.status === 'fulfilled') batches.value = b.value.items;
+  // Running batches are often still "planned"; only finished or cancelled ones are hidden.
+  if (b.status === 'fulfilled')
+    batches.value = b.value.items.filter((x) => x.status === 'planned' || x.status === 'active');
   if (c.status === 'fulfilled') courses.value = c.value.items;
   if (s.status === 'fulfilled') subjects.value = s.value;
   if (!isEdit.value && batches.value.length === 1 && !form.batchId) form.batchId = batches.value[0].id;
