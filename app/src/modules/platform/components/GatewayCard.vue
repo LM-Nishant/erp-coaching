@@ -3,18 +3,25 @@
     <ion-card-header>
       <ion-card-title>{{ label }}</ion-card-title>
       <div class="chip-row">
-        <ion-badge :color="dto.enabled ? 'success' : 'medium'">{{
-          dto.enabled ? 'Enabled' : 'Disabled'
-        }}</ion-badge>
-        <ion-badge v-if="dto.isDefault" color="primary">Subscription payments</ion-badge>
-        <ion-badge v-if="dto.useForInstitutes" color="tertiary">Institute fallback</ion-badge>
-        <ion-badge v-if="dto.updatedAt" color="light">{{ dto.sandbox ? 'Sandbox' : 'Live' }}</ion-badge>
+        <StatusChip
+          :label="dto.enabled ? t('platform.status.enabled') : t('platform.status.disabled')"
+          :tone="dto.enabled ? 'success' : 'medium'"
+        />
+        <StatusChip v-if="dto.isDefault" :label="t('platform.gateway.subscriptionPayments')" tone="primary" />
+        <StatusChip
+          v-if="dto.useForInstitutes"
+          :label="t('platform.gateway.instituteFallback')"
+          tone="primary"
+        />
+        <StatusChip
+          v-if="dto.updatedAt"
+          :label="dto.sandbox ? t('platform.status.sandbox') : t('platform.status.live')"
+          :tone="dto.sandbox ? 'warning' : 'medium'"
+        />
       </div>
     </ion-card-header>
     <ion-card-content>
-      <p v-if="isMock" class="muted note">
-        Simulated payments for development and testing. It can't be enabled in production.
-      </p>
+      <p v-if="isMock" class="muted note">{{ t('platform.gateway.mockNote') }}</p>
       <ion-list>
         <template v-if="!isMock">
           <p class="muted hint">{{ fields.hint }}</p>
@@ -54,38 +61,48 @@
               label-placement="stacked"
               autocomplete="off"
               :maxlength="60"
-              placeholder="Blank: WEBSTAGING (test) or DEFAULT (live)"
+              :placeholder="t('platform.gateway.websitePlaceholder')"
             />
           </ion-item>
-          <ion-item><ion-toggle v-model="form.sandbox">Sandbox (test) mode</ion-toggle></ion-item>
+          <ion-item
+            ><ion-toggle v-model="form.sandbox">{{ t('platform.gateway.sandboxMode') }}</ion-toggle></ion-item
+          >
         </template>
         <ion-item>
-          <ion-toggle v-model="form.isDefault">Use for SaaS subscription payments</ion-toggle>
+          <ion-toggle v-model="form.isDefault">{{ t('platform.gateway.useForSubscriptions') }}</ion-toggle>
         </ion-item>
         <ion-item>
-          <ion-toggle v-model="form.useForInstitutes"
-            >Offer to institutes without their own fee gateway</ion-toggle
-          >
+          <ion-toggle v-model="form.useForInstitutes">{{
+            t('platform.gateway.offerToInstitutes')
+          }}</ion-toggle>
         </ion-item>
-        <ion-item><ion-toggle v-model="form.enabled">Enabled</ion-toggle></ion-item>
+        <ion-item
+          ><ion-toggle v-model="form.enabled">{{ t('platform.status.enabled') }}</ion-toggle></ion-item
+        >
       </ion-list>
       <div v-if="secretAgain" class="notice warning">
-        Sandbox and live use different keys: enter the {{ fields.secretKey?.toLowerCase() }} for
-        {{ form.sandbox ? 'sandbox' : 'live' }} mode.
+        {{
+          t('platform.gateway.secretAgain', {
+            field: fields.secretKey?.toLowerCase(),
+            mode: form.sandbox ? t('platform.gateway.modeSandbox') : t('platform.gateway.modeLive'),
+          })
+        }}
       </div>
       <p class="muted note">
-        Subscription payment webhook URL: <code>{{ dto.webhookUrl }}</code>
-        <ion-button size="small" fill="clear" aria-label="Copy webhook URL" @click="copyWebhook"
-          >Copy</ion-button
-        >
+        {{ t('platform.gateway.webhookUrl') }} <code>{{ dto.webhookUrl }}</code>
+        <ion-button size="small" fill="clear" :aria-label="t('platform.copyWebhook')" @click="copyWebhook">{{
+          t('common.actions.copy')
+        }}</ion-button>
       </p>
       <TestStatus :status="dto" :result="result" />
       <div class="actions">
-        <ion-button v-if="dto.updatedAt" fill="clear" color="danger" :disabled="busy" @click="remove"
-          >Remove</ion-button
-        >
-        <ion-button fill="outline" :disabled="busy" @click="test">Test connection</ion-button>
-        <ion-button :disabled="busy" @click="save">Save</ion-button>
+        <ion-button v-if="dto.updatedAt" fill="clear" color="danger" :disabled="busy" @click="remove">{{
+          t('common.actions.remove')
+        }}</ion-button>
+        <ion-button fill="outline" :disabled="busy" @click="test">{{
+          t('platform.test.connection')
+        }}</ion-button>
+        <ion-button :disabled="busy" @click="save">{{ t('common.actions.save') }}</ion-button>
       </div>
     </ion-card-content>
   </ion-card>
@@ -93,8 +110,8 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
-  IonBadge,
   IonButton,
   IonCard,
   IonCardContent,
@@ -107,15 +124,17 @@ import {
   alertController,
 } from '@ionic/vue';
 import type { IntegrationTestResultDto, PaymentGatewayKey, PlatformGatewayDto } from '@erp/shared';
+import StatusChip from '@/components/StatusChip.vue';
 import { toast, toastError } from '@/core/toast';
 import { GATEWAY_FIELDS, savedSecretHint } from '@/modules/fees/api';
-import { GATEWAY_LABELS, platformApi } from '../api';
+import { gatewayLabel, platformApi } from '../api';
 import TestStatus from './TestStatus.vue';
 
 const props = defineProps<{ dto: PlatformGatewayDto }>();
 const emit = defineEmits<{ saved: [] }>();
 
-const label = computed(() => GATEWAY_LABELS[props.dto.gateway as PaymentGatewayKey] ?? props.dto.gateway);
+const { t } = useI18n();
+const label = computed(() => gatewayLabel(props.dto.gateway));
 const isMock = computed(() => props.dto.gateway === 'mock');
 const fields = computed(() => GATEWAY_FIELDS[props.dto.gateway as PaymentGatewayKey] ?? GATEWAY_FIELDS.mock);
 
@@ -180,7 +199,7 @@ async function save() {
       isDefault: form.value.isDefault,
       useForInstitutes: form.value.useForInstitutes,
     });
-    await toast(`${label.value} saved`);
+    await toast(t('platform.saved', { name: label.value }));
     emit('saved');
   } catch (e) {
     await toastError(e);
@@ -191,18 +210,18 @@ async function save() {
 
 async function remove() {
   const alert = await alertController.create({
-    header: `Remove ${label.value}?`,
-    message: 'Its saved credentials are deleted and it stops taking payments.',
+    header: t('platform.removeTitle', { name: label.value }),
+    message: t('platform.gateway.removeMessage'),
     buttons: [
-      { text: 'Cancel', role: 'cancel' },
-      { text: 'Remove', role: 'destructive' },
+      { text: t('common.actions.cancel'), role: 'cancel' },
+      { text: t('common.actions.remove'), role: 'destructive' },
     ],
   });
   await alert.present();
   if ((await alert.onDidDismiss()).role !== 'destructive') return;
   try {
     await platformApi.removeGateway(props.dto.gateway);
-    await toast(`${label.value} removed`);
+    await toast(t('platform.removed', { name: label.value }));
     emit('saved');
   } catch (e) {
     await toastError(e);
@@ -212,9 +231,9 @@ async function remove() {
 async function copyWebhook() {
   try {
     await navigator.clipboard.writeText(props.dto.webhookUrl);
-    await toast('Webhook URL copied');
+    await toast(t('platform.webhookCopied'));
   } catch {
-    await toast('Copy failed; select the URL instead', 'warning');
+    await toast(t('platform.copyFailed'), 'warning');
   }
 }
 </script>

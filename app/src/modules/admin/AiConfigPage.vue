@@ -1,9 +1,9 @@
 <template>
-  <AppPage title="AI configuration">
+  <AppPage :title="t('admin.ai.title')">
     <div class="title-row">
-      <h2><ion-icon :icon="sparkles" color="primary" /> AI provider</h2>
+      <h2><ion-icon :icon="sparkles" color="primary" /> {{ t('admin.ai.provider') }}</h2>
       <div v-if="settings" class="badges">
-        <ion-badge v-if="settings.effectiveProvider === 'mock'" color="warning">mock</ion-badge>
+        <StatusChip v-if="settings.effectiveProvider === 'mock'" :label="t('admin.ai.mock')" tone="warning" />
         <code class="model-badge">{{ settings.effectiveModel }}</code>
       </div>
     </div>
@@ -14,7 +14,7 @@
     </div>
 
     <div v-if="settings" class="ai-card">
-      <div class="card-title">AI provider (any OpenAI-compatible chat completions API)</div>
+      <div class="card-title">{{ t('admin.ai.cardTitle') }}</div>
 
       <div class="chip-row presets">
         <ion-chip
@@ -34,33 +34,38 @@
           v-model="form.baseUrl"
           class="span-wide"
           fill="outline"
-          label="Base URL"
+          :label="t('admin.ai.baseUrl')"
           label-placement="stacked"
           type="url"
           :readonly="isMock"
           @ion-input="form.provider = 'custom'"
         />
-        <ion-input v-model="form.model" fill="outline" label="Model" label-placement="stacked" />
+        <ion-input
+          v-model="form.model"
+          fill="outline"
+          :label="t('admin.ai.model')"
+          label-placement="stacked"
+        />
         <ion-input
           v-if="!isMock"
           v-model="apiKey"
           class="span-wide"
           fill="outline"
-          label="API key"
+          :label="t('admin.ai.apiKey')"
           label-placement="stacked"
           type="password"
           autocomplete="off"
           :placeholder="keyPlaceholder"
         />
         <div class="toggles">
-          <ion-toggle v-model="form.jsonMode" label-placement="end">JSON mode</ion-toggle>
+          <ion-toggle v-model="form.jsonMode" label-placement="end">{{ t('admin.ai.jsonMode') }}</ion-toggle>
           <ion-button
             v-if="settings.keySource === 'database'"
             fill="clear"
             color="danger"
             size="small"
             @click="removeKey"
-            >Remove key</ion-button
+            >{{ t('admin.ai.removeKey') }}</ion-button
           >
         </div>
       </div>
@@ -69,7 +74,7 @@
         <ion-input
           v-model="prices.input"
           fill="outline"
-          label="Input price (USD per 1M tokens)"
+          :label="t('admin.ai.inputPrice')"
           label-placement="stacked"
           type="number"
           min="0"
@@ -78,7 +83,7 @@
         <ion-input
           v-model="prices.output"
           fill="outline"
-          label="Output price (USD per 1M tokens)"
+          :label="t('admin.ai.outputPrice')"
           label-placement="stacked"
           type="number"
           min="0"
@@ -87,67 +92,66 @@
       </div>
 
       <p class="muted note">
-        <template v-if="isMock"
-          >The mock provider runs inside the API server: no key, no network calls.</template
-        >
+        <template v-if="isMock">{{ t('admin.ai.mockNote') }}</template>
         <template v-else>
-          The key is stored on the server and never sent back to the browser. Defaults come from env
-          AI_BASE_URL / AI_MODEL / AI_API_KEY.
-          <template v-if="settings.keySource === 'env'"
-            ><br />Currently using the key from the server environment.</template
-          >
+          {{ t('admin.ai.keyNote') }}
+          <template v-if="settings.keySource === 'env'"><br />{{ t('admin.ai.envKeyNote') }}</template>
         </template>
-        <br />Prices are used to estimate the cost of each AI call. Leave them empty to use the preset's list
-        price.
+        <br />{{ t('admin.ai.priceNote') }}
       </p>
 
       <div v-if="testResult" class="test-result" :class="testResult.ok ? 'ok' : 'fail'">
         <ion-icon :icon="testResult.ok ? checkmarkCircle : alertCircle" />
         <span
-          >{{ testResult.message }} <span class="muted">({{ testResult.latencyMs }} ms)</span></span
+          >{{ testResult.message }}
+          <span class="muted">{{
+            t('admin.ai.latency', { ms: formatNumber(testResult.latencyMs) })
+          }}</span></span
         >
       </div>
 
       <div class="actions">
-        <ion-button fill="clear" color="dark" :disabled="busy" @click="test">Test connection</ion-button>
-        <ion-button color="primary" :disabled="busy" @click="save">Save</ion-button>
+        <ion-button fill="clear" color="dark" :disabled="busy" @click="test">{{
+          t('admin.ai.testConnection')
+        }}</ion-button>
+        <ion-button color="primary" :disabled="busy" @click="save">{{ t('common.actions.save') }}</ion-button>
       </div>
     </div>
 
-    <h3 class="usage-title">Usage (last 30 days)</h3>
+    <h3 class="usage-title">{{ t('admin.ai.usageTitle') }}</h3>
     <ion-list v-if="usage?.byInstitute.length">
-      <ion-list-header>By institute</ion-list-header>
+      <ion-list-header>{{ t('admin.ai.byInstitute') }}</ion-list-header>
       <ion-item v-for="u in usage.byInstitute" :key="String(u.instituteId)">
         <ion-label>
           <h3>
             {{
               u.instituteId === null
-                ? 'Platform'
-                : (instituteNames[u.instituteId] ?? `Institute #${u.instituteId}`)
+                ? t('admin.ai.platform')
+                : (instituteNames[u.instituteId] ?? t('admin.ai.instituteId', { id: u.instituteId }))
             }}
           </h3>
           <p>{{ usageLine(u) }}</p>
         </ion-label>
       </ion-item>
-      <ion-list-header>By provider and model</ion-list-header>
+      <ion-list-header>{{ t('admin.ai.byProvider') }}</ion-list-header>
       <ion-item v-for="u in usage.byProvider" :key="`${u.provider}/${u.model}`">
         <ion-label>
           <h3>
             {{ u.provider }} · {{ u.model }}
-            <ion-badge v-if="u.provider === 'mock'" color="warning">simulated</ion-badge>
+            <StatusChip v-if="u.provider === 'mock'" :label="t('admin.ai.simulated')" tone="warning" />
           </h3>
           <p>{{ usageLine(u) }}</p>
         </ion-label>
       </ion-item>
     </ion-list>
-    <p v-else class="muted">No AI calls yet.</p>
+    <p v-else class="muted">{{ t('admin.ai.noCalls') }}</p>
   </AppPage>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
-  IonBadge,
   IonButton,
   IonChip,
   IonIcon,
@@ -171,11 +175,15 @@ import {
   type AiTestResult,
 } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { formatNumber } from '@/core/format';
 import { formatTokens, formatUsd } from '@/core/ai';
 import { toast, toastError } from '@/core/toast';
 import { adminApi } from './api';
 
 type PriceKey = 'inputUsdPer1M' | 'outputUsdPer1M';
+
+const { t } = useI18n();
 
 const settings = ref<AiSettingsDto | null>(null);
 const form = reactive<Omit<AiSettingsUpdate, 'apiKey' | PriceKey>>({
@@ -210,20 +218,19 @@ const notice = computed<{ color: 'danger' | 'warning'; text: string } | null>(()
   if (s.provider === 'mock' && !s.mockAllowed)
     return {
       color: 'danger',
-      text: 'The mock provider is saved but cannot run in production, so AI features are off. Configure a real provider.',
+      text: t('admin.ai.notices.mockBlocked'),
     };
   if (s.mockReason === 'selected')
     return {
       color: 'warning',
-      text: 'The offline mock provider is active: AI grading, OCR and generated questions are simulated. Pick a real provider before going live.',
+      text: t('admin.ai.notices.mockSelected'),
     };
   if (s.mockReason === 'fallback')
     return {
       color: 'warning',
-      text: `No API key is configured for ${providerLabel(s.provider)}, so AI features use the offline mock provider (simulated results). Add a key to use ${s.model}.`,
+      text: t('admin.ai.notices.mockFallback', { provider: providerLabel(s.provider), model: s.model }),
     };
-  if (!s.hasKey && needsKey(s.provider))
-    return { color: 'danger', text: 'No API key is configured, so AI features are unavailable.' };
+  if (!s.hasKey && needsKey(s.provider)) return { color: 'danger', text: t('admin.ai.notices.noKey') };
   return null;
 });
 
@@ -234,22 +241,24 @@ const presetPrice = computed(() => {
   return p?.inputUsdPer1M != null && (anyModel || p.model === form.model) ? p : null;
 });
 const pricePlaceholder = (k: PriceKey) =>
-  presetPrice.value ? `${presetPrice.value[k] ?? 0} (preset)` : 'Not set: cost is not estimated';
+  presetPrice.value
+    ? t('admin.ai.presetPrice', { price: presetPrice.value[k] ?? 0 })
+    : t('admin.ai.priceNotSet');
 const toPrice = (v: string | number | null) => (v === '' || v === null ? null : Number(v));
 
 function usageLine(u: Omit<AiAdminUsageRow, 'instituteId'>) {
-  const parts = [`${u.calls} calls`];
-  if (u.errors) parts.push(`${u.errors} failed`);
-  parts.push(`${formatTokens(u.totalTokens)} tokens`);
-  if (u.images) parts.push(`${u.images} images`);
-  parts.push(`est. ${formatUsd(u.estimatedCostUsd)}`);
+  const parts = [t('admin.ai.calls', { n: formatNumber(u.calls) })];
+  if (u.errors) parts.push(t('admin.ai.failed', { n: formatNumber(u.errors) }));
+  parts.push(t('admin.ai.tokens', { n: formatTokens(u.totalTokens) }));
+  if (u.images) parts.push(t('admin.ai.images', { n: formatNumber(u.images) }));
+  parts.push(t('admin.ai.estimate', { cost: formatUsd(u.estimatedCostUsd) }));
   return parts.join(' · ');
 }
 const keyPlaceholder = computed(() => {
   const s = settings.value;
-  if (!s?.hasKey) return 'Not set';
-  if (s.keySource === 'env') return `from env (${s.keyHint}) - enter a key to override`;
-  return `saved (${s.keyHint}) - leave empty to keep`;
+  if (!s?.hasKey) return t('admin.ai.keyNotSet');
+  if (s.keySource === 'env') return t('admin.ai.keyFromEnv', { hint: s.keyHint });
+  return t('admin.ai.keySaved', { hint: s.keyHint });
 });
 
 function fill(s: AiSettingsDto) {
@@ -278,7 +287,7 @@ async function save() {
   busy.value = true;
   try {
     fill(await adminApi.saveAiSettings(payload()));
-    await toast('AI settings saved');
+    await toast(t('admin.ai.saved'));
   } catch (e) {
     await toastError(e);
   } finally {
@@ -300,12 +309,12 @@ async function test() {
 
 async function removeKey() {
   const alert = await alertController.create({
-    header: 'Remove stored API key?',
-    message: 'AI features fall back to AI_API_KEY from the server environment, if set.',
+    header: t('admin.ai.removeTitle'),
+    message: t('admin.ai.removeMessage'),
     buttons: [
-      { text: 'Cancel', role: 'cancel' },
+      { text: t('common.actions.cancel'), role: 'cancel' },
       {
-        text: 'Remove',
+        text: t('common.actions.remove'),
         role: 'destructive',
         handler: () => adminApi.removeAiKey().then(fill).catch(toastError),
       },

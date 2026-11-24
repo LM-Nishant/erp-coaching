@@ -1,8 +1,10 @@
 import type {
   AssetStatus,
   EmployeeDto,
+  EmployeeStatus,
   LeaveApplicationDto,
   LeaveBalanceDto,
+  LeaveStatus,
   LeaveTypeDto,
   SeparationStatus,
   SeparationType,
@@ -10,6 +12,8 @@ import type {
   StaffAttendanceStatus,
 } from '@erp/shared';
 import { api } from '@/core/api';
+import { formatTime } from '@/core/format';
+import { intlLocale } from '@/i18n';
 
 export interface Page<T> {
   items: T[];
@@ -153,4 +157,61 @@ export const todayIso = () => {
 export const rupees = (paise: number) =>
   `₹${(paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 export const blankToNull = (v: unknown) => (v === '' || v === undefined ? null : v);
-export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** `Nov 2026` (Hindi `नव॰ 2026`) for a payroll / attendance period. */
+export const formatMonth = (year: number, month: number) =>
+  new Intl.DateTimeFormat(intlLocale(), { month: 'short', year: 'numeric', timeZone: 'UTC' }).format(
+    new Date(Date.UTC(year, month - 1, 15)),
+  );
+
+/** A wall-clock `HH:MM[:SS]` (shift times, check-in) as `9:00 am`. */
+export function formatClock(hhmm: string | null | undefined): string {
+  const m = /^(\d{1,2}):(\d{2})/.exec(hhmm ?? '');
+  if (!m) return hhmm ?? '';
+  const d = new Date();
+  d.setHours(Number(m[1]), Number(m[2]), 0, 0);
+  return formatTime(d);
+}
+
+export type Tone = 'success' | 'warning' | 'danger' | 'primary' | 'medium';
+/** A status chip: `label` is an i18n key, `tone` its colour. */
+export interface Chip {
+  label: string;
+  tone: Tone;
+}
+
+export const LEAVE_STATUS: Record<LeaveStatus, Chip> = {
+  pending: { label: 'common.status.pending', tone: 'warning' },
+  approved: { label: 'common.status.approved', tone: 'success' },
+  rejected: { label: 'common.status.rejected', tone: 'danger' },
+  cancelled: { label: 'common.status.cancelled', tone: 'medium' },
+};
+export const EMPLOYEE_STATUS: Record<EmployeeStatus, Chip> = {
+  active: { label: 'common.status.active', tone: 'success' },
+  on_notice: { label: 'hr.status.onNotice', tone: 'warning' },
+  exited: { label: 'hr.status.exited', tone: 'medium' },
+  suspended: { label: 'hr.status.suspended', tone: 'danger' },
+};
+export const ATTENDANCE_STATUS: Record<StaffAttendanceStatus, Chip> = {
+  present: { label: 'common.status.present', tone: 'success' },
+  absent: { label: 'common.status.absent', tone: 'danger' },
+  late: { label: 'common.status.late', tone: 'warning' },
+  leave: { label: 'hr.status.onLeave', tone: 'primary' },
+  half_day: { label: 'hr.status.halfDay', tone: 'warning' },
+};
+export const ASSET_STATUS: Record<AssetStatus, Chip> = {
+  issued: { label: 'hr.status.issued', tone: 'warning' },
+  returned: { label: 'hr.status.returned', tone: 'success' },
+  lost: { label: 'hr.status.lost', tone: 'danger' },
+};
+export const SEPARATION_STATUS: Record<SeparationStatus, Chip> = {
+  submitted: { label: 'hr.status.submitted', tone: 'warning' },
+  accepted: { label: 'hr.status.accepted', tone: 'primary' },
+  rejected: { label: 'common.status.rejected', tone: 'danger' },
+  withdrawn: { label: 'hr.status.withdrawn', tone: 'medium' },
+  completed: { label: 'common.status.completed', tone: 'success' },
+};
+export const activeChip = (active: boolean): Chip =>
+  active
+    ? { label: 'common.status.active', tone: 'success' }
+    : { label: 'common.status.inactive', tone: 'medium' };

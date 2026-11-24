@@ -11,6 +11,7 @@ import type {
 } from '@erp/shared';
 import { api } from '@/core/api';
 import { saveFile } from '@/core/downloads';
+import { i18n } from '@/i18n';
 
 export type PeriodInput = Pick<ReportFiltersInput, 'preset' | 'from' | 'to'>;
 
@@ -40,5 +41,7 @@ export const reportsApi = {
 export async function saveExport(exp: Pick<ReportExportDto, 'id' | 'fileName'>): Promise<string | null> {
   const file = await reportsApi.downloadExport(exp.id);
   const name = exp.fileName ?? file.fileName ?? 'report-export';
-  return (await saveFile(file.blob, name)) === 'downloaded' ? `Downloaded ${name}` : null;
+  return (await saveFile(file.blob, name)) === 'downloaded'
+    ? i18n.global.t('reports.exports.downloaded', { name })
+    : null;
 }

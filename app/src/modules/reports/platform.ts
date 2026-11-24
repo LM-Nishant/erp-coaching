@@ -1,14 +1,19 @@
 import {
   DEFAULT_INSTITUTE_TIMEZONE,
   REPORT_DATE_PRESETS,
-  REPORT_DATE_PRESET_LABELS,
   type ReportExportFormat,
   type ReportFilterOptionsDto,
   type ReportTableDto,
   type SaasDashboardDto,
 } from '@erp/shared';
-import { DEFAULT_PRESET, todayIn } from './filters';
-import { formatBytes, humanize, type Metric } from './format';
+import { formatNumber } from '@/core/format';
+import { i18n } from '@/i18n';
+import { DEFAULT_PRESET, presetLabel, todayIn } from './filters';
+import { formatBytes, humanize, keyLabel, type Metric } from './format';
+
+const t = (key: string, params: Record<string, unknown> = {}) =>
+  i18n.global.t(`reports.platform.${key}`, params);
+const statusLabel = (status: string) => keyLabel('reports.platform.status', status);
 
 /** SaaS figures are evaluated in the platform default timezone. */
 export const PLATFORM_TIMEZONE = DEFAULT_INSTITUTE_TIMEZONE;
@@ -17,7 +22,7 @@ export const PLATFORM_TIMEZONE = DEFAULT_INSTITUTE_TIMEZONE;
 export const platformFilterOptions = (now = new Date()): ReportFilterOptionsDto => ({
   timezone: PLATFORM_TIMEZONE,
   today: todayIn(PLATFORM_TIMEZONE, now),
-  presets: REPORT_DATE_PRESETS.map((value) => ({ value, label: REPORT_DATE_PRESET_LABELS[value] })),
+  presets: REPORT_DATE_PRESETS.map((value) => ({ value, label: presetLabel(value) })),
   defaultPreset: DEFAULT_PRESET,
   branches: [],
   courses: [],
@@ -29,33 +34,36 @@ export const platformFilterOptions = (now = new Date()): ReportFilterOptionsDto 
 export const saasExportFileName = (d: Pick<SaasDashboardDto, 'period'>, format: ReportExportFormat) =>
   `saas-institutes-${d.period.from}-to-${d.period.to}.${format}`;
 
-const count = (n: number) => n.toLocaleString('en-IN');
+const count = (n: number) => formatNumber(n);
 
 export function platformHeadline(d: SaasDashboardDto): Metric[] {
   return [
     {
       key: 'institutes',
-      label: 'Institutes',
+      label: t('metrics.institutes'),
       value: d.institutes.total,
       type: 'number',
-      hint: `${count(d.institutes.newInPeriod)} new in period`,
+      hint: t('metrics.newInPeriod', { n: count(d.institutes.newInPeriod) }),
     },
     {
       key: 'users',
-      label: 'Institute users',
+      label: t('metrics.users'),
       value: d.users.total,
       type: 'number',
-      hint: `${count(d.users.active)} active · ${count(d.users.newInPeriod)} new`,
+      hint: t('metrics.activeNew', { active: count(d.users.active), new: count(d.users.newInPeriod) }),
     },
     {
       key: 'students',
-      label: 'Students',
+      label: t('metrics.students'),
       value: d.students.total,
       type: 'number',
-      hint: `${count(d.students.active)} active · ${count(d.students.admittedInPeriod)} admitted`,
+      hint: t('metrics.activeAdmitted', {
+        active: count(d.students.active),
+        admitted: count(d.students.admittedInPeriod),
+      }),
     },
-    { key: 'teachers', label: 'Teachers', value: d.teachers.total, type: 'number' },
-    { key: 'branches', label: 'Branches', value: d.branches.total, type: 'number' },
+    { key: 'teachers', label: t('metrics.teachers'), value: d.teachers.total, type: 'number' },
+    { key: 'branches', label: t('metrics.branches'), value: d.branches.total, type: 'number' },
   ];
 }
 
@@ -63,13 +71,13 @@ export function platformSubscriptions(d: SaasDashboardDto): Metric[] {
   return [
     ...d.subscriptions.byStatus.map((s): Metric => ({
       key: `status-${s.status}`,
-      label: humanize(s.status),
+      label: statusLabel(s.status),
       value: s.count,
       type: 'number',
     })),
     {
       key: 'ending-soon',
-      label: 'Ending in 30 days',
+      label: t('metrics.endingSoon'),
       value: d.subscriptions.endingSoon,
       type: 'number',
       tone: d.subscriptions.endingSoon ? 'warning' : undefined,
@@ -80,31 +88,31 @@ export function platformSubscriptions(d: SaasDashboardDto): Metric[] {
 export function platformRevenue(d: SaasDashboardDto): Metric[] {
   const r = d.revenue;
   const tracked = (key: string, label: string, paise: number | null): Metric =>
-    paise === null ? { key, label, display: 'Not tracked' } : { key, label, value: paise, type: 'money' };
+    paise === null
+      ? { key, label, display: i18n.global.t('reports.units.notTracked') }
+      : { key, label, value: paise, type: 'money' };
   return [
-    { key: 'mrr', label: 'MRR', value: r.mrrPaise, type: 'money' },
-    { key: 'arr', label: 'ARR', value: r.arrPaise, type: 'money' },
-    tracked('revenue', 'Revenue in period', r.revenueInPeriodPaise),
-    tracked('outstanding', 'Outstanding', r.outstandingPaise),
-    { key: 'paid', label: 'Paid subscriptions', value: r.paidSubscriptions, type: 'number' },
+    { key: 'mrr', label: t('metrics.mrr'), value: r.mrrPaise, type: 'money' },
+    { key: 'arr', label: t('metrics.arr'), value: r.arrPaise, type: 'money' },
+    tracked('revenue', t('metrics.revenueInPeriod'), r.revenueInPeriodPaise),
+    tracked('outstanding', t('metrics.outstanding'), r.outstandingPaise),
+    { key: 'paid', label: t('metrics.paidSubscriptions'), value: r.paidSubscriptions, type: 'number' },
   ];
 }
 
 export const revenueNote = (d: SaasDashboardDto) =>
-  d.revenue.source === 'subscriptions'
-    ? 'Revenue is estimated from the plan prices of paid, active subscriptions. Collected and outstanding amounts appear once SaaS billing is connected.'
-    : 'Revenue comes from SaaS invoices and payments.';
+  d.revenue.source === 'subscriptions' ? t('revenueNote.subscriptions') : t('revenueNote.invoices');
 
 export function platformUsage(d: SaasDashboardDto): Metric[] {
   return [
     {
       key: 'storage',
-      label: 'Storage used',
+      label: t('metrics.storage'),
       display: formatBytes(d.usage.storageBytes),
-      hint: `${count(d.usage.files)} files`,
+      hint: t('metrics.files', { n: count(d.usage.files) }),
     },
-    { key: 'ai-requests', label: 'AI requests in period', value: d.usage.aiRequestsInPeriod, type: 'number' },
-    { key: 'ai-tokens', label: 'AI tokens in period', value: d.usage.aiTokensInPeriod, type: 'number' },
+    { key: 'ai-requests', label: t('metrics.aiRequests'), value: d.usage.aiRequestsInPeriod, type: 'number' },
+    { key: 'ai-tokens', label: t('metrics.aiTokens'), value: d.usage.aiTokensInPeriod, type: 'number' },
   ];
 }
 
@@ -121,12 +129,12 @@ export function plansTable(d: SaasDashboardDto): ReportTableDto {
   const list = [...rows.values()].sort((a, b) => b.mrr - a.mrr || b.subscriptions - a.subscriptions);
   return {
     key: 'plans',
-    title: 'Plans',
+    title: t('tables.plans'),
     columns: [
-      { key: 'plan', label: 'Plan', type: 'text' },
-      { key: 'subscriptions', label: 'Subscriptions', type: 'number' },
-      { key: 'paying', label: 'Paying', type: 'number' },
-      { key: 'mrr', label: 'MRR', type: 'money' },
+      { key: 'plan', label: t('tables.plan'), type: 'text' },
+      { key: 'subscriptions', label: t('tables.subscriptions'), type: 'number' },
+      { key: 'paying', label: t('tables.paying'), type: 'number' },
+      { key: 'mrr', label: t('metrics.mrr'), type: 'money' },
     ],
     rows: list,
     totalRows: list.length,
@@ -136,11 +144,11 @@ export function plansTable(d: SaasDashboardDto): ReportTableDto {
 export function aiFeatureTable(d: SaasDashboardDto): ReportTableDto {
   return {
     key: 'ai-features',
-    title: 'AI usage by feature',
+    title: t('tables.aiFeatures'),
     columns: [
-      { key: 'feature', label: 'Feature', type: 'text' },
-      { key: 'requests', label: 'Requests', type: 'number' },
-      { key: 'tokens', label: 'Tokens', type: 'number' },
+      { key: 'feature', label: t('tables.feature'), type: 'text' },
+      { key: 'requests', label: t('tables.requests'), type: 'number' },
+      { key: 'tokens', label: t('tables.tokens'), type: 'number' },
     ],
     rows: d.usage.aiByFeature.map((f) => ({
       feature: humanize(f.feature),
@@ -154,26 +162,26 @@ export function aiFeatureTable(d: SaasDashboardDto): ReportTableDto {
 export function institutesTable(d: SaasDashboardDto): ReportTableDto {
   return {
     key: 'institutes',
-    title: 'Institutes',
+    title: t('tables.institutes'),
     columns: [
-      { key: 'name', label: 'Institute', type: 'text' },
-      { key: 'status', label: 'Status', type: 'text' },
-      { key: 'plan', label: 'Plan', type: 'text' },
-      { key: 'subscription', label: 'Subscription', type: 'text' },
-      { key: 'endsAt', label: 'Subscription ends', type: 'datetime' },
-      { key: 'branches', label: 'Branches', type: 'number' },
-      { key: 'users', label: 'Users', type: 'number' },
-      { key: 'students', label: 'Students', type: 'number' },
-      { key: 'teachers', label: 'Teachers', type: 'number' },
-      { key: 'storage', label: 'Storage', type: 'text' },
-      { key: 'aiTokens', label: 'AI tokens in period', type: 'number' },
-      { key: 'createdAt', label: 'Created', type: 'datetime' },
+      { key: 'name', label: t('tables.institute'), type: 'text' },
+      { key: 'status', label: i18n.global.t('common.labels.status'), type: 'text' },
+      { key: 'plan', label: t('tables.plan'), type: 'text' },
+      { key: 'subscription', label: t('tables.subscription'), type: 'text' },
+      { key: 'endsAt', label: t('tables.endsAt'), type: 'datetime' },
+      { key: 'branches', label: t('metrics.branches'), type: 'number' },
+      { key: 'users', label: t('tables.users'), type: 'number' },
+      { key: 'students', label: t('metrics.students'), type: 'number' },
+      { key: 'teachers', label: t('metrics.teachers'), type: 'number' },
+      { key: 'storage', label: t('tables.storage'), type: 'text' },
+      { key: 'aiTokens', label: t('metrics.aiTokens'), type: 'number' },
+      { key: 'createdAt', label: t('tables.created'), type: 'datetime' },
     ],
     rows: d.institutesTable.map((i) => ({
       name: i.name,
-      status: humanize(i.status),
+      status: statusLabel(i.status),
       plan: i.planName,
-      subscription: i.subscriptionStatus && humanize(i.subscriptionStatus),
+      subscription: i.subscriptionStatus && statusLabel(i.subscriptionStatus),
       endsAt: i.subscriptionEndsAt,
       branches: i.branches,
       users: i.users,

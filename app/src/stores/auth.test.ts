@@ -82,6 +82,7 @@ describe('auth store "Who\'s signing in?"', () => {
       isSuperAdmin: false,
       sharesMobile: id !== 1,
       profileCount: 2,
+      locale: 'en',
     },
     institute,
     branches: [],

@@ -1,43 +1,61 @@
 <template>
-  <AppPage title="Request a meeting" back-href="/appointments">
+  <AppPage :title="t('appointments.request.title')" back-href="/appointments">
     <ion-list>
       <ion-item>
-        <ion-select v-model="studentId" label="Child" interface="popover" placeholder="Choose">
+        <ion-select
+          v-model="studentId"
+          :label="t('appointments.request.child')"
+          interface="popover"
+          :placeholder="t('appointments.request.choose')"
+        >
           <ion-select-option v-for="c in children" :key="c.studentId" :value="c.studentId">{{
             c.name
           }}</ion-select-option>
         </ion-select>
       </ion-item>
       <ion-item v-if="studentId">
-        <ion-select v-model="teacherUserId" label="Teacher" interface="popover" placeholder="Choose">
-          <ion-select-option v-for="t in teachers" :key="t.teacherUserId" :value="t.teacherUserId">
-            {{ t.name }} ({{ t.batches.map((b) => b.subject ?? b.name).join(', ') }})
+        <ion-select
+          v-model="teacherUserId"
+          :label="t('appointments.request.teacher')"
+          interface="popover"
+          :placeholder="t('appointments.request.choose')"
+        >
+          <ion-select-option
+            v-for="teacher in teachers"
+            :key="teacher.teacherUserId"
+            :value="teacher.teacherUserId"
+          >
+            {{ teacher.name }} ({{ teacher.batches.map((b) => b.subject ?? b.name).join(', ') }})
           </ion-select-option>
         </ion-select>
       </ion-item>
       <ion-item v-if="studentId && !teachers.length" lines="none">
-        <ion-label class="muted ion-text-wrap">No teachers found for this child's batches.</ion-label>
+        <ion-label class="muted ion-text-wrap">{{ t('appointments.request.noTeachers') }}</ion-label>
       </ion-item>
     </ion-list>
 
     <template v-if="studentId && teacherUserId">
-      <ion-list-header><ion-label>Pick a free time</ion-label></ion-list-header>
+      <ion-list-header
+        ><ion-label>{{ t('appointments.request.pickTime') }}</ion-label></ion-list-header
+      >
       <SlotPicker v-model="picked" :teacher-user-id="teacherUserId" :student-id="studentId" />
       <ion-list v-if="picked">
         <ion-item>
           <ion-segment v-model="mode">
             <ion-segment-button v-for="m in picked.modes" :key="m" :value="m">
-              <ion-label>{{ m === 'online' ? 'Online' : 'In person' }}</ion-label>
+              <ion-label>{{ t(modeKey(m)) }}</ion-label>
             </ion-segment-button>
           </ion-segment>
         </ion-item>
         <ion-item v-if="mode === 'offline' && picked.location" lines="none">
-          <ion-label class="muted">At {{ picked.location }}</ion-label>
+          <ion-label class="muted">{{
+            t('appointments.request.at', { location: picked.location })
+          }}</ion-label>
         </ion-item>
         <ion-item>
           <ion-textarea
             v-model="agenda"
-            label="What would you like to discuss?"
+            :label="t('appointments.request.agenda')"
             label-placement="stacked"
             :maxlength="1000"
             auto-grow
@@ -46,7 +64,11 @@
       </ion-list>
       <div class="ion-padding">
         <ion-button expand="block" :disabled="!picked || saving" @click="submit">
-          Request {{ picked ? `${picked.date} ${picked.startTime}` : 'meeting' }}
+          {{
+            picked
+              ? t('appointments.request.submitAt', { when: slotStart(picked.date, picked.startTime) })
+              : t('appointments.request.submit')
+          }}
         </ion-button>
       </div>
     </template>
@@ -56,6 +78,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import {
   IonButton,
   IonItem,
@@ -73,8 +96,9 @@ import AppPage from '@/components/AppPage.vue';
 import { toast, toastError } from '@/core/toast';
 import { parentPortalApi } from '@/modules/parent-portal/api';
 import SlotPicker from './components/SlotPicker.vue';
-import { appointmentsApi } from './api';
+import { appointmentsApi, modeKey, slotStart } from './api';
 
+const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const children = ref<ParentChildDto[]>([]);
@@ -113,7 +137,7 @@ async function submit() {
       mode: mode.value,
       agenda: agenda.value || null,
     });
-    await toast('Request sent. The teacher will confirm.');
+    await toast(t('appointments.request.sent'));
     await router.replace(`/appointments/${a.id}`);
   } catch (e) {
     await toastError(e);

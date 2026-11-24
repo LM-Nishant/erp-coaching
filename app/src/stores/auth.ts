@@ -12,6 +12,7 @@ import {
 import { getDeviceDescriptor } from '@/core/device';
 import { loadProfile, loadSession, patchSession, saveProfile, saveSession } from '@/core/token-storage';
 import { applyBranding } from '@/core/branding';
+import { syncLocaleFromMe } from '@/core/locale-sync';
 import { personaOf, type Persona } from '@/core/persona';
 import {
   BiometricError,
@@ -180,6 +181,7 @@ export const useAuthStore = defineStore('auth', {
       this.me = me;
       this.offline = false;
       applyBranding(me.institute);
+      syncLocaleFromMe(me);
       return me;
     },
 

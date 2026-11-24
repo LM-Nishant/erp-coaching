@@ -1,19 +1,25 @@
 <template>
-  <AppPage title="Grievance reports" :on-refresh="load">
+  <AppPage :title="t('grievances.reports.title')" :on-refresh="load">
     <template #actions>
-      <ion-button :disabled="downloading" aria-label="Download CSV" @click="download"
+      <ion-button :disabled="downloading" :aria-label="t('grievances.reports.downloadCsv')" @click="download"
         ><ion-icon slot="icon-only" :icon="downloadOutline"
       /></ion-button>
     </template>
 
     <ion-list>
       <ion-item
-        ><ion-input v-model="filters.from" type="date" label="From" label-placement="stacked"
+        ><ion-input
+          v-model="filters.from"
+          type="date"
+          :label="t('common.labels.from')"
+          label-placement="stacked"
       /></ion-item>
-      <ion-item><ion-input v-model="filters.to" type="date" label="To" label-placement="stacked" /></ion-item>
+      <ion-item
+        ><ion-input v-model="filters.to" type="date" :label="t('common.labels.to')" label-placement="stacked"
+      /></ion-item>
       <ion-item>
-        <ion-select v-model="filters.categoryId" label="Category" interface="popover">
-          <ion-select-option :value="null">All</ion-select-option>
+        <ion-select v-model="filters.categoryId" :label="t('grievances.fields.category')" interface="popover">
+          <ion-select-option :value="null">{{ t('common.labels.all') }}</ion-select-option>
           <ion-select-option v-for="c in categories" :key="c.id" :value="c.id">{{
             c.name
           }}</ion-select-option>
@@ -23,34 +29,50 @@
 
     <template v-if="summary">
       <div class="stats">
-        <StatCard label="Total complaints" :value="summary.total" />
-        <StatCard label="Avg first response" :value="hours(summary.avgFirstResponseHours)" />
-        <StatCard label="Avg resolution" :value="hours(summary.avgResolutionHours)" />
-        <StatCard label="SLA compliance" :value="pct(summary.slaComplianceRate)" />
-        <StatCard label="SLA breached" :value="summary.slaBreached" />
-        <StatCard label="Reopened" :value="summary.reopened" />
+        <StatCard :label="t('grievances.reports.totalComplaints')" :value="formatNumber(summary.total)" />
         <StatCard
-          label="Avg satisfaction"
-          :value="summary.avgSatisfaction ? `${summary.avgSatisfaction} / 5` : '—'"
+          :label="t('grievances.reports.avgFirstResponse')"
+          :value="hours(summary.avgFirstResponseHours)"
+        />
+        <StatCard :label="t('grievances.reports.avgResolution')" :value="hours(summary.avgResolutionHours)" />
+        <StatCard
+          :label="t('grievances.reports.slaCompliance')"
+          :value="formatPercent(summary.slaComplianceRate)"
+        />
+        <StatCard :label="t('grievances.slaBreached')" :value="formatNumber(summary.slaBreached)" />
+        <StatCard :label="t('grievances.reports.reopened')" :value="formatNumber(summary.reopened)" />
+        <StatCard
+          :label="t('grievances.reports.avgSatisfaction')"
+          :value="
+            summary.avgSatisfaction
+              ? t('grievances.reports.outOfFive', { n: formatNumber(summary.avgSatisfaction, 1) })
+              : '—'
+          "
         />
       </div>
 
       <ion-list>
-        <ion-list-header><ion-label>By status</ion-label></ion-list-header>
+        <ion-list-header
+          ><ion-label>{{ t('grievances.reports.byStatus') }}</ion-label></ion-list-header
+        >
         <ion-item v-for="(n, s) in summary.byStatus" :key="s">
-          <ion-label class="cap">{{ statusLabel(s) }}</ion-label><ion-note slot="end">{{ n }}</ion-note>
+          <ion-label>{{ t(statusKey(s)) }}</ion-label><ion-note slot="end">{{ formatNumber(n) }}</ion-note>
         </ion-item>
-        <ion-list-header><ion-label>By priority</ion-label></ion-list-header>
+        <ion-list-header
+          ><ion-label>{{ t('grievances.reports.byPriority') }}</ion-label></ion-list-header
+        >
         <ion-item v-for="(n, p) in summary.byPriority" :key="p">
-          <ion-label class="cap">{{ p }}</ion-label><ion-note slot="end">{{ n }}</ion-note>
+          <ion-label>{{ t(priorityKey(p)) }}</ion-label><ion-note slot="end">{{ formatNumber(n) }}</ion-note>
         </ion-item>
-        <ion-list-header><ion-label>By category</ion-label></ion-list-header>
+        <ion-list-header
+          ><ion-label>{{ t('grievances.reports.byCategory') }}</ion-label></ion-list-header
+        >
         <ion-item v-for="c in summary.byCategory" :key="c.categoryId">
           <ion-label>
             {{ c.name }}
-            <p>Avg resolution {{ hours(c.avgResolutionHours) }}</p>
+            <p>{{ t('grievances.reports.avgResolutionValue', { value: hours(c.avgResolutionHours) }) }}</p>
           </ion-label>
-          <ion-note slot="end">{{ c.total }}</ion-note>
+          <ion-note slot="end">{{ formatNumber(c.total) }}</ion-note>
         </ion-item>
       </ion-list>
     </template>
@@ -72,21 +94,22 @@ import {
   IonSelectOption,
 } from '@ionic/vue';
 import { downloadOutline } from 'ionicons/icons';
+import { useI18n } from 'vue-i18n';
 import type { GrievanceCategoryDto, GrievanceReportSummary } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import StatCard from '@/components/StatCard.vue';
 import { saveFile } from '@/core/downloads';
+import { formatDuration, formatNumber, formatPercent } from '@/core/format';
 import { toastError } from '@/core/toast';
-import { grievancesApi, statusLabel, type ReportFilters } from './api';
+import { grievancesApi, priorityKey, statusKey, type ReportFilters } from './api';
 
 const filters = reactive<ReportFilters>({ from: '', to: '', categoryId: null });
 const summary = ref<GrievanceReportSummary | null>(null);
 const categories = ref<GrievanceCategoryDto[]>([]);
 const downloading = ref(false);
 
-const hours = (h: number | null) =>
-  h == null ? '—' : h < 48 ? `${h.toFixed(1)} h` : `${(h / 24).toFixed(1)} d`;
-const pct = (r: number | null) => (r == null ? '—' : `${r}%`);
+const { t } = useI18n();
+const hours = (h: number | null) => formatDuration(h == null ? null : h * 3600);
 
 /** `to` is inclusive of the whole selected day. */
 const query = () => ({
@@ -127,8 +150,5 @@ watch(filters, load);
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 8px;
-}
-.cap {
-  text-transform: capitalize;
 }
 </style>

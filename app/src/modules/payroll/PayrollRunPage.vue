@@ -1,6 +1,10 @@
 <template>
   <AppPage
-    :title="run ? `Payroll ${MONTHS[run.periodMonth - 1]} ${run.periodYear}` : 'Payroll run'"
+    :title="
+      run
+        ? t('payroll.run.title', { period: formatMonth(run.periodYear, run.periodMonth) })
+        : t('payroll.run.fallbackTitle')
+    "
     back-href="/payroll/runs"
     :on-refresh="load"
   >
@@ -8,16 +12,18 @@
       <ion-item lines="none">
         <ion-label>
           <h2>
-            <ion-badge
-              :color="run.status === 'locked' ? 'success' : run.status === 'approved' ? 'warning' : 'medium'"
-            >
-              {{ run.status }}
-            </ion-badge>
-            {{ run.employeeCount }} employee(s)
+            <StatusChip :label="t(RUN_STATUS[run.status].label)" :tone="RUN_STATUS[run.status].tone" />
+            {{ t('payroll.employees', run.employeeCount) }}
           </h2>
           <p>
-            Gross {{ rupees(run.totalGross) }} · deductions {{ rupees(run.totalDeductions) }} · net
-            {{ rupees(run.totalNet) }} · employer {{ rupees(run.totalEmployer) }}
+            {{
+              t('payroll.run.totals', {
+                gross: formatMoney(run.totalGross),
+                deductions: formatMoney(run.totalDeductions),
+                net: formatMoney(run.totalNet),
+                employer: formatMoney(run.totalEmployer),
+              })
+            }}
           </p>
         </ion-label>
       </ion-item>
@@ -25,38 +31,52 @@
         <template v-if="run.status === 'draft'">
           <ion-button
             v-can="'payroll.create'"
-            @click="act(() => payrollApi.generate(run!.id), 'Payslips regenerated')"
+            @click="act(() => payrollApi.generate(run!.id), t('payroll.run.regenerated'))"
           >
-            Regenerate
+            {{ t('payroll.run.regenerate') }}
           </ion-button>
-          <ion-button v-can="'payroll.approve'" color="warning" @click="transition('approve')"
-            >Approve</ion-button
-          >
-          <ion-button v-can="'payroll.delete'" color="danger" fill="outline" @click="remove"
-            >Delete</ion-button
-          >
+          <ion-button v-can="'payroll.approve'" color="warning" @click="transition('approve')">{{
+            t('common.actions.approve')
+          }}</ion-button>
+          <ion-button v-can="'payroll.delete'" color="danger" fill="outline" @click="remove">{{
+            t('common.actions.delete')
+          }}</ion-button>
         </template>
         <template v-if="run.status === 'approved'">
-          <ion-button v-can="'payroll.approve'" color="success" @click="transition('lock')"
-            >Lock & publish</ion-button
-          >
-          <ion-button v-can="'payroll.approve'" fill="outline" @click="transition('reopen')"
-            >Reopen</ion-button
-          >
+          <ion-button v-can="'payroll.approve'" color="success" @click="transition('lock')">{{
+            t('payroll.run.lock')
+          }}</ion-button>
+          <ion-button v-can="'payroll.approve'" fill="outline" @click="transition('reopen')">{{
+            t('payroll.run.reopen')
+          }}</ion-button>
         </template>
-        <ion-button v-can="'payroll.export'" fill="outline" @click="exportRegister('csv')">CSV</ion-button>
-        <ion-button v-can="'payroll.export'" fill="outline" @click="exportRegister('xls')">Excel</ion-button>
+        <ion-button v-can="'payroll.export'" fill="outline" @click="exportRegister('csv')">{{
+          t('payroll.csv')
+        }}</ion-button>
+        <ion-button v-can="'payroll.export'" fill="outline" @click="exportRegister('xls')">{{
+          t('payroll.excel')
+        }}</ion-button>
       </div>
       <ion-item v-for="s in skipped" :key="s.employeeId" color="light">
-        <ion-label class="ion-text-wrap">Skipped {{ s.name }}: {{ s.reason }}</ion-label>
+        <ion-label class="ion-text-wrap">{{
+          t('payroll.run.skipped', { name: s.name, reason: s.reason })
+        }}</ion-label>
       </ion-item>
       <ion-list>
         <ion-item v-for="p in payslips" :key="p.id" button @click="selected = p">
           <ion-label>
             <h3>{{ p.employee?.name }}</h3>
-            <p>{{ p.employee?.employeeCode }} · LOP {{ p.lopDays }} · gross {{ rupees(p.gross) }}</p>
+            <p>
+              {{
+                t('payroll.run.row', {
+                  code: p.employee?.employeeCode ?? '',
+                  lop: formatNumber(p.lopDays),
+                  gross: formatMoney(p.gross),
+                })
+              }}
+            </p>
           </ion-label>
-          <ion-note slot="end">{{ rupees(p.net) }}</ion-note>
+          <ion-note slot="end">{{ formatMoney(p.net) }}</ion-note>
         </ion-item>
       </ion-list>
     </template>
@@ -64,10 +84,10 @@
     <ion-modal :is-open="!!selected" @did-dismiss="selected = null">
       <ion-header>
         <ion-toolbar>
-          <ion-title>Payslip</ion-title>
+          <ion-title>{{ t('payroll.payslip') }}</ion-title>
           <ion-buttons slot="end">
-            <ion-button v-if="run?.status === 'locked'" @click="pdf">PDF</ion-button>
-            <ion-button @click="selected = null">Close</ion-button>
+            <ion-button v-if="run?.status === 'locked'" @click="pdf">{{ t('payroll.pdf') }}</ion-button>
+            <ion-button @click="selected = null">{{ t('common.actions.close') }}</ion-button>
           </ion-buttons>
         </ion-toolbar>
       </ion-header>
@@ -78,9 +98,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import {
-  IonBadge,
   IonButton,
   IonButtons,
   IonContent,
@@ -96,10 +116,19 @@ import {
 } from '@ionic/vue';
 import type { PayrollRunDto, PayslipDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { formatMoney, formatNumber } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
-import { MONTHS, rupees } from '../hr/api';
-import { downloadReport, openSigned, payrollApi } from './api';
+import { formatMonth } from '../hr/api';
+import { RUN_STATUS, downloadReport, openSigned, payrollApi } from './api';
 import PayslipView from './PayslipView.vue';
+
+const { t } = useI18n();
+const CONFIRM = {
+  approve: { header: 'payroll.run.confirmApprove', done: 'payroll.run.approved' },
+  lock: { header: 'payroll.run.confirmLock', done: 'payroll.run.locked' },
+  reopen: { header: 'payroll.run.confirmReopen', done: 'payroll.run.reopened' },
+} as const;
 
 const route = useRoute();
 const router = useRouter();
@@ -131,14 +160,13 @@ async function act(fn: () => Promise<unknown>, message: string) {
 
 async function transition(action: 'approve' | 'reopen' | 'lock') {
   const alert = await alertController.create({
-    header: `${action[0].toUpperCase()}${action.slice(1)} this run?`,
-    message:
-      action === 'lock' ? 'Locked runs cannot be changed; payslips become visible to employees.' : undefined,
+    header: t(CONFIRM[action].header),
+    message: action === 'lock' ? t('payroll.run.lockMessage') : undefined,
     buttons: [
-      { text: 'Cancel', role: 'cancel' },
+      { text: t('common.actions.cancel'), role: 'cancel' },
       {
-        text: 'Confirm',
-        handler: () => act(() => payrollApi.transition(id.value, action), `Run ${action}d`),
+        text: t('common.actions.confirm'),
+        handler: () => act(() => payrollApi.transition(id.value, action), t(CONFIRM[action].done)),
       },
     ],
   });

@@ -1,23 +1,32 @@
 <template>
-  <AppPage title="Website builder" :on-refresh="load">
+  <AppPage :title="t('website.pages.title')" :on-refresh="load">
     <template #actions>
-      <ion-button v-if="site" :href="site.publicUrl" target="_blank" rel="noopener" aria-label="Open website">
+      <ion-button
+        v-if="site"
+        :href="site.publicUrl"
+        target="_blank"
+        rel="noopener"
+        :aria-label="t('website.pages.openWebsite')"
+      >
         <ion-icon slot="icon-only" :icon="openOutline" />
       </ion-button>
     </template>
     <ion-card v-if="site">
       <ion-card-content>
         <p>
-          Live site: <a :href="site.publicUrl" target="_blank" rel="noopener">{{ site.publicUrl }}</a>
+          {{ t('website.pages.liveSite') }}
+          <a :href="site.publicUrl" target="_blank" rel="noopener">{{ site.publicUrl }}</a>
         </p>
-        <p class="muted">Sitemap: {{ site.sitemapUrl }} · Robots: {{ site.robotsUrl }}</p>
+        <p class="muted">
+          {{ t('website.pages.sitemapRobots', { sitemap: site.sitemapUrl, robots: site.robotsUrl }) }}
+        </p>
       </ion-card-content>
     </ion-card>
 
     <ion-list>
       <ion-list-header>
-        <ion-label>Pages</ion-label>
-        <ion-button v-if="auth.can('website.create')" aria-label="New page" @click="openNew"
+        <ion-label>{{ t('website.pages.heading') }}</ion-label>
+        <ion-button v-if="auth.can('website.create')" :aria-label="t('website.pages.new')" @click="openNew"
           ><ion-icon slot="icon-only" :icon="add"
         /></ion-button>
       </ion-list-header>
@@ -25,17 +34,25 @@
         <ion-icon slot="start" :icon="p.isHome ? homeOutline : documentTextOutline" />
         <ion-label>
           <h2>{{ p.title }}</h2>
-          <p>/{{ p.isHome ? '' : `p/${p.slug}` }}{{ p.showInNav ? '' : ' · hidden from menu' }}</p>
+          <p>
+            /{{ p.isHome ? '' : `p/${p.slug}`
+            }}{{ p.showInNav ? '' : ` · ${t('website.pages.hiddenFromMenu')}` }}
+          </p>
         </ion-label>
-        <ion-badge slot="end" :color="statusColor[p.status]">{{ statusLabel[p.status] }}</ion-badge>
+        <StatusChip slot="end" :label="t(`website.status.${p.status}`)" :tone="statusTone[p.status]" />
+      </ion-item>
+      <ion-item v-if="loaded && !pages.length" lines="none">
+        <ion-label>{{ t('website.pages.empty') }}</ion-label>
       </ion-item>
     </ion-list>
 
     <ion-modal :is-open="!!form" @did-dismiss="form = null">
       <ion-header>
         <ion-toolbar>
-          <ion-title>New page</ion-title>
-          <ion-buttons slot="end"><ion-button @click="form = null">Close</ion-button></ion-buttons>
+          <ion-title>{{ t('website.pages.new') }}</ion-title>
+          <ion-buttons slot="end"
+            ><ion-button @click="form = null">{{ t('common.actions.close') }}</ion-button></ion-buttons
+          >
         </ion-toolbar>
       </ion-header>
       <ion-content class="ion-padding">
@@ -44,7 +61,7 @@
             <ion-item>
               <ion-input
                 v-model="form.title"
-                label="Title"
+                :label="t('website.pages.fieldTitle')"
                 label-placement="stacked"
                 required
                 @ion-input="autoSlug"
@@ -53,15 +70,19 @@
             <ion-item>
               <ion-input
                 v-model="form.slug"
-                label="URL slug"
+                :label="t('website.pages.slug')"
                 label-placement="stacked"
-                helper-text="lowercase letters, digits and dashes"
+                :helper-text="t('website.pages.slugHelp')"
                 required
               />
             </ion-item>
-            <ion-item><ion-toggle v-model="form.showInNav">Show in site menu</ion-toggle></ion-item>
+            <ion-item
+              ><ion-toggle v-model="form.showInNav">{{ t('website.pages.showInNav') }}</ion-toggle></ion-item
+            >
           </ion-list>
-          <ion-button expand="block" type="submit" :disabled="saving">Create</ion-button>
+          <ion-button expand="block" type="submit" :disabled="saving">{{
+            t('common.actions.create')
+          }}</ion-button>
         </form>
       </ion-content>
     </ion-modal>
@@ -70,9 +91,9 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import {
-  IonBadge,
   IonButton,
   IonButtons,
   IonCard,
@@ -93,23 +114,21 @@ import {
 import { add, documentTextOutline, homeOutline, openOutline } from 'ionicons/icons';
 import type { WebsitePageStatus, WebsitePageSummaryDto, WebsiteSiteDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import StatusChip from '@/components/StatusChip.vue';
 import { useAuthStore } from '@/stores/auth';
 import { toastError } from '@/core/toast';
 import { websiteApi } from './api';
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const router = useRouter();
 const pages = ref<WebsitePageSummaryDto[]>([]);
 const site = ref<WebsiteSiteDto | null>(null);
 const form = ref<{ title: string; slug: string; showInNav: boolean } | null>(null);
 const saving = ref(false);
+const loaded = ref(false);
 
-const statusLabel: Record<WebsitePageStatus, string> = {
-  draft: 'Draft',
-  published: 'Published',
-  changed: 'Unpublished changes',
-};
-const statusColor: Record<WebsitePageStatus, string> = {
+const statusTone: Record<WebsitePageStatus, 'medium' | 'success' | 'warning'> = {
   draft: 'medium',
   published: 'success',
   changed: 'warning',
@@ -120,6 +139,7 @@ async function load() {
     const [p, s] = await Promise.all([websiteApi.pages(), websiteApi.site()]);
     pages.value = p;
     site.value = s;
+    loaded.value = true;
   } catch (e) {
     await toastError(e);
   }

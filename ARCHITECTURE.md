@@ -268,6 +268,15 @@ A Udemy-style public marketplace shared by every institute. Courses are sold by 
 - **Money.** Checkout uses the existing gateway adapters (mock by default) through `mkt_orders`. Coupons are per seller or platform-wide. On payment success (verify, return or webhook, idempotent) the learner is enrolled and one `mkt_sale_ledger` row per item records gross, commission (platform `commission_percent`, overridable per seller, charged on the amount paid after coupons) and seller net. A payout run sets `payout_id` on the ledger rows it pays; refunds add negative rows that come off the next payout, and one order is credited and refunded only once (`mkt_order_items.refund_id`). Free courses enrol without an order.
 - **Reviews, Q&A and wishlist.** `mkt_reviews` (one per learner and course, editable, enrolled learners only; seller reply; learners report into `mkt_review_reports`; platform admins hide/restore at `/api/admin/marketplace/reviews`) keep `mkt_courses.rating_avg`/`rating_count` in sync over visible reviews. Course Q&A (`mkt_questions`, `mkt_answers`, optionally per lecture) is open to enrolled learners and the seller; the asker or seller marks a question answered. New questions and answers call `notify()` for institute members and `notifyPlatformUsers()` (the personal inbox plus push) for users without an institute. `mkt_wishlist_items` is a learner's saved list with move-to-cart. Studio inbox: `…/instructor|institute/reviews` and `…/questions`.
 
+## Doubts (`doubts`)
+
+Students ask a teacher a question (text, optionally a photo of their work) about a lecture, a live class or a batch subject; the teacher answers in a thread and either side marks it solved.
+
+- **Tables.** `doubts` (student, assigned teacher, batch, subject, lecture + video position, live class, status `open` → `answered` → `resolved`) and `doubt_replies` (text and/or photo, through the files module). Both are tenant tables.
+- **Routing.** A live-class doubt goes to that class's teacher, otherwise to the batch teacher of the subject, otherwise to the batch's first teacher. A student follow-up reopens an answered doubt.
+- **Access.** `doubts.create` (self-service: ask and follow up on your own), `doubts.edit` (answer the doubts assigned to you or in your batches), `doubts.export` (branch admins: every doubt in the branch). Plan module `lms`. New doubts and answers call `notify()` (`doubts.asked`, `doubts.answered`).
+- **App.** `/doubts` (my doubts), `/doubts/ask`, `/doubts/inbox`, `/doubts/:id`; `DoubtButton` (`@/modules/doubts`) is the "Ask doubt" button for lecture and live-class pages; widgets on `student-home`, `teacher-home` and `home`.
+
 ## Frontend app
 
 ```
@@ -332,7 +341,7 @@ With several roles the most capable wins: staff, teacher, student, parent.
 - Shared words: `i18n/locales/{en,hi}.json` under `common.*` (`common.actions.save`, `common.status.overdue`).
 - A module's words: `modules/<folder>/i18n/{en,hi}.json`, namespaced by the camel-cased folder name (`parent-portal` → `parentPortal.*`). Group keys by page: `fees.myFees.payNow`. Menu titles are the exception: `nav.*` in the core files (see `titleKey`).
 - English is complete; Hindi may lag and falls back to English. A test fails when `hi.json` has a key `en.json` lacks.
-- `setLocale('hi')` switches the app and remembers the choice on the device (`localStorage`, key `erp.locale`). Saving it on the account (`users.locale`) comes with the language picker.
+- `setLocale('hi')` switches the app and remembers the choice on the device (`localStorage`, key `erp.locale`). The side menu's language switch calls `chooseLocale()` (`core/locale-sync.ts`), which also saves it on the account (`users.locale`, `PUT /api/auth/me/locale`). English is the default everywhere (new devices, new accounts: `users.locale` defaults to `en`; the browser language is ignored). After `/auth/me` the app opens in the account's language; a language picked on the sign-in screen (`pickSignedOutLocale()`) is saved on the account that signs in.
 
 **Shared components**: `StatusChip` (tone + plain label), `EmptyState` (what will appear here + next-step slot), `FormSection` (`advanced` collapses rarely used fields), `QuickActions` (grid of big buttons for homes). Tap targets: `var(--app-tap-target)` (48 px).
 

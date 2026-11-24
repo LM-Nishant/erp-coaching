@@ -1,7 +1,7 @@
 <template>
-  <AppPage title="Salary structures" :on-refresh="load">
+  <AppPage :title="t('payroll.structures.title')" :on-refresh="load">
     <template #actions>
-      <ion-button v-can="'payroll.create'" aria-label="New salary structure" @click="openEditor()"
+      <ion-button v-can="'payroll.create'" :aria-label="t('payroll.structures.new')" @click="openEditor()"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
@@ -10,46 +10,52 @@
         <ion-label>
           <h3>{{ s.employee?.name }}</h3>
           <p>
-            {{ PAY_TYPE_LABELS[s.payType] }} ·
+            {{ t(`payroll.payType.${s.payType}`) }} ·
             {{
               s.payType === 'fixed_monthly'
-                ? `basic ${rupees(s.monthlyBasic)}`
-                : `${rupees(s.ratePerUnit)} / unit`
+                ? t('payroll.structures.basic', { amount: formatMoney(s.monthlyBasic) })
+                : t('payroll.structures.perUnit', { amount: formatMoney(s.ratePerUnit) })
             }}
-            <span v-if="s.allowances?.length"> · {{ s.allowances.length }} allowance(s)</span>
+            <span v-if="s.allowances?.length">
+              · {{ t('payroll.structures.allowanceCount', s.allowances.length) }}</span
+            >
           </p>
-          <p class="muted">From {{ s.effectiveFrom }}</p>
+          <p class="muted">{{ t('payroll.fromDate', { date: formatDate(s.effectiveFrom) }) }}</p>
         </ion-label>
       </ion-item>
       <ion-item v-if="!structures.length"
-        ><ion-label class="muted">No salary structures yet.</ion-label></ion-item
+        ><ion-label class="muted">{{ t('payroll.structures.empty') }}</ion-label></ion-item
       >
     </ion-list>
 
     <ion-modal :is-open="!!form" @did-dismiss="form = null">
       <ion-header>
         <ion-toolbar>
-          <ion-title>Salary structure</ion-title>
-          <ion-buttons slot="end"><ion-button @click="form = null">Close</ion-button></ion-buttons>
+          <ion-title>{{ t('payroll.structures.modalTitle') }}</ion-title>
+          <ion-buttons slot="end"
+            ><ion-button @click="form = null">{{ t('common.actions.close') }}</ion-button></ion-buttons
+          >
         </ion-toolbar>
       </ion-header>
       <ion-content class="ion-padding">
         <form v-if="form" @submit.prevent="save">
-          <p class="muted">
-            Saving creates a new revision effective from the chosen date; the previous one is closed.
-          </p>
+          <p class="muted">{{ t('payroll.structures.note') }}</p>
           <ion-list>
             <ion-item>
-              <ion-select v-model="form.employeeId" label="Employee" label-placement="stacked">
+              <ion-select v-model="form.employeeId" :label="t('payroll.employee')" label-placement="stacked">
                 <ion-select-option v-for="e in employees" :key="e.id" :value="e.id">{{
                   e.name
                 }}</ion-select-option>
               </ion-select>
             </ion-item>
             <ion-item>
-              <ion-select v-model="form.payType" label="Pay type" label-placement="stacked">
-                <ion-select-option v-for="t in PAY_TYPES" :key="t" :value="t">{{
-                  PAY_TYPE_LABELS[t]
+              <ion-select
+                v-model="form.payType"
+                :label="t('payroll.structures.payType')"
+                label-placement="stacked"
+              >
+                <ion-select-option v-for="pt in PAY_TYPES" :key="pt" :value="pt">{{
+                  t(`payroll.payType.${pt}`)
                 }}</ion-select-option>
               </ion-select>
             </ion-item>
@@ -57,7 +63,7 @@
               <ion-input
                 v-model="form.basic"
                 type="number"
-                label="Monthly basic (₹)"
+                :label="t('payroll.structures.monthlyBasic')"
                 label-placement="stacked"
               />
             </ion-item>
@@ -65,32 +71,51 @@
               <ion-input
                 v-model="form.rate"
                 type="number"
-                label="Rate per lecture / class (₹)"
+                :label="t('payroll.structures.rate')"
                 label-placement="stacked"
               />
             </ion-item>
-            <ion-list-header>Monthly allowances</ion-list-header>
+            <ion-list-header>{{ t('payroll.structures.allowances') }}</ion-list-header>
             <ion-item v-for="(a, i) in form.allowances" :key="i">
-              <ion-input v-model="a.name" placeholder="Name (e.g. HRA)" />
+              <ion-input v-model="a.name" :placeholder="t('payroll.structures.allowanceName')" />
               <ion-input v-model="a.amount" type="number" placeholder="₹" />
-              <ion-button slot="end" fill="clear" color="danger" @click="form.allowances.splice(i, 1)"
+              <ion-button
+                slot="end"
+                fill="clear"
+                color="danger"
+                :aria-label="t('payroll.structures.removeAllowance')"
+                @click="form.allowances.splice(i, 1)"
                 >✕</ion-button
               >
             </ion-item>
             <ion-button fill="clear" size="small" @click="form.allowances.push({ name: '', amount: '' })">
-              Add allowance
+              {{ t('payroll.structures.addAllowance') }}
             </ion-button>
-            <ion-item><ion-checkbox v-model="form.pfApplicable">PF applicable</ion-checkbox></ion-item>
-            <ion-item><ion-checkbox v-model="form.esiApplicable">ESI applicable</ion-checkbox></ion-item>
             <ion-item
-              ><ion-checkbox v-model="form.ptApplicable">Professional tax applicable</ion-checkbox></ion-item
+              ><ion-checkbox v-model="form.pfApplicable">{{
+                t('payroll.structures.pf')
+              }}</ion-checkbox></ion-item
             >
-            <ion-item><ion-checkbox v-model="form.tdsApplicable">TDS applicable</ion-checkbox></ion-item>
+            <ion-item
+              ><ion-checkbox v-model="form.esiApplicable">{{
+                t('payroll.structures.esi')
+              }}</ion-checkbox></ion-item
+            >
+            <ion-item
+              ><ion-checkbox v-model="form.ptApplicable">{{
+                t('payroll.structures.pt')
+              }}</ion-checkbox></ion-item
+            >
+            <ion-item
+              ><ion-checkbox v-model="form.tdsApplicable">{{
+                t('payroll.structures.tds')
+              }}</ion-checkbox></ion-item
+            >
             <ion-item v-if="form.tdsApplicable">
               <ion-input
                 v-model="form.tdsPercent"
                 type="number"
-                label="TDS % override (blank = component default)"
+                :label="t('payroll.structures.tdsPercent')"
                 label-placement="stacked"
               />
             </ion-item>
@@ -98,15 +123,15 @@
               <ion-input
                 v-model="form.effectiveFrom"
                 type="date"
-                label="Effective from"
+                :label="t('payroll.effectiveFrom')"
                 label-placement="stacked"
                 required
               />
             </ion-item>
           </ion-list>
-          <ion-button v-can="'payroll.create'" expand="block" type="submit" :disabled="saving"
-            >Save revision</ion-button
-          >
+          <ion-button v-can="'payroll.create'" expand="block" type="submit" :disabled="saving">{{
+            t('payroll.structures.saveRevision')
+          }}</ion-button>
         </form>
       </ion-content>
     </ion-modal>
@@ -115,6 +140,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   IonButton,
   IonButtons,
@@ -136,9 +162,10 @@ import {
 import { add } from 'ionicons/icons';
 import { PAY_TYPES, type EmployeeDto, type PayType } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import { formatDate, formatMoney } from '@/core/format';
 import { toast, toastError } from '@/core/toast';
-import { hrApi, rupees, todayIso } from '../hr/api';
-import { PAY_TYPE_LABELS, payrollApi, type SalaryStructure } from './api';
+import { hrApi, todayIso } from '../hr/api';
+import { payrollApi, type SalaryStructure } from './api';
 
 interface Form {
   employeeId: number | null;
@@ -154,6 +181,7 @@ interface Form {
   effectiveFrom: string;
 }
 
+const { t } = useI18n();
 const structures = ref<SalaryStructure[]>([]);
 const employees = ref<EmployeeDto[]>([]);
 const form = ref<Form | null>(null);
@@ -209,7 +237,7 @@ async function save() {
       effectiveFrom: f.effectiveFrom,
     });
     form.value = null;
-    await toast('Salary structure saved');
+    await toast(t('payroll.structures.saved'));
     await load();
   } catch (e) {
     await toastError(e);

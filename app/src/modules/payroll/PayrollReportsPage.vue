@@ -1,27 +1,27 @@
 <template>
-  <AppPage title="Payroll reports">
+  <AppPage :title="t('payroll.reports.title')">
     <ion-segment v-model="kind" @ion-change="table = null">
-      <ion-segment-button value="statutory">Statutory (PF/ESI/PT/TDS)</ion-segment-button>
-      <ion-segment-button value="annual">Annual summary</ion-segment-button>
-      <ion-segment-button value="register">Salary register</ion-segment-button>
+      <ion-segment-button value="statutory">{{ t('payroll.reports.statutory') }}</ion-segment-button>
+      <ion-segment-button value="annual">{{ t('payroll.reports.annual') }}</ion-segment-button>
+      <ion-segment-button value="register">{{ t('payroll.reports.register') }}</ion-segment-button>
     </ion-segment>
     <ion-item v-if="kind === 'statutory'">
-      <ion-input v-model="month" type="month" label="Month" label-placement="stacked" />
+      <ion-input v-model="month" type="month" :label="t('payroll.month')" label-placement="stacked" />
     </ion-item>
     <ion-item v-else-if="kind === 'annual'">
-      <ion-input v-model.number="year" type="number" label="Year" label-placement="stacked" />
+      <ion-input v-model.number="year" type="number" :label="t('payroll.year')" label-placement="stacked" />
     </ion-item>
     <ion-item v-else>
-      <ion-select v-model="runId" label="Payroll run" label-placement="stacked">
+      <ion-select v-model="runId" :label="t('payroll.reports.run')" label-placement="stacked">
         <ion-select-option v-for="r in runs" :key="r.id" :value="r.id">
-          {{ MONTHS[r.periodMonth - 1] }} {{ r.periodYear }} ({{ r.status }})
+          {{ formatMonth(r.periodYear, r.periodMonth) }} ({{ t(RUN_STATUS[r.status].label) }})
         </ion-select-option>
       </ion-select>
     </ion-item>
     <div class="actions">
-      <ion-button @click="view">View</ion-button>
-      <ion-button fill="outline" @click="download('csv')">CSV</ion-button>
-      <ion-button fill="outline" @click="download('xls')">Excel</ion-button>
+      <ion-button @click="view">{{ t('common.actions.view') }}</ion-button>
+      <ion-button fill="outline" @click="download('csv')">{{ t('payroll.csv') }}</ion-button>
+      <ion-button fill="outline" @click="download('xls')">{{ t('payroll.excel') }}</ion-button>
     </div>
     <div v-if="table" class="table-wrap">
       <table>
@@ -36,13 +36,14 @@
           </tr>
         </tbody>
       </table>
-      <p v-if="!table.rows.length" class="muted">No locked payslips for this period.</p>
+      <p v-if="!table.rows.length" class="muted">{{ t('payroll.reports.empty') }}</p>
     </div>
   </AppPage>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   IonButton,
   IonInput,
@@ -55,8 +56,10 @@ import {
 import type { PayrollRunDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import { toastError } from '@/core/toast';
-import { MONTHS, todayIso } from '../hr/api';
-import { downloadReport, payrollApi, type ReportKind, type ReportTable } from './api';
+import { formatMonth, todayIso } from '../hr/api';
+import { RUN_STATUS, downloadReport, payrollApi, type ReportKind, type ReportTable } from './api';
+
+const { t } = useI18n();
 
 const kind = ref<ReportKind>('statutory');
 const month = ref(todayIso().slice(0, 7));

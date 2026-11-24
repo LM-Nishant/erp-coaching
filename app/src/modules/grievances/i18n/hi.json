@@ -1,0 +1,152 @@
+{
+  "status": {
+    "escalated": "ऊपर भेजा गया"
+  },
+  "statusAction": {
+    "open": "फिर से खोलें",
+    "inProgress": "काम शुरू करें",
+    "escalated": "ऊपर भेजें",
+    "resolved": "हल हुआ मार्क करें",
+    "closed": "बंद करें"
+  },
+  "priority": {
+    "low": "कम",
+    "medium": "सामान्य",
+    "high": "ज़्यादा",
+    "urgent": "बहुत ज़रूरी"
+  },
+  "requesterType": {
+    "student": "छात्र",
+    "parent": "अभिभावक",
+    "staff": "स्टाफ़"
+  },
+  "activity": {
+    "reply": "जवाब",
+    "internalNote": "नोट",
+    "assignment": "ज़िम्मेदारी दी गई",
+    "escalation": "ऊपर भेजा गया",
+    "system": "अपडेट"
+  },
+  "fields": {
+    "category": "श्रेणी",
+    "priority": "प्राथमिकता",
+    "assignee": "ज़िम्मेदार व्यक्ति",
+    "subject": "विषय"
+  },
+  "newComplaint": "नई शिकायत",
+  "unassigned": "किसी को नहीं सौंपी गई",
+  "slaBreached": "समय सीमा पार",
+  "internal": "अंदरूनी",
+  "fileSize": "{size} KB",
+  "item": {
+    "forName": "{name} के लिए",
+    "requesterFor": "{requester}, {name} के लिए",
+    "assignedTo": "{name} को सौंपी गई",
+    "due": "{date} तक"
+  },
+  "mine": {
+    "title": "मेरी शिकायतें",
+    "done": "हल / बंद",
+    "emptyTitle": "यहाँ कोई शिकायत नहीं",
+    "emptyMessage": "नई शिकायत दर्ज करने के लिए + दबाएँ।"
+  },
+  "new": {
+    "title": "नई शिकायत",
+    "filingFor": "किसके लिए",
+    "myself": "खुद के लिए",
+    "description": "समस्या बताएँ",
+    "attachments": "फ़ाइलें जोड़ें (वैकल्पिक)",
+    "expectedResponse": "{n} घंटे में जवाब मिलने की उम्मीद है। | {n} घंटों में जवाब मिलने की उम्मीद है।",
+    "submit": "शिकायत भेजें",
+    "submitted": "शिकायत {number} दर्ज हो गई",
+    "submittedWithFailures": "शिकायत {number} दर्ज हो गई, पर ये फ़ाइलें नहीं जुड़ पाईं: {files}"
+  },
+  "queue": {
+    "title": "शिकायतें",
+    "searchPlaceholder": "टिकट नंबर या विषय खोजें",
+    "anyone": "कोई भी",
+    "me": "मैं",
+    "any": "कोई भी",
+    "onlyOverdue": "सिर्फ़ देर वाली",
+    "empty": "कोई शिकायत नहीं।"
+  },
+  "detail": {
+    "title": "शिकायत",
+    "escalationLevel": "एस्केलेशन लेवल {n}",
+    "raisedBy": "शिकायत करने वाले",
+    "raisedByValue": "{name} ({type})",
+    "forName": "{name} के लिए",
+    "assignedTo": "किसे सौंपी गई",
+    "raisedOn": "दर्ज होने की तारीख़",
+    "dueBy": "हल करने की आख़िरी तारीख़",
+    "resolvedOn": "हल होने की तारीख़",
+    "rating": "रेटिंग",
+    "resolution": "समाधान",
+    "resolvedQuestion": "क्या आपकी समस्या हल हो गई?",
+    "rateAria": "5 में से {n} रेटिंग दें",
+    "feedbackPlaceholder": "आपकी राय (वैकल्पिक)",
+    "confirmClose": "हाँ, शिकायत बंद करें",
+    "reopenNo": "नहीं, फिर से खोलें",
+    "reopenComplaint": "शिकायत फिर से खोलें",
+    "manage": "मैनेज करें",
+    "attachments": "फ़ाइलें",
+    "activity": "गतिविधि",
+    "system": "सिस्टम",
+    "internalNote": "अंदरूनी नोट",
+    "replyPlaceholder": "जवाब लिखें",
+    "internalPlaceholder": "अंदरूनी नोट (सिर्फ़ स्टाफ़ के लिए)",
+    "internalToggle": "अंदरूनी नोट (शिकायत करने वाले को नहीं दिखेगा)",
+    "sent": "भेज दिया",
+    "assignmentUpdated": "ज़िम्मेदारी बदल दी गई",
+    "priorityUpdated": "प्राथमिकता बदल दी गई",
+    "fieldRequired": "यह भरना ज़रूरी है",
+    "ok": "ठीक है",
+    "resolutionNotes": "समाधान के नोट्स",
+    "resolutionPlaceholder": "इसे हल करने के लिए क्या किया गया?",
+    "notePlaceholder": "नोट (वैकल्पिक)",
+    "markedResolved": "हल हुआ मार्क कर दिया",
+    "statusUpdated": "स्थिति बदल दी गई",
+    "reopenReason": "समस्या हल क्यों नहीं हुई?",
+    "reopened": "शिकायत फिर से खोल दी गई",
+    "thanks": "आपकी राय के लिए धन्यवाद"
+  },
+  "reports": {
+    "title": "शिकायत रिपोर्ट",
+    "downloadCsv": "CSV डाउनलोड करें",
+    "totalComplaints": "कुल शिकायतें",
+    "avgFirstResponse": "पहले जवाब का औसत समय",
+    "avgResolution": "हल होने का औसत समय",
+    "slaCompliance": "समय पर हल",
+    "reopened": "फिर से खुलीं",
+    "avgSatisfaction": "औसत संतुष्टि",
+    "outOfFive": "{n} / 5",
+    "byStatus": "स्थिति के अनुसार",
+    "byPriority": "प्राथमिकता के अनुसार",
+    "byCategory": "श्रेणी के अनुसार",
+    "avgResolutionValue": "हल होने का औसत समय {value}"
+  },
+  "setup": {
+    "title": "शिकायत सेटअप",
+    "settings": "सेटिंग्स",
+    "ticketPrefix": "टिकट नंबर की शुरुआत",
+    "ticketPrefixHelp": "2–10 अक्षर/अंक, जैसे GRV → GRV-2026-00001",
+    "defaultSla": "हल करने का सामान्य समय (घंटे)",
+    "escalateTo": "देर वाली शिकायतें किसे भेजें",
+    "keepAssignee": "जिसे सौंपी है, उसी के पास रखें",
+    "saveSettings": "सेटिंग्स सेव करें",
+    "settingsSaved": "सेटिंग्स सेव हो गईं",
+    "categories": "श्रेणियाँ",
+    "newCategory": "नई श्रेणी",
+    "editCategory": "श्रेणी बदलें",
+    "editAria": "{name} बदलें",
+    "deleteAria": "{name} हटाएँ",
+    "slaLine": "समय सीमा {n} घंटे",
+    "noDefaultAssignee": "कोई तय व्यक्ति नहीं",
+    "description": "विवरण",
+    "slaHours": "समय सीमा (घंटे)",
+    "defaultAssignee": "तय ज़िम्मेदार व्यक्ति",
+    "categorySaved": "श्रेणी सेव हो गई",
+    "deleteTitle": "{name} हटाएँ?",
+    "deleteMessage": "जिन श्रेणियों में शिकायतें दर्ज हैं, उन्हें हटाया नहीं जा सकता; उन्हें बंद कर दें।"
+  }
+}

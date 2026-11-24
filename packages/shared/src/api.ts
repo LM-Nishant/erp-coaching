@@ -56,6 +56,10 @@ export interface MembershipDto extends InstituteBranding {
   roles: string[];
 }
 
+/** App languages; saved on the account as `users.locale`. */
+export const APP_LOCALES = ['en', 'hi'] as const;
+export type AppLocale = (typeof APP_LOCALES)[number];
+
 export interface MeDto {
   user: {
     id: number;
@@ -68,6 +72,8 @@ export interface MeDto {
     sharesMobile?: boolean;
     /** Active accounts signing in with this number (including this one); more than 1 offers "Switch profile". */
     profileCount?: number;
+    /** Language saved on the account (`PUT /auth/me/locale`); `en` unless the user picked Hindi. */
+    locale: AppLocale;
   };
   institute: InstituteBranding | null;
   branches: { id: number; name: string }[];

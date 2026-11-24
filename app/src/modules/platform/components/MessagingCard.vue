@@ -1,18 +1,30 @@
 <template>
   <ion-card>
     <ion-card-header>
-      <ion-card-title>{{ CHANNEL_LABELS[dto.channel] }}</ion-card-title>
+      <ion-card-title>{{ channelLabel(dto.channel) }}</ion-card-title>
       <div class="chip-row">
-        <ion-badge :color="dto.enabled ? 'success' : 'medium'">{{
-          dto.enabled ? 'Enabled' : dto.configured ? 'Disabled' : 'Built-in console'
-        }}</ion-badge>
-        <ion-badge v-if="dto.configured" color="light">{{ providerLabel(dto.provider) }}</ion-badge>
+        <StatusChip
+          :label="
+            dto.enabled
+              ? t('platform.status.enabled')
+              : dto.configured
+                ? t('platform.status.disabled')
+                : t('platform.status.builtInConsole')
+          "
+          :tone="dto.enabled ? 'success' : 'medium'"
+        />
+        <StatusChip v-if="dto.configured" :label="providerLabel(dto.provider)" />
       </div>
     </ion-card-header>
     <ion-card-content>
       <ion-list>
         <ion-item>
-          <ion-select v-model="form.provider" label="Provider" label-placement="stacked" interface="popover">
+          <ion-select
+            v-model="form.provider"
+            :label="t('platform.messaging.provider')"
+            label-placement="stacked"
+            interface="popover"
+          >
             <ion-select-option v-for="k in kinds" :key="k" :value="k">{{
               MESSAGING_PROVIDER_KINDS[k].label
             }}</ion-select-option>
@@ -28,21 +40,23 @@
         <ion-item>
           <ion-input
             v-model="form.testTo"
-            :label="TEST_TO_LABELS[dto.channel]"
+            :label="t(`platform.messaging.testTo.${dto.channel}`)"
             label-placement="stacked"
-            :helper-text="TEST_HELP[dto.channel]"
+            :helper-text="t(`platform.messaging.testHelp.${dto.channel}`)"
           />
         </ion-item>
         <ion-item v-if="dto.channel === 'whatsapp'">
           <ion-input
             v-model="form.testTemplateId"
-            label="Test template"
+            :label="t('platform.messaging.testTemplate')"
             label-placement="stacked"
             placeholder="hello_world:en_US"
-            helper-text="WhatsApp sends approved templates only: use one without variables"
+            :helper-text="t('platform.messaging.testTemplateHelp')"
           />
         </ion-item>
-        <ion-item><ion-toggle v-model="form.enabled">Enabled</ion-toggle></ion-item>
+        <ion-item
+          ><ion-toggle v-model="form.enabled">{{ t('platform.status.enabled') }}</ion-toggle></ion-item
+        >
       </ion-list>
       <MessagingWebhook
         v-if="dto.webhook && form.provider === dto.provider"
@@ -51,14 +65,16 @@
       />
       <TestStatus :status="dto" :result="result" />
       <div class="actions">
-        <ion-button v-if="dto.configured" fill="clear" color="danger" :disabled="busy" @click="remove"
-          >Remove</ion-button
-        >
-        <ion-button v-if="form.provider !== 'console'" fill="outline" :disabled="busy" @click="verify"
-          >Check keys</ion-button
-        >
-        <ion-button fill="outline" :disabled="busy" @click="test">Send test</ion-button>
-        <ion-button :disabled="busy" @click="save">Save</ion-button>
+        <ion-button v-if="dto.configured" fill="clear" color="danger" :disabled="busy" @click="remove">{{
+          t('common.actions.remove')
+        }}</ion-button>
+        <ion-button v-if="form.provider !== 'console'" fill="outline" :disabled="busy" @click="verify">{{
+          t('platform.messaging.checkKeys')
+        }}</ion-button>
+        <ion-button fill="outline" :disabled="busy" @click="test">{{
+          t('platform.messaging.sendTest')
+        }}</ion-button>
+        <ion-button :disabled="busy" @click="save">{{ t('common.actions.save') }}</ion-button>
       </div>
     </ion-card-content>
   </ion-card>
@@ -66,8 +82,8 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
-  IonBadge,
   IonButton,
   IonCard,
   IonCardContent,
@@ -91,26 +107,15 @@ import {
 } from '@erp/shared';
 import MessagingWebhook from '@/components/MessagingWebhook.vue';
 import ProviderFields from '@/components/ProviderFields.vue';
+import StatusChip from '@/components/StatusChip.vue';
 import { toast, toastError } from '@/core/toast';
-import { CHANNEL_LABELS, platformApi } from '../api';
+import { channelLabel, platformApi } from '../api';
 import TestStatus from './TestStatus.vue';
 
 const props = defineProps<{ dto: PlatformMessagingDto }>();
 const emit = defineEmits<{ saved: [] }>();
 
-const TEST_TO_LABELS: Record<ExternalChannel, string> = {
-  sms: 'Test mobile number',
-  whatsapp: 'Test WhatsApp number',
-  email: 'Test email address',
-  push: 'Test device token',
-};
-
-const TEST_HELP: Record<ExternalChannel, string> = {
-  sms: 'Send test sends the login OTP text (123456 is your verification code…) through the OTP template',
-  whatsapp: 'Send test uses it; enabling an untested configuration needs a passing test or key check',
-  email: 'Send test uses it; enabling an untested configuration sends a test here first',
-  push: 'Send test uses it; enabling an untested configuration needs a passing test or key check',
-};
+const { t } = useI18n();
 
 const kinds = computed(() =>
   (Object.keys(MESSAGING_PROVIDER_KINDS) as MessagingProviderKind[]).filter((k) =>
@@ -162,7 +167,12 @@ const settings = () =>
 async function test() {
   const to = String(form.value.testTo ?? '').trim();
   if (to.length < 3) {
-    await toast(`Enter a ${TEST_TO_LABELS[props.dto.channel].toLowerCase()} first`, 'warning');
+    await toast(
+      t('platform.messaging.enterFirst', {
+        field: t(`platform.messaging.testTo.${props.dto.channel}`).toLowerCase(),
+      }),
+      'warning',
+    );
     return;
   }
   busy.value = true;
@@ -205,7 +215,7 @@ async function save() {
       settings: settings(),
       testTo: to.length >= 3 ? to : undefined,
     });
-    await toast(`${CHANNEL_LABELS[props.dto.channel]} provider saved`);
+    await toast(t('platform.messaging.saved', { channel: channelLabel(props.dto.channel) }));
     emit('saved');
   } catch (e) {
     await toastError(e);
@@ -216,18 +226,18 @@ async function save() {
 
 async function remove() {
   const alert = await alertController.create({
-    header: `Remove the ${CHANNEL_LABELS[props.dto.channel]} provider?`,
-    message: 'Its saved credentials are deleted and messages fall back to the built-in console provider.',
+    header: t('platform.messaging.removeTitle', { channel: channelLabel(props.dto.channel) }),
+    message: t('platform.messaging.removeMessage'),
     buttons: [
-      { text: 'Cancel', role: 'cancel' },
-      { text: 'Remove', role: 'destructive' },
+      { text: t('common.actions.cancel'), role: 'cancel' },
+      { text: t('common.actions.remove'), role: 'destructive' },
     ],
   });
   await alert.present();
   if ((await alert.onDidDismiss()).role !== 'destructive') return;
   try {
     await platformApi.removeMessaging(props.dto.channel);
-    await toast('Provider removed');
+    await toast(t('platform.messaging.removed'));
     emit('saved');
   } catch (e) {
     await toastError(e);

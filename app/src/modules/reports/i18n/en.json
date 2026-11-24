@@ -1,0 +1,152 @@
+{
+  "title": "Reports",
+  "exportsButton": "Exports",
+  "noReports": "No reports are available for your role or plan.",
+  "categories": {
+    "finance": "Finance",
+    "academic": "Academic",
+    "staff": "Staff",
+    "operations": "Operations"
+  },
+  "report": {
+    "fallbackTitle": "Report",
+    "notFound": "This report does not exist.",
+    "notAvailable": "This report is not available for your role or plan.",
+    "course": "Course: {name}",
+    "batch": "Batch: {name}",
+    "generated": "Generated {when} ({timezone})",
+    "exportTitle": "Export {title}",
+    "queued": "This export is large, so it is being prepared in the background. We will notify you when it is ready.",
+    "viewExports": "View exports"
+  },
+  "exports": {
+    "title": "Report exports",
+    "intro": "Exports stay available for 24 hours. Large exports are prepared in the background and you are notified when they are ready.",
+    "empty": "You have not exported any reports yet.",
+    "requested": "Requested {when}",
+    "rows": "{n} row | {n} rows",
+    "availableUntil": "available until {when}",
+    "exportAs": "Export as",
+    "downloaded": "Downloaded {name}",
+    "formats": {
+      "xlsx": "Excel (.xlsx)",
+      "pdf": "PDF",
+      "csv": "CSV"
+    },
+    "status": {
+      "queued": "Queued",
+      "running": "Preparing",
+      "ready": "Ready",
+      "failed": "Failed",
+      "expired": "Expired"
+    }
+  },
+  "filters": {
+    "period": "Period",
+    "branch": "Branch",
+    "allBranches": "All branches",
+    "course": "Course",
+    "allCourses": "All courses",
+    "batch": "Batch",
+    "allBatches": "All batches",
+    "errors": {
+      "bothDates": "Choose both a from and a to date",
+      "format": "Dates must be in YYYY-MM-DD form",
+      "order": "The from date must be on or before the to date",
+      "maxRange": "The date range can be at most {days} days"
+    }
+  },
+  "presets": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "last_7_days": "Last 7 days",
+    "last_30_days": "Last 30 days",
+    "last_90_days": "Last 90 days",
+    "this_week": "This week",
+    "last_week": "Last week",
+    "this_month": "This month",
+    "last_month": "Last month",
+    "this_quarter": "This quarter",
+    "last_quarter": "Last quarter",
+    "this_year": "This calendar year",
+    "this_fy": "This financial year",
+    "last_fy": "Last financial year",
+    "custom": "Custom range",
+    "thisFyShort": "This FY"
+  },
+  "table": {
+    "empty": "No data for these filters.",
+    "truncated": "Showing {shown} of {total} rows. Export the report for the full list."
+  },
+  "units": {
+    "hours": "{n} h",
+    "notTracked": "Not tracked"
+  },
+  "widget": {
+    "empty": "Nothing to show for this period yet.",
+    "allReports": "All reports",
+    "openPlatform": "Open platform analytics"
+  },
+  "platform": {
+    "title": "Platform analytics",
+    "intro": "Institutes, users, subscriptions, revenue and resource usage across the platform.",
+    "allInstitutes": "All institutes",
+    "exportTitle": "Export platform overview",
+    "sections": {
+      "platform": "Platform",
+      "subscriptions": "Subscriptions",
+      "revenue": "Revenue",
+      "usage": "Resource usage"
+    },
+    "metrics": {
+      "institutes": "Institutes",
+      "newInPeriod": "{n} new in period",
+      "users": "Institute users",
+      "activeNew": "{active} active · {new} new",
+      "students": "Students",
+      "activeAdmitted": "{active} active · {admitted} admitted",
+      "teachers": "Teachers",
+      "branches": "Branches",
+      "endingSoon": "Ending in 30 days",
+      "mrr": "MRR",
+      "arr": "ARR",
+      "revenueInPeriod": "Revenue in period",
+      "outstanding": "Outstanding",
+      "paidSubscriptions": "Paid subscriptions",
+      "storage": "Storage used",
+      "files": "{n} files",
+      "aiRequests": "AI requests in period",
+      "aiTokens": "AI tokens in period"
+    },
+    "revenueNote": {
+      "subscriptions": "Revenue is estimated from the plan prices of paid, active subscriptions. Collected and outstanding amounts appear once SaaS billing is connected.",
+      "invoices": "Revenue comes from SaaS invoices and payments."
+    },
+    "tables": {
+      "plans": "Plans",
+      "plan": "Plan",
+      "subscriptions": "Subscriptions",
+      "paying": "Paying",
+      "aiFeatures": "AI usage by feature",
+      "feature": "Feature",
+      "requests": "Requests",
+      "tokens": "Tokens",
+      "institutes": "Institutes",
+      "institute": "Institute",
+      "subscription": "Subscription",
+      "endsAt": "Subscription ends",
+      "users": "Users",
+      "storage": "Storage",
+      "created": "Created"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "suspended": "Suspended",
+      "trial": "Trial",
+      "past_due": "Past due",
+      "expired": "Expired",
+      "cancelled": "Cancelled"
+    }
+  }
+}

@@ -65,5 +65,7 @@ describe('format (hi-IN)', () => {
     expect(formatDate(INSTANT, TZ)).toBe('27 नव॰ 2026');
     expect(formatMoney(4_125_000)).toBe('₹41,250');
     expect(formatRelative('2026-11-27T15:25:00Z', '2026-11-27T15:00:00Z')).toBe('25 मिनट में');
+    expect(formatDuration(3_900)).toBe('1 घं 5 मि');
+    expect(formatDuration(45)).toBe('45 से');
   });
 });

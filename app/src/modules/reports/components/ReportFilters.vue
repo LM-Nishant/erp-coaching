@@ -2,39 +2,59 @@
   <div class="report-filters">
     <div class="fields">
       <ion-item v-if="allows('date')" class="field">
-        <ion-select v-model="preset" label="Period" label-placement="stacked" interface="popover">
+        <ion-select
+          v-model="preset"
+          :label="t('reports.filters.period')"
+          label-placement="stacked"
+          interface="popover"
+        >
           <ion-select-option v-for="p in options.presets" :key="p.value" :value="p.value">{{
-            p.label
+            presetLabel(p.value)
           }}</ion-select-option>
         </ion-select>
       </ion-item>
       <template v-if="allows('date') && model.preset === 'custom'">
         <ion-item class="field"
-          ><ion-input v-model="from" type="date" label="From" label-placement="stacked"
+          ><ion-input v-model="from" type="date" :label="t('common.labels.from')" label-placement="stacked"
         /></ion-item>
         <ion-item class="field"
-          ><ion-input v-model="to" type="date" label="To" label-placement="stacked"
+          ><ion-input v-model="to" type="date" :label="t('common.labels.to')" label-placement="stacked"
         /></ion-item>
       </template>
       <ion-item v-if="showBranch" class="field">
-        <ion-select v-model="branchId" label="Branch" label-placement="stacked" interface="popover">
-          <ion-select-option :value="null">All branches</ion-select-option>
+        <ion-select
+          v-model="branchId"
+          :label="t('reports.filters.branch')"
+          label-placement="stacked"
+          interface="popover"
+        >
+          <ion-select-option :value="null">{{ t('reports.filters.allBranches') }}</ion-select-option>
           <ion-select-option v-for="b in options.branches" :key="b.id" :value="b.id">{{
             b.name
           }}</ion-select-option>
         </ion-select>
       </ion-item>
       <ion-item v-if="showCourse" class="field">
-        <ion-select v-model="courseId" label="Course" label-placement="stacked" interface="popover">
-          <ion-select-option :value="null">All courses</ion-select-option>
+        <ion-select
+          v-model="courseId"
+          :label="t('reports.filters.course')"
+          label-placement="stacked"
+          interface="popover"
+        >
+          <ion-select-option :value="null">{{ t('reports.filters.allCourses') }}</ion-select-option>
           <ion-select-option v-for="c in options.courses" :key="c.id" :value="c.id">{{
             c.name
           }}</ion-select-option>
         </ion-select>
       </ion-item>
       <ion-item v-if="showBatch" class="field">
-        <ion-select v-model="batchId" label="Batch" label-placement="stacked" interface="popover">
-          <ion-select-option :value="null">All batches</ion-select-option>
+        <ion-select
+          v-model="batchId"
+          :label="t('reports.filters.batch')"
+          label-placement="stacked"
+          interface="popover"
+        >
+          <ion-select-option :value="null">{{ t('reports.filters.allBatches') }}</ion-select-option>
           <ion-select-option v-for="b in batches" :key="b.id" :value="b.id">{{ b.name }}</ion-select-option>
         </ion-select>
       </ion-item>
@@ -45,12 +65,14 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { IonInput, IonItem, IonSelect, IonSelectOption } from '@ionic/vue';
 import type { ReportDatePreset, ReportFilterKind, ReportFilterOptionsDto } from '@erp/shared';
 import {
   batchChoices,
   customRangeError,
   isPersonalAudience,
+  presetLabel,
   reconcileState,
   type ReportFilterState,
 } from '../filters';
@@ -64,6 +86,7 @@ const props = withDefaults(
   }>(),
   { allowed: () => ['date', 'branch', 'course', 'batch'], current: null },
 );
+const { t } = useI18n();
 const model = defineModel<ReportFilterState>({ required: true });
 
 const allows = (kind: ReportFilterKind) => props.allowed.includes(kind);

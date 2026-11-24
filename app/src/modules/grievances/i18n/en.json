@@ -1,0 +1,152 @@
+{
+  "status": {
+    "escalated": "Escalated"
+  },
+  "statusAction": {
+    "open": "Reopen",
+    "inProgress": "Mark in progress",
+    "escalated": "Escalate",
+    "resolved": "Mark resolved",
+    "closed": "Mark closed"
+  },
+  "priority": {
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "urgent": "Urgent"
+  },
+  "requesterType": {
+    "student": "Student",
+    "parent": "Parent",
+    "staff": "Staff"
+  },
+  "activity": {
+    "reply": "Reply",
+    "internalNote": "Note",
+    "assignment": "Assignment",
+    "escalation": "Escalated",
+    "system": "Update"
+  },
+  "fields": {
+    "category": "Category",
+    "priority": "Priority",
+    "assignee": "Assignee",
+    "subject": "Subject"
+  },
+  "newComplaint": "New complaint",
+  "unassigned": "Unassigned",
+  "slaBreached": "SLA breached",
+  "internal": "Internal",
+  "fileSize": "{size} KB",
+  "item": {
+    "forName": "For {name}",
+    "requesterFor": "{requester} for {name}",
+    "assignedTo": "Assigned to {name}",
+    "due": "Due {date}"
+  },
+  "mine": {
+    "title": "My complaints",
+    "done": "Resolved / closed",
+    "emptyTitle": "No complaints here",
+    "emptyMessage": "Tap + to raise a new complaint."
+  },
+  "new": {
+    "title": "New complaint",
+    "filingFor": "Filing for",
+    "myself": "Myself",
+    "description": "Describe the issue",
+    "attachments": "Attachments (optional)",
+    "expectedResponse": "Expected response within {n} hour. | Expected response within {n} hours.",
+    "submit": "Submit complaint",
+    "submitted": "Complaint {number} submitted",
+    "submittedWithFailures": "Complaint {number} submitted, but these files failed: {files}"
+  },
+  "queue": {
+    "title": "Complaint queue",
+    "searchPlaceholder": "Search ticket no. or subject",
+    "anyone": "Anyone",
+    "me": "Me",
+    "any": "Any",
+    "onlyOverdue": "Only overdue",
+    "empty": "No complaints."
+  },
+  "detail": {
+    "title": "Complaint",
+    "escalationLevel": "Escalation level {n}",
+    "raisedBy": "Raised by",
+    "raisedByValue": "{name} ({type})",
+    "forName": "for {name}",
+    "assignedTo": "Assigned to",
+    "raisedOn": "Raised on",
+    "dueBy": "Due by",
+    "resolvedOn": "Resolved on",
+    "rating": "Rating",
+    "resolution": "Resolution",
+    "resolvedQuestion": "Is your issue resolved?",
+    "rateAria": "Rate {n} out of 5",
+    "feedbackPlaceholder": "Feedback (optional)",
+    "confirmClose": "Yes, close the complaint",
+    "reopenNo": "No, reopen it",
+    "reopenComplaint": "Reopen complaint",
+    "manage": "Manage",
+    "attachments": "Attachments",
+    "activity": "Activity",
+    "system": "System",
+    "internalNote": "Internal note",
+    "replyPlaceholder": "Write a reply",
+    "internalPlaceholder": "Internal note (staff only)",
+    "internalToggle": "Internal note (hidden from requester)",
+    "sent": "Sent",
+    "assignmentUpdated": "Assignment updated",
+    "priorityUpdated": "Priority updated",
+    "fieldRequired": "This field is required",
+    "ok": "OK",
+    "resolutionNotes": "Resolution notes",
+    "resolutionPlaceholder": "What was done to resolve this?",
+    "notePlaceholder": "Note (optional)",
+    "markedResolved": "Marked resolved",
+    "statusUpdated": "Status updated",
+    "reopenReason": "Why is the issue not resolved?",
+    "reopened": "Complaint reopened",
+    "thanks": "Thank you for your feedback"
+  },
+  "reports": {
+    "title": "Grievance reports",
+    "downloadCsv": "Download CSV",
+    "totalComplaints": "Total complaints",
+    "avgFirstResponse": "Avg first response",
+    "avgResolution": "Avg resolution",
+    "slaCompliance": "SLA compliance",
+    "reopened": "Reopened",
+    "avgSatisfaction": "Avg satisfaction",
+    "outOfFive": "{n} / 5",
+    "byStatus": "By status",
+    "byPriority": "By priority",
+    "byCategory": "By category",
+    "avgResolutionValue": "Avg resolution {value}"
+  },
+  "setup": {
+    "title": "Grievance setup",
+    "settings": "Settings",
+    "ticketPrefix": "Ticket number prefix",
+    "ticketPrefixHelp": "2–10 letters/digits, e.g. GRV → GRV-2026-00001",
+    "defaultSla": "Default SLA (hours)",
+    "escalateTo": "Escalate overdue complaints to",
+    "keepAssignee": "Keep current assignee",
+    "saveSettings": "Save settings",
+    "settingsSaved": "Settings saved",
+    "categories": "Categories",
+    "newCategory": "New category",
+    "editCategory": "Edit category",
+    "editAria": "Edit {name}",
+    "deleteAria": "Delete {name}",
+    "slaLine": "SLA {n} h",
+    "noDefaultAssignee": "No default assignee",
+    "description": "Description",
+    "slaHours": "SLA (hours)",
+    "defaultAssignee": "Default assignee",
+    "categorySaved": "Category saved",
+    "deleteTitle": "Delete {name}?",
+    "deleteMessage": "Categories already used by complaints cannot be deleted; deactivate them instead."
+  }
+}

@@ -7,7 +7,33 @@
       "close": "बंद करें",
       "more": "और",
       "showMore": "और विकल्प दिखाएँ",
-      "showLess": "कम विकल्प दिखाएँ"
+      "showLess": "कम विकल्प दिखाएँ",
+      "add": "जोड़ें",
+      "edit": "बदलें",
+      "delete": "हटाएँ",
+      "remove": "हटाएँ",
+      "submit": "जमा करें",
+      "send": "भेजें",
+      "search": "खोजें",
+      "filter": "फ़िल्टर",
+      "back": "वापस",
+      "view": "देखें",
+      "open": "खोलें",
+      "download": "डाउनलोड",
+      "export": "एक्सपोर्ट",
+      "approve": "मंज़ूर करें",
+      "reject": "अस्वीकार करें",
+      "confirm": "पक्का करें",
+      "refresh": "रीफ़्रेश",
+      "next": "आगे",
+      "previous": "पीछे",
+      "loadMore": "और देखें",
+      "create": "बनाएँ",
+      "update": "अपडेट करें",
+      "share": "शेयर करें",
+      "copy": "कॉपी करें",
+      "yes": "हाँ",
+      "no": "नहीं"
     },
     "status": {
       "pending": "बाकी",
@@ -19,7 +45,24 @@
       "late": "देर से",
       "upcoming": "आने वाला",
       "live": "अभी लाइव",
-      "done": "पूरा"
+      "done": "पूरा",
+      "open": "खुला",
+      "inProgress": "जारी",
+      "resolved": "हल हुआ",
+      "closed": "बंद",
+      "approved": "मंज़ूर",
+      "rejected": "अस्वीकृत",
+      "cancelled": "रद्द",
+      "draft": "ड्राफ़्ट",
+      "active": "सक्रिय",
+      "inactive": "निष्क्रिय",
+      "scheduled": "तय",
+      "completed": "पूरा",
+      "failed": "असफल",
+      "published": "प्रकाशित",
+      "processing": "प्रोसेस हो रहा है",
+      "expired": "समाप्त",
+      "confirmed": "पक्का"
     },
     "empty": {
       "title": "अभी यहाँ कुछ नहीं है"
@@ -40,7 +83,31 @@
       "settings": "सेटिंग्स",
       "platform": "प्लेटफ़ॉर्म",
       "other": "अन्य"
-    }
+    },
+    "labels": {
+      "loading": "लोड हो रहा है…",
+      "all": "सभी",
+      "none": "कोई नहीं",
+      "today": "आज",
+      "yesterday": "कल",
+      "date": "तारीख़",
+      "from": "से",
+      "to": "तक",
+      "amount": "राशि",
+      "status": "स्थिति",
+      "name": "नाम",
+      "notes": "नोट्स",
+      "total": "कुल",
+      "optional": "वैकल्पिक",
+      "required": "ज़रूरी",
+      "searchPlaceholder": "खोजें",
+      "noResults": "आपकी खोज से कुछ नहीं मिला।"
+    },
+    "errors": {
+      "generic": "कुछ गड़बड़ हुई। कृपया फिर से कोशिश करें।",
+      "offline": "आप ऑफ़लाइन हैं। अपना कनेक्शन जाँचें।"
+    },
+    "saved": "सेव हो गया"
   },
   "nav": {
     "dashboard": {
@@ -224,6 +291,10 @@
       "assign": "काम दें",
       "messages": "संदेश",
       "explore": "खोजें"
+    },
+    "doubts": {
+      "mine": "मेरे डाउट",
+      "inbox": "डाउट इनबॉक्स"
     }
   },
   "shell": {
