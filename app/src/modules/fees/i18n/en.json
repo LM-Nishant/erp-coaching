@@ -43,7 +43,6 @@
     "finish": "Done"
   },
   "today": {
-    "title": "Fees today",
     "collected": "Collected today",
     "overdue": "Overdue · no students | Overdue · 1 student | Overdue · {n} students",
     "approvals": "No payments to approve | 1 payment to approve | {n} payments to approve",
@@ -64,5 +63,60 @@
       "closed": "Closed",
       "cancelled": "Cancelled"
     }
+  },
+  "my": {
+    "title": "My fees",
+    "due": "{amount} due",
+    "allPaid": "All fees paid",
+    "allPaidHint": "Nothing to pay right now. Receipts are below.",
+    "next": "Next: {amount} by {date}",
+    "overdueNote": "{amount} is overdue. Please pay soon to avoid a late fee.",
+    "payOnline": "Pay online",
+    "payThis": "Pay this fee",
+    "ofTotal": "of {amount}",
+    "dueOn": "Due {date}",
+    "lateFee": "incl. late fee {amount}",
+    "concessions": "Concessions applied: {amount}",
+    "payments": "Payments & receipts",
+    "noPayments": "No payments yet.",
+    "downloadReceipt": "Download receipt",
+    "sendWhatsapp": "Send to WhatsApp",
+    "checkStatus": "Check status",
+    "office": {
+      "title": "Pay at the office",
+      "message": "Online payment isn't set up by your institute yet. Pay by cash, UPI or cheque at {name}.",
+      "call": "Call office",
+      "email": "Email office"
+    },
+    "state": {
+      "paid": "Paid",
+      "waived": "Waived",
+      "overdue": "Overdue",
+      "dueSoon": "Due soon",
+      "pending": "Upcoming"
+    },
+    "paymentStatus": {
+      "pending": "Pending",
+      "failed": "Failed",
+      "successful": "Successful",
+      "partially_refunded": "Partly refunded",
+      "refunded": "Refunded",
+      "cancelled": "Cancelled"
+    },
+    "mode": {
+      "online": "Online",
+      "cash": "Cash",
+      "upi": "UPI",
+      "bank_transfer": "Bank transfer",
+      "cheque": "Cheque"
+    }
+  },
+  "widgets": {
+    "due": "Fees",
+    "payNow": "Pay now",
+    "view": "View fees",
+    "nothingDue": "No fees due",
+    "nextDue": "Next {amount} by {date}",
+    "today": "Fees today"
   }
 }

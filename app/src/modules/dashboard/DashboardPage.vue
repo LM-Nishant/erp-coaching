@@ -1,5 +1,7 @@
 <template>
-  <AppPage title="Dashboard" :on-refresh="refresh">
+  <!-- Students get their own "Today" page at /home (parents are sent to /parent-home by the router). -->
+  <StudentHome v-if="auth.persona === 'student'" />
+  <AppPage v-else title="Dashboard" :on-refresh="refresh">
     <h2 class="hello">Hello, {{ auth.me?.user.name }}</h2>
 
     <template v-if="auth.isPlatformAdmin">
@@ -50,6 +52,7 @@ import { api } from '@/core/api';
 import { widgetsFor } from '@/core/modules';
 import { useAuthStore } from '@/stores/auth';
 import StaffHome from './StaffHome.vue';
+import StudentHome from './StudentHome.vue';
 
 interface PlatformStats {
   institutesByStatus: { status: string; count: number }[];
@@ -70,6 +73,7 @@ const widgets = computed(() =>
 
 async function load() {
   // Plan, storage and AI-token usage live on the billing page (/billing).
+  if (auth.persona === 'student') return;
   if (auth.isPlatformAdmin) platform.value = await api.get<PlatformStats>('/admin/dashboard');
 }
 

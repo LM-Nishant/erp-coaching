@@ -224,6 +224,9 @@ export function lmsRoutes(api: Router) {
   r.get('/library', can('view'), async (_req, res) => {
     res.json(await res$.learnerLibrary());
   });
+  r.get('/continue', can('view'), async (_req, res) => {
+    res.json(await res$.continueLearning());
+  });
   r.get('/courses/:id/contents', can('view'), async (req, res) => {
     res.json(await res$.courseContents(parse(idParam, req.params).id));
   });

@@ -50,5 +50,20 @@
     },
     "showDone": "Show {n} done",
     "hideDone": "Hide done steps"
+  },
+  "student": {
+    "title": "Today",
+    "greeting": "Hi {name} 👋",
+    "shortcuts": "Shortcuts",
+    "actions": {
+      "classes": "Live classes",
+      "courses": "My courses",
+      "homework": "Homework",
+      "tests": "Tests",
+      "results": "Results",
+      "attendance": "Attendance",
+      "fees": "Fees",
+      "downloads": "Downloads"
+    }
   }
 }

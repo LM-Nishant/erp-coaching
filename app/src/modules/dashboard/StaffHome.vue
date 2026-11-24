@@ -7,7 +7,7 @@
     <div v-if="widgets.length" class="widgets">
       <ion-card v-for="w in widgets" :key="w.id" :class="['widget', w.size ?? 'half']">
         <ion-card-header>
-          <ion-card-title>{{ te(w.title) ? t(w.title) : w.title }}</ion-card-title>
+          <ion-card-title>{{ widgetTitle(w) }}</ion-card-title>
         </ion-card-header>
         <ion-card-content>
           <component :is="w.component" />
@@ -37,13 +37,15 @@ import { widgetsFor } from '@/core/modules';
 import { useAuthStore } from '@/stores/auth';
 import CollectFeeSheet from '../fees/CollectFeeSheet.vue';
 import SetupChecklist from './SetupChecklist.vue';
+import { useWidgetTitle } from './widget-title';
 
 /**
  * "Today" home of the staff persona (admin, branch admin, accountant, front desk): setup checklist until the
  * institute is ready, the everyday jobs as big buttons, then today's numbers from `staff-home` widgets.
  */
 const auth = useAuthStore();
-const { t, te } = useI18n();
+const { t } = useI18n();
+const widgetTitle = useWidgetTitle();
 const collecting = ref(false);
 
 const allowed = (permission: PermissionKey, planModule: string) =>

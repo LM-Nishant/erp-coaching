@@ -1,3 +1,4 @@
+import { defineAsyncComponent } from 'vue';
 import {
   cloudDownloadOutline,
   documentTextOutline,
@@ -145,4 +146,34 @@ export default defineAppModule({
   ],
   // device revoked or account deactivated: the user's downloaded lectures go with it
   wipeUserData: async (userId) => (await import('./offline-store')).wipeOffline(userId),
+  widgets: [
+    {
+      id: 'lms.continue',
+      slot: 'student-home',
+      title: 'Continue watching',
+      component: defineAsyncComponent(() => import('./widgets/ContinueWidget.vue')),
+      permission: 'lms.view',
+      planModule: 'lms',
+      order: 20,
+      size: 'full',
+    },
+    {
+      id: 'lms.homework',
+      slot: 'student-home',
+      title: 'Homework due',
+      component: defineAsyncComponent(() => import('./widgets/HomeworkDueWidget.vue')),
+      permission: 'lms-assignments.view',
+      planModule: 'lms',
+      order: 30,
+    },
+    {
+      id: 'lms.homework',
+      slot: 'parent-home',
+      title: 'Homework due',
+      component: defineAsyncComponent(() => import('./widgets/HomeworkDueWidget.vue')),
+      permission: 'lms-assignments.view',
+      planModule: 'lms',
+      order: 30,
+    },
+  ],
 });

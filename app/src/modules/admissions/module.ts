@@ -28,7 +28,7 @@ export default defineAppModule({
     {
       id: 'admissions.today',
       slot: 'staff-home',
-      title: 'admissions.today.title',
+      title: 'Enquiries today',
       component: defineAsyncComponent(() => import('./EnquiriesTodayCard.vue')),
       permission: 'admissions.view',
       planModule: 'admissions',
