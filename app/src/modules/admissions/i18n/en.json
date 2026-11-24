@@ -1,0 +1,10 @@
+{
+  "today": {
+    "new": "New enquiries to call",
+    "followUps": "Follow-ups due",
+    "failed": "Could not load enquiries."
+  },
+  "widgets": {
+    "today": "Enquiries"
+  }
+}
