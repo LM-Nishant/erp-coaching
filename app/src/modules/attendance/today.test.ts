@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AttendanceDayItemDto, LiveSessionDto } from '@erp/shared';
-import { focusClass, liveFor } from './today';
+import { daySummary, focusClass, liveFor } from './today';
 
 const item = (id: number, startTime: string, endTime: string, closed = false): AttendanceDayItemDto =>
   ({
@@ -37,5 +37,18 @@ describe('liveFor', () => {
     const sameDay = live({ batchId: 102, scheduledStartAt: new Date(2026, 10, 23, 14).toISOString() });
     expect(liveFor(it2, [sameDay], '2026-11-23')).toBe(sameDay);
     expect(liveFor(it2, [sameDay], '2026-11-24')).toBeNull();
+  });
+});
+
+describe('daySummary', () => {
+  it('counts submitted and pending classes and adds up absentees', () => {
+    const a = { ...item(1, '09:00', '10:00', true) };
+    a.attendance = { id: 1, status: 'closed', counts: { present: 20, absent: 3 } };
+    const b = { ...item(2, '11:00', '12:00') };
+    b.attendance = { id: 2, status: 'open', counts: { absent: 1 } };
+    const c = { ...item(3, '14:00', '15:00') };
+    c.attendance = null;
+    expect(daySummary([a, b, c])).toEqual({ classes: 3, submitted: 1, pending: 2, absent: 4 });
+    expect(daySummary([])).toEqual({ classes: 0, submitted: 0, pending: 0, absent: 0 });
   });
 });

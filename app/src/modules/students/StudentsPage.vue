@@ -35,133 +35,57 @@
           </p>
         </ion-label>
       </ion-item>
-      <ion-item v-if="!loading && !students.length"
-        ><ion-label class="muted">No students found.</ion-label></ion-item
-      >
     </ion-list>
+    <EmptyState
+      v-if="!loading && !students.length"
+      :icon="peopleOutline"
+      :title="search || status !== 'all' ? t('students.list.noMatchTitle') : t('students.list.emptyTitle')"
+      :message="search || status !== 'all' ? undefined : t('students.list.emptyMessage')"
+    >
+      <ion-button v-if="!search && status === 'all'" v-can="'students.create'" @click="openCreate">{{
+        t('students.add.title')
+      }}</ion-button>
+    </EmptyState>
     <ion-infinite-scroll :disabled="students.length >= total" @ion-infinite="more">
       <ion-infinite-scroll-content />
     </ion-infinite-scroll>
 
-    <ion-modal :is-open="!!form" @did-dismiss="form = null">
-      <ion-header>
-        <ion-toolbar>
-          <ion-title>New student</ion-title>
-          <ion-buttons slot="end"><ion-button @click="form = null">Close</ion-button></ion-buttons>
-        </ion-toolbar>
-      </ion-header>
-      <ion-content class="ion-padding">
-        <form v-if="form" @submit.prevent="save()">
-          <ion-list>
-            <ion-item
-              ><ion-input v-model="form.name" label="Full name *" label-placement="stacked" required
-            /></ion-item>
-            <ion-item
-              ><ion-input
-                v-model="form.mobile"
-                label="Mobile *"
-                label-placement="stacked"
-                type="tel"
-                required
-            /></ion-item>
-            <ion-item
-              ><ion-input v-model="form.email" label="Email" label-placement="stacked" type="email"
-            /></ion-item>
-            <ion-item v-if="branches.length > 1">
-              <ion-select
-                v-model="form.branchId"
-                label="Branch"
-                label-placement="stacked"
-                interface="popover"
-              >
-                <ion-select-option v-for="b in branches" :key="b.id" :value="b.id">{{
-                  b.name
-                }}</ion-select-option>
-              </ion-select>
-            </ion-item>
-            <ion-item
-              ><ion-input
-                v-model="form.dateOfBirth"
-                label="Date of birth"
-                label-placement="stacked"
-                type="date"
-            /></ion-item>
-            <ion-item>
-              <ion-select v-model="form.gender" label="Gender" label-placement="stacked" interface="popover">
-                <ion-select-option value="male">Male</ion-select-option>
-                <ion-select-option value="female">Female</ion-select-option>
-                <ion-select-option value="other">Other</ion-select-option>
-              </ion-select>
-            </ion-item>
-            <ion-item
-              ><ion-input v-model="form.idNumber" label="ID number (e.g. Aadhaar)" label-placement="stacked"
-            /></ion-item>
-            <ion-item
-              ><ion-input v-model="form.schoolName" label="School / college" label-placement="stacked"
-            /></ion-item>
-            <ion-item
-              ><ion-input v-model="form.classGrade" label="Class / grade" label-placement="stacked"
-            /></ion-item>
-          </ion-list>
-          <ion-card v-if="duplicates.length" color="warning">
-            <ion-card-content>
-              <strong>Possible duplicates</strong>
-              <p v-for="d in duplicates" :key="`${d.kind}-${d.id}`">
-                {{ humanize(d.kind) }}: {{ d.name }} ({{ d.reference ?? d.mobile }}) – matched on
-                {{ d.matchedOn.join(', ') }}
-              </p>
-              <p>
-                Siblings may share a mobile; saving anyway gives the student a login of their own on that
-                mobile.
-              </p>
-              <ion-button size="small" @click="save(true)">Save anyway</ion-button>
-            </ion-card-content>
-          </ion-card>
-          <ion-button expand="block" type="submit" :disabled="saving">Admit student</ion-button>
-        </form>
-      </ion-content>
-    </ion-modal>
+    <AddStudentWizard :is-open="adding" :branches="branches" @close="adding = false" @added="load" />
   </AppPage>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import {
   IonBadge,
   IonButton,
-  IonButtons,
-  IonCard,
-  IonCardContent,
-  IonContent,
-  IonHeader,
   IonIcon,
   IonInfiniteScroll,
   IonInfiniteScrollContent,
-  IonInput,
   IonItem,
   IonLabel,
   IonList,
-  IonModal,
   IonSearchbar,
   IonSegment,
   IonSegmentButton,
-  IonSelect,
-  IonSelectOption,
-  IonTitle,
-  IonToolbar,
   type InfiniteScrollCustomEvent,
 } from '@ionic/vue';
-import { add, settingsOutline } from 'ionicons/icons';
-import { STUDENT_STATUSES, type DuplicateMatch, type StudentDto, type StudentStatus } from '@erp/shared';
+import { add, peopleOutline, settingsOutline } from 'ionicons/icons';
+import { STUDENT_STATUSES, type StudentDto, type StudentStatus } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
-import { ApiError } from '@/core/api';
-import { toast, toastError } from '@/core/toast';
+import EmptyState from '@/components/EmptyState.vue';
+import { toastError } from '@/core/toast';
 import { branchesApi, type Branch } from '@/modules/branches/api';
+import { useAuthStore } from '@/stores/auth';
+import AddStudentWizard from './AddStudentWizard.vue';
 import { STATUS_COLORS, humanize, studentsApi } from './api';
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
+const { t } = useI18n();
 const students = ref<StudentDto[]>([]);
 const total = ref(0);
 const page = ref(1);
@@ -169,21 +93,7 @@ const loading = ref(true);
 const search = ref('');
 const status = ref<'all' | StudentStatus>('all');
 const branches = ref<Branch[]>([]);
-const saving = ref(false);
-const duplicates = ref<DuplicateMatch[]>([]);
-
-interface CreateForm {
-  name: string;
-  mobile: string;
-  email: string;
-  branchId: number | undefined;
-  dateOfBirth: string;
-  gender: 'male' | 'female' | 'other' | null;
-  idNumber: string;
-  schoolName: string;
-  classGrade: string;
-}
-const form = ref<CreateForm | null>(null);
+const adding = ref(false);
 
 const branchName = (id: number) => branches.value.find((b) => b.id === id)?.name;
 
@@ -222,51 +132,7 @@ async function more(ev: InfiniteScrollCustomEvent) {
 }
 
 function openCreate() {
-  duplicates.value = [];
-  form.value = {
-    name: '',
-    mobile: '',
-    email: '',
-    branchId: undefined,
-    dateOfBirth: '',
-    gender: null,
-    idNumber: '',
-    schoolName: '',
-    classGrade: '',
-  };
-}
-
-const orNull = (v: string) => (v.trim() ? v.trim() : null);
-
-async function save(allowDuplicate = false) {
-  if (!form.value) return;
-  const f = form.value;
-  saving.value = true;
-  try {
-    const s = await studentsApi.create({
-      name: f.name.trim(),
-      mobile: f.mobile.trim(),
-      email: orNull(f.email),
-      branchId: f.branchId,
-      dateOfBirth: orNull(f.dateOfBirth),
-      gender: f.gender,
-      idNumber: orNull(f.idNumber),
-      academicInfo:
-        f.schoolName || f.classGrade
-          ? { schoolName: orNull(f.schoolName), classGrade: orNull(f.classGrade) }
-          : null,
-      allowDuplicate,
-    });
-    form.value = null;
-    await toast(`Admitted ${s.name} (${s.admissionNumber})`);
-    await router.push(`/students/${s.id}`);
-  } catch (e) {
-    if (e instanceof ApiError && e.code === 'DUPLICATE_STUDENT')
-      duplicates.value = (e.details as { matches: DuplicateMatch[] }).matches;
-    else await toastError(e);
-  } finally {
-    saving.value = false;
-  }
+  adding.value = true;
 }
 
 onMounted(async () => {
@@ -274,4 +140,13 @@ onMounted(async () => {
   branches.value = await branchesApi.list().catch(() => []);
 });
 watch(() => route.query.b, load);
+watch(
+  () => route.query.add,
+  (v) => {
+    if (v !== '1') return;
+    adding.value = auth.can('students.create');
+    void router.replace({ query: { ...route.query, add: undefined } });
+  },
+  { immediate: true },
+);
 </script>

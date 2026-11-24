@@ -235,8 +235,8 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { onMounted, reactive, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import {
   IonBadge,
   IonButton,
@@ -287,6 +287,7 @@ import { ENQUIRY_COLORS, admissionsApi, type EnquiryDetail } from './api';
 
 const auth = useAuthStore();
 const router = useRouter();
+const route = useRoute();
 const enquiries = ref<EnquiryDto[]>([]);
 const summary = ref<Partial<Record<EnquiryStatus, number>>>({});
 const total = ref(0);
@@ -502,6 +503,21 @@ async function remove() {
     await toastError(e);
   }
 }
+
+// Links from the staff home: `?new=1` opens the form, `?followUp=1` shows follow-ups due today.
+watch(
+  () => route.query,
+  (q) => {
+    if (route.path !== '/admissions/enquiries') return;
+    if (q.followUp === '1' && !followUpDue.value) {
+      followUpDue.value = true;
+      void load();
+    }
+    if (q.new === '1' && auth.can('admissions.create')) void openCreate();
+    if (q.new || q.followUp) void router.replace({ query: {} });
+  },
+  { immediate: true },
+);
 
 onMounted(async () => {
   await load();

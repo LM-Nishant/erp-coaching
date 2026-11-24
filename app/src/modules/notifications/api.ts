@@ -127,6 +127,8 @@ export const commsApi = {
 
   campaigns: () => api.get<Page<CampaignDto>>(`${base}/campaigns`, { pageSize: 50 }),
   createCampaign: (c: CampaignInput) => api.post<CampaignDto>(`${base}/campaigns`, c),
+  previewAudience: (audience: CampaignInput['audience']) =>
+    api.post<{ recipients: number }>(`${base}/campaigns/preview`, { audience }),
   cancelCampaign: (id: number) => api.post<CampaignDto>(`${base}/campaigns/${id}/cancel`),
 };
 

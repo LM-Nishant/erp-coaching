@@ -23,34 +23,7 @@
       <p class="muted cap">
         {{ auth.me?.institute?.name }} · {{ auth.me?.roles.join(', ').replace(/-/g, ' ') }}
       </p>
-      <ion-grid v-if="sub">
-        <ion-row>
-          <ion-col size="6" size-md="3">
-            <StatCard
-              label="Plan"
-              :value="sub.subscription?.plan?.name ?? '—'"
-              :hint="sub.subscription?.status"
-            />
-          </ion-col>
-          <ion-col size="6" size-md="3">
-            <StatCard label="Branches" :value="sub.usage.branches" :hint="limit(sub.limits?.maxBranches)" />
-          </ion-col>
-          <ion-col size="6" size-md="3">
-            <StatCard
-              label="Storage (MB)"
-              :value="sub.usage.storageMb"
-              :hint="limit(sub.limits?.storageMb)"
-            />
-          </ion-col>
-          <ion-col size="6" size-md="3">
-            <StatCard
-              label="AI tokens this month"
-              :value="sub.usage.aiTokensThisMonth"
-              :hint="limit(sub.limits?.aiTokensMonthly)"
-            />
-          </ion-col>
-        </ion-row>
-      </ion-grid>
+      <StaffHome v-if="auth.persona === 'staff'" :key="refreshKey" />
       <ion-card v-else>
         <ion-card-content>
           Your branches: {{ auth.me?.branches.map((b) => b.name).join(', ') || '—' }}
@@ -77,20 +50,15 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonCol, IonGrid, IonRow } from '@ionic/vue';
-import type { PlanLimits, SubscriptionDto } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
 import StatCard from '@/components/StatCard.vue';
-import TeacherHome from './TeacherHome.vue';
 import { api } from '@/core/api';
 import { widgetsFor } from '@/core/modules';
 import { useAuthStore } from '@/stores/auth';
+import StaffHome from './StaffHome.vue';
 import StudentHome from './StudentHome.vue';
+import TeacherHome from './TeacherHome.vue';
 
-interface SubscriptionInfo {
-  subscription: SubscriptionDto | null;
-  limits: PlanLimits | null;
-  usage: { branches: number; storageMb: number; aiTokensThisMonth: number };
-}
 interface PlatformStats {
   institutesByStatus: { status: string; count: number }[];
   users: number;
@@ -101,10 +69,7 @@ const auth = useAuthStore();
 const { t } = useI18n();
 const pageTitle = computed(() => (auth.persona === 'teacher' ? t('dashboard.teacher.title') : 'Dashboard'));
 const route = useRoute();
-const sub = ref<SubscriptionInfo | null>(null);
 const platform = ref<PlatformStats | null>(null);
-
-const limit = (n: number | null | undefined) => (n === null || n === undefined ? 'unlimited' : `of ${n}`);
 
 const refreshKey = ref(0);
 const widgets = computed(() =>
@@ -114,10 +79,9 @@ const widgets = computed(() =>
 );
 
 async function load() {
+  // Plan, storage and AI-token usage live on the billing page (/billing).
   if (auth.persona === 'student') return;
   if (auth.isPlatformAdmin) platform.value = await api.get<PlatformStats>('/admin/dashboard');
-  else if (auth.persona !== 'teacher' && auth.can('subscription.view'))
-    sub.value = await api.get<SubscriptionInfo>('/subscription');
 }
 
 async function refresh() {

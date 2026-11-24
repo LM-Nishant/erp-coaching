@@ -1,3 +1,4 @@
+import { defineAsyncComponent } from 'vue';
 import { chatbubblesOutline, clipboardOutline, documentTextOutline } from 'ionicons/icons';
 import { defineAppModule } from '@/core/modules';
 
@@ -21,6 +22,17 @@ export default defineAppModule({
       name: 'admission-forms',
       component: () => import('./FormsPage.vue'),
       meta: { permission: 'admissions.configure' },
+    },
+  ],
+  widgets: [
+    {
+      id: 'admissions.today',
+      slot: 'staff-home',
+      title: 'Enquiries today',
+      component: defineAsyncComponent(() => import('./EnquiriesTodayCard.vue')),
+      permission: 'admissions.view',
+      planModule: 'admissions',
+      order: 20,
     },
   ],
   menu: [

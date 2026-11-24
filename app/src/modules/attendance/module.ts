@@ -140,6 +140,15 @@ export default defineAppModule({
       size: 'full',
     },
     {
+      id: 'attendance.staffToday',
+      slot: 'staff-home',
+      title: 'Attendance today',
+      component: defineAsyncComponent(() => import('./widgets/StaffTodayWidget.vue')),
+      permission: 'attendance.create',
+      planModule: 'attendance',
+      order: 30,
+    },
+    {
       id: 'attendance.summary',
       slot: 'student-home',
       title: 'Attendance',

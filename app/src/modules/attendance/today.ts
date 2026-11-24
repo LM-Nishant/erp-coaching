@@ -37,3 +37,15 @@ export function liveFor(
     null
   );
 }
+
+/** Staff home numbers for a day: classes submitted / still to submit, and students marked absent so far. */
+export function daySummary(items: readonly AttendanceDayItemDto[]): {
+  classes: number;
+  submitted: number;
+  pending: number;
+  absent: number;
+} {
+  const submitted = items.filter((i) => i.attendance?.status === 'closed').length;
+  const absent = items.reduce((n, i) => n + (i.attendance?.counts.absent ?? 0), 0);
+  return { classes: items.length, submitted, pending: items.length - submitted, absent };
+}

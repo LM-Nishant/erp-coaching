@@ -82,6 +82,14 @@
     "status": {
       "leave": "Leave",
       "half_day": "Half day"
+    },
+    "staffToday": "Attendance today",
+    "staff": {
+      "pending": "Classes not submitted",
+      "submitted": "{n} of {total} classes submitted",
+      "absent": "Absent so far",
+      "none": "No classes today",
+      "failed": "Couldn't load attendance"
     }
   }
 }
