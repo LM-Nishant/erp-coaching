@@ -1,14 +1,9 @@
 <template>
   <ion-fab v-if="allowed" slot="fixed" vertical="bottom" horizontal="end" class="doubt-fab">
-    <ion-fab-button
-      class="doubt-fab-button"
-      :aria-label="t('doubts.ask.button')"
-      data-testid="ask-doubt"
-      @click="ask"
-    >
-      <ion-icon :icon="helpCircleOutline" aria-hidden="true" />
-      <span class="label">{{ t('doubts.ask.button') }}</span>
-    </ion-fab-button>
+    <ion-button class="doubt-fab-button" shape="round" data-testid="ask-doubt" @click="ask">
+      <ion-icon slot="start" :icon="helpCircleOutline" aria-hidden="true" />
+      {{ t('doubts.ask.button') }}
+    </ion-button>
   </ion-fab>
 </template>
 
@@ -16,7 +11,7 @@
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
-import { IonFab, IonFabButton, IonIcon } from '@ionic/vue';
+import { IonButton, IonFab, IonIcon } from '@ionic/vue';
 import { helpCircleOutline } from 'ionicons/icons';
 import { useAuthStore } from '@/stores/auth';
 
@@ -55,18 +50,14 @@ function ask() {
   margin-bottom: calc(8px + env(safe-area-inset-bottom));
 }
 .doubt-fab-button {
-  width: auto;
   min-height: var(--app-tap-target, 48px);
-  --border-radius: 28px;
-  --padding-start: 16px;
-  --padding-end: 18px;
+  --padding-start: 18px;
+  --padding-end: 20px;
+  --box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  font-weight: 600;
+  text-transform: none;
 }
 .doubt-fab-button ion-icon {
   font-size: 22px;
-}
-.label {
-  margin-left: 6px;
-  font-weight: 600;
-  font-size: 15px;
 }
 </style>

@@ -72,8 +72,8 @@ export interface MeDto {
     sharesMobile?: boolean;
     /** Active accounts signing in with this number (including this one); more than 1 offers "Switch profile". */
     profileCount?: number;
-    /** Language saved on the account (`PUT /auth/me/locale`); null = not chosen yet. */
-    locale?: AppLocale | null;
+    /** Language saved on the account (`PUT /auth/me/locale`); `en` unless the user picked Hindi. */
+    locale: AppLocale;
   };
   institute: InstituteBranding | null;
   branches: { id: number; name: string }[];

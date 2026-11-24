@@ -139,7 +139,7 @@ describe('doubts module', () => {
       sessionIds: [ids.session],
     });
     await purgeRows('subjects', [ids.physics, ids.maths]);
-    await getSequelize().query('UPDATE users SET locale = NULL WHERE id = ?', {
+    await getSequelize().query("UPDATE users SET locale = 'en' WHERE id = ?", {
       replacements: [studentUserId],
     });
   });
@@ -232,7 +232,8 @@ describe('doubts module', () => {
       .expect(404);
   });
 
-  it('saves the user’s language and returns it from /me', async () => {
+  it('defaults to English, then saves the user’s language and returns it from /me', async () => {
+    expect((await api('get', '/auth/me', student).expect(200)).body.user.locale).toBe('en');
     await api('put', '/auth/me/locale', student).send({ locale: 'fr' }).expect(422);
     await api('put', '/auth/me/locale', student).send({ locale: 'hi' }).expect(200, { locale: 'hi' });
     expect((await api('get', '/auth/me', student).expect(200)).body.user.locale).toBe('hi');

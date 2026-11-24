@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MeDto } from '@erp/shared';
 import { api } from '@/core/api';
 import { currentLocale, setLocale } from '@/i18n';
-import { chooseLocale, syncLocaleFromMe } from '@/core/locale-sync';
+import { chooseLocale, pickSignedOutLocale, syncLocaleFromMe } from '@/core/locale-sync';
 import { clock, doubtsApi } from './api';
 
-const me = (locale: 'en' | 'hi' | null, extra: Partial<MeDto> = {}) =>
+const me = (locale: 'en' | 'hi', extra: Partial<MeDto> = {}) =>
   ({ user: { id: 1, locale }, ...extra }) as unknown as MeDto;
 
 describe('doubts api', () => {
@@ -45,18 +45,40 @@ describe('account language', () => {
     expect(put).not.toHaveBeenCalled();
   });
 
-  it('saves a language picked on this device to an account without one', () => {
+  it('a fresh device opens in English, even when the browser prefers Hindi', async () => {
+    localStorage.clear();
+    vi.spyOn(navigator, 'language', 'get').mockReturnValue('hi-IN');
+    vi.resetModules();
+    const fresh = await import('@/i18n');
+    expect(fresh.currentLocale()).toBe('en');
+  });
+
+  it('a fresh account (English) wins over a stale Hindi choice on this device', () => {
     setLocale('hi');
     const put = vi.spyOn(api, 'put').mockResolvedValue({});
-    syncLocaleFromMe(me(null));
+    syncLocaleFromMe(me('en'));
+    expect(currentLocale()).toBe('en');
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it('saves a language picked on the sign-in screen to the account that signs in', () => {
+    pickSignedOutLocale('hi');
+    const put = vi.spyOn(api, 'put').mockResolvedValue({});
+    const profile = me('en');
+    syncLocaleFromMe(profile);
+    expect(currentLocale()).toBe('hi');
     expect(put).toHaveBeenCalledWith('/auth/me/locale', { locale: 'hi' });
+    expect(profile.user.locale).toBe('hi');
+    put.mockClear();
+    syncLocaleFromMe(profile);
+    expect(put).not.toHaveBeenCalled();
   });
 
   it('leaves the account alone while impersonating', async () => {
     const put = vi.spyOn(api, 'put').mockResolvedValue({});
     syncLocaleFromMe(me('hi', { impersonatedBy: { id: 9 } } as Partial<MeDto>));
     expect(currentLocale()).toBe('en');
-    await chooseLocale('hi', me(null, { impersonatedBy: { id: 9 } } as Partial<MeDto>));
+    await chooseLocale('hi', me('en', { impersonatedBy: { id: 9 } } as Partial<MeDto>));
     expect(currentLocale()).toBe('hi');
     expect(put).not.toHaveBeenCalled();
   });

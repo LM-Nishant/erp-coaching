@@ -29,7 +29,7 @@ export class User extends Model<InferAttributes<User>, InferCreationAttributes<U
   declare isSuperAdmin: CreationOptional<boolean>;
   declare lastLoginAt: Date | null;
   /** App language chosen by the user (`en`/`hi`); null until they pick one. */
-  declare locale: CreationOptional<string | null>;
+  declare locale: CreationOptional<string>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 
@@ -57,7 +57,7 @@ export class User extends Model<InferAttributes<User>, InferCreationAttributes<U
         status: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'active' },
         isSuperAdmin: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
         lastLoginAt: DataTypes.DATE,
-        locale: { type: DataTypes.STRING(5), allowNull: true },
+        locale: { type: DataTypes.STRING(5), allowNull: false, defaultValue: 'en' },
         createdAt: DataTypes.DATE,
         updatedAt: DataTypes.DATE,
       },

@@ -770,7 +770,7 @@ export async function stopImpersonation(sessionId: number) {
 export async function setUserLocale(userId: number, locale: AppLocale) {
   const user = await User.findByPk(userId);
   if (!user) throw Unauthorized();
-  const before = user.locale ?? null;
+  const before = user.locale;
   if (before !== locale) {
     await user.update({ locale });
     await audit({
@@ -831,7 +831,7 @@ export async function buildMe(): Promise<MeDto> {
       isSuperAdmin: user.isSuperAdmin,
       sharesMobile: user.mobile === null,
       profileCount,
-      locale: (user.locale as AppLocale | null) ?? null,
+      locale: user.locale === 'hi' ? 'hi' : 'en',
     },
     institute,
     branches,

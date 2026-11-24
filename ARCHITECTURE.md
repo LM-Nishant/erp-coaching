@@ -341,7 +341,7 @@ With several roles the most capable wins: staff, teacher, student, parent.
 - Shared words: `i18n/locales/{en,hi}.json` under `common.*` (`common.actions.save`, `common.status.overdue`).
 - A module's words: `modules/<folder>/i18n/{en,hi}.json`, namespaced by the camel-cased folder name (`parent-portal` → `parentPortal.*`). Group keys by page: `fees.myFees.payNow`. Menu titles are the exception: `nav.*` in the core files (see `titleKey`).
 - English is complete; Hindi may lag and falls back to English. A test fails when `hi.json` has a key `en.json` lacks.
-- `setLocale('hi')` switches the app and remembers the choice on the device (`localStorage`, key `erp.locale`). The side menu's language switch calls `chooseLocale()` (`core/locale-sync.ts`), which also saves it on the account (`users.locale`, `PUT /api/auth/me/locale`). After `/auth/me` the app opens in the account's language; an account without one adopts the device's choice.
+- `setLocale('hi')` switches the app and remembers the choice on the device (`localStorage`, key `erp.locale`). The side menu's language switch calls `chooseLocale()` (`core/locale-sync.ts`), which also saves it on the account (`users.locale`, `PUT /api/auth/me/locale`). English is the default everywhere (new devices, new accounts: `users.locale` defaults to `en`; the browser language is ignored). After `/auth/me` the app opens in the account's language; a language picked on the sign-in screen (`pickSignedOutLocale()`) is saved on the account that signs in.
 
 **Shared components**: `StatusChip` (tone + plain label), `EmptyState` (what will appear here + next-step slot), `FormSection` (`advanced` collapses rarely used fields), `QuickActions` (grid of big buttons for homes). Tap targets: `var(--app-tap-target)` (48 px).
 
