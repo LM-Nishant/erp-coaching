@@ -1,6 +1,11 @@
-import { guardiansOf, notify, registerNotificationEvents, studentUserOf } from '../notifications/api';
+import {
+  guardiansOf,
+  notify,
+  notifyAmount,
+  registerNotificationEvents,
+  studentUserOf,
+} from '../notifications/api';
 import { logger } from '../../infrastructure/logger';
-import { formatRupees } from './util';
 
 export function registerFeeNotificationEvents() {
   registerNotificationEvents([
@@ -68,4 +73,5 @@ export async function notifyStudent(
   }
 }
 
-export const money = (paise: number) => formatRupees(paise);
+/** Amount for a `₹{{amount}}` notification variable: `46,250`, `46,250.50`. */
+export const money = (paise: number) => notifyAmount(paise);

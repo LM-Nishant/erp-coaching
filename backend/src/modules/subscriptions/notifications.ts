@@ -1,7 +1,9 @@
 import { SYSTEM_ROLES } from '@erp/shared';
 import { logger } from '../../infrastructure/logger';
 import { runWithContext } from '../../shared/context';
-import { notify, registerNotificationEvents } from '../notifications/api';
+import { notify, notifyAmount, registerNotificationEvents } from '../notifications/api';
+
+export { notifyAmount };
 
 const staff = (key: string, label: string, variables: string[], title: string, body: string) => ({
   key,

@@ -10,7 +10,15 @@
  */
 import { expect, test } from '../support/fixtures';
 import { loginWithPassword, newDevice } from '../support/api';
-import { addGuardian, addStaff, addStudent, createBatch, createInstitute, isoDate } from '../support/data';
+import {
+  addGuardian,
+  addStaff,
+  addStudent,
+  createBatch,
+  createInstitute,
+  isoDate,
+  messageDay,
+} from '../support/data';
 import { outboxMark, outboxMessages, waitForMessage } from '../support/outbox';
 import {
   actionSheet,
@@ -83,7 +91,8 @@ test('attendance marked absent → parent receives the absent alert', async ({ h
   });
   expect(date).toBe(isoDate());
 
-  const alertText = (name: string) => `${name} was marked absent in ${batch.batchName} on ${date}.`;
+  const alertText = (name: string) =>
+    `${name} was marked absent in ${batch.batchName} on ${messageDay(date)}.`;
 
   await test.step("absent students' parents get the SMS; the present student's parent does not", async () => {
     for (const student of [absent, unmarked])

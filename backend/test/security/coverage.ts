@@ -241,6 +241,7 @@ export const SELF_SERVICE_ROUTES: Record<string, string> = {
   'POST /api/auth/select-institute': 'switch between own institutes',
   'GET /api/auth/devices': 'own devices',
   'GET /api/subscription/status': 'subscription banner state for every member',
+  'GET /api/branches': 'own allowed branches (names only without branches.view)',
   'DELETE /api/auth/devices/:id': 'own devices',
   'POST /api/auth/activity': 'own session keep-alive (inactivity timeout)',
   'POST /api/auth/capture-events': 'reports screen capture on own device',

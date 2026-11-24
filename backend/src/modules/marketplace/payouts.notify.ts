@@ -1,7 +1,7 @@
 import { SYSTEM_ROLES } from '@erp/shared';
 import { logger } from '../../infrastructure/logger';
 import { runWithContext } from '../../shared/context';
-import { notify, notifyPlatformUsers, registerNotificationEvents } from '../notifications/api';
+import { notify, notifyAmount, notifyPlatformUsers, registerNotificationEvents } from '../notifications/api';
 import { UserRole } from '../permissions/models';
 import type { MktSeller } from './models';
 
@@ -78,7 +78,7 @@ export function notifyPayoutPaid(
   data: { netPaise: number; period: string; reference: string; paidTo: string },
 ): Promise<boolean> {
   return notifySeller(seller, PAYOUT_PAID_EVENT, {
-    amount: (data.netPaise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 }),
+    amount: notifyAmount(data.netPaise),
     period: data.period,
     reference: data.reference,
     paidTo: data.paidTo,

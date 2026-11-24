@@ -4,8 +4,8 @@ import { z } from 'zod';
 import { parse } from '../../shared/utilities/validation';
 import { idParam } from '../../shared/utilities/pagination';
 import { authenticate } from '../../shared/middleware/authenticate';
-import { requirePermission } from '../../shared/middleware/authorize';
-import { requireTenantContext } from '../../shared/context';
+import { requirePermission, requireTenant } from '../../shared/middleware/authorize';
+import { hasPermission, requireTenantContext } from '../../shared/context';
 import { TenantRepository } from '../../shared/tenancy/tenant-repository';
 import { BadRequest, Conflict, Forbidden } from '../../shared/errors';
 import { audit } from '../../shared/audit/audit.service';
@@ -46,8 +46,13 @@ export function branchRoutes(api: Router) {
   const r = Router();
   r.use(authenticate);
 
-  r.get('/', requirePermission('branches', 'view'), async (_req, res) => {
-    res.json(await branchRepo.findAll({ where: allowedBranchWhere(), order: [['name', 'ASC']] }));
+  /**
+   * Any institute member may list their own branches: many pages (students, admissions, batches,
+   * attendance) label and filter by branch. Contact details still need `branches.view`.
+   */
+  r.get('/', requireTenant, async (_req, res) => {
+    const attributes = hasPermission('branches.view') ? undefined : ['id', 'name', 'code', 'status'];
+    res.json(await branchRepo.findAll({ where: allowedBranchWhere(), attributes, order: [['name', 'ASC']] }));
   });
 
   r.get('/:id', requirePermission('branches', 'view'), async (req, res) => {

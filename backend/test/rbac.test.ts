@@ -27,6 +27,20 @@ describe('RBAC', () => {
     expect(res.body.error.code).toBe('PERMISSION_DENIED');
   });
 
+  it('members without branches.view list their branches without contact details', async () => {
+    const app = await getApp();
+    const student = (await login({ mobile: '9100000005', password: DEMO_PASSWORD })).accessToken;
+    const me = await request(app).get('/api/auth/me').set(bearer(student));
+    expect(me.body.permissions).not.toContain('branches.view');
+    const res = await request(app).get('/api/branches').set(bearer(student));
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBeGreaterThan(0);
+    for (const b of res.body) expect(Object.keys(b).sort()).toEqual(['code', 'id', 'name', 'status']);
+    const full = await request(app).get('/api/branches').set(bearer(teacher));
+    expect(full.body[0]).toHaveProperty('address');
+    expect((await request(app).get(`/api/branches/${res.body[0].id}`).set(bearer(student))).status).toBe(403);
+  });
+
   it('branch admin only sees assigned branches', async () => {
     const res = await request(await getApp())
       .get('/api/branches')
