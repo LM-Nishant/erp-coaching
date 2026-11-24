@@ -108,6 +108,7 @@
         </ion-list>
       </template>
     </template>
+    <DoubtButton v-if="session && !isModerator" :live-class-id="id" :title="session.title" />
   </AppPage>
 </template>
 
@@ -140,6 +141,7 @@ import StatusChip from '@/components/StatusChip.vue';
 import { hlsPlayable, useVideoSource } from '@/core/hls';
 import { useSessionHold } from '@/core/idle';
 import { toast, toastError } from '@/core/toast';
+import { DoubtButton } from '@/modules/doubts';
 import { useAuthStore } from '@/stores/auth';
 import { liveApi, type ParticipationReport } from './api';
 import { duration, joinState, size, statusColor, time, when } from './format';

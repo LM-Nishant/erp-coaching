@@ -1,16 +1,18 @@
 <template>
-  <AppPage title="Exams" :on-refresh="reload">
+  <AppPage :title="t('exams.list.title')" :on-refresh="reload">
     <template #actions>
-      <ion-button v-can="'exams.create'" router-link="/exams/new" aria-label="New exam"
+      <ion-button v-can="'exams.create'" router-link="/exams/new" :aria-label="t('exams.form.newTitle')"
         ><ion-icon slot="icon-only" :icon="add"
       /></ion-button>
     </template>
 
-    <ion-searchbar v-model="search" :debounce="400" placeholder="Search exams" />
+    <ion-searchbar v-model="search" :debounce="400" :placeholder="t('exams.list.search')" />
     <ion-segment v-model="phase" scrollable>
-      <ion-segment-button value=""><ion-label>All</ion-label></ion-segment-button>
+      <ion-segment-button value=""
+        ><ion-label>{{ t('exams.list.all') }}</ion-label></ion-segment-button
+      >
       <ion-segment-button v-for="p in PHASES" :key="p" :value="p">
-        <ion-label>{{ p }}</ion-label>
+        <ion-label>{{ t(`exams.phase.${p}`) }}</ion-label>
       </ion-segment-button>
     </ion-segment>
 
@@ -18,19 +20,32 @@
       <ion-item v-for="e in exams" :key="e.id" :router-link="`/exams/${e.id}`" detail>
         <ion-label>
           <h2>{{ e.title }}</h2>
-          <p>{{ e.batchName ?? e.courseName ?? 'All students' }} · {{ formatDate(e.startAt) }}</p>
           <p>
-            {{ e.questionCount }} questions · {{ fmtMarks(e.totalMarks) }} marks · {{ e.durationMinutes }} min
-            ·
-            {{ EVALUATION_MODE_LABELS[e.evaluationMode] }}
+            {{ e.batchName ?? e.courseName ?? t('exams.list.allStudents') }} · {{ formatDateTime(e.startAt) }}
+          </p>
+          <p>
+            {{
+              t('exams.list.facts', {
+                questions: e.questionCount,
+                marks: fmtMarks(e.totalMarks),
+                duration: formatDuration(e.durationMinutes * 60),
+              })
+            }}
           </p>
         </ion-label>
-        <ion-badge slot="end" :color="PHASE_COLORS[e.phase]">{{ e.phase }}</ion-badge>
-      </ion-item>
-      <ion-item v-if="!loading && !exams.length">
-        <ion-label class="muted">No exams found.</ion-label>
+        <StatusChip slot="end" :tone="PHASE_TONE[e.phase]" :label="t(`exams.phase.${e.phase}`)" />
       </ion-item>
     </ion-list>
+    <EmptyState
+      v-if="!loading && !exams.length"
+      :icon="documentTextOutline"
+      :title="search || phase ? t('exams.list.noMatch') : t('exams.list.emptyTitle')"
+      :message="search || phase ? undefined : t('exams.list.emptyMessage')"
+    >
+      <ion-button v-if="!search && !phase" v-can="'exams.create'" router-link="/exams/new">{{
+        t('exams.form.newTitle')
+      }}</ion-button>
+    </EmptyState>
     <ion-infinite-scroll :disabled="exams.length >= total" @ion-infinite="more">
       <ion-infinite-scroll-content />
     </ion-infinite-scroll>
@@ -40,7 +55,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import {
-  IonBadge,
   IonButton,
   IonIcon,
   IonInfiniteScroll,
@@ -54,12 +68,25 @@ import {
   onIonViewWillEnter,
   type InfiniteScrollCustomEvent,
 } from '@ionic/vue';
-import { add } from 'ionicons/icons';
-import { EVALUATION_MODE_LABELS, type ExamDto, type ExamPhase } from '@erp/shared';
+import { add, documentTextOutline } from 'ionicons/icons';
+import { useI18n } from 'vue-i18n';
+import type { ExamDto, ExamPhase } from '@erp/shared';
 import AppPage from '@/components/AppPage.vue';
+import EmptyState from '@/components/EmptyState.vue';
+import StatusChip from '@/components/StatusChip.vue';
+import { formatDateTime, formatDuration } from '@/core/format';
 import { toastError } from '@/core/toast';
-import { PHASE_COLORS, examsApi, fmtMarks, formatDate } from './api';
+import { examsApi, fmtMarks } from './api';
 
+const { t } = useI18n();
+const PHASE_TONE: Record<ExamPhase, 'success' | 'warning' | 'danger' | 'primary' | 'medium'> = {
+  draft: 'medium',
+  upcoming: 'primary',
+  live: 'success',
+  closed: 'warning',
+  published: 'success',
+  cancelled: 'danger',
+};
 const PHASES: ExamPhase[] = ['draft', 'upcoming', 'live', 'closed', 'published', 'cancelled'];
 const phase = ref<ExamPhase | ''>('');
 const search = ref('');

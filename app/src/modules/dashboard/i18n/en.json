@@ -65,5 +65,19 @@
       "fees": "Fees",
       "downloads": "Downloads"
     }
+  },
+  "teacher": {
+    "morning": "Good morning, {name}",
+    "afternoon": "Good afternoon, {name}",
+    "evening": "Good evening, {name}",
+    "quickActions": "Quick actions",
+    "actions": {
+      "take": "Take attendance",
+      "homework": "Give homework",
+      "new": "New test",
+      "upload": "Upload lecture",
+      "classes": "Live classes"
+    },
+    "title": "Home"
   }
 }

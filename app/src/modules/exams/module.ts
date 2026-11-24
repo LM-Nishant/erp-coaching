@@ -131,6 +131,16 @@ export default defineAppModule({
   ],
   widgets: [
     {
+      id: 'exams.teacherToCheck',
+      slot: 'teacher-home',
+      title: 'Tests to publish',
+      component: defineAsyncComponent(() => import('./widgets/ExamsToCheckWidget.vue')),
+      permission: 'exams.edit',
+      planModule: 'exams',
+      order: 30,
+      size: 'half',
+    },
+    {
       id: 'exams.upcoming',
       slot: 'student-home',
       title: 'Upcoming tests',

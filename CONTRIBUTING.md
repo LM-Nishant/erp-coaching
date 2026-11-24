@@ -442,8 +442,8 @@ Shared dashboards render cards from every module's `widgets` (`DashboardWidget` 
 | `home`          | `/home` dashboard, institute users                 | none                    | Remounted on pull-to-refresh and branch switch. Built-in: reports `Analytics` (order 10). |
 | `platform-home` | `/home` dashboard, super admin (not impersonating) | none                    | Built-in: reports platform summary (order 10).                                            |
 | `student-home`  | Student "Today" home (host added by the UX rework) | none                    | Next class, continue watching, due work, fee due. Not rendered until its host lands.      |
-| `teacher-home`  | Teacher "Today" home (host added by the UX rework) | none                    | Now/next class, quick actions, things to check. Not rendered until its host lands.        |
-| `staff-home`    | `/home` StaffHome, staff persona                   | none                    | Admins, accountant, front desk; after quick actions. Built-in: fees (10), enquiries (20). |
+| `teacher-home`  | `/home` dashboard, teacher persona (TeacherHome)   | none                    | Built-in: today's classes (10), homework (20) and tests (30) to check.                    |
+| `staff-home`    | `/home` StaffHome, staff persona                   | none                    | Admins, accountant, front desk. Built-in: fees (10), enquiries (20), attendance (30).     |
 
 For `home` and `platform-home`, load your own data and follow the error rules below. The active branch is sent automatically as `X-Branch-Id`.
 

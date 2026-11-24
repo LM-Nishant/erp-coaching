@@ -148,6 +148,16 @@ export default defineAppModule({
   wipeUserData: async (userId) => (await import('./offline-store')).wipeOffline(userId),
   widgets: [
     {
+      id: 'lms.teacherToCheck',
+      slot: 'teacher-home',
+      title: 'Homework to check',
+      component: defineAsyncComponent(() => import('./widgets/HomeworkToCheckWidget.vue')),
+      permission: 'lms-assignments.edit',
+      planModule: 'lms',
+      order: 20,
+      size: 'half',
+    },
+    {
       id: 'lms.continue',
       slot: 'student-home',
       title: 'Continue watching',

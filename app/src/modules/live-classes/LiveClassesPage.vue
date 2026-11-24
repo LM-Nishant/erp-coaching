@@ -224,7 +224,9 @@ const form = reactive({
 async function openSchedule() {
   scheduling.value = true;
   try {
-    batches.value = (await academicsApi.batches({ status: 'active' })).items;
+    batches.value = (await academicsApi.batches()).items.filter(
+      (b) => b.status === 'planned' || b.status === 'active',
+    );
   } catch (e) {
     await toastError(e);
   }

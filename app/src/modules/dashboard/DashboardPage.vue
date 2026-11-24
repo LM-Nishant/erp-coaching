@@ -1,10 +1,13 @@
 <template>
   <!-- Students get their own "Today" page at /home (parents are sent to /parent-home by the router). -->
   <StudentHome v-if="auth.persona === 'student'" />
-  <AppPage v-else title="Dashboard" :on-refresh="refresh">
-    <h2 class="hello">Hello, {{ auth.me?.user.name }}</h2>
+  <AppPage v-else :title="pageTitle" :on-refresh="refresh">
+    <!-- The teacher persona gets a "Today" home (teacher-home widgets) instead of plan and usage numbers. -->
+    <TeacherHome v-if="auth.persona === 'teacher'" :key="refreshKey" />
+    <h2 v-else class="hello">Hello, {{ auth.me?.user.name }}</h2>
 
-    <template v-if="auth.isPlatformAdmin">
+    <template v-if="auth.persona === 'teacher'" />
+    <template v-else-if="auth.isPlatformAdmin">
       <ion-grid v-if="platform">
         <ion-row>
           <ion-col v-for="s in platform.institutesByStatus" :key="s.status" size="6" size-md="3">
@@ -45,6 +48,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonCol, IonGrid, IonRow } from '@ionic/vue';
 import AppPage from '@/components/AppPage.vue';
 import StatCard from '@/components/StatCard.vue';
@@ -53,6 +57,7 @@ import { widgetsFor } from '@/core/modules';
 import { useAuthStore } from '@/stores/auth';
 import StaffHome from './StaffHome.vue';
 import StudentHome from './StudentHome.vue';
+import TeacherHome from './TeacherHome.vue';
 
 interface PlatformStats {
   institutesByStatus: { status: string; count: number }[];
@@ -61,6 +66,8 @@ interface PlatformStats {
 }
 
 const auth = useAuthStore();
+const { t } = useI18n();
+const pageTitle = computed(() => (auth.persona === 'teacher' ? t('dashboard.teacher.title') : 'Dashboard'));
 const route = useRoute();
 const platform = ref<PlatformStats | null>(null);
 
